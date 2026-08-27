@@ -6,6 +6,8 @@
 ## SavedVariables: TortoiseBotsDB
 ## SavedVariablesPerCharacter: TortoiseBotsCharDB
 
+Constants.lua
+Utils.lua
 Core.lua
 Roster.lua
 Comms.lua
