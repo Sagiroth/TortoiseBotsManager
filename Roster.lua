@@ -16,6 +16,11 @@ local C = TB.C
 local state = {}
 local groupMembers = {} -- [Name]=true if in player's party/raid
 
+-- poll reconciliation: which names were seen in the current .bot list window
+local pollSeen = {}      -- [Name]=true for this poll
+local pollActive = false
+local pollGotAny = false -- did we receive any list/noBots line this window?
+
 -- expose read-only snapshots for UI/tooltips (no mutation)
 TB._debugState = state
 TB._debugGroup = groupMembers
@@ -30,6 +35,43 @@ function TB.InitRoster()
     for name, _ in pairs(dbRoster()) do
         if not state[name] then state[name] = { status = C.STATUS.OFFLINE, online = false } end
     end
+end
+
+-- ── poll window ─────────────────────────────────────────────────────────────
+function TB.BeginPoll()
+    for k in pairs(pollSeen) do pollSeen[k]=nil end
+    pollActive = true
+    pollGotAny = false
+end
+
+function TB.MarkPollSeen(name)
+    name = TB.NormalizeName(name)
+    if name then pollSeen[name]=true; pollGotAny=true end
+end
+
+function TB.MarkPollGotAny()
+    pollGotAny = true
+end
+
+-- Called ~1.2s after .bot list was sent, once replies should have arrived.
+-- If we got at least one list/noBots line, any online name not seen is stale.
+-- Requires 2 consecutive misses to go offline (avoids flicker on lag).
+function TB.ReconcilePoll()
+    if not pollActive then return end
+    if not pollGotAny then pollActive=false; return end -- no reply yet / lag
+    pollActive=false
+    for name, st in pairs(state) do
+        if st.online and not pollSeen[name] then
+            st.onlinePending = (st.onlinePending or 0) + 1
+            if st.onlinePending >= 2 then
+                st.online=false; st.status=C.STATUS.OFFLINE
+                st.enteredWorld=false; st.hasAI=false
+            else
+                st.status=C.STATUS.OFFLINE_PENDING
+            end
+        end
+    end
+    if TB.Refresh then TB.Refresh() end
 end
 
 -- ── roster (persisted) ──────────────────────────────────────────────────────
@@ -90,6 +132,7 @@ function TB.SetState(name, fields)
 end
 
 function TB.MarkAllOfflinePending()
+    -- kept for "No owned PlayerBots are online." — also handled by ReconcilePoll
     for _, st in pairs(state) do
         if st.online then
             st.onlinePending = (st.onlinePending or 0) + 1
@@ -113,11 +156,9 @@ function TB.ConfirmSeen(name, info)
     st.enteredWorld = info.enteredWorld
     st.random       = info.random
     st.hasAI        = info.hasAI
-    if st.status == C.STATUS.INVITING or st.status == C.STATUS.SUMMONING then
-        -- keep transient for UX; next poll will clear
-    else
-        st.status = info.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
-    end
+    -- clear transient immediately on confirm — server truth wins over optimistic "summoning/inviting"
+    st.status = info.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+    TB.MarkPollSeen(name)
     TB.AddToRoster(name, { discovered = true })
 end
 
@@ -159,7 +200,6 @@ gf:SetScript("OnEvent", function()
     end
     local selfName = UnitName("player")
     if selfName then members[TB.NormalizeName(selfName) or selfName] = true end
-    -- replace table contents without breaking reference held by TB._debugGroup
     for k in pairs(groupMembers) do groupMembers[k]=nil end
     for k,v in pairs(members) do groupMembers[k]=v end
     if TB.Refresh then TB.Refresh() end

@@ -35,7 +35,6 @@ local function initDB()
     end
 
     if not TortoiseBotsCharDB then TortoiseBotsCharDB = {} end
-    -- reserved for per-char prefs; currently unused (kept for compat)
     if not TortoiseBotsCharDB.recent then TortoiseBotsCharDB.recent = {} end
 end
 
@@ -72,6 +71,10 @@ function TB.SendBotCommand(cmd, opts)
         TB.lastCommand   = cmd
         TB.lastCommandAt = lastSend
         if TB.OnCommandSent then TB.OnCommandSent(cmd) end
+        -- track actual send time for poll throttle
+        if string.lower(string.gsub(cmd, "%s+.*", "")) == "list" then
+            TB._lastPoll = lastSend
+        end
         return true
     else
         table.insert(sendQueue, { cmd = cmd, at = GetTime() })
@@ -82,12 +85,32 @@ end
 
 -- ── Poll orchestration ──────────────────────────────────────────────────────
 TB._lastPoll = 0
+local pendingReconcileFrame
+
+local function scheduleReconcile()
+    if pendingReconcileFrame then pendingReconcileFrame.wait = 1.2; pendingReconcileFrame.elapsed=0; return end
+    pendingReconcileFrame = CreateFrame("Frame", "TortoiseBotsReconcileFrame")
+    pendingReconcileFrame.elapsed=0; pendingReconcileFrame.wait=1.2
+    pendingReconcileFrame:SetScript("OnUpdate", function()
+        this.elapsed = this.elapsed + arg1
+        if this.elapsed >= this.wait then
+            this.wait=nil; this.elapsed=0
+            if TB.ReconcilePoll then TB.ReconcilePoll() end
+        end
+    end)
+end
 
 function TB.PollList(force)
     if not force and (GetTime() - TB._lastPoll) < C.LIST_THROTTLE then return end
-    TB._lastPoll = GetTime()
-    TB.SendBotCommand("list")
-    if math.random() < 0.3 then TB.SendBotCommand("stats") end -- opportunistic count
+    -- begin poll window before send so confirms can mark seen
+    if TB.BeginPoll then TB.BeginPoll() end
+    local sent = TB.SendBotCommand("list")
+    if not sent then
+        -- queued — _lastPoll will be set when actually sent via OnCommandSent
+        -- still schedule reconcile for when it does send (will be re-scheduled on send)
+    end
+    scheduleReconcile()
+    if math.random() < 0.3 then TB.SendBotCommand("stats") end
 end
 
 local pollFrame

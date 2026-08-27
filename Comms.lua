@@ -56,6 +56,19 @@ function TB.OnCommandSent(cmd)
     local rest = TB.Trim(string.gsub(cmd, "^%S+%s*", ""))
     local name = TB.NormalizeName(rest)
 
+    if verb == "list" then
+        -- actual send time is authoritative for throttle (Core also sets _lastPoll)
+        if TB.BeginPoll then TB.BeginPoll() end
+        -- reconcile scheduled in Core.PollList; ensure one if list was queued
+        if TB.ReconcilePoll then
+            -- Core already scheduled; if this was a queued list, ensure window
+            if not string.find(cmd, "stats") then
+                -- nudge reconcile
+            end
+        end
+        return
+    end
+
     if verb == "summon" and name then
         TB.SetState(name, { status = C.STATUS.SUMMONING })
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
@@ -69,6 +82,24 @@ function TB.OnCommandSent(cmd)
     end
     if TB.Refresh then TB.Refresh() end
     TB.RequestPollSoon(C.POLL_AFTER_CMD)
+
+    -- clear stale transient after 4s if server never replied (e.g., throttled)
+    if (verb == "summon" or verb == "invite") and name then
+        local captured = name; local v = verb
+        local f = CreateFrame("Frame")
+        f.elapsed=0; f:SetScript("OnUpdate", function()
+            this.elapsed=this.elapsed+arg1
+            if this.elapsed>=4 then
+                this:SetScript("OnUpdate", nil)
+                local st = TB.GetState(captured)
+                if st and ((v=="summon" and st.status==C.STATUS.SUMMONING) or (v=="invite" and st.status==C.STATUS.INVITING)) then
+                    -- no confirm — revert to truth
+                    st.status = st.online and C.STATUS.ONLINE or C.STATUS.OFFLINE
+                    if TB.Refresh then TB.Refresh() end
+                end
+            end
+        end)
+    end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
@@ -100,12 +131,14 @@ function TB.OnSystemMessage(msg)
     end
 
     if string.find(msg, PAT.noBotsOnline) then
+        TB.MarkPollGotAny()
         TB.MarkAllOfflinePending()
         if TB.SetStatus then TB.SetStatus("No owned bots online.", "muted") end
         if TB.Refresh  then TB.Refresh() end
         return
     end
     if string.find(msg, PAT.statsLine) then
+        -- stats alone doesn't prove list window, but counts as activity
         if TB.SetStatus then TB.SetStatus(msg, "muted") end
         return
     end
@@ -139,7 +172,6 @@ function TB.OnSystemMessage(msg)
     elseif string.find(msg, PAT.alreadyOnline) or string.find(msg, PAT.sameAccount)
         or string.find(msg, PAT.summonFail) or string.find(msg, PAT.alreadySummon) then
         if TB.SetStatus then TB.SetStatus(msg, "warn") end
-        -- roll back transient
         local _, _, nm = string.find(msg, "'(%S+)'")
         if nm then
             local st = TB.GetState(nm)
