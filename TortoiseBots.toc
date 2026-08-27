@@ -1,0 +1,13 @@
+## Interface: 11200
+## Title: |cffd8a657TortoiseBots|r
+## Notes: Control your owned bots — list, summon, follow/stay, group, pull. For TortoiseBots module.
+## Author: TortoiseBots
+## Version: 0.1.0
+## SavedVariables: TortoiseBotsDB
+## SavedVariablesPerCharacter: TortoiseBotsCharDB
+
+Core.lua
+Roster.lua
+Comms.lua
+UI.lua
+Minimap.lua
