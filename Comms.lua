@@ -1,4 +1,4 @@
--- TortoiseBots/Comms.lua
+-- TortoiseBotsManager/Comms.lua
 -- Protocol: send ".bot <verb> [name] [extra]" and parse CHAT_MSG_SYSTEM replies.
 --
 -- Source of truth for every pattern is commands/BotCommands.cpp (module repo).
@@ -104,7 +104,7 @@ end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
 function TB.InitComms()
-    local f = CreateFrame("Frame", "TortoiseBotsCommsFrame")
+    local f = CreateFrame("Frame", "TortoiseBotsManagerCommsFrame")
     f:RegisterEvent("CHAT_MSG_SYSTEM")
     f:SetScript("OnEvent", function()
         if event == "CHAT_MSG_SYSTEM" then TB.OnSystemMessage(arg1 or "") end

@@ -1,9 +1,9 @@
--- TortoiseBots/Core.lua
+-- TortoiseBotsManager/Core.lua
 -- Responsibilities:
 --   * SavedVariables init + migration
 --   * Throttled SendChatMessage queue for ".bot …"
 --   * Poll orchestration (.bot list)
---   * Slash commands (/tb /tbot /tortoise)
+--   * Slash commands (/tbm primary, /tb /tbot aliases)
 --   * Lifecycle (ADDON_LOADED, PLAYER_ENTERING_WORLD)
 --
 -- Non-responsibilities: roster model (Roster.lua), protocol parsing (Comms.lua), layout (UI.lua).
@@ -13,6 +13,7 @@ local TB = TortoiseBots
 local C = TB.C -- from Constants.lua
 
 TB.version = C.VERSION
+TB.ADDON_NAME = "TortoiseBotsManager"
 
 -- ── SavedVariables ──────────────────────────────────────────────────────────
 local function initDB()
@@ -50,7 +51,7 @@ local queueFrame -- lazy
 
 local function ensureQueueFrame()
     if queueFrame then return end
-    queueFrame = CreateFrame("Frame", "TortoiseBotsQueueFrame")
+    queueFrame = CreateFrame("Frame", "TortoiseBotsManagerQueueFrame")
     queueFrame:SetScript("OnUpdate", function()
         if table.getn(sendQueue) == 0 then return end
         if not TB.CanSend() then return end
@@ -71,7 +72,6 @@ function TB.SendBotCommand(cmd, opts)
         TB.lastCommand   = cmd
         TB.lastCommandAt = lastSend
         if TB.OnCommandSent then TB.OnCommandSent(cmd) end
-        -- track actual send time for poll throttle
         if string.lower(string.gsub(cmd, "%s+.*", "")) == "list" then
             TB._lastPoll = lastSend
         end
@@ -89,7 +89,7 @@ local pendingReconcileFrame
 
 local function scheduleReconcile()
     if pendingReconcileFrame then pendingReconcileFrame.wait = 1.2; pendingReconcileFrame.elapsed=0; return end
-    pendingReconcileFrame = CreateFrame("Frame", "TortoiseBotsReconcileFrame")
+    pendingReconcileFrame = CreateFrame("Frame", "TortoiseBotsManagerReconcileFrame")
     pendingReconcileFrame.elapsed=0; pendingReconcileFrame.wait=1.2
     pendingReconcileFrame:SetScript("OnUpdate", function()
         this.elapsed = this.elapsed + arg1
@@ -102,13 +102,8 @@ end
 
 function TB.PollList(force)
     if not force and (GetTime() - TB._lastPoll) < C.LIST_THROTTLE then return end
-    -- begin poll window before send so confirms can mark seen
     if TB.BeginPoll then TB.BeginPoll() end
     local sent = TB.SendBotCommand("list")
-    if not sent then
-        -- queued — _lastPoll will be set when actually sent via OnCommandSent
-        -- still schedule reconcile for when it does send (will be re-scheduled on send)
-    end
     scheduleReconcile()
     if math.random() < 0.3 then TB.SendBotCommand("stats") end
 end
@@ -117,7 +112,7 @@ local pollFrame
 function TB.RequestPollSoon(delay)
     delay = delay or C.POLL_AFTER_CMD
     if not pollFrame then
-        pollFrame = CreateFrame("Frame", "TortoiseBotsPollFrame")
+        pollFrame = CreateFrame("Frame", "TortoiseBotsManagerPollFrame")
         pollFrame.elapsed = 0
         pollFrame.wait = nil
         pollFrame:SetScript("OnUpdate", function()
@@ -134,13 +129,14 @@ function TB.RequestPollSoon(delay)
 end
 
 -- ── Slash ───────────────────────────────────────────────────────────────────
-SLASH_TORTOISEBOTS1 = "/tortoise"
-SLASH_TORTOISEBOTS2 = "/tbot"
-SLASH_TORTOISEBOTS3 = "/tb"
-SlashCmdList["TORTOISEBOTS"] = function(msg)
+SLASH_TORTOISEBOTSMANAGER1 = "/tbm"
+SLASH_TORTOISEBOTSMANAGER2 = "/tb"
+SLASH_TORTOISEBOTSMANAGER3 = "/tbot"
+SLASH_TORTOISEBOTSMANAGER4 = "/tortoise"
+SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     msg = string.lower(TB.Trim(msg or ""))
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tb — toggle panel, /tb list — poll, /tb resetpos — center window, /tb help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         return
     elseif msg == "list" then
         TB.PollList(true); TB.Print("Polling .bot list…"); return
@@ -153,29 +149,29 @@ SlashCmdList["TORTOISEBOTS"] = function(msg)
 end
 
 function TB.Print(msg)
-    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cffd8a657TortoiseBots:|r " .. tostring(msg)) end
+    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cffd8a657TortoiseBots Manager:|r " .. tostring(msg)) end
 end
 
 -- ── Lifecycle ────────────────────────────────────────────────────────────────
-local ef = CreateFrame("Frame", "TortoiseBotsCoreFrame")
+local ef = CreateFrame("Frame", "TortoiseBotsManagerCoreFrame")
 ef:RegisterEvent("ADDON_LOADED")
 ef:RegisterEvent("PLAYER_ENTERING_WORLD")
 ef:RegisterEvent("PLAYER_LOGIN")
 ef:SetScript("OnEvent", function()
-    if event == "ADDON_LOADED" and arg1 == "TortoiseBots" then
+    if event == "ADDON_LOADED" and (arg1 == "TortoiseBotsManager" or arg1 == "TortoiseBots") then
         initDB()
         if TB.InitRoster  then TB.InitRoster()  end
         if TB.InitComms   then TB.InitComms()   end
         if TB.InitUI      then TB.InitUI()      end
         if TB.InitMinimap then TB.InitMinimap() end
-        TB.Print("v" .. TB.version .. " loaded. /tb to open. Requires TortoiseBots module on server.")
+        TB.Print("v" .. TB.version .. " loaded. /tbm to open. Requires TortoiseBots module on server.")
     elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
         TB.RequestPollSoon(3.5)
     end
 end)
 
 -- Periodic poll (panel open: 8s, hidden: 20s, respects autoPoll)
-local pf = CreateFrame("Frame", "TortoiseBotsAutoPoll")
+local pf = CreateFrame("Frame", "TortoiseBotsManagerAutoPoll")
 pf.elapsed = 0
 pf:SetScript("OnUpdate", function()
     pf.elapsed = pf.elapsed + arg1

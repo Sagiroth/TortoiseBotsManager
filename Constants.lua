@@ -1,4 +1,4 @@
--- TortoiseBots/Constants.lua
+-- TortoiseBotsManager/Constants.lua
 -- Single source of truth for dimensions, colors, timings, and UX strings.
 -- Vanilla 1.12 safe.
 

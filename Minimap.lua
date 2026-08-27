@@ -1,10 +1,10 @@
--- TortoiseBots/Minimap.lua — draggable minimap button. No business logic here.
+-- TortoiseBotsManager/Minimap.lua — draggable minimap button. No business logic here.
 local TB = TortoiseBots
 local C  = TB.C
 
 function TB.InitMinimap()
     local db = TortoiseBotsDB
-    local btn = CreateFrame("Button", "TortoiseBotsMinimapButton", Minimap)
+    local btn = CreateFrame("Button", "TortoiseBotsManagerMinimapButton", Minimap)
     btn:SetWidth(32); btn:SetHeight(32); btn:SetFrameStrata("MEDIUM")
     btn:SetMovable(true); btn:EnableMouse(true)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -35,8 +35,8 @@ function TB.InitMinimap()
     end)
     btn:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_LEFT")
-        GameTooltip:SetText("TortoiseBots")
-        GameTooltip:AddLine("Left-click: toggle panel", 1,1,1)
+        GameTooltip:SetText("TortoiseBots Manager")
+        GameTooltip:AddLine("Left-click: toggle (/tbm)", 1,1,1)
         GameTooltip:AddLine("Right-click: refresh list", 1,1,1)
         GameTooltip:AddLine("Drag: move button", C.COLOR.muted[1], C.COLOR.muted[2], C.COLOR.muted[3])
         local online = 0; for _, s in pairs(TB.GetAllState()) do if s.online then online = online + 1 end end

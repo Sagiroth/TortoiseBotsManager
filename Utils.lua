@@ -1,4 +1,4 @@
--- TortoiseBots/Utils.lua — pure, testable helpers. No frame creation.
+-- TortoiseBotsManager/Utils.lua — pure, testable helpers. No frame creation.
 local TB = TortoiseBots
 local C = TB.C
 

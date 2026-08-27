@@ -67,16 +67,16 @@ CreateHeader = function(parent)
         db.frame.point=p; db.frame.rpoint=rp; db.frame.x=x; db.frame.y=y
     end)
     TB.ApplyBackdrop(parent, 0.98, 1.0)
-    if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsFrame") end
+    if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerFrame") end
 
     local icon = parent:CreateTexture(nil, "ARTWORK")
     icon:SetWidth(24); icon:SetHeight(24); icon:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, -8)
     icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01"); icon:SetTexCoord(0.08,0.92,0.08,0.92)
 
+    -- Themed title: Tortoise (gold) + Bots (turtle green) + Manager (ivory) + version
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", icon, "RIGHT", 7, 0)
-    title:SetText("TortoiseBots  |cffffd200v" .. (TB.version or "?") .. "|r")
-    TB.SetTextColor(title, COL.gold)
+    title:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cffffd200v" .. (TB.version or "?") .. "|r")
 
     local glow = parent:CreateTexture(nil, "BACKGROUND")
     glow:SetTexture(0.55,0.35,0.08,0.12)
@@ -94,7 +94,7 @@ CreateFilterRow = function(parent)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, -50); label:SetText("Filter"); TB.SetTextColor(label, COL.muted)
 
-    local search = CreateFrame("EditBox", "TortoiseBotsSearch", parent, "InputBoxTemplate")
+    local search = CreateFrame("EditBox", "TortoiseBotsManagerSearch", parent, "InputBoxTemplate")
     search:SetWidth(170); search:SetHeight(22); search:SetPoint("LEFT", label, "RIGHT", 8, 0)
     search:SetAutoFocus(false)
     search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
@@ -119,7 +119,7 @@ CreateFilterRow = function(parent)
 end
 
 CreateScroll = function(parent)
-    local scroll = CreateFrame("ScrollFrame", "TortoiseBotsScroll", parent, "FauxScrollFrameTemplate")
+    local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerScroll", parent, "FauxScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, -75); scroll:SetWidth(W-24); scroll:SetHeight(ROW_N*ROW_H+4)
     scroll:SetScript("OnVerticalScroll", function() FauxScrollFrame_OnVerticalScroll(ROW_H, TB.Refresh) end)
     TB.scroll = scroll
@@ -211,7 +211,7 @@ CreateAddBar = function(parent, anchorFrame)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 2, -10); label:SetText("Add bot:"); TB.SetTextColor(label, COL.muted)
 
-    local box = CreateFrame("EditBox", "TortoiseBotsAddBox", parent, "InputBoxTemplate")
+    local box = CreateFrame("EditBox", "TortoiseBotsManagerAddBox", parent, "InputBoxTemplate")
     box:SetWidth(170); box:SetHeight(20); box:SetPoint("LEFT", label, "RIGHT", 8, 0); box:SetAutoFocus(false)
     box:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     box:SetScript("OnEnterPressed", function()
@@ -309,7 +309,7 @@ end
 
 -- ── public ──────────────────────────────────────────────────────────────────
 function TB.InitUI()
-    local main = CreateFrame("Frame", "TortoiseBotsFrame", UIParent)
+    local main = CreateFrame("Frame", "TortoiseBotsManagerFrame", UIParent)
     CreateHeader(main)
     CreateFilterRow(main)
     CreateScroll(main)

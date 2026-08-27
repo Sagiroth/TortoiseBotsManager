@@ -1,4 +1,4 @@
--- TortoiseBots/Roster.lua
+-- TortoiseBotsManager/Roster.lua
 -- Owner of two things:
 --   1) persisted roster  (TortoiseBotsDB.roster)  — names you added, survives reload
 --   2) live state        (private `state`)         — online/starting/offline per name, plus group
@@ -184,7 +184,7 @@ function TB.GetDisplayRows(filter)
 end
 
 -- ── group tracking (authoritative, not inferred) ────────────────────────────
-local gf = CreateFrame("Frame", "TortoiseBotsGroupWatcher")
+local gf = CreateFrame("Frame", "TortoiseBotsManagerGroupWatcher")
 gf:RegisterEvent("GROUP_ROSTER_UPDATE")
 gf:RegisterEvent("PARTY_MEMBERS_CHANGED")
 gf:RegisterEvent("PLAYER_ENTERING_WORLD")

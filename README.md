@@ -1,4 +1,4 @@
-# TortoiseBots Addon
+# TortoiseBots Manager
 
 Lightweight, nice-looking **Vanilla 1.12 (11200)** addon to control your owned bots on [Tortoise WoW 1.18.1](https://github.com/Penqle/tortoise-wow) — without typing in chat.
 
@@ -6,7 +6,7 @@ Press buttons instead of `/.bot` commands. List your alts, see who is online/sta
 
 > **Requires the server-side module:** [tortoise-wow-stack/TortoiseBots](https://github.com/tortoise-wow-stack/TortoiseBots) (`modules/TortoiseBots`). The addon is a pure UI front-end — it sends `.bot …` chat commands and parses `CHAT_MSG_SYSTEM` replies. It does not work without the module.
 
-![TortoiseBots panel](https://raw.githubusercontent.com/tortoise-wow-stack/TortoiseBots-Addon/main/.github/preview.png)
+![TortoiseBots Manager panel](https://raw.githubusercontent.com/tortoise-wow-stack/TortoiseBotsManager/main/.github/preview.png)
 
 ---
 
@@ -15,10 +15,10 @@ Press buttons instead of `/.bot` commands. List your alts, see who is online/sta
 * **Roster you own** — remembers your alt names (same account) via `SavedVariables`. Auto-discovers bots seen in `.bot list`.
 * **State** — `Offline → Starting → Online` (+ `Summoning…` / `Inviting…`), with `Random`/`AI` hint and group membership.
 * **Spawn / Despawn** — `.bot add` / `.bot remove` from an input box or per-row Spawn button (same-account check stays server-side).
-* **Per-bot actions** — `Summon` (`.bot summon`), `Follow` / `Stay`, `Invite`/`Kick` (`.bot invite/uninvite`), `Remove` (`.bot remove`).
-* **Bulk** — `Summon All`, `Follow All`, `Stay All`, `Invite All`, `Uninvite All`.
-* **Selection bar** — click a row to drive one bot; `Pull` (` .bot pullback`) uses your current target and the tank in your party.
-* **Nice looking & simple** — 520×520 dark parchment panel (gold/blue, like Turtle), draggable, `Esc` closes, remembers position, minimap button, search filter, tooltips.
+* **Per-bot quick** — `Summ`/`Spawn`, `Follow`, `Invite`/`Kick`, `X` Remove — one click per row.
+* **Party** — `Summon All` / `Follow All` / `Invite All` (All scope, distinct from row single).
+* **Selected** — `Stay` / `Pull` / `Reset` for the clicked row (advanced single, no duplicates).
+* **Nice looking & simple** — 520×520 dark parchment with themed **TortoiseBots Manager** title (gold + turtle green), draggable, `Esc` closes, remembers position, minimap button, search filter, tooltips.
 * **Correct** — throttled sends (350 ms), throttled polls (5 s hard, 8 s panel / 20 s hidden), 2-poll anti-flicker for offline, right-click row to forget offline, all server checks honoured (combat/taxi/teleport/group).
 
 ## Companion Module
@@ -36,7 +36,7 @@ TortoiseBots module (server, authoritative)
         │
         │  CHAT_MSG_SYSTEM replies
         ▼
-TortoiseBots addon (client, optimistic UI)
+TortoiseBots Manager (client, /tbm, optimistic UI)
 ```
 
 No module → addon loads but every action replies “TortoiseBots module not loaded” from the server.
@@ -45,28 +45,30 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 
 1. Download or `git clone` this repo into your client:
    ```
-   <TurtleWoW>/Interface/AddOns/TortoiseBots/
+   <TurtleWoW>/Interface/AddOns/TortoiseBotsManager/
    ```
-   The folder must be named `TortoiseBots` (so the `.toc` is found).
+   The folder must be named `TortoiseBotsManager` (so the `.toc` is found).
 2. Restart the client fully (Vanilla loads addons at startup).
-3. Log in — you should see `TortoiseBots v0.1.0 loaded. /tb to open.` in chat.
+3. Log in — you should see `TortoiseBots Manager v0.1.0 loaded. /tbm to open.` in chat.
 
 ### From this repo
 
 ```bash
-git clone https://github.com/tortoise-wow-stack/TortoiseBots-Addon.git
-cp -r TortoiseBots-Addon "/mnt/ssd/TurtleWoW eng client 1.18.1/Interface/AddOns/TortoiseBots"
+git clone https://github.com/tortoise-wow-stack/TortoiseBotsManager.git
+cp -r TortoiseBotsManager "/mnt/ssd/TurtleWoW eng client 1.18.1/Interface/AddOns/TortoiseBotsManager"
 # or symlink
-ln -s "$(pwd)/TortoiseBots-Addon" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interface/AddOns/TortoiseBots"
+ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interface/AddOns/TortoiseBotsManager"
 ```
 
 ## Use
 
-* `/tb` / `/tbot` / `/tortoise` — toggle panel.
-* `/tb list` — force poll, `/tb help`, `/tb resetpos`.
-* **Minimap button** — left-click toggle, right-click refresh, drag to move (80 px ring).
+* `/tbm` (primary) — toggle panel. Aliases `/tb` / `/tbot` / `/tortoise` still work.
+* `/tbm list` — force poll, `/tbm help`, `/tbm resetpos`.
+* **Minimap button** — left-click toggle (`/tbm`), right-click refresh, drag to move (80 px ring).
 * **Add bot** — type exact alt name (same account) → `Spawn`. Server replies `queued for login; it will follow you`.
-* **Row** — left-click select, double-click follow, right-click (when offline) forget. Per-row: `Summ/Spawn`, `Fol`, `Inv/Kick`, `Stay`, `X` (despawn).
+* **Row** — left-click select, right-click (when offline) forget. Per-row: `Summ`/`Spawn`, `Follow`, `Invite`/`Kick`, `X` (despawn).
+* **Party bar** — `Summon All` / `Follow All` / `Invite All` for filtered rows.
+* **Selected bar** — click a row, then `Stay` / `Pull` / `Reset`.
 * **Search** — filters by substring.
 
 ## How it works (edge cases)
@@ -83,12 +85,14 @@ ln -s "$(pwd)/TortoiseBots-Addon" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interfac
 ## Files
 
 ```
-TortoiseBots.toc
-Core.lua      — slash, throttle, poll, SavedVariables
-Roster.lua    — roster + live state + group tracking
-Comms.lua     — build .bot and parse system messages
-UI.lua        — 520×520 panel, rows, bulk & selection bars
-Minimap.lua   — draggable minimap button
+TortoiseBotsManager.toc
+Constants.lua   — geometry, colors, delays, status
+Utils.lua       — Trim, NormalizeName, backdrop, Status helpers
+Core.lua        — slash (/tbm), throttle, poll, SavedVariables
+Roster.lua      — roster + live state + group + poll reconcile
+Comms.lua       — build .bot and parse system messages
+UI.lua          — 520×520 panel, rows, Party & Selected bars
+Minimap.lua     — draggable minimap button
 ```
 
 ## Roadmap
@@ -104,4 +108,4 @@ MIT — see `LICENCE.md` in the module repo. Turtle client is proprietary — th
 
 * Module: https://github.com/tortoise-wow-stack/TortoiseBots
 * Core: https://github.com/Penqle/tortoise-wow
-* Issues: https://github.com/tortoise-wow-stack/TortoiseBots-Addon/issues
+* Issues: https://github.com/tortoise-wow-stack/TortoiseBotsManager/issues
