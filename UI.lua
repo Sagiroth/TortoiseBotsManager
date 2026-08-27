@@ -4,12 +4,15 @@
 --   Filter row (search + Clear + Refresh + count)
 --   Scroll list (8 rows, FauxScroll)
 --   Add bar (EditBox + Spawn)
---   Bulk bar (Summon/Follow/Stay/Invite/Uninvite All)
---   Selection bar (label + 6 actions for selected bot)
+--   Party bar (Summon All / Follow All / Invite All)  — All scope, not single
+--   Selected bar (Stay / Pull / Reset)               — per-selected advanced, not duplicated in rows
 --   Status bar
 --
--- Every visual knob lives in Constants.lua. Every helper is a local function
--- so InitUI reads as a flat composition, not a 300-line closure.
+-- Grouping principle: no same-scope duplicates.
+--   Row: per-bot quick (Summ/Spawn, Follow, Invite) + Remove (X)
+--   Party: All scope (Summ All, Fol All, Inv All)
+--   Selected: advanced single (Stay, Pull, Reset)
+-- Every visual knob lives in Constants.lua. Helpers are top-level locals.
 
 local TB = TortoiseBots
 local C  = TB.C
@@ -17,13 +20,10 @@ local W, H   = C.PANEL_W, C.PANEL_H
 local ROW_H, ROW_N = C.ROW_H, C.ROW_N
 local COL = C.COLOR
 
--- ── forward decls (so helpers stay top-level) ───────────────────────────────
+-- ── forward decls ───────────────────────────────────────────────────────────
 local CreateHeader, CreateFilterRow, CreateScroll, CreateRow
-local CreateAddBar, CreateBulkBar, CreateSelectionBar, CreateStatusBar
+local CreateAddBar, CreatePartyBar, CreateSelectedBar, CreateStatusBar
 local RefreshCounts, RefreshRows, RefreshSelection
-
--- ── panel state owned by UI ─────────────────────────────────────────────────
--- TB.frame, TB.scroll, TB.rows, TB.selected, TB.filterText, TB.countLabel, TB.selLabel, TB.statusText, TB.searchBox, TB.addBox
 
 -- ── helpers ─────────────────────────────────────────────────────────────────
 local function onRowClick(row)
@@ -83,7 +83,7 @@ CreateHeader = function(parent)
     glow:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -5); glow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -8, -5); glow:SetHeight(32)
 
     local close = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -3, -3)
+    close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -3,-3)
 
     local divider = parent:CreateTexture(nil, "ARTWORK")
     divider:SetTexture(0.48,0.36,0.15,0.70)
@@ -131,6 +131,7 @@ CreateScroll = function(parent)
     end
 end
 
+-- Row: per-bot quick — Summ/Spawn, Follow, Invite — plus Remove (X). No Stay here (lives in Selected bar).
 CreateRow = function(scroll, index)
     local row = CreateFrame("Frame", nil, scroll)
     row:SetWidth(W-24-22); row:SetHeight(ROW_H-2)
@@ -148,7 +149,7 @@ CreateRow = function(scroll, index)
     row.icon:SetTexCoord(0.08,0.92,0.08,0.92); row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
 
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.name:SetPoint("LEFT", row.icon, "RIGHT", 8, 6); row.name:SetWidth(96); row.name:SetJustifyH("LEFT")
+    row.name:SetPoint("LEFT", row.icon, "RIGHT", 8, 6); row.name:SetWidth(110); row.name:SetJustifyH("LEFT")
     row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.status:SetPoint("LEFT", row.icon, "RIGHT", 8, -8); row.status:SetWidth(110); row.status:SetJustifyH("LEFT")
 
@@ -165,22 +166,23 @@ CreateRow = function(scroll, index)
         return b
     end
 
-    row.btnSummon = mkBtn(42, "Summ", "Summon to you (.bot summon)")
-    row.btnSummon:SetPoint("RIGHT", row, "RIGHT", -116, 0)
+    -- 3 quick per-bot + Remove. Stay lives in Selected bar.
+    row.btnSummon = mkBtn(46, "Summ", "Summon to you (.bot summon)")
+    row.btnSummon:SetPoint("RIGHT", row, "RIGHT", -62, 0)
     row.btnSummon:SetScript("OnClick", function()
         local e = this:GetParent().entry; if not e then return end
         if not e.st.online then TB.SendBotCommand(TB.BuildCommand("add", e.name))
         else TB.SendBotCommand(TB.BuildCommand("summon", e.name)) end
     end)
 
-    row.btnFollow = mkBtn(32, "Fol", "Follow (.bot follow)")
+    row.btnFollow = mkBtn(38, "Follow", "Follow you (.bot follow)")
     row.btnFollow:SetPoint("LEFT", row.btnSummon, "RIGHT", 2, 0)
     row.btnFollow:SetScript("OnClick", function()
         local e = this:GetParent().entry; if not e then return end
         TB.SendBotCommand(TB.BuildCommand("follow", e.name))
     end)
 
-    row.btnInvite = mkBtn(32, "Inv", "Invite to group (.bot invite)")
+    row.btnInvite = mkBtn(38, "Invite", "Group invite (.bot invite)")
     row.btnInvite:SetPoint("LEFT", row.btnFollow, "RIGHT", 2, 0)
     row.btnInvite:SetScript("OnClick", function()
         local e = this:GetParent().entry; if not e then return end
@@ -188,22 +190,15 @@ CreateRow = function(scroll, index)
         else TB.SendBotCommand(TB.BuildCommand("invite", e.name)) end
     end)
 
-    row.btnStay = mkBtn(34, "Stay", "Stay (.bot stay)")
-    row.btnStay:SetPoint("LEFT", row.btnInvite, "RIGHT", 2, 0)
-    row.btnStay:SetScript("OnClick", function()
-        local e = this:GetParent().entry; if not e then return end
-        TB.SendBotCommand(TB.BuildCommand("stay", e.name))
-    end)
-
     local xBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    xBtn:SetWidth(18); xBtn:SetHeight(16); xBtn:SetPoint("LEFT", row.btnStay, "RIGHT", 2, 0); xBtn:SetText("X")
+    xBtn:SetWidth(20); xBtn:SetHeight(16); xBtn:SetPoint("LEFT", row.btnInvite, "RIGHT", 2, 0); xBtn:SetText("X")
     xBtn:SetScript("OnClick", function()
         local e = this:GetParent().entry; if not e then return end
         TB.SendBotCommand(TB.BuildCommand("remove", e.name))
     end)
     xBtn:SetScript("OnEnter", function()
-        GameTooltip:SetOwner(this, "ANCHOR_RIGHT"); GameTooltip:SetText("Despawn (.bot remove)")
-        GameTooltip:AddLine("Right-click row when offline to forget", COL.muted[1], COL.muted[2], COL.muted[3])
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT"); GameTooltip:SetText("Remove (.bot remove)")
+        GameTooltip:AddLine("Despawns bot. Right-click row when offline to forget.", COL.muted[1], COL.muted[2], COL.muted[3])
         GameTooltip:Show()
     end)
     xBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -237,14 +232,18 @@ CreateAddBar = function(parent, anchorFrame)
     local tip = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     tip:SetPoint("LEFT", btn, "RIGHT", 8, 0); tip:SetText("same account only"); TB.SetTextColor(tip, COL.muted)
 
-    return label -- anchor for next section
+    return label
 end
 
-CreateBulkBar = function(parent, anchorLabel)
+-- Party bar: All scope only — no single duplicates
+CreatePartyBar = function(parent, anchorLabel)
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetPoint("TOPLEFT", anchorLabel, "BOTTOMLEFT", 0, -12); bar:SetWidth(W-24); bar:SetHeight(22)
 
-    local function bulkBtn(label, w, tip, fn)
+    local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("LEFT", bar, "LEFT", 0, 0); title:SetText("Party:"); TB.SetTextColor(title, COL.muted)
+
+    local function btn(label, w, tip, fn)
         local b = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
         b:SetWidth(w); b:SetHeight(18); b:SetText(label)
         b:SetScript("OnClick", fn)
@@ -253,30 +252,23 @@ CreateBulkBar = function(parent, anchorLabel)
         return b
     end
 
-    local b1 = bulkBtn("Summon All", 78, "Summon all online bots", function()
+    local b1 = btn("Summon All", 82, "Summon all online bots to you", function()
         for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.st.online then TB.SendBotCommand(TB.BuildCommand("summon", e.name)) end end
-    end); b1:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    end); b1:SetPoint("LEFT", title, "RIGHT", 8, 0)
 
-    local b2 = bulkBtn("Follow All", 72, "All follow you", function()
+    local b2 = btn("Follow All", 78, "All online follow you", function()
         for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.st.online then TB.SendBotCommand(TB.BuildCommand("follow", e.name)) end end
     end); b2:SetPoint("LEFT", b1, "RIGHT", 4, 0)
 
-    local b3 = bulkBtn("Stay All", 64, "All stay", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.st.online then TB.SendBotCommand(TB.BuildCommand("stay", e.name)) end end
-    end); b3:SetPoint("LEFT", b2, "RIGHT", 4, 0)
-
-    local b4 = bulkBtn("Invite All", 72, "Invite all online", function()
+    local b3 = btn("Invite All", 78, "Invite all online to group", function()
         for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.st.online and not e.inGroup then TB.SendBotCommand(TB.BuildCommand("invite", e.name)) end end
-    end); b4:SetPoint("LEFT", b3, "RIGHT", 4, 0)
-
-    local b5 = bulkBtn("Uninvite All", 80, "Remove all bots from group", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.inGroup then TB.SendBotCommand(TB.BuildCommand("uninvite", e.name)) end end
-    end); b5:SetPoint("LEFT", b4, "RIGHT", 4, 0)
+    end); b3:SetPoint("LEFT", b2, "RIGHT", 4, 0)
 
     return bar
 end
 
-CreateSelectionBar = function(parent, anchorBar)
+-- Selected bar: advanced single — Stay/Pull/Reset only. No Summon/Follow/Invite duplicates (those live in Row/Party).
+CreateSelectedBar = function(parent, anchorBar)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("TOPLEFT", anchorBar, "BOTTOMLEFT", 2, -8); label:SetWidth(W-28); label:SetJustifyH("LEFT"); TB.SetTextColor(label, COL.text)
     TB.selLabel = label
@@ -284,7 +276,7 @@ CreateSelectionBar = function(parent, anchorBar)
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4); bar:SetWidth(W-24); bar:SetHeight(20)
 
-    local function selBtn(text, w, tip, fn)
+    local function sbtn(text, w, tip, fn)
         local b = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
         b:SetWidth(w); b:SetHeight(18); b:SetText(text)
         b:SetScript("OnClick", fn)
@@ -293,24 +285,18 @@ CreateSelectionBar = function(parent, anchorBar)
         return b
     end
 
-    local s1 = selBtn("Follow", 52, "Selected follows", function() if TB.selected then TB.SendBotCommand(TB.BuildCommand("follow", TB.selected)) end end)
-    s1:SetPoint("LEFT", bar, "LEFT", 0, 0)
-    local s2 = selBtn("Stay", 48, "Selected stays", function() if TB.selected then TB.SendBotCommand(TB.BuildCommand("stay", TB.selected)) end end)
-    s2:SetPoint("LEFT", s1, "RIGHT", 4, 0)
-    local s3 = selBtn("Summon", 58, "Summon selected", function() if TB.selected then TB.SendBotCommand(TB.BuildCommand("summon", TB.selected)) end end)
-    s3:SetPoint("LEFT", s2, "RIGHT", 4, 0)
-    local s4 = selBtn("Invite", 52, "Invite/Kick selected", function()
-        if not TB.selected then return end
-        if TB.IsInGroup(TB.selected) then TB.SendBotCommand(TB.BuildCommand("uninvite", TB.selected))
-        else TB.SendBotCommand(TB.BuildCommand("invite", TB.selected)) end
-    end); s4:SetPoint("LEFT", s3, "RIGHT", 4, 0)
-    local s5 = selBtn("Pull", 44, "Tank pull your target (.bot pullback)", function() TB.SendBotCommand("pullback") end)
-    s5:SetPoint("LEFT", s4, "RIGHT", 4, 0)
-    local s6 = selBtn("Reset", 48, "Reset AI (.bot command <name> reset)", function()
-        if TB.selected then TB.SendBotCommand(TB.BuildCommand("command", TB.selected, "reset")) end
-    end); s6:SetPoint("LEFT", s5, "RIGHT", 4, 0)
+    local s1 = sbtn("Stay", 56, "Selected stays (.bot stay)", function()
+        if TB.selected then TB.SendBotCommand(TB.BuildCommand("stay", TB.selected)) end
+    end); s1:SetPoint("LEFT", bar, "LEFT", 0, 0)
 
-    TB.selButtons = { s1, s2, s3, s4, s5, s6 }
+    local s2 = sbtn("Pull", 52, "Tank pulls your target (.bot pullback)", function() TB.SendBotCommand("pullback") end)
+    s2:SetPoint("LEFT", s1, "RIGHT", 4, 0)
+
+    local s3 = sbtn("Reset", 56, "Reset AI (.bot command reset)", function()
+        if TB.selected then TB.SendBotCommand(TB.BuildCommand("command", TB.selected, "reset")) end
+    end); s3:SetPoint("LEFT", s2, "RIGHT", 4, 0)
+
+    TB.selButtons = { s1, s2, s3 }
     return bar
 end
 
@@ -328,8 +314,8 @@ function TB.InitUI()
     CreateFilterRow(main)
     CreateScroll(main)
     local addAnchor = CreateAddBar(main, TB.scroll)
-    local bulkBar   = CreateBulkBar(main, addAnchor)
-    CreateSelectionBar(main, bulkBar)
+    local partyBar  = CreatePartyBar(main, addAnchor)
+    CreateSelectedBar(main, partyBar)
     CreateStatusBar(main)
     main:Hide()
     TB.frame = main
@@ -376,19 +362,15 @@ RefreshRows = function(rows)
 
             local on = e.st.online
             row.btnSummon:SetText(on and "Summ" or "Spawn")
-            row.btnSummon:Enable(); row.btnFollow:Enable(); row.btnInvite:Enable(); row.btnStay:Enable(); row.btnRemove:Enable()
+            row.btnSummon:Enable(); row.btnFollow:Enable(); row.btnInvite:Enable(); row.btnRemove:Enable()
 
-            if not on and e.st.status ~= C.STATUS.OFFLINE and e.st.status ~= C.STATUS.OFFLINE_PENDING then
-                row.btnFollow:Disable(); row.btnInvite:Disable(); row.btnStay:Disable()
-            elseif not on then
-                row.btnFollow:Disable(); row.btnInvite:Disable(); row.btnStay:Disable()
-            end
-            if on and not e.st.enteredWorld then
-                row.btnSummon:Disable(); row.btnFollow:Disable(); row.btnStay:Disable()
+            if not on then
+                row.btnFollow:Disable(); row.btnInvite:Disable()
+            elseif not e.st.enteredWorld then
+                row.btnSummon:Disable(); row.btnFollow:Disable()
             end
             if on and e.st.status == C.STATUS.SUMMONING then row.btnSummon:Disable() end
-
-            row.btnInvite:SetText(e.inGroup and "Kick" or "Inv")
+            row.btnInvite:SetText(e.inGroup and "Kick" or "Invite")
             row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
             row.icon:SetAlpha(on and 1 or 0.55)
         else
@@ -405,7 +387,7 @@ RefreshSelection = function()
         TB.selLabel:SetText("Selected: " .. TB.selected .. "  ·  " .. TB.StatusText(st, inG) .. (inG and " · in group" or ""))
         TB.SetTextColor(TB.selLabel, COL.text)
     else
-        TB.selLabel:SetText("Selected: none  — click a row")
+        TB.selLabel:SetText("Selected: none — click a row")
         TB.SetTextColor(TB.selLabel, COL.muted)
     end
     if TB.selButtons then
