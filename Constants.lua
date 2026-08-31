@@ -24,6 +24,7 @@ TB.C.POLL_AFTER_ADD  = 2.0
 TB.C.ADD_TIMEOUT     = 30    -- seconds without login confirmation
 TB.C.REMOVE_TIMEOUT  = 15    -- seconds without removal confirmation
 TB.C.ACTION_TIMEOUT  = 8     -- seconds for a named action acknowledgement
+TB.C.SUMMON_SETTLE   = 15    -- accepted summon stays visibly pending while teleport completes
 TB.C.POLL_WAIT       = 1.2   -- seconds before reconciling a list snapshot
 TB.C.POLL_NO_REPLY_LIMIT = 2 -- consecutive silent polls before Unknown
 

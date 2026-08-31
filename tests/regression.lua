@@ -360,7 +360,9 @@ now = now + 1
 this, arg1 = activeRow.btnSummon, "LeftButton"
 activeRow.btnSummon.scripts.OnClick(activeRow.btnSummon)
 assert(sent[table.getn(sent)] == ".bot summon Alpha", "row summon control must send summon")
-TB.CompleteOperation("Alpha", "summon", true, "summon accepted")
+TB.OnSystemMessage("Summoning Alpha to a safe position near you (3s); it will follow on arrival.")
+assert(not TB.IsOperationPending("Alpha", "summon"), "summon acknowledgement must not wait for an unavailable completion packet")
+assert(TB.GetState("Alpha").status == TB.C.STATUS.SUMMONING, "accepted summon must remain visibly pending while teleport completes")
 now = now + 1
 this, arg1 = activeRow.btnFollow, "LeftButton"
 activeRow.btnFollow.scripts.OnClick(activeRow.btnFollow)
@@ -380,10 +382,12 @@ now = now + 1
 this, arg1 = TB.partyButtons.pullback, "LeftButton"
 TB.partyButtons.pullback.scripts.OnClick(TB.partyButtons.pullback)
 assert(sent[table.getn(sent)] == ".bot pullback", "pullback control must send pullback")
-TB.OnSystemMessage("Pullback: tank Alpha body -> target (12.0y, melee) anchor 0,0")
+TB.OnSystemMessage("Pullback requested: tank Alpha is using its native pull strategy.")
 assert(lastStatusKind == "pending", "pullback acceptance must be surfaced as pending")
 TB.OnSystemMessage("No tank bot found in your party (needs a bot with tank role).")
 assert(lastStatusKind == "warn", "pullback rejection must be surfaced")
+TB.OnSystemMessage("Tank Alpha could not start a pull for your selected target.")
+assert(lastStatusKind == "warn", "native pullback failure must be surfaced")
 now = now + 1
 this, arg1 = TB.resetButton, "LeftButton"
 TB.resetButton.scripts.OnClick(TB.resetButton)

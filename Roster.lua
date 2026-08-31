@@ -203,6 +203,17 @@ function TB.IsOperationPending(name, verb)
     return st and st.operation and (not verb or st.operation.verb == verb) or false
 end
 
+-- Some server actions acknowledge receipt before the gameplay transition is
+-- complete. Clear the command acknowledgement without presenting that as a
+-- completed gameplay action; the caller keeps an explicit transient status.
+function TB.AcknowledgeOperation(name, verb)
+    local st = TB.GetState(name)
+    if not st or not st.operation or (verb and st.operation.verb ~= verb) then return false end
+    st.operation = nil
+    st.lastError = nil
+    return true
+end
+
 function TB.CompleteOperation(name, verb, success, message)
     local st = TB.GetState(name)
     if not st or (st.operation and verb and st.operation.verb ~= verb) then return false end
@@ -230,6 +241,13 @@ function TB.UpdateStateTimers(now)
     local changed = false
     local timedOutName
     for name, st in pairs(state) do
+        if st.summonPendingUntil and now >= st.summonPendingUntil then
+            st.summonPendingUntil = nil
+            if not st.operation and st.online then
+                st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+                changed = true
+            end
+        end
         if st.pendingAI and st.pendingAIUntil and now >= st.pendingAIUntil then
             st.pendingAI = nil
             st.pendingAIUntil = nil
