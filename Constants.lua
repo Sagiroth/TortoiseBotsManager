@@ -6,7 +6,7 @@ TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
 TB.C = TB.C or {}
 
-TB.C.VERSION = "0.1.0"
+TB.C.VERSION = "0.1.1"
 
 -- Panel geometry
 TB.C.PANEL_W = 520

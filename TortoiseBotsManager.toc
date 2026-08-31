@@ -2,7 +2,7 @@
 ## Title: |cffd8a657TortoiseBots|r |cffffffffManager|r
 ## Notes: Manager for your TortoiseBots — list, summon, follow, group, pull. For TortoiseBots module.
 ## Author: TortoiseBots
-## Version: 0.1.0
+## Version: 0.1.1
 ## SavedVariables: TortoiseBotsDB
 ## SavedVariablesPerCharacter: TortoiseBotsCharDB
 

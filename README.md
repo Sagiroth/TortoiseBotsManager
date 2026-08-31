@@ -17,7 +17,8 @@ Press buttons instead of `/.bot` commands. List your alts, see who is online/sta
 * **Spawn / Despawn** — `.bot add` / `.bot remove` from an input box or per-row Spawn button (same-account check stays server-side).
 * **Per-bot quick** — `Summ`/`Spawn`, `Follow`, `Invite`/`Kick`, `X` Remove — one click per row.
 * **Party** — `Summon All` / `Follow All` / `Invite All` (All scope, distinct from row single).
-* **Selected** — `Stay` / `Pull` / `Reset` for the clicked row (advanced single, no duplicates).
+* **Server tools** — explicit `Stats` / `Help` buttons, plus a selected-bot `AI command` box for the full `.bot command` surface.
+* **Selected** — `Stay` / `Pullback` / `Reset` for the clicked row (advanced single, no duplicates).
 * **Nice looking & simple** — 520×520 dark parchment with themed **TortoiseBots Manager** title (gold + turtle green), draggable, `Esc` closes, remembers position, minimap button, search filter, tooltips.
 * **Correct** — throttled sends (350 ms), throttled polls (5 s hard, 8 s panel / 20 s hidden), 2-poll anti-flicker for offline, right-click row to forget offline, all server checks honoured (combat/taxi/teleport/group).
 
@@ -49,7 +50,7 @@ No module → addon loads but every action replies “TortoiseBots module not lo
    ```
    The folder must be named `TortoiseBotsManager` (so the `.toc` is found).
 2. Restart the client fully (Vanilla loads addons at startup).
-3. Log in — you should see `TortoiseBots Manager v0.1.0 loaded. /tbm to open.` in chat.
+3. Log in — you should see `TortoiseBots Manager v0.1.1 loaded. /tbm to open.` in chat.
 
 ### From this repo
 
@@ -68,7 +69,8 @@ ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interfa
 * **Add bot** — type exact alt name (same account) → `Spawn`. Server replies `queued for login; it will follow you`.
 * **Row** — left-click select, right-click (when offline) forget. Per-row: `Summ`/`Spawn`, `Follow`, `Invite`/`Kick`, `X` (despawn).
 * **Party bar** — `Summon All` / `Follow All` / `Invite All` for filtered rows.
-* **Selected bar** — click a row, then `Stay` / `Pull` / `Reset`.
+* **Server tools** — `Stats` and `Help` send `.bot stats` and `.bot help`.
+* **Selected bar** — click a row, then `Stay` / `Pullback` / `Reset`, or type a Playerbot command and press `Send`.
 * **Search** — filters by substring.
 
 ## How it works (edge cases)
@@ -93,6 +95,14 @@ Roster.lua      — roster + live state + group + poll reconcile
 Comms.lua       — build .bot and parse system messages
 UI.lua          — 520×520 panel, rows, Party & Selected bars
 Minimap.lua     — draggable minimap button
+```
+
+## Development check
+
+Run the Vanilla-compatible regression harness from the addon root:
+
+```bash
+lua5.1 tests/regression.lua .
 ```
 
 ## Roadmap

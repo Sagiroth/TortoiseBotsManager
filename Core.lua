@@ -10,9 +10,9 @@
 
 TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
-local C = TB.C -- from Constants.lua
+local C = TB.C or {} -- from Constants.lua (defensive fallback)
 
-TB.version = C.VERSION
+TB.version = (C and C.VERSION) or TB.version or "0.1.0"
 TB.ADDON_NAME = "TortoiseBotsManager"
 
 -- ── SavedVariables ──────────────────────────────────────────────────────────
@@ -21,11 +21,12 @@ local function initDB()
     local db = TortoiseBotsDB
 
     if not db.roster  then db.roster  = {} end -- [Name] = { addedAt, discovered }
-    if not db.minimap then db.minimap = { x = C.MINIMAP_DEFAULT.x, y = C.MINIMAP_DEFAULT.y } end
+    -- C may be nil if Constants.lua failed to load; use hard defaults
+    local defMinimap = (C and C.MINIMAP_DEFAULT) or { x = 52, y = 52 }
+    if not db.minimap then db.minimap = { x = defMinimap.x, y = defMinimap.y } end
     if not db.frame   then db.frame   = { point = "CENTER", rpoint = "CENTER", x = 0, y = 15 } end
-    if not db.pollInterval then db.pollInterval = C.POLL_PANEL_IV end
+    if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
     if db.autoPoll == nil  then db.autoPoll = true end
-
     -- migration: old list form
     if db.rosterList then
         for _, n in ipairs(db.rosterList) do
@@ -44,7 +45,9 @@ local sendQueue = {} -- { {cmd, at} }
 local lastSend = 0
 
 function TB.CanSend()
-    return (GetTime() - lastSend) >= C.SEND_DELAY
+    local now = (GetTime and GetTime()) or 0
+    local delay = (C and C.SEND_DELAY) or 0.35
+    return (now - (lastSend or 0)) >= delay
 end
 
 local queueFrame -- lazy
@@ -56,78 +59,98 @@ local function ensureQueueFrame()
         if table.getn(sendQueue) == 0 then return end
         if not TB.CanSend() then return end
         local item = table.remove(sendQueue, 1)
-        TB.SendBotCommand(item.cmd, { queued = true })
+        if item and item.cmd then
+            TB.SendBotCommand(item.cmd, { queued = true })
+        end
     end)
 end
-
 function TB.SendBotCommand(cmd, opts)
     opts = opts or {}
     cmd = TB.Trim(cmd or "")
     if cmd == "" then return false end
 
     local full = ".bot " .. cmd
-    if TB.CanSend() and not opts.queued then
-        lastSend = GetTime()
-        SendChatMessage(full)
+    if TB.CanSend() then
+        lastSend = (GetTime and GetTime()) or 0
+        if SendChatMessage then SendChatMessage(full) end
         TB.lastCommand   = cmd
         TB.lastCommandAt = lastSend
         if TB.OnCommandSent then TB.OnCommandSent(cmd) end
         if string.lower(string.gsub(cmd, "%s+.*", "")) == "list" then
             TB._lastPoll = lastSend
+            if TB.OnListCommandSent then TB.OnListCommandSent() end
         end
         return true
     else
-        table.insert(sendQueue, { cmd = cmd, at = GetTime() })
+        table.insert(sendQueue, { cmd = cmd, at = (GetTime and GetTime()) or 0 })
         ensureQueueFrame()
         return false
     end
 end
 
 -- ── Poll orchestration ──────────────────────────────────────────────────────
-TB._lastPoll = 0
+TB._lastPoll = TB._lastPoll or 0
 local pendingReconcileFrame
 
 local function scheduleReconcile()
-    if pendingReconcileFrame then pendingReconcileFrame.wait = 1.2; pendingReconcileFrame.elapsed=0; return end
+    if pendingReconcileFrame then
+        pendingReconcileFrame.wait = 1.2
+        pendingReconcileFrame.elapsed = 0
+        if pendingReconcileFrame.Show then pendingReconcileFrame:Show() end
+        return
+    end
     pendingReconcileFrame = CreateFrame("Frame", "TortoiseBotsManagerReconcileFrame")
-    pendingReconcileFrame.elapsed=0; pendingReconcileFrame.wait=1.2
+    pendingReconcileFrame.elapsed = 0
+    pendingReconcileFrame.wait = 1.2
     pendingReconcileFrame:SetScript("OnUpdate", function()
-        this.elapsed = this.elapsed + arg1
+        if not this.wait then return end
+        this.elapsed = (this.elapsed or 0) + (arg1 or 0)
         if this.elapsed >= this.wait then
-            this.wait=nil; this.elapsed=0
-            if TB.ReconcilePoll then TB.ReconcilePoll() end
+            local w = this.wait
+            this.wait = nil
+            this.elapsed = 0
+            if this.Hide then this:Hide() end
+            if w and TB.ReconcilePoll then TB.ReconcilePoll() end
         end
     end)
+    if pendingReconcileFrame.Show then pendingReconcileFrame:Show() end
 end
 
+-- Called only after a list command has actually left the client, including
+-- commands released from the throttle queue.
+TB.OnListCommandSent = scheduleReconcile
+
 function TB.PollList(force)
-    if not force and (GetTime() - TB._lastPoll) < C.LIST_THROTTLE then return end
+    local now = (GetTime and GetTime()) or 0
+    local throttle = (C and C.LIST_THROTTLE) or 5
+    if not force and (now - (TB._lastPoll or 0)) < throttle then return end
     if TB.BeginPoll then TB.BeginPoll() end
     local sent = TB.SendBotCommand("list")
-    scheduleReconcile()
-    if math.random() < 0.3 then TB.SendBotCommand("stats") end
+    return sent
 end
 
 local pollFrame
 function TB.RequestPollSoon(delay)
-    delay = delay or C.POLL_AFTER_CMD
+    delay = delay or (C and C.POLL_AFTER_CMD) or 1.4
+    if type(delay) ~= "number" then delay = 1.4 end
     if not pollFrame then
         pollFrame = CreateFrame("Frame", "TortoiseBotsManagerPollFrame")
         pollFrame.elapsed = 0
         pollFrame.wait = nil
         pollFrame:SetScript("OnUpdate", function()
             if not this.wait then return end
-            this.elapsed = this.elapsed + arg1
+            this.elapsed = (this.elapsed or 0) + (arg1 or 0)
             if this.elapsed >= this.wait then
                 this.wait = nil; this.elapsed = 0
+                if this.Hide then this:Hide() end
                 TB.PollList(true)
             end
         end)
     end
     pollFrame.wait = delay
     pollFrame.elapsed = 0
+    if pollFrame.Show then pollFrame:Show() end
 end
-
 -- ── Slash ───────────────────────────────────────────────────────────────────
 SLASH_TORTOISEBOTSMANAGER1 = "/tbm"
 SLASH_TORTOISEBOTSMANAGER2 = "/tb"
@@ -174,11 +197,15 @@ end)
 local pf = CreateFrame("Frame", "TortoiseBotsManagerAutoPoll")
 pf.elapsed = 0
 pf:SetScript("OnUpdate", function()
-    pf.elapsed = pf.elapsed + arg1
-    if pf.elapsed < 1 then return end
+    pf.elapsed = (pf.elapsed or 0) + (arg1 or 0)
+    if (pf.elapsed or 0) < 1 then return end
     pf.elapsed = 0
     if not TortoiseBotsDB or not TortoiseBotsDB.autoPoll then return end
     local shown = TB.frame and TB.frame:IsVisible()
-    local iv = shown and (TortoiseBotsDB.pollInterval or C.POLL_PANEL_IV) or C.POLL_HIDDEN_IV
-    if (GetTime() - TB._lastPoll) >= iv then TB.PollList() end
+    local fallbackPanel = (C and C.POLL_PANEL_IV) or 8
+    local fallbackHidden = (C and C.POLL_HIDDEN_IV) or 20
+    local iv = shown and (TortoiseBotsDB.pollInterval or fallbackPanel) or fallbackHidden
+    if type(iv) ~= "number" then iv = fallbackHidden end
+    local now = (GetTime and GetTime()) or 0
+    if (now - (TB._lastPoll or 0)) >= iv then TB.PollList() end
 end)
