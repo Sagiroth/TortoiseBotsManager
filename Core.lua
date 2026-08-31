@@ -43,6 +43,7 @@ end
 -- ── Throttled send queue ────────────────────────────────────────────────────
 local sendQueue = {} -- { {cmd, at} }
 local lastSend = 0
+local capabilitiesRequested = false
 
 function TB.CanSend()
     local now = (GetTime and GetTime()) or 0
@@ -83,9 +84,16 @@ function TB.SendBotCommand(cmd, opts)
         return true
     else
         table.insert(sendQueue, { cmd = cmd, at = (GetTime and GetTime()) or 0 })
+        if TB.OnCommandQueued then TB.OnCommandQueued(cmd) end
         ensureQueueFrame()
         return false
     end
+end
+
+function TB.RequestServerCapabilities()
+    if capabilitiesRequested then return false end
+    capabilitiesRequested = true
+    return TB.SendBotCommand("help")
 end
 
 -- ── Poll orchestration ──────────────────────────────────────────────────────
@@ -93,15 +101,16 @@ TB._lastPoll = TB._lastPoll or 0
 local pendingReconcileFrame
 
 local function scheduleReconcile()
+    local wait = (C and C.POLL_WAIT) or 1.2
     if pendingReconcileFrame then
-        pendingReconcileFrame.wait = 1.2
+        pendingReconcileFrame.wait = wait
         pendingReconcileFrame.elapsed = 0
         if pendingReconcileFrame.Show then pendingReconcileFrame:Show() end
         return
     end
     pendingReconcileFrame = CreateFrame("Frame", "TortoiseBotsManagerReconcileFrame")
     pendingReconcileFrame.elapsed = 0
-    pendingReconcileFrame.wait = 1.2
+    pendingReconcileFrame.wait = wait
     pendingReconcileFrame:SetScript("OnUpdate", function()
         if not this.wait then return end
         this.elapsed = (this.elapsed or 0) + (arg1 or 0)
@@ -118,13 +127,21 @@ end
 
 -- Called only after a list command has actually left the client, including
 -- commands released from the throttle queue.
-TB.OnListCommandSent = scheduleReconcile
+TB._pollPending = TB._pollPending or false
+TB._pollQueued = false
+TB.OnListCommandSent = function()
+    TB._pollQueued = false
+    TB._pollPending = true
+    if TB.BeginPoll then TB.BeginPoll() end
+    scheduleReconcile()
+end
 
 function TB.PollList(force)
     local now = (GetTime and GetTime()) or 0
     local throttle = (C and C.LIST_THROTTLE) or 5
-    if not force and (now - (TB._lastPoll or 0)) < throttle then return end
-    if TB.BeginPoll then TB.BeginPoll() end
+    if TB._pollPending or TB._pollQueued then return false end
+    if (TB._lastPoll or 0) > 0 and (now - TB._lastPoll) < throttle then return false end
+    TB._pollQueued = true
     local sent = TB.SendBotCommand("list")
     return sent
 end
@@ -189,6 +206,7 @@ ef:SetScript("OnEvent", function()
         if TB.InitMinimap then TB.InitMinimap() end
         TB.Print("v" .. TB.version .. " loaded. /tbm to open. Requires TortoiseBots module on server.")
     elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
+        if TB.RequestServerCapabilities then TB.RequestServerCapabilities() end
         TB.RequestPollSoon(3.5)
     end
 end)
@@ -200,12 +218,13 @@ pf:SetScript("OnUpdate", function()
     pf.elapsed = (pf.elapsed or 0) + (arg1 or 0)
     if (pf.elapsed or 0) < 1 then return end
     pf.elapsed = 0
+    local now = (GetTime and GetTime()) or 0
+    if TB.UpdateStateTimers then TB.UpdateStateTimers(now) end
     if not TortoiseBotsDB or not TortoiseBotsDB.autoPoll then return end
     local shown = TB.frame and TB.frame:IsVisible()
     local fallbackPanel = (C and C.POLL_PANEL_IV) or 8
     local fallbackHidden = (C and C.POLL_HIDDEN_IV) or 20
     local iv = shown and (TortoiseBotsDB.pollInterval or fallbackPanel) or fallbackHidden
     if type(iv) ~= "number" then iv = fallbackHidden end
-    local now = (GetTime and GetTime()) or 0
     if (now - (TB._lastPoll or 0)) >= iv then TB.PollList() end
 end)

@@ -2,16 +2,16 @@
 -- Layout (top → bottom):
 --   Header (title + close)
 --   Filter row (search + Clear + Refresh + count)
---   Scroll list (8 rows, FauxScroll)
+--   Scroll list (6 rows, FauxScroll)
 --   Add bar (EditBox + Spawn)
---   Party bar (Summon All / Follow All / Invite All)  — All scope, not single
---   Selected bar (Stay / Pull / Reset)               — per-selected advanced, not duplicated in rows
+--   Party bar (bulk actions + target-scoped Pullback)
+--   Selected bar (per-bot public controls + Reset)
 --   Status bar
 --
 -- Grouping principle: no same-scope duplicates.
 --   Row: per-bot quick (Summ/Spawn, Follow, Invite) + Remove (X)
---   Party: All scope (Summ All, Fol All, Inv All)
---   Selected: advanced single (Stay, Pull, Reset)
+--   Party: filtered bulk (Summon, Follow, Invite, Kick) + target Pullback
+--   Selected: public single-bot actions + Reset
 -- Every visual knob lives in Constants.lua. Helpers are top-level locals.
 
 local TB = TortoiseBots
@@ -24,6 +24,16 @@ local COL = C.COLOR
 local CreateHeader, CreateFilterRow, CreateScroll, CreateRow
 local CreateAddBar, CreatePartyBar, CreateSelectedBar, CreateCommandBar, CreateStatusBar
 local RefreshCounts, RefreshRows, RefreshSelection
+
+local function hasCurrentTarget()
+    if not UnitExists then return true end
+    return UnitExists("target") and (not UnitIsDead or not UnitIsDead("target"))
+end
+
+local function serverSupports(command)
+    if not TB.ServerCapabilitiesKnown or not TB.ServerCapabilitiesKnown() then return true end
+    return TB.HasServerCommand and TB.HasServerCommand(command) or false
+end
 
 -- ── helpers ─────────────────────────────────────────────────────────────────
 local function onRowClick(row)
@@ -44,6 +54,9 @@ local function rowTooltip(row)
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     GameTooltip:SetText(row.entry.name)
     GameTooltip:AddLine(TB.StatusText(row.entry.st, row.entry.inGroup), 1,1,1)
+    if row.entry.st.lastError then
+        GameTooltip:AddLine(row.entry.st.lastError, COL.red[1], COL.red[2], COL.red[3])
+    end
     if row.entry.st.random then GameTooltip:AddLine("Random bot", COL.muted[1], COL.muted[2], COL.muted[3]) end
     if row.entry.st.hasAI == false and row.entry.st.online then
         GameTooltip:AddLine("No AI yet (starting)", 1, 0.34, 0.28)
@@ -250,7 +263,7 @@ CreateAddBar = function(parent, anchorFrame)
     return label
 end
 
--- Party bar: All scope only — no single duplicates
+-- Party bar: filtered bulk scope plus target-scoped pullback
 CreatePartyBar = function(parent, anchorLabel)
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetPoint("TOPLEFT", anchorLabel, "BOTTOMLEFT", 0, -12); bar:SetWidth(W-24); bar:SetHeight(22)
@@ -268,29 +281,66 @@ CreatePartyBar = function(parent, anchorLabel)
     end
 
     local b1 = btn("Summon All", 82, "Summon all online bots to you", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.st.online and e.st.enteredWorld then TB.SendBotCommand(TB.BuildCommand("summon", e.name)) end end
+        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
+            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
+                and e.st.status ~= C.STATUS.FAILED and not e.st.operation and serverSupports("summon") then
+                TB.SendBotCommand(TB.BuildCommand("summon", e.name))
+            end
+        end
     end); b1:SetPoint("LEFT", title, "RIGHT", 8, 0)
 
     local b2 = btn("Follow All", 78, "All online follow you", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.st.online and e.st.enteredWorld then TB.SendBotCommand(TB.BuildCommand("follow", e.name)) end end
+        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
+            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
+                and e.st.status ~= C.STATUS.FAILED and not e.st.operation and serverSupports("follow") then
+                TB.SendBotCommand(TB.BuildCommand("follow", e.name))
+            end
+        end
     end); b2:SetPoint("LEFT", b1, "RIGHT", 4, 0)
 
     local b3 = btn("Invite All", 78, "Invite all online to group", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do if e.st.online and e.st.enteredWorld and not e.inGroup then TB.SendBotCommand(TB.BuildCommand("invite", e.name)) end end
+        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
+            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
+                and e.st.status ~= C.STATUS.FAILED and not e.inGroup and not e.st.operation
+                and serverSupports("invite") then
+                TB.SendBotCommand(TB.BuildCommand("invite", e.name))
+            end
+        end
     end); b3:SetPoint("LEFT", b2, "RIGHT", 4, 0)
 
-    TB.partyButtons = { summon = b1, follow = b2, invite = b3 }
+    local b4 = btn("Kick All", 72, "Uninvite all visible bots in your group", function()
+        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
+            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
+                and e.st.status ~= C.STATUS.FAILED and e.inGroup and not e.st.operation
+                and serverSupports("uninvite") then
+                TB.SendBotCommand(TB.BuildCommand("uninvite", e.name))
+            end
+        end
+    end); b4:SetPoint("LEFT", b3, "RIGHT", 4, 0)
+
+    local b5 = btn("Pullback", 68, "Ask a tank bot to pull your current target (.bot pullback)", function()
+        if not serverSupports("pullback") then
+            TB.SetStatus("The server does not advertise pullback.", "warn")
+        elseif hasCurrentTarget() then
+            TB.SendBotCommand("pullback")
+        else
+            TB.SetStatus("Select a living target first.", "warn")
+        end
+    end); b5:SetPoint("LEFT", b4, "RIGHT", 4, 0)
+
+    TB.partyButtons = { summon = b1, follow = b2, invite = b3, kick = b4, pullback = b5 }
     return bar
 end
 
--- Selected bar: advanced single — Stay/Pull/Reset only. No Summon/Follow/Invite duplicates (those live in Row/Party).
+-- Selected bar: public single-bot controls. Summon/Invite remain in Row/Party;
+-- Pullback remains target-scoped in the Party bar.
 CreateSelectedBar = function(parent, anchorBar)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("TOPLEFT", anchorBar, "BOTTOMLEFT", 2, -8); label:SetWidth(W-28); label:SetJustifyH("LEFT"); TB.SetTextColor(label, COL.text)
     TB.selLabel = label
 
     local bar = CreateFrame("Frame", nil, parent)
-    bar:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4); bar:SetWidth(W-24); bar:SetHeight(20)
+    bar:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4); bar:SetWidth(W-24); bar:SetHeight(42)
 
     local function sbtn(text, w, tip, fn)
         local b = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
@@ -301,24 +351,56 @@ CreateSelectedBar = function(parent, anchorBar)
         return b
     end
 
-    local s1 = sbtn("Stay", 56, "Selected stays (.bot stay)", function()
-        if TB.selected then TB.SendBotCommand(TB.BuildCommand("stay", TB.selected)) end
-    end); s1:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    local function selectedCommand(verb, tip, width)
+        local b = sbtn(verb, width, tip, function()
+            if TB.selected then TB.SendBotCommand(TB.BuildCommand(string.lower(verb), TB.selected)) end
+        end)
+        return b
+    end
 
-    local s2 = sbtn("Pullback", 68, "Ask a tank bot to pull your current target (.bot pullback)", function() TB.SendBotCommand("pullback") end)
-    s2:SetPoint("LEFT", s1, "RIGHT", 4, 0)
+    local follow = selectedCommand("Follow", "Selected bot follows you (.bot follow)", 54)
+    follow:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    local stay = selectedCommand("Stay", "Selected bot stays (.bot stay)", 48)
+    stay:SetPoint("LEFT", follow, "RIGHT", 3, 0)
+    local guard = selectedCommand("Guard", "Selected bot guards this position (.bot guard)", 52)
+    guard:SetPoint("LEFT", stay, "RIGHT", 3, 0)
+    local free = selectedCommand("Free", "Selected bot is free to move (.bot free)", 48)
+    free:SetPoint("LEFT", guard, "RIGHT", 3, 0)
+    local status = selectedCommand("Status", "Show lifecycle and movement status (.bot status)", 54)
+    status:SetPoint("LEFT", free, "RIGHT", 3, 0)
 
-    local s3 = sbtn("Reset", 56, "Reset AI (.bot command reset)", function()
+    local attack = selectedCommand("Attack", "Selected bot attacks your current target (.bot attack)", 56)
+    attack:SetPoint("LEFT", bar, "LEFT", 0, -22)
+    local ready = selectedCommand("Ready", "Ask selected bot for a readiness check (.bot ready)", 52)
+    ready:SetPoint("LEFT", attack, "RIGHT", 3, 0)
+
+    local formationIndex = 1
+    local formation
+    formation = sbtn("Form: " .. C.FORMATIONS[formationIndex], 104, "Cycle the fixed formation catalog (.bot formation)", function()
+        if not TB.selected then return end
+        TB.SendBotCommand(TB.BuildCommand("formation", TB.selected, C.FORMATIONS[formationIndex]))
+        formationIndex = formationIndex + 1
+        if formationIndex > table.getn(C.FORMATIONS) then formationIndex = 1 end
+        formation:SetText("Form: " .. C.FORMATIONS[formationIndex])
+    end)
+    formation:SetPoint("LEFT", ready, "RIGHT", 3, 0)
+
+    local reset = sbtn("Reset", 56, "Reset selected bot AI (.bot command reset)", function()
         if TB.selected then TB.SendBotCommand(TB.BuildCommand("command", TB.selected, "reset")) end
-    end); s3:SetPoint("LEFT", s2, "RIGHT", 4, 0)
+    end)
+    reset:SetPoint("LEFT", formation, "RIGHT", 3, 0)
 
-    TB.selButtons = { s1, s2, s3 }
+    TB.selButtons = { follow, stay, guard, free, status, attack, ready, formation, reset }
+    TB.followButton, TB.stayButton = follow, stay
+    TB.guardButton, TB.freeButton = guard, free
+    TB.statusButton, TB.attackButton, TB.readyButton = status, attack, ready
+    TB.formationButton, TB.resetButton = formation, reset
     return bar
 end
 
 CreateCommandBar = function(parent, anchorBar)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", anchorBar, "BOTTOMLEFT", 2, -6); label:SetText("AI command:"); TB.SetTextColor(label, COL.muted)
+    label:SetPoint("TOPLEFT", anchorBar, "BOTTOMLEFT", 2, -6); label:SetText("Advanced AI:"); TB.SetTextColor(label, COL.muted)
 
     local box = CreateFrame("EditBox", "TortoiseBotsManagerCommandBox", parent, "InputBoxTemplate")
     box:SetWidth(240); box:SetHeight(20); box:SetPoint("LEFT", label, "RIGHT", 8, 0); box:SetAutoFocus(false)
@@ -328,6 +410,18 @@ CreateCommandBar = function(parent, anchorBar)
         if not TB.selected then TB.SetStatus("Select a bot first.", "warn"); return end
         local command = TB.Trim(box:GetText() or "")
         if command == "" then TB.SetStatus("Enter a Playerbot command.", "warn"); return end
+        if TB.IsDangerousCommand and TB.IsDangerousCommand(command) then
+            local now = GetTime and GetTime() or 0
+            if TB.pendingAdvancedCommand ~= command or TB.pendingAdvancedTarget ~= TB.selected
+                or not TB.pendingAdvancedUntil or now > TB.pendingAdvancedUntil then
+                TB.pendingAdvancedCommand = command
+                TB.pendingAdvancedTarget = TB.selected
+                TB.pendingAdvancedUntil = now + 5
+                TB.SetStatus("Advanced command is potentially destructive. Press Send again to confirm.", "warn")
+                return
+            end
+            TB.pendingAdvancedCommand, TB.pendingAdvancedTarget, TB.pendingAdvancedUntil = nil, nil, nil
+        end
         TB.SendBotCommand(TB.BuildCommand("command", TB.selected, command))
         box:ClearFocus()
     end
@@ -340,7 +434,8 @@ CreateCommandBar = function(parent, anchorBar)
     TB.commandButton = button
 
     local tip = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    tip:SetPoint("LEFT", button, "RIGHT", 8, 0); tip:SetText("selected bot"); TB.SetTextColor(tip, COL.muted)
+    tip:SetPoint("LEFT", button, "RIGHT", 8, 0); tip:SetText("advanced / confirm destructive"); TB.SetTextColor(tip, COL.muted)
+    TB.commandBar = label
 end
 
 CreateStatusBar = function(parent)
@@ -363,6 +458,9 @@ function TB.InitUI()
     local selectedBar = CreateSelectedBar(main, partyBar)
     CreateCommandBar(main, selectedBar)
     CreateStatusBar(main)
+    local targetWatcher = CreateFrame("Frame", "TortoiseBotsManagerTargetWatcher")
+    targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
+    targetWatcher:SetScript("OnEvent", function() TB.Refresh() end)
     main:Hide()
     TB.frame = main
     TB.uiReady = true
@@ -378,6 +476,19 @@ function TB.SetStatus(msg, kind)
     elseif kind == "warn"   then c = COL.red
     elseif kind == "pending" then c = COL.yellow end
     TB.statusText:SetText(msg); TB.SetTextColor(TB.statusText, c)
+end
+
+function TB.IsDangerousCommand(command)
+    command = string.lower(TB.Trim(command or ""))
+    local dangerous = {
+        "destroy", "cheat", "debug", "cdebug", "set value", "give leader",
+        "guild promote", "guild demote", "guild remove", "guild leader",
+        "sendmail", "mail", "ah bid", "faction", "cast", "logout",
+    }
+    for _, prefix in ipairs(dangerous) do
+        if command == prefix or string.find(command, "^" .. prefix .. "%s") then return true end
+    end
+    return false
 end
 
 RefreshCounts = function()
@@ -417,7 +528,20 @@ RefreshRows = function(rows)
             elseif not e.st.enteredWorld then
                 row.btnSummon:Disable(); row.btnFollow:Disable(); row.btnInvite:Disable()
             end
-            if on and e.st.status == C.STATUS.SUMMONING then row.btnSummon:Disable() end
+            if on then
+                if not serverSupports("summon") then row.btnSummon:Disable() end
+            elseif not serverSupports("add") then
+                row.btnSummon:Disable()
+            end
+            if not serverSupports("follow") then row.btnFollow:Disable() end
+            if not serverSupports(e.inGroup and "uninvite" or "invite") then row.btnInvite:Disable() end
+            if not serverSupports("remove") then row.btnRemove:Disable() end
+            if e.st.status == C.STATUS.UNKNOWN then
+                row.btnSummon:Disable(); row.btnFollow:Disable(); row.btnInvite:Disable()
+            end
+            if e.st.operation then
+                row.btnSummon:Disable(); row.btnFollow:Disable(); row.btnInvite:Disable(); row.btnRemove:Disable()
+            end
             row.btnInvite:SetText(e.inGroup and "Kick" or "Invite")
             row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
             row.icon:SetAlpha(on and 1 or 0.55)
@@ -442,14 +566,54 @@ RefreshSelection = function()
         local hasSel = TB.selected ~= nil
         local selectedState = hasSel and TB.GetState(TB.selected) or nil
         local canAct = selectedState and selectedState.online and selectedState.enteredWorld
-        for _, b in ipairs(TB.selButtons) do if canAct then b:Enable() else b:Disable() end end
-        if TB.commandButton then if canAct then TB.commandButton:Enable() else TB.commandButton:Disable() end end
+            and selectedState.hasAI ~= false and selectedState.status ~= C.STATUS.UNKNOWN
+            and selectedState.status ~= C.STATUS.FAILED and not selectedState.operation
+        local optional = {
+            [TB.followButton] = "follow", [TB.stayButton] = "stay",
+            [TB.guardButton] = "guard", [TB.freeButton] = "free", [TB.attackButton] = "attack",
+            [TB.readyButton] = "ready", [TB.formationButton] = "formation",
+            [TB.resetButton] = "command",
+        }
+        for _, b in ipairs(TB.selButtons) do
+            if b == TB.statusButton then
+                if selectedState and selectedState.online and not selectedState.operation and serverSupports("status") then
+                    b:Enable()
+                else
+                    b:Disable()
+                end
+            elseif b == TB.attackButton then
+                if canAct and hasCurrentTarget() and serverSupports(optional[b]) then b:Enable() else b:Disable() end
+            elseif optional[b] then
+                if canAct and serverSupports(optional[b]) then b:Enable() else b:Disable() end
+            elseif canAct then b:Enable() else b:Disable() end
+        end
+        if TB.commandButton then
+            if canAct and serverSupports("command") then TB.commandButton:Enable()
+            else TB.commandButton:Disable() end
+        end
     end
+    if TB.RefreshTargetControls then TB.RefreshTargetControls() end
+end
+
+function TB.RefreshTargetControls()
+    if not TB.partyButtons or not TB.partyButtons.pullback then return end
+    if hasCurrentTarget() and serverSupports("pullback") then TB.partyButtons.pullback:Enable()
+    else TB.partyButtons.pullback:Disable() end
+end
+
+function TB.RefreshPartyLabels()
+    if not TB.partyButtons then return end
+    local suffix = TB.Trim(TB.filterText or "") == "" and " All" or " Vis"
+    TB.partyButtons.summon:SetText("Summon" .. suffix)
+    TB.partyButtons.follow:SetText("Follow" .. suffix)
+    TB.partyButtons.invite:SetText("Invite" .. suffix)
+    TB.partyButtons.kick:SetText("Kick" .. suffix)
 end
 
 function TB.Refresh()
     if not TB.uiReady or not TB.frame or not TB.scroll or not TB.rows then return end
     local rows = TB.GetDisplayRows(TB.filterText or "")
+    TB.RefreshPartyLabels()
     RefreshCounts()
     RefreshRows(rows)
     RefreshSelection()

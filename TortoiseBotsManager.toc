@@ -1,8 +1,8 @@
 ## Interface: 11200
 ## Title: |cffd8a657TortoiseBots|r |cffffffffManager|r
-## Notes: Manager for your TortoiseBots — list, summon, follow, group, pull. For TortoiseBots module.
+## Notes: Manager for your TortoiseBots — state, movement, group and public Playerbot controls.
 ## Author: TortoiseBots
-## Version: 0.1.1
+## Version: 0.1.2
 ## SavedVariables: TortoiseBotsDB
 ## SavedVariablesPerCharacter: TortoiseBotsCharDB
 

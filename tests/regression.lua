@@ -9,6 +9,8 @@ local root = arg[1] or "."
 local frames = {}
 local sent = {}
 local now = 10
+local targetExists = true
+local partyMembers = {}
 
 local function object(kind, parent)
     local value = {
@@ -95,9 +97,15 @@ function GetTime() return now end
 function time() return 123 end
 function SendChatMessage(message) table.insert(sent, message) end
 function GetCursorPosition() return 0, 0 end
-function GetNumPartyMembers() return 0 end
+function UnitExists(unit) return unit == "target" and targetExists end
+function UnitIsDead(unit) return false end
+function GetNumPartyMembers() return table.getn(partyMembers) end
 function GetNumRaidMembers() return 0 end
-function UnitName(unit) if unit == "player" then return "Tester" end end
+function UnitName(unit)
+    if unit == "player" then return "Tester" end
+    local _, _, index = string.find(unit or "", "^party(%d+)$")
+    return index and partyMembers[tonumber(index)] or nil
+end
 function FauxScrollFrame_Update(frame, count) frame.itemCount = count end
 function FauxScrollFrame_GetOffset() return 0 end
 function FauxScrollFrame_OnVerticalScroll() end
@@ -126,11 +134,16 @@ assert(table.getn(TB.rows) == TB.C.ROW_N, "all roster rows must be created")
 assert(TB.rows[1].kind == "Button", "roster rows must be clickable Buttons")
 assert(table.getn(TB.rows[1].clickButtons) == 2, "row must accept left and right clicks")
 assert(TB.minimapButton and table.getn(TB.minimapButton.clickButtons) == 2, "minimap must remain clickable")
+assert(frames["TortoiseBotsManagerTargetWatcher"], "target changes must refresh target-scoped controls")
 assert(TB.statsButton and TB.helpButton, "stats and help commands must have explicit controls")
 assert(TB.commandBox and TB.commandButton, "selected-bot command input must be available")
 assert(TB.refreshButton and TB.addButton, "list and add commands must have explicit controls")
 assert(TB.partyButtons and TB.partyButtons.summon and TB.partyButtons.follow and TB.partyButtons.invite,
     "party command controls must be available")
+assert(TB.partyButtons.pullback, "pullback must be a party/target control")
+assert(TB.guardButton and TB.freeButton and TB.attackButton and TB.readyButton,
+    "public movement and combat controls must exist")
+assert(TB.formationButton and TB.statusButton, "formation and status controls must exist")
 
 local refreshed, refreshError = pcall(TB.Refresh)
 assert(refreshed, refreshError)
@@ -149,7 +162,10 @@ assert(TB.GetState("Alpha") == nil, "right-click must forget an offline roster r
 
 local reconcileCalls = 0
 local realReconcile = TB.ReconcilePoll
-TB.ReconcilePoll = function() reconcileCalls = reconcileCalls + 1 end
+TB.ReconcilePoll = function()
+    reconcileCalls = reconcileCalls + 1
+    realReconcile()
+end
 now = 20
 local sentBeforeList = table.getn(sent)
 assert(TB.PollList(true), "forced list poll must send immediately")
@@ -186,7 +202,7 @@ local lastStatusKind
 local pollRequests = 0
 TB.SetStatus = function(_, kind) lastStatusKind = kind end
 TB.RequestPollSoon = function() pollRequests = pollRequests + 1 end
-TB.SetState("Alpha", { online = true, enteredWorld = true, status = TB.C.STATUS.ONLINE })
+TB.SetState("Alpha", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
 TB.OnCommandSent("invite Alpha")
 assert(TB.GetState("Alpha").status == TB.C.STATUS.INVITING, "invite must enter optimistic state")
 TB.OnSystemMessage("The group invitation for Alpha was rejected by the native group handler.")
@@ -194,10 +210,19 @@ assert(TB.GetState("Alpha").status == TB.C.STATUS.ONLINE, "invite rejection must
 assert(lastStatusKind == "warn", "invite rejection must be surfaced as a warning")
 local pollsBeforeUninvite = pollRequests
 TB.OnSystemMessage("Uninvite sent for bot Alpha.")
-assert(lastStatusKind == "ok", "uninvite response must be surfaced as success")
+assert(lastStatusKind == "pending", "uninvite response must be surfaced as pending")
 assert(pollRequests > pollsBeforeUninvite, "uninvite response must schedule reconciliation")
 TB.OnSystemMessage("Bot commands: add/remove/follow/invite/uninvite/stay/list/stats/pullback/summon/command")
 assert(lastStatusKind == "muted", "help response must be surfaced as informational")
+TB.selected = "Alpha"
+TB.Refresh()
+assert(not TB.guardButton.enabled and not TB.statusButton.enabled,
+    "commands absent from server help must be disabled")
+TB.OnSystemMessage("Bot commands: add/remove/follow/invite/uninvite/stay/guard/free/ready/attack/formation/list/stats/status/pullback/summon/command")
+assert(TB.HasServerCommand("guard") and TB.HasServerCommand("formation"), "advertised public commands must be detected")
+TB.Refresh()
+assert(TB.guardButton.enabled and TB.statusButton.enabled,
+    "advertised public commands must become usable")
 
 TB.OnCommandSent("add Bravo")
 assert(TB.GetState("Bravo").status == TB.C.STATUS.STARTING, "add must enter starting state")
@@ -210,76 +235,192 @@ assert(TB.GetState("Delta").status == TB.C.STATUS.STARTING, "second add must ent
 TB.OnSystemMessage("You may only control characters on your account.")
 assert(TB.GetState("Delta").status == TB.C.STATUS.OFFLINE, "account rejection must roll back the sent target")
 
-now = 40
+TB.SetState("Hanging", { online = false, enteredWorld = false, status = TB.C.STATUS.OFFLINE })
+TB.OnCommandSent("add Hanging")
+local hanging = TB.GetState("Hanging")
+assert(hanging.status == TB.C.STATUS.STARTING, "unconfirmed add must be starting")
+TB.UpdateStateTimers((hanging.operation and hanging.operation.deadline or 0) + 1)
+assert(hanging.status == TB.C.STATUS.FAILED, "unconfirmed add must time out")
+
+TB.SetState("Stuck", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
+TB.OnCommandSent("remove Stuck")
+assert(TB.GetState("Stuck").status == TB.C.STATUS.REMOVING, "remove must enter removing state")
+TB.OnSystemMessage("Bot Stuck not found or not removable.")
+assert(TB.GetState("Stuck").status == TB.C.STATUS.ONLINE, "remove failure must restore online state")
+
+TB.SetState("Race", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
+TB.OnCommandSent("follow Race")
+TB.OnCommandSent("guard Race")
+TB.OnSystemMessage("Bot Race now following Tester.")
+assert(TB.GetState("Race").operation.verb == "guard" and not TB.GetState("Race").movement,
+    "a late reply must not overwrite a newer operation")
+TB.OnSystemMessage("Bot Race will guard this position.")
+assert(not TB.GetState("Race").operation and TB.GetState("Race").movement == "guard",
+    "the current operation reply must update movement")
+
+TB.SetState("GroupProbe", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
+TB.OnCommandSent("invite GroupProbe")
+partyMembers[1] = "GroupProbe"
+frames["TortoiseBotsManagerGroupWatcher"].scripts.OnEvent(frames["TortoiseBotsManagerGroupWatcher"])
+assert(TB.IsInGroup("GroupProbe") and not TB.GetState("GroupProbe").operation,
+    "group roster updates must complete an invite operation")
+TB.OnCommandSent("uninvite GroupProbe")
+partyMembers[1] = nil
+frames["TortoiseBotsManagerGroupWatcher"].scripts.OnEvent(frames["TortoiseBotsManagerGroupWatcher"])
+assert(not TB.IsInGroup("GroupProbe") and not TB.GetState("GroupProbe").operation,
+    "group roster updates must complete an uninvite operation")
+
+TB.SetState("StatusProbe", { online = false, status = TB.C.STATUS.OFFLINE })
+TB.OnCommandSent("status StatusProbe")
+TB.OnSystemMessage("StatusProbe: in world, AI 1, movement guard, random 0, owner you.")
+assert(TB.GetState("StatusProbe").status == TB.C.STATUS.ONLINE
+    and TB.GetState("StatusProbe").movement == "guard"
+    and TB.GetState("StatusProbe").hasAI,
+    "status replies must populate lifecycle and movement state")
+
+TB.SetState("WhisperProbe", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
+TB.OnCommandSent("command WhisperProbe help")
+TB.OnWhisperMessage("help response", "WhisperProbe")
+assert(not TB.GetState("WhisperProbe").operation and TB.lastAIResponse
+    and TB.lastAIResponse.message == "help response",
+    "forwarded AI replies must complete the command and remain visible")
+
+TB.SetState("CommandProbe", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
+TB.OnCommandSent("command CommandProbe dps assist")
+local commandProbe = TB.GetState("CommandProbe")
+TB.UpdateStateTimers((commandProbe.operation and commandProbe.operation.deadline or 0) + 1)
+assert(not commandProbe.operation and not commandProbe.pendingAI and commandProbe.status == TB.C.STATUS.ONLINE,
+    "an unanswered advanced command must leave a usable state")
+
+TB.SetState("StatusTimeout", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
+TB.OnCommandSent("status StatusTimeout")
+local statusTimeout = TB.GetState("StatusTimeout")
+TB.UpdateStateTimers((statusTimeout.operation and statusTimeout.operation.deadline or 0) + 1)
+assert(statusTimeout.status == TB.C.STATUS.UNKNOWN,
+    "an unanswered status request must not preserve stale online truth")
+
+TB.SetState("Probe", { online = true, enteredWorld = true, status = TB.C.STATUS.ONLINE })
+TB.BeginPoll()
+TB.OnSystemMessage("No owned PlayerBots are online.")
+TB.ReconcilePoll()
+assert(TB.GetState("Probe").status == TB.C.STATUS.OFFLINE_PENDING,
+    "a no-bots reply must count as one missing poll only")
+assert(TB.GetState("Probe").onlinePending == 1, "a no-bots reply must not double-count a poll")
+assert(TB.StatusText({ online = true, enteredWorld = true, status = TB.C.STATUS.SUMMONING }, false) == "Summoning…",
+    "summoning must not display as online")
+assert(TB.StatusText({ online = true, enteredWorld = true, status = TB.C.STATUS.INVITING }, false) == "Inviting…",
+    "inviting must not display as online")
+assert(TB.StatusText({ online = true, enteredWorld = true, status = TB.C.STATUS.REMOVING }, false) == "Removing…",
+    "removing must not display as online")
+TB.SetState("Silent", { online = true, enteredWorld = true, status = TB.C.STATUS.ONLINE })
+TB.BeginPoll(); TB.ReconcilePoll()
+TB.BeginPoll(); TB.ReconcilePoll()
+assert(TB.GetState("Silent").status == TB.C.STATUS.UNKNOWN,
+    "repeated silent polls must become explicitly unknown")
+
+now = now + 1
 this, arg1 = TB.statsButton, "LeftButton"
 TB.statsButton.scripts.OnClick(TB.statsButton)
 assert(sent[table.getn(sent)] == ".bot stats", "stats control must send the stats command")
-now = 41
+now = now + 1
 this, arg1 = TB.helpButton, "LeftButton"
 TB.helpButton.scripts.OnClick(TB.helpButton)
 assert(sent[table.getn(sent)] == ".bot help", "help control must send the server help command")
 TB.selected = "Alpha"
 TB.commandBox:SetText("dps assist")
-now = 42
+now = now + 1
 this, arg1 = TB.commandButton, "LeftButton"
 TB.commandButton.scripts.OnClick(TB.commandButton)
 assert(sent[table.getn(sent)] == ".bot command Alpha dps assist", "command control must forward selected-bot commands")
+TB.CompleteOperation("Alpha", "command", true, "dps accepted")
 
-TB.SetState("Alpha", { online = true, enteredWorld = true, status = TB.C.STATUS.ONLINE })
+TB.SetState("Alpha", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
 TB.Refresh()
+targetExists = false
+TB.Refresh()
+assert(not TB.attackButton.enabled and not TB.partyButtons.pullback.enabled,
+    "target-scoped controls must disable without a living target")
+targetExists = true
+TB.Refresh()
+local function clickSelected(button, expected, verb)
+    now = now + 1
+    this, arg1 = button, "LeftButton"
+    button.scripts.OnClick(button)
+    assert(sent[table.getn(sent)] == expected, "selected control must send " .. expected)
+    if verb then TB.CompleteOperation("Alpha", verb, true, "accepted") end
+end
+clickSelected(TB.guardButton, ".bot guard Alpha", "guard")
+clickSelected(TB.freeButton, ".bot free Alpha", "free")
+clickSelected(TB.attackButton, ".bot attack Alpha", "attack")
+clickSelected(TB.readyButton, ".bot ready Alpha", "ready")
+clickSelected(TB.formationButton, ".bot formation Alpha default", "formation")
+clickSelected(TB.statusButton, ".bot status Alpha", "status")
 local activeRow = TB.rows[1]
-now = 43
+now = now + 1
 this, arg1 = activeRow.btnSummon, "LeftButton"
 activeRow.btnSummon.scripts.OnClick(activeRow.btnSummon)
 assert(sent[table.getn(sent)] == ".bot summon Alpha", "row summon control must send summon")
-now = 44
+TB.CompleteOperation("Alpha", "summon", true, "summon accepted")
+now = now + 1
 this, arg1 = activeRow.btnFollow, "LeftButton"
 activeRow.btnFollow.scripts.OnClick(activeRow.btnFollow)
 assert(sent[table.getn(sent)] == ".bot follow Alpha", "row follow control must send follow")
-now = 45
+TB.CompleteOperation("Alpha", "follow", true, "follow accepted")
+now = now + 1
 this, arg1 = activeRow.btnInvite, "LeftButton"
 activeRow.btnInvite.scripts.OnClick(activeRow.btnInvite)
 assert(sent[table.getn(sent)] == ".bot invite Alpha", "row invite control must send invite")
-now = 46
-this, arg1 = TB.selButtons[1], "LeftButton"
-TB.selButtons[1].scripts.OnClick(TB.selButtons[1])
+TB.CompleteOperation("Alpha", "invite", true, "invite accepted")
+now = now + 1
+this, arg1 = TB.stayButton, "LeftButton"
+TB.stayButton.scripts.OnClick(TB.stayButton)
 assert(sent[table.getn(sent)] == ".bot stay Alpha", "selected stay control must send stay")
-now = 47
-this, arg1 = TB.selButtons[2], "LeftButton"
-TB.selButtons[2].scripts.OnClick(TB.selButtons[2])
+TB.CompleteOperation("Alpha", "stay", true, "stay accepted")
+now = now + 1
+this, arg1 = TB.partyButtons.pullback, "LeftButton"
+TB.partyButtons.pullback.scripts.OnClick(TB.partyButtons.pullback)
 assert(sent[table.getn(sent)] == ".bot pullback", "pullback control must send pullback")
-now = 48
-this, arg1 = TB.selButtons[3], "LeftButton"
-TB.selButtons[3].scripts.OnClick(TB.selButtons[3])
+TB.OnSystemMessage("Pullback: tank Alpha body -> target (12.0y, melee) anchor 0,0")
+assert(lastStatusKind == "pending", "pullback acceptance must be surfaced as pending")
+TB.OnSystemMessage("No tank bot found in your party (needs a bot with tank role).")
+assert(lastStatusKind == "warn", "pullback rejection must be surfaced")
+now = now + 1
+this, arg1 = TB.resetButton, "LeftButton"
+TB.resetButton.scripts.OnClick(TB.resetButton)
 assert(sent[table.getn(sent)] == ".bot command Alpha reset", "reset control must send command")
-now = 49
+TB.CompleteOperation("Alpha", "command", true, "reset accepted")
+now = now + 1
 this, arg1 = TB.partyButtons.follow, "LeftButton"
 TB.partyButtons.follow.scripts.OnClick(TB.partyButtons.follow)
 assert(sent[table.getn(sent)] == ".bot follow Alpha", "party follow control must send follow")
-now = 50
+TB.CompleteOperation("Alpha", "follow", true, "follow accepted")
+now = now + 1
 this, arg1 = activeRow.btnRemove, "LeftButton"
 activeRow.btnRemove.scripts.OnClick(activeRow.btnRemove)
 assert(sent[table.getn(sent)] == ".bot remove Alpha", "row remove control must send remove")
-now = 51
+TB.CompleteOperation("Alpha", "remove", true, "remove accepted")
+now = now + 1
 TB.addBox:SetText("Charlie")
 this, arg1 = TB.addButton, "LeftButton"
 TB.addButton.scripts.OnClick(TB.addButton)
 assert(sent[table.getn(sent)] == ".bot add Charlie", "add control must send add")
-now = 52
+now = now + 1
 this, arg1 = TB.refreshButton, "LeftButton"
 TB.refreshButton.scripts.OnClick(TB.refreshButton)
 assert(sent[table.getn(sent)] == ".bot list", "refresh control must send list")
-now = 53
+now = now + 1
 this, arg1 = TB.partyButtons.summon, "LeftButton"
 TB.partyButtons.summon.scripts.OnClick(TB.partyButtons.summon)
 assert(sent[table.getn(sent)] == ".bot summon Alpha", "party summon control must send summon")
-now = 54
+TB.CompleteOperation("Alpha", "summon", true, "summon accepted")
+now = now + 1
 this, arg1 = TB.partyButtons.invite, "LeftButton"
 TB.partyButtons.invite.scripts.OnClick(TB.partyButtons.invite)
 assert(sent[table.getn(sent)] == ".bot invite Alpha", "party invite control must send invite")
+TB.CompleteOperation("Alpha", "invite", true, "invite accepted")
 TB._debugGroup.Alpha = true
 TB.Refresh()
-now = 55
+now = now + 1
 this, arg1 = activeRow.btnInvite, "LeftButton"
 activeRow.btnInvite.scripts.OnClick(activeRow.btnInvite)
 assert(sent[table.getn(sent)] == ".bot uninvite Alpha", "row kick control must send uninvite")

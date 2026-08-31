@@ -6,13 +6,13 @@ TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
 TB.C = TB.C or {}
 
-TB.C.VERSION = "0.1.1"
+TB.C.VERSION = "0.1.2"
 
 -- Panel geometry
 TB.C.PANEL_W = 520
 TB.C.PANEL_H = 520
 TB.C.ROW_H   = 36
-TB.C.ROW_N   = 8
+TB.C.ROW_N   = 6
 
 -- Throttle / poll
 TB.C.SEND_DELAY      = 0.35  -- min seconds between SendChatMessage(".bot …")
@@ -21,6 +21,11 @@ TB.C.POLL_PANEL_IV   = 8     -- poll every N sec while panel open
 TB.C.POLL_HIDDEN_IV  = 20    -- while hidden, if autoPoll
 TB.C.POLL_AFTER_CMD  = 1.4   -- poll soon after any command
 TB.C.POLL_AFTER_ADD  = 2.0
+TB.C.ADD_TIMEOUT     = 30    -- seconds without login confirmation
+TB.C.REMOVE_TIMEOUT  = 15    -- seconds without removal confirmation
+TB.C.ACTION_TIMEOUT  = 8     -- seconds for a named action acknowledgement
+TB.C.POLL_WAIT       = 1.2   -- seconds before reconciling a list snapshot
+TB.C.POLL_NO_REPLY_LIMIT = 2 -- consecutive silent polls before Unknown
 
 -- Minimap
 TB.C.MINIMAP_RADIUS = 80
@@ -44,9 +49,19 @@ TB.C.COLOR = {
 TB.C.STATUS = {
     OFFLINE        = "offline",
     OFFLINE_PENDING= "offline-pending",
+    UNKNOWN        = "unknown",
+    FAILED         = "failed",
+    QUEUED         = "queued",
     STARTING       = "starting",
     ONLINE         = "online",
+    COMMANDING     = "commanding",
     SUMMONING      = "summoning",
     INVITING       = "inviting",
+    KICKING        = "kicking",
     REMOVING       = "removing",
+}
+
+TB.C.FORMATIONS = {
+    "default", "melee", "queue", "chaos", "circle",
+    "line", "shield", "arrow", "near", "far",
 }

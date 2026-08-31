@@ -14,7 +14,11 @@
 
 local TB = TortoiseBots
 local C = TB.C or {}
-if not C.STATUS then C.STATUS = { OFFLINE="offline", OFFLINE_PENDING="offline-pending", STARTING="starting", ONLINE="online", SUMMONING="summoning", INVITING="inviting", REMOVING="removing" } end
+if not C.STATUS then C.STATUS = {
+    OFFLINE="offline", OFFLINE_PENDING="offline-pending", UNKNOWN="unknown", FAILED="failed",
+    QUEUED="queued", STARTING="starting", ONLINE="online", COMMANDING="commanding",
+    SUMMONING="summoning", INVITING="inviting", KICKING="kicking", REMOVING="removing",
+} end
 
 -- Matches BotCommands.cpp at the TortoiseBots headless-command baseline.
 -- If server changes wording, update here and add commit SHA to comment.
@@ -32,11 +36,26 @@ local PAT = {
     willStay      = "will stay",
     nowFollowing  = "now following",
     pullback      = "Pullback: tank",
+    pullbackNoTarget = "You have no target",
+    pullbackTargetMissing = "Target not found",
+    pullbackDead   = "Target is dead",
+    pullbackCombat = "Target is already in combat",
+    pullbackHostile = "Target is not hostile",
+    pullbackNoTank = "No tank bot found",
+    pullbackBusy   = "Pullback already active",
+    pullbackWorld  = "You must be in world to use pullback",
     removed       = "Removal requested for bot",
     -- list line: PSendSysMessage("%s: %s, random %u, AI %u", name, state, random, hasAI)
     listLine      = "^(.+): (.+), random (%d+), AI (%d+)",
     statsLine     = "Owned PlayerBots: (%d+) online",
     helpLine      = "Bot commands:",
+    statusLine    = "^(.+): (.+), AI (%d+), movement (%S+), random (%d+), owner (.+)%.?$",
+    forwarded     = "Forwarded command for",
+    nowGuarding   = "will guard this position",
+    nowFree       = "is free to move",
+    nowAttacking  = "will attack your selected target",
+    nowReady       = "will run a readiness check",
+    formationSet   = "formation set to",
     addFailed     = "Failed to add bot",
     summonFailed  = "Failed to summon bot",
     summonNoWorld = "is not in world",
@@ -46,18 +65,73 @@ local PAT = {
     stayFailed    = "could not enter stay mode",
     addNotFound   = "Character '[^']+' not found",
     botNotFound   = "Bot '[^']+' not found",
+    removeFailed  = "not found or not removable",
+    noAI          = "has no AI yet",
+    unknownCommand = "Unknown bot command",
+    unknownModuleCommand = "Unknown command",
 }
+
+local serverCommands = {}
+local serverCapabilitiesKnown = false
+local responseHistory = {}
+
+function TB.HasServerCommand(command)
+    if not command then return false end
+    return serverCommands[string.lower(TB.Trim(command))] and true or false
+end
+
+function TB.ServerCapabilitiesKnown()
+    return serverCapabilitiesKnown
+end
+
+local function updateServerCommands(msg)
+    local _, _, list = string.find(msg, "^Bot commands:%s*(.*)$")
+    if not list then return false end
+    for key in pairs(serverCommands) do serverCommands[key] = nil end
+    local start = 1
+    while true do
+        local first, last, command = string.find(list, "([^/]+)", start)
+        if not command then break end
+        command = string.lower(TB.Trim(command))
+        command = string.gsub(command, "[%s%.]+$", "")
+        if command ~= "" then serverCommands[command] = true end
+        start = last + 1
+    end
+    serverCapabilitiesKnown = true
+    TB._serverCommands = serverCommands
+    if TB.Refresh then TB.Refresh() end
+    return true
+end
+
+function TB.GetResponseHistory()
+    return responseHistory
+end
+
+function TB.RecordAIResponse(name, msg, kind)
+    if not msg or msg == "" then return end
+    table.insert(responseHistory, { name = name, message = msg, kind = kind or "info" })
+    while table.getn(responseHistory) > 8 do table.remove(responseHistory, 1) end
+    TB.lastAIResponse = { name = name, message = msg, kind = kind or "info" }
+    local statusKind = kind == "error" and "warn" or (kind == "pending" and "pending" or "ok")
+    if TB.SetStatus then TB.SetStatus((name and (name .. ": ") or "") .. msg, statusKind) end
+end
 
 local function messageBotName(msg)
     local _, _, name = string.find(msg, "'([^']+)'")
     if not name then _, _, name = string.find(msg, "[Bb]ot ([^%s%.,;]+)") end
     if not name then _, _, name = string.find(msg, "for ([^%s%.,;]+) was rejected") end
+    if not name then _, _, name = string.find(msg, "for ([^%s:]+):") end
     return name and TB.NormalizeName(name) or nil
+end
+
+local function lastCommandVerb()
+    local command = TB.lastCommand or ""
+    return string.lower(string.gsub(command, "%s+.*", ""))
 end
 
 local function lastCommandBotName(expectedVerb)
     local command = TB.lastCommand or ""
-    local verb = string.lower(string.gsub(command, "%s+.*", ""))
+    local verb = lastCommandVerb()
     if expectedVerb and verb ~= expectedVerb then return nil end
     local rest = TB.Trim(string.gsub(command, "^%S+%s*", ""))
     local _, _, name = string.find(rest, "^(%S+)")
@@ -65,12 +139,17 @@ local function lastCommandBotName(expectedVerb)
 end
 
 local function rollbackTransient(msg, includeStarting, expectedVerb)
+    expectedVerb = expectedVerb or lastCommandVerb()
     local name = messageBotName(msg) or lastCommandBotName(expectedVerb)
     if not name or not TB.GetState then return end
     local st = TB.GetState(name)
     if not st then return end
-    if st.status == C.STATUS.SUMMONING or st.status == C.STATUS.INVITING
-        or (includeStarting and st.status == C.STATUS.STARTING) then
+    if st.operation and expectedVerb and st.operation.verb ~= expectedVerb then
+        return
+    elseif st.operation then
+        if TB.CompleteOperation then TB.CompleteOperation(name, expectedVerb, false, msg) end
+    elseif st.status == C.STATUS.SUMMONING or st.status == C.STATUS.INVITING
+        or st.status == C.STATUS.REMOVING or (includeStarting and st.status == C.STATUS.STARTING) then
         st.status = st.online and C.STATUS.ONLINE or C.STATUS.OFFLINE
     end
 end
@@ -79,6 +158,17 @@ local function markFailure(msg, includeStarting, expectedVerb)
     rollbackTransient(msg, includeStarting, expectedVerb)
     if TB.SetStatus then TB.SetStatus(msg, "warn") end
     if TB.RequestPollSoon then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
+end
+
+local function acknowledgeAction(msg, verb, movement)
+    local name = messageBotName(msg) or lastCommandBotName(verb)
+    if not name or not TB.GetState then return false end
+    local st = TB.GetState(name)
+    if st and st.operation and st.operation.verb ~= verb then return false end
+    local completed = TB.CompleteOperation and TB.CompleteOperation(name, verb, true, msg)
+    st = TB.GetState(name)
+    if st and completed and movement then st.movement = movement end
+    return completed and true or false
 end
 
 -- ── outbound ────────────────────────────────────────────────────────────────
@@ -95,64 +185,121 @@ function TB.BuildCommand(verb, name, extra)
     end
 end
 
+local function commandTargetName(cmd)
+    local rest = TB.Trim(string.gsub(cmd or "", "^%S+%s*", ""))
+    local _, _, name = string.find(rest, "^(%S+)")
+    return name and TB.NormalizeName(name) or nil
+end
+
+function TB.OnCommandQueued(cmd)
+    local verb = string.lower(string.gsub(cmd or "", "%s+.*", ""))
+    local name = commandTargetName(cmd)
+    if name and verb ~= "list" and verb ~= "stats" and verb ~= "help" and TB.BeginOperation then
+        if verb == "add" then TB.AddToRoster(name) end
+        TB.BeginOperation(name, verb, true)
+        if TB.Refresh then TB.Refresh() end
+    end
+end
+
 function TB.OnCommandSent(cmd)
     local verb = string.lower(string.gsub(cmd, "%s+.*", ""))
-    local rest = TB.Trim(string.gsub(cmd, "^%S+%s*", ""))
-    local name = TB.NormalizeName(rest)
+    local name = commandTargetName(cmd)
 
     if verb == "list" then
         -- actual send time is authoritative for throttle (Core also sets _lastPoll)
-        if TB.BeginPoll then TB.BeginPoll() end
         return
     end
 
+    if verb == "add" and name then TB.AddToRoster(name) end
+    if name and TB.BeginOperation then
+        TB.BeginOperation(name, verb, false)
+    end
+
+    if verb == "command" and name then
+        local st = TB.GetState and TB.GetState(name) or nil
+        if st then st.pendingAI = true; st.pendingAIUntil = ((GetTime and GetTime()) or 0) + (C.ACTION_TIMEOUT or 8) end
+    end
     if verb == "summon" and name then
-        TB.SetState(name, { status = C.STATUS.SUMMONING })
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
-    elseif verb == "invite" and name then
-        TB.SetState(name, { status = C.STATUS.INVITING })
-    elseif verb == "add" and name then
-        TB.AddToRoster(name)
-        TB.SetState(name, { status = C.STATUS.STARTING, online = false })
-    elseif verb == "remove" and name then
-        TB.SetState(name, { status = C.STATUS.REMOVING })
     end
     if TB.Refresh then TB.Refresh() end
     TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4)
 
-    -- clear stale transient after 4s if server never replied (e.g., throttled)
-    if (verb == "summon" or verb == "invite") and name and C.STATUS then
-        local captured = name; local v = verb
-        local f = CreateFrame("Frame")
-        f.elapsed=0; f:SetScript("OnUpdate", function()
-            this.elapsed=(this.elapsed or 0)+(arg1 or 0)
-            if (this.elapsed or 0) >=4 then
-                this:SetScript("OnUpdate", nil)
-                if this.Hide then this:Hide() end
-                local st = TB.GetState and TB.GetState(captured) or nil
-                if st and ((v=="summon" and st.status==C.STATUS.SUMMONING) or (v=="invite" and st.status==C.STATUS.INVITING)) then
-                    -- no confirm — revert to truth
-                    st.status = st.online and C.STATUS.ONLINE or C.STATUS.OFFLINE
-                    if TB.Refresh then TB.Refresh() end
-                end
-            end
-        end)
-        if f.Show then f:Show() end
-    end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
 function TB.InitComms()
     local f = CreateFrame("Frame", "TortoiseBotsManagerCommsFrame")
     f:RegisterEvent("CHAT_MSG_SYSTEM")
+    f:RegisterEvent("CHAT_MSG_WHISPER")
+    f:RegisterEvent("CHAT_MSG_ADDON")
     f:SetScript("OnEvent", function()
-        if event == "CHAT_MSG_SYSTEM" then TB.OnSystemMessage(arg1 or "") end
+        if event == "CHAT_MSG_SYSTEM" then TB.OnSystemMessage(arg1 or "")
+        elseif event == "CHAT_MSG_WHISPER" then TB.OnWhisperMessage(arg1 or "", arg2 or "")
+        elseif event == "CHAT_MSG_ADDON" then TB.OnAddonMessage(arg1 or "", arg2 or "", arg3 or "", arg4 or "") end
     end)
+end
+
+function TB.OnWhisperMessage(msg, sender)
+    local name = TB.NormalizeName(sender or "")
+    local st = name and TB.GetState and TB.GetState(name) or nil
+    if not st or not st.pendingAI or not st.operation or st.operation.verb ~= "command" then return end
+    local now = (GetTime and GetTime()) or 0
+    if st.pendingAIUntil and now > st.pendingAIUntil then
+        st.pendingAI = nil
+        return
+    end
+    st.pendingAI = nil
+    if TB.CompleteOperation then TB.CompleteOperation(name, "command", true, msg) end
+    TB.RecordAIResponse(name, msg, "info")
+end
+
+function TB.OnAddonMessage(prefix, msg, channel, sender)
+    local name = TB.NormalizeName(sender or "")
+    local st = name and TB.GetState and TB.GetState(name) or nil
+    if not st or not st.pendingAI or not st.operation or st.operation.verb ~= "command" then return end
+    st.pendingAI = nil
+    if TB.CompleteOperation then TB.CompleteOperation(name, "command", true, msg) end
+    TB.RecordAIResponse(name, msg, "info")
 end
 
 function TB.OnSystemMessage(msg)
     if not msg or msg == "" then return end
     local handled = false
+
+    if updateServerCommands(msg) then
+        if TB.SetStatus then TB.SetStatus(msg, "muted") end
+        TB.lastSystem = msg
+        return
+    end
+
+    do
+        local _, _, n, lifecycle, ai, movement, random, owner = string.find(msg, PAT.statusLine)
+        if n then
+            local enteredWorld = lifecycle == "in world"
+            TB.SetState(n, {
+                online = true,
+                enteredWorld = enteredWorld,
+                hasAI = (ai == "1"),
+                movement = movement,
+                random = (random == "1"),
+                lifecycle = lifecycle,
+                owner = owner,
+            })
+            local st = TB.GetState(n)
+            if st and st.operation and st.operation.verb == "status" then st.operation = nil end
+            if st and not st.operation then
+                st.lastError = nil
+                if lifecycle == "removing" then st.status = C.STATUS.REMOVING
+                elseif lifecycle == "in world" then st.status = C.STATUS.ONLINE
+                elseif lifecycle == "starting" then st.status = C.STATUS.STARTING
+                else st.status = C.STATUS.UNKNOWN end
+            end
+            if TB.SetStatus then TB.SetStatus(msg, "ok") end
+            if TB.Refresh then TB.Refresh() end
+            return
+        end
+    end
 
     -- 1) list line (may arrive N times per poll)
     do
@@ -171,7 +318,6 @@ function TB.OnSystemMessage(msg)
 
     if string.find(msg, PAT.noBotsOnline) then
         TB.MarkPollGotAny()
-        TB.MarkAllOfflinePending()
         if TB.SetStatus then TB.SetStatus("No owned bots online.", "muted") end
         if TB.Refresh  then TB.Refresh() end
         return
@@ -181,44 +327,84 @@ function TB.OnSystemMessage(msg)
         if TB.SetStatus then TB.SetStatus(msg, "muted") end
         return
     end
-    if string.find(msg, PAT.helpLine) then
-        if TB.SetStatus then TB.SetStatus(msg, "muted") end
-        return
-    end
 
     -- 2) action replies (optimistic → confirmed / rolled back)
     if string.find(msg, PAT.queued) then
         local _, _, botName = string.find(msg, "Bot (%S+) queued")
         if botName then TB.SetState(botName, { status = C.STATUS.STARTING, online = false }) end
-        if TB.SetStatus then TB.SetStatus(msg, "ok") end
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end
         TB.RequestPollSoon(C.POLL_AFTER_ADD); handled = true
 
     elseif string.find(msg, PAT.summoning) then
         local _, _, botName = string.find(msg, "Summoning (%S+)")
         if botName then TB.SetState(botName, { status = C.STATUS.SUMMONING }) end
-        if TB.SetStatus then TB.SetStatus(msg, "ok") end; handled = true
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
 
     elseif string.find(msg, PAT.inviteSent) then
-        if TB.SetStatus then TB.SetStatus(msg, "ok") end
+        acknowledgeAction(msg, "invite")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end
         TB.RequestPollSoon(C.POLL_AFTER_CMD); handled = true
 
     elseif string.find(msg, PAT.inviteReject) then
         markFailure(msg, false, "invite"); handled = true
 
     elseif string.find(msg, PAT.uninviteSent) then
-        if TB.SetStatus then TB.SetStatus(msg, "ok") end
+        acknowledgeAction(msg, "uninvite")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end
         TB.RequestPollSoon(C.POLL_AFTER_CMD); handled = true
 
-    elseif string.find(msg, PAT.willStay) or string.find(msg, PAT.nowFollowing) or string.find(msg, PAT.pullback) then
-        if TB.SetStatus then TB.SetStatus(msg, "ok") end; handled = true
+    elseif string.find(msg, PAT.willStay) then
+        acknowledgeAction(msg, "stay", "stay")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.nowFollowing) then
+        acknowledgeAction(msg, "follow", "follow")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.nowGuarding) then
+        acknowledgeAction(msg, "guard", "guard")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.nowFree) then
+        acknowledgeAction(msg, "free", "free")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.nowAttacking) then
+        acknowledgeAction(msg, "attack")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.nowReady) then
+        acknowledgeAction(msg, "ready")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.formationSet) then
+        acknowledgeAction(msg, "formation")
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.pullback) then
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
+
+    elseif string.find(msg, PAT.forwarded) then
+        local name = messageBotName(msg) or lastCommandBotName("command")
+        if name and TB.GetState then
+            local st = TB.GetState(name)
+            if st and st.operation and st.operation.verb == "command" then
+                st.status = C.STATUS.COMMANDING
+            end
+        end
+        if TB.RecordAIResponse then TB.RecordAIResponse(name, msg, "pending")
+        elseif TB.SetStatus then TB.SetStatus(msg, "ok") end
+        handled = true
 
     elseif string.find(msg, PAT.removed) then
-        if TB.SetStatus then TB.SetStatus(msg, "ok") end
+        if TB.SetStatus then TB.SetStatus(msg, "pending") end
         TB.RequestPollSoon(C.POLL_AFTER_CMD); handled = true
 
-    elseif string.find(msg, PAT.addFailed) or string.find(msg, PAT.addNotFound)
-        or string.find(msg, PAT.botNotFound) then
+    elseif string.find(msg, PAT.addFailed) or string.find(msg, PAT.addNotFound) then
         markFailure(msg, true, "add"); handled = true
+
+    elseif string.find(msg, PAT.removeFailed) then
+        markFailure(msg, false, "remove"); handled = true
 
     elseif string.find(msg, PAT.summonFailed) or string.find(msg, PAT.summonNoWorld)
         or string.find(msg, PAT.summonTeleporting) or string.find(msg, PAT.summonTaxi)
@@ -230,6 +416,16 @@ function TB.OnSystemMessage(msg)
 
     elseif string.find(msg, PAT.stayFailed) then
         markFailure(msg, false, "stay"); handled = true
+
+    elseif string.find(msg, PAT.pullbackNoTarget) or string.find(msg, PAT.pullbackTargetMissing)
+        or string.find(msg, PAT.pullbackDead) or string.find(msg, PAT.pullbackCombat)
+        or string.find(msg, PAT.pullbackHostile) or string.find(msg, PAT.pullbackNoTank)
+        or string.find(msg, PAT.pullbackBusy) or string.find(msg, PAT.pullbackWorld) then
+        if TB.SetStatus then TB.SetStatus(msg, "warn") end; handled = true
+
+    elseif string.find(msg, PAT.noAI) or string.find(msg, PAT.botNotFound)
+        or string.find(msg, PAT.unknownCommand) or string.find(msg, PAT.unknownModuleCommand) then
+        markFailure(msg, true, nil); handled = true
 
     elseif string.find(msg, PAT.alreadyOnline) or string.find(msg, PAT.sameAccount) then
         markFailure(msg, true, "add")

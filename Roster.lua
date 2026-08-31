@@ -20,6 +20,7 @@ local groupMembers = {} -- [Name]=true if in player's party/raid
 local pollSeen = {}      -- [Name]=true for this poll
 local pollActive = false
 local pollGotAny = false -- did we receive any list/noBots line this window?
+local pollNoReplyCount = 0
 
 -- expose read-only snapshots for UI/tooltips (no mutation)
 TB._debugState = state
@@ -46,7 +47,7 @@ end
 
 function TB.MarkPollSeen(name)
     name = TB.NormalizeName(name)
-    if name then pollSeen[name]=true; pollGotAny=true end
+    if name and pollActive then pollSeen[name]=true; pollGotAny=true end
 end
 
 function TB.MarkPollGotAny()
@@ -58,16 +59,30 @@ end
 -- Requires 2 consecutive misses to go offline (avoids flicker on lag).
 function TB.ReconcilePoll()
     if not pollActive then return end
-    if not pollGotAny then pollActive=false; return end -- no reply yet / lag
     pollActive=false
+    if TB._pollPending ~= nil then TB._pollPending=false end
+    if not pollGotAny then
+        pollNoReplyCount = pollNoReplyCount + 1
+        if pollNoReplyCount >= (C.POLL_NO_REPLY_LIMIT or 2) then
+            for _, st in pairs(state) do
+                if st.online and not st.operation then st.status=C.STATUS.UNKNOWN end
+            end
+        end
+        if TB.Refresh then TB.Refresh() end
+        return -- no reply yet / lag; preserve truth as Unknown after repeated silence
+    end
+    pollNoReplyCount = 0
     for name, st in pairs(state) do
         if st.online and not pollSeen[name] then
             st.onlinePending = (st.onlinePending or 0) + 1
             if st.onlinePending >= 2 then
                 st.online=false; st.status=C.STATUS.OFFLINE
                 st.enteredWorld=false; st.hasAI=false
+                if st.operation and st.operation.verb == "remove" then st.operation=nil end
             else
-                st.status=C.STATUS.OFFLINE_PENDING
+                if not (st.operation and st.operation.verb == "remove") then
+                    st.status=C.STATUS.OFFLINE_PENDING
+                end
             end
         end
     end
@@ -103,6 +118,8 @@ function TB.RemoveFromRoster(name)
     name = TB.NormalizeName(name)
     if not name then return end
     if TortoiseBotsDB and TortoiseBotsDB.roster then TortoiseBotsDB.roster[name] = nil end
+    groupMembers[name] = nil
+    if TB.selected == name then TB.selected = nil end
     if state[name] and not state[name].online then state[name] = nil end
 end
 
@@ -122,8 +139,14 @@ end
 function TB.SetState(name, fields)
     name = TB.NormalizeName(name)
     if not name then return end
+    fields = fields or {}
     if not state[name] then state[name] = { status = C.STATUS.OFFLINE, online = false } end
     for k, v in pairs(fields) do state[name][k] = v end
+    if fields.online == false then
+        state[name].enteredWorld = false
+        state[name].hasAI = false
+        state[name].random = nil
+    end
     if fields.online then
         if TortoiseBotsDB and TortoiseBotsDB.roster and not TortoiseBotsDB.roster[name] then
             TB.AddToRoster(name, { discovered = true })
@@ -131,19 +154,117 @@ function TB.SetState(name, fields)
     end
 end
 
-function TB.MarkAllOfflinePending()
-    -- kept for "No owned PlayerBots are online." — also handled by ReconcilePoll
-    for _, st in pairs(state) do
-        if st.online then
-            st.onlinePending = (st.onlinePending or 0) + 1
-            if st.onlinePending >= 2 then
-                st.online = false; st.status = C.STATUS.OFFLINE
-                st.enteredWorld = false; st.hasAI = false
-            else
-                st.status = C.STATUS.OFFLINE_PENDING
+local function operationTimeout(verb)
+    if verb == "add" then return C.ADD_TIMEOUT or 30 end
+    if verb == "remove" then return C.REMOVE_TIMEOUT or 15 end
+    return C.ACTION_TIMEOUT or 8
+end
+
+function TB.BeginOperation(name, verb, queued)
+    name = TB.NormalizeName(name)
+    if not name or not verb then return nil end
+    if not state[name] then state[name] = { status = C.STATUS.OFFLINE, online = false } end
+    local now = (GetTime and GetTime()) or 0
+    local operation = {
+        verb = verb,
+        queued = queued and true or false,
+        startedAt = now,
+        deadline = now + operationTimeout(verb),
+    }
+    state[name].operation = operation
+    state[name].lastError = nil
+    if verb ~= "command" then
+        state[name].pendingAI = nil
+        state[name].pendingAIUntil = nil
+    end
+    if verb == "add" then
+        state[name].online = false
+        state[name].enteredWorld = false
+        state[name].hasAI = false
+        state[name].status = queued and C.STATUS.QUEUED or C.STATUS.STARTING
+    elseif queued then
+        state[name].status = C.STATUS.QUEUED
+    elseif verb == "remove" then
+        state[name].status = C.STATUS.REMOVING
+    elseif verb == "summon" then
+        state[name].status = C.STATUS.SUMMONING
+    elseif verb == "invite" then
+        state[name].status = C.STATUS.INVITING
+    elseif verb == "uninvite" then
+        state[name].status = C.STATUS.KICKING
+    elseif verb ~= "status" then
+        state[name].status = C.STATUS.COMMANDING
+    end
+    return operation
+end
+
+function TB.IsOperationPending(name, verb)
+    local st = TB.GetState(name)
+    return st and st.operation and (not verb or st.operation.verb == verb) or false
+end
+
+function TB.CompleteOperation(name, verb, success, message)
+    local st = TB.GetState(name)
+    if not st or (st.operation and verb and st.operation.verb ~= verb) then return false end
+    if st.operation then st.operation = nil end
+    if verb == "command" then
+        st.pendingAI = nil
+        st.pendingAIUntil = nil
+    end
+    if success then
+        st.lastError = nil
+        if st.online then st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+        else st.status = C.STATUS.OFFLINE end
+    else
+        st.lastError = message or "Command failed."
+        if verb == "remove" and st.online then st.status = C.STATUS.ONLINE
+        elseif st.online then st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+        else st.status = C.STATUS.OFFLINE end
+    end
+    if TB.Refresh then TB.Refresh() end
+    return true
+end
+
+function TB.UpdateStateTimers(now)
+    now = now or ((GetTime and GetTime()) or 0)
+    local changed = false
+    local timedOutName
+    for name, st in pairs(state) do
+        if st.pendingAI and st.pendingAIUntil and now >= st.pendingAIUntil then
+            st.pendingAI = nil
+            st.pendingAIUntil = nil
+            changed = true
+        end
+        local operation = st.operation
+        if operation and now >= operation.deadline then
+            st.operation = nil
+            if operation.verb == "command" then
+                st.pendingAI = nil
+                st.pendingAIUntil = nil
             end
+            st.lastError = operation.verb .. " timed out."
+            if operation.verb == "add" then
+                st.online = false
+                st.enteredWorld = false
+                st.hasAI = false
+                st.status = C.STATUS.FAILED
+            elseif operation.verb == "status" then
+                st.status = C.STATUS.UNKNOWN
+            elseif operation.verb == "remove" then
+                st.status = st.online and C.STATUS.UNKNOWN or C.STATUS.OFFLINE
+            elseif st.online then
+                st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+            else
+                st.status = C.STATUS.OFFLINE
+            end
+            timedOutName = timedOutName or name
+            changed = true
         end
     end
+    if timedOutName and TB.SetStatus then
+        TB.SetStatus(timedOutName .. ": operation timed out.", "warn")
+    end
+    if changed and TB.Refresh then TB.Refresh() end
 end
 
 function TB.ConfirmSeen(name, info)
@@ -156,8 +277,26 @@ function TB.ConfirmSeen(name, info)
     st.enteredWorld = info.enteredWorld
     st.random       = info.random
     st.hasAI        = info.hasAI
-    -- clear transient immediately on confirm — server truth wins over optimistic "summoning/inviting"
-    st.status = info.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+    local operation = st.operation
+    if operation and operation.verb == "add" and info.enteredWorld then
+        st.operation = nil
+        st.lastError = nil
+        st.status = C.STATUS.ONLINE
+    elseif operation and operation.verb == "remove" then
+        st.status = C.STATUS.REMOVING
+    elseif operation and operation.verb == "summon" then
+        st.status = C.STATUS.SUMMONING
+    elseif operation and operation.verb == "invite" then
+        st.status = C.STATUS.INVITING
+    elseif operation then
+        -- A list snapshot confirms presence, but not completion of a named
+        -- action. Keep the optimistic state until its matching reply arrives
+        -- or the operation timer expires.
+        st.status = st.status or (info.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING)
+    else
+        st.lastError = nil
+        st.status = info.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+    end
     TB.MarkPollSeen(name)
     TB.AddToRoster(name, { discovered = true })
 end
@@ -202,5 +341,12 @@ gf:SetScript("OnEvent", function()
     if selfName then members[TB.NormalizeName(selfName) or selfName] = true end
     for k in pairs(groupMembers) do groupMembers[k]=nil end
     for k,v in pairs(members) do groupMembers[k]=v end
+    for name, st in pairs(state) do
+        if st.operation and st.operation.verb == "invite" and members[name] then
+            TB.CompleteOperation(name, "invite", true, "Group invite accepted.")
+        elseif st.operation and st.operation.verb == "uninvite" and not members[name] then
+            TB.CompleteOperation(name, "uninvite", true, "Bot left your group.")
+        end
+    end
     if TB.Refresh then TB.Refresh() end
 end)
