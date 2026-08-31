@@ -9,7 +9,7 @@
 --   UI/Core calls TB.SendBotCommand("summon Aran")
 --     → Throttled SendChatMessage
 --     → TB.OnCommandSent  (optimistic state)
---   Server whispers CHAT_MSG_SYSTEM "Summoning Aran to your location (5y)…"
+--   Server whispers CHAT_MSG_SYSTEM "Summoning Aran to a safe position near you…"
 --     → TB.OnSystemMessage (reconcile, status, refresh)
 
 local TB = TortoiseBots
@@ -26,7 +26,7 @@ local PAT = {
     queued        = "queued for login",                            -- Bot X queued for login; it will follow
     alreadyOnline = "already online and cannot be claimed",
     sameAccount   = "You may only control characters on your account",
-    summoning     = "Summoning (.+) to your location",              -- Summoning X to your location (5y)
+    summoning     = "Summoning (.+) to a safe position near you",    -- native safe-position summon
     summonFail    = "cannot be summoned",
     alreadySummon = "already being summoned",
     inviteSent    = "Invitation sent to bot",
@@ -35,7 +35,7 @@ local PAT = {
     noBotsOnline  = "No owned PlayerBots are online",
     willStay      = "will stay",
     nowFollowing  = "now following",
-    pullback      = "Pullback: tank",
+    pullback      = "Pullback requested: tank",
     pullbackNoTarget = "You have no target",
     pullbackTargetMissing = "Target not found",
     pullbackDead   = "Target is dead",
@@ -44,6 +44,8 @@ local PAT = {
     pullbackNoTank = "No tank bot found",
     pullbackBusy   = "Pullback already active",
     pullbackWorld  = "You must be in world to use pullback",
+    pullbackFailed = "could not start a pull",
+    pullbackAssignFailed = "could not be assigned to you for pullback",
     removed       = "Removal requested for bot",
     -- list line: PSendSysMessage("%s: %s, random %u, AI %u", name, state, random, hasAI)
     listLine      = "^(.+): (.+), random (%d+), AI (%d+)",
@@ -61,6 +63,7 @@ local PAT = {
     summonNoWorld = "is not in world",
     summonTeleporting = "is already teleporting",
     summonTaxi    = "is on a taxi",
+    summonAssignFailed = "could not be assigned to you for summon",
     followFailed  = "could not enter follow mode",
     stayFailed    = "could not enter stay mode",
     addNotFound   = "Character '[^']+' not found",
@@ -337,7 +340,14 @@ function TB.OnSystemMessage(msg)
 
     elseif string.find(msg, PAT.summoning) then
         local _, _, botName = string.find(msg, "Summoning (%S+)")
-        if botName then TB.SetState(botName, { status = C.STATUS.SUMMONING }) end
+        if botName then
+            if TB.AcknowledgeOperation then TB.AcknowledgeOperation(botName, "summon") end
+            local st = TB.GetState and TB.GetState(botName) or nil
+            if st then
+                st.status = C.STATUS.SUMMONING
+                st.summonPendingUntil = ((GetTime and GetTime()) or 0) + (C.SUMMON_SETTLE or 15)
+            end
+        end
         if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
 
     elseif string.find(msg, PAT.inviteSent) then
@@ -408,7 +418,8 @@ function TB.OnSystemMessage(msg)
 
     elseif string.find(msg, PAT.summonFailed) or string.find(msg, PAT.summonNoWorld)
         or string.find(msg, PAT.summonTeleporting) or string.find(msg, PAT.summonTaxi)
-        or string.find(msg, PAT.summonFail) or string.find(msg, PAT.alreadySummon) then
+        or string.find(msg, PAT.summonFail) or string.find(msg, PAT.alreadySummon)
+        or string.find(msg, PAT.summonAssignFailed) then
         markFailure(msg, false, "summon"); handled = true
 
     elseif string.find(msg, PAT.followFailed) then
@@ -420,7 +431,8 @@ function TB.OnSystemMessage(msg)
     elseif string.find(msg, PAT.pullbackNoTarget) or string.find(msg, PAT.pullbackTargetMissing)
         or string.find(msg, PAT.pullbackDead) or string.find(msg, PAT.pullbackCombat)
         or string.find(msg, PAT.pullbackHostile) or string.find(msg, PAT.pullbackNoTank)
-        or string.find(msg, PAT.pullbackBusy) or string.find(msg, PAT.pullbackWorld) then
+        or string.find(msg, PAT.pullbackBusy) or string.find(msg, PAT.pullbackWorld)
+        or string.find(msg, PAT.pullbackFailed) or string.find(msg, PAT.pullbackAssignFailed) then
         if TB.SetStatus then TB.SetStatus(msg, "warn") end; handled = true
 
     elseif string.find(msg, PAT.noAI) or string.find(msg, PAT.botNotFound)

@@ -318,7 +318,7 @@ CreatePartyBar = function(parent, anchorLabel)
         end
     end); b4:SetPoint("LEFT", b3, "RIGHT", 4, 0)
 
-    local b5 = btn("Pullback", 68, "Ask a tank bot to pull your current target (.bot pullback)", function()
+    local b5 = btn("Pullback", 68, "Ask a tank bot to use its native pull-and-return strategy on your target (.bot pullback)", function()
         if not serverSupports("pullback") then
             TB.SetStatus("The server does not advertise pullback.", "warn")
         elseif hasCurrentTarget() then

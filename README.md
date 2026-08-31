@@ -16,7 +16,7 @@ Press buttons instead of `/.bot` commands. List your alts, see who is online/sta
 * **State** — `Offline → Starting → Online`, with `Queued`, `Working`, `Summoning…`, `Inviting…`, `Kicking…`, `Removing…`, `Unknown`, and `Failed` states plus `Random`/`AI` and group hints.
 * **Spawn / Despawn** — `.bot add` / `.bot remove` from an input box or per-row Spawn button (same-account check stays server-side).
 * **Per-bot quick** — `Summ`/`Spawn`, `Follow`, `Invite`/`Kick`, `X` Remove — one click per row.
-* **Party** — filtered `Summon` / `Follow` / `Invite` / `Kick` bulk actions plus target-aware `Pullback`.
+* **Party** — filtered `Summon` / `Follow` / `Invite` / `Kick` bulk actions plus target-aware `Pullback`, which dispatches the server's native pull-and-return strategy.
 * **Public controls** — selected-bot `Follow`, `Stay`, `Guard`, `Free`, `Attack`, `Ready`, `Formation`, and `Status` buttons; controls not advertised by `.bot help` stay disabled.
 * **Server tools** — explicit `Stats` / `Help` buttons, plus an `Advanced AI` box for the full transitional `.bot command` surface. Forwarded AI replies appear in the status line and remain in a short in-memory history.
 * **Nice looking & simple** — 520×520 dark parchment with themed **TortoiseBots Manager** title (gold + turtle green), draggable, `Esc` closes, remembers position, minimap button, search filter, tooltips.
