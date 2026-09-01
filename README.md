@@ -111,9 +111,18 @@ lua5.1 tests/regression.lua .
 * v0.2 — optional server seam `.bot listowned` (offline roster + level/class/spec) and addon-channel `TB:OWN|…` so you don't have to type alt names; distance/health column.
 * Future — strategy presets, per-bot talent/gear hint (requires module surface).
 
+## Project scope and affiliation
+
+This repository contains client-addon source code only. It does not distribute
+game-client binaries or extracted game data/assets, provide hosting, or operate
+a game service. It is not affiliated with or endorsed by Blizzard Entertainment
+or Turtle WoW. World of Warcraft and related marks belong to their respective
+owners.
+
 ## Licence
 
-MIT — see `LICENCE.md` in the module repo. Turtle client is proprietary — this addon only touches `Interface/AddOns`.
+MIT — see [LICENSE](LICENSE). The game client is proprietary; this addon only
+uses the client addon interface under `Interface/AddOns`.
 
 ## Links
 
