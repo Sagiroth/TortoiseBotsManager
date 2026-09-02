@@ -28,6 +28,9 @@ local function hasCurrentTarget()
     if UnitIsDead and UnitIsDead("target") then return false end
     return true
 end
+local function targetIsPlayer()
+    return not UnitIsPlayer or UnitIsPlayer("target")
+end
 
 local function targetName()
     if UnitExists and not UnitExists("target") then return nil end
@@ -38,6 +41,7 @@ end
 
 local function hasValidEnemyTarget()
     if not hasCurrentTarget() then return false end
+    if not targetIsPlayer() then return true end
     local name = targetName()
     if name and TB.GetRosterEntry then
         local entry = TB.GetRosterEntry(name)
@@ -50,7 +54,7 @@ end
 
 local function targetScope()
     local name = targetName()
-    if name and TB.GetRosterEntry then
+    if targetIsPlayer() and name and TB.GetRosterEntry then
         local entry = TB.GetRosterEntry(name)
         local serverState = entry and (entry.serverState or (entry.st and entry.st.serverState))
         if entry and serverState == "online" then
