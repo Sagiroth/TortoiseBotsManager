@@ -328,6 +328,15 @@ local function makeActionButton(parent, intent, width, x, y)
     return button
 end
 
+local function addRaidIcon(button, iconIndex)
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetWidth(14); icon:SetHeight(14)
+    icon:SetPoint("RIGHT", button, "RIGHT", -4, 0)
+    icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. iconIndex)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    button.raidIcon = icon
+end
+
 CreateActions = function(parent)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
@@ -357,6 +366,8 @@ CreateActions = function(parent)
     buttons.follow = makeActionButton(frame, "follow", 66, 66, rowY2)
     buttons.focusSkull = makeActionButton(frame, "focus skull", 92, 136, rowY2)
     buttons.ccMoon = makeActionButton(frame, "cc moon", 82, 232, rowY2)
+    addRaidIcon(buttons.focusSkull, 8)
+    addRaidIcon(buttons.ccMoon, 5)
     buttons.aoe = makeActionButton(frame, "aoe", 78, 318, rowY2)
     buttons.aoe:SetText("AoE Off")
 
