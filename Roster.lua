@@ -153,6 +153,8 @@ local function snapshotError(code, message)
 end
 
 local function commitSnapshot(rows)
+    local previousSelection = {}
+    for name in pairs(TB.rosterSelection) do previousSelection[name] = true end
     clearTable(state)
     clearTable(legacyState)
     local present = {}
@@ -164,6 +166,9 @@ local function commitSnapshot(rows)
         end
     end
     clearTable(TB.rosterSelection)
+    for name in pairs(previousSelection) do
+        if state[name] then TB.rosterSelection[name] = true end
+    end
     rosterSnapshotReady = true
     TB.rosterSnapshotReady = true
     rosterSnapshotCount = table.getn(rows)
