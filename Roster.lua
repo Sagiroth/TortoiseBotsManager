@@ -1,199 +1,473 @@
 -- TortoiseBotsManager/Roster.lua
--- Owner of two things:
---   1) persisted roster  (TortoiseBotsDB.roster)  — names you added, survives reload
---   2) live state        (private `state`)         — online/starting/offline per name, plus group
 --
--- Invariant: server is truth. `state` is optimistic and reconciled on every
--- `.bot list` reply. No caller outside this file touches `state` directly —
--- use GetState / GetDisplayRows / IsInGroup.
+-- The server-owned snapshot is the only roster authority.  SavedVariables are
+-- intentionally not consulted here: offline ownership rows arrive in the
+-- TBM:ROSTER_BEGIN/ROSTER/ROSTER_END stream and disappear only when the server
+-- says they do.  Legacy .bot list/status replies are retained as an online
+-- diagnostic until the first structured snapshot has completed.
 
 local TB = TortoiseBots
-local C = TB.C
+local C = TB.C or {}
+local S = C.STATUS or {
+    OFFLINE = "offline", OFFLINE_PENDING = "offline-pending", UNKNOWN = "unknown",
+    FAILED = "failed", QUEUED = "queued", STARTING = "starting", ONLINE = "online",
+    COMMANDING = "commanding", SUMMONING = "summoning", INVITING = "inviting",
+    KICKING = "kicking", REMOVING = "removing",
+}
+C.STATUS = S
 
--- ── private state ───────────────────────────────────────────────────────────
--- state[Name] = { online=bool, enteredWorld=bool, hasAI=bool, random=bool,
---                 status=STATUS.*, onlinePending=0|1, discovered=bool }
+-- state[name] is ephemeral client state layered over the latest server row.
+-- source == "snapshot" is displayable; other sources are compatibility
+-- diagnostics/optimistic lifecycle state and never create an offline roster row.
 local state = {}
-local groupMembers = {} -- [Name]=true if in player's party/raid
+local groupMembers = {}
+local groupKnown = false
+local rosterSnapshotReady = false
+local rosterSnapshotCount = 0
+local rosterSnapshotError = nil
+local receiving = nil
+local legacyState = {}
 
--- poll reconciliation: which names were seen in the current .bot list window
-local pollSeen = {}      -- [Name]=true for this poll
+-- Legacy list reconciliation remains useful when talking to an older module,
+-- but is deliberately not used once a structured snapshot is available.
+local pollSeen = {}
 local pollActive = false
-local pollGotAny = false -- did we receive any list/noBots line this window?
+local pollGotAny = false
 local pollNoReplyCount = 0
 
--- expose read-only snapshots for UI/tooltips (no mutation)
+TB.rosterSelection = TB.rosterSelection or {}
 TB._debugState = state
 TB._debugGroup = groupMembers
+TB.rosterSnapshotReady = false
 
-local function dbRoster()
-    if TortoiseBotsDB and TortoiseBotsDB.roster then return TortoiseBotsDB.roster end
-    return {}
+local function normalize(name)
+    return TB.NormalizeName and TB.NormalizeName(name or "") or name
+end
+
+local function now()
+    return (GetTime and GetTime()) or 0
+end
+
+local function clearTable(t)
+    for key in pairs(t) do t[key] = nil end
+end
+
+local function isOfflineValue(value)
+    value = string.lower(TB.Trim(value or ""))
+    return value == "" or value == "offline" or value == "logged out"
+        or value == "logout" or value == "removed" or value == "not online"
+end
+
+local function serverStatus(value)
+    local text = string.lower(TB.Trim(value or ""))
+    if isOfflineValue(text) then return S.OFFLINE, false, false end
+    if text == "starting" or text == "pending" or text == "loading" then
+        return S.STARTING, true, false
+    end
+    if text == "removing" or text == "stopping" or text == "logging out" then
+        return S.REMOVING, true, false
+    end
+    if text == "online" or text == "in world" or text == "in_world" then
+        return S.ONLINE, true, true
+    end
+    return S.UNKNOWN, false, false
+end
+
+local function displayState(st)
+    if not st then return false end
+    if st.source == "snapshot" then return true end
+    -- Before structured support is available, only live legacy diagnostics are
+    -- allowed through.  An offline client-side name never becomes a row.
+    return not rosterSnapshotReady and st.source == "legacy" and st.online == true
+end
+
+local function isControllable(st)
+    if not st or st.operation then return false end
+    if st.serverState then
+        return st.serverState == "online" or st.serverState == "in world"
+            or st.serverState == "in_world"
+    end
+    return st.online == true and st.status ~= S.UNKNOWN and st.status ~= S.FAILED
+        and st.status ~= S.STARTING and st.status ~= S.REMOVING
+end
+
+local function setSnapshotRow(row)
+    local name = normalize(row.name)
+    if not name then return nil end
+    local status, online, enteredWorld = serverStatus(row.serverState)
+    local classId = tonumber(row.classId) or 0
+    local location = TB.Trim(row.location or "")
+    if location == "" or location == "-" then location = nil end
+    -- The protocol promises pipe-safe fields.  Keep the UI safe even if an
+    -- older module violates that promise.
+    if location then location = string.gsub(location, "|", "/") end
+    return {
+        guid = tostring(row.guid or ""),
+        name = name,
+        classId = classId,
+        className = (C.CLASS_NAMES and C.CLASS_NAMES[classId]) or tostring(row.classId or "?"),
+        serverState = string.lower(TB.Trim(row.serverState or "")),
+        state = row.serverState,
+        group = row.group == true and true or false,
+        location = location,
+        source = "snapshot",
+        status = status,
+        online = online,
+        enteredWorld = enteredWorld,
+        hasAI = online and true or false,
+        onlinePending = 0,
+    }
+end
+
+local function splitPipe(text)
+    local out = {}
+    local start = 1
+    while true do
+        local at = string.find(text, "|", start, true)
+        if at then
+            table.insert(out, string.sub(text, start, at - 1))
+            start = at + 1
+        else
+            table.insert(out, string.sub(text, start))
+            break
+        end
+    end
+    return out
+end
+
+local function protocolFields(msg, prefix)
+    if string.sub(msg, 1, string.len(prefix)) ~= prefix then return nil end
+    return splitPipe(string.sub(msg, string.len(prefix) + 1))
+end
+
+local function snapshotError(code, message)
+    rosterSnapshotError = {
+        code = TB.Trim(code or "unknown"),
+        message = TB.Trim(message or "Roster request failed."),
+    }
+    receiving = nil
+    TB._pollPending = false
+    TB._pollQueued = false
+    TB.rosterSnapshotError = rosterSnapshotError
+    if TB.Refresh then TB.Refresh() end
+end
+
+local function commitSnapshot(rows)
+    local previousSelection = {}
+    for name in pairs(TB.rosterSelection) do previousSelection[name] = true end
+    clearTable(state)
+    clearTable(legacyState)
+    local present = {}
+    for _, row in ipairs(rows) do
+        local entry = setSnapshotRow(row)
+        if entry and not present[entry.name] then
+            state[entry.name] = entry
+            present[entry.name] = true
+        end
+    end
+    clearTable(TB.rosterSelection)
+    for name in pairs(previousSelection) do
+        if state[name] then TB.rosterSelection[name] = true end
+    end
+    rosterSnapshotReady = true
+    TB.rosterSnapshotReady = true
+    rosterSnapshotCount = table.getn(rows)
+    rosterSnapshotError = nil
+    TB.rosterSnapshotError = nil
+    TB._pollPending = false
+    TB._pollQueued = false
+    pollActive = false
+    if TB.Refresh then TB.Refresh() end
+end
+
+-- Called by Comms.lua for each structured line.  Return true for every
+-- TBM-prefixed line, including malformed lines, so legacy text handlers do not
+-- reinterpret a protocol error as a bot name.
+function TB.ParseRosterMessage(msg)
+    if not msg or msg == "" then return false end
+
+    local fields = protocolFields(msg, "TBM:ROSTER_BEGIN|")
+    if fields then
+        if table.getn(fields) ~= 1 or not string.find(fields[1], "^%d+$") then
+            snapshotError("malformed_begin", "Malformed roster snapshot.")
+            return true, "error"
+        end
+        receiving = { expected = tonumber(fields[1]), rows = {}, names = {} }
+        rosterSnapshotError = nil
+        TB.rosterSnapshotError = nil
+        return true, "begin", receiving.expected
+    end
+
+    fields = protocolFields(msg, "TBM:ROSTER|")
+    if fields then
+        if not receiving or table.getn(fields) ~= 6 then
+            snapshotError("malformed_row", "Malformed roster snapshot.")
+            return true, "error"
+        end
+        local guid, name, classId, serverState, group, location = unpack(fields)
+        if TB.Trim(guid) == "" or TB.Trim(name) == "" or not string.find(classId, "^%d+$")
+            or TB.Trim(serverState) == "" or (group ~= "0" and group ~= "1")
+            or TB.Trim(location) == "" then
+            snapshotError("malformed_row", "Malformed roster snapshot.")
+            return true, "error"
+        end
+        local normalized = normalize(name)
+        if not normalized or receiving.names[normalized] then
+            snapshotError("malformed_row", "Malformed roster snapshot.")
+            return true, "error"
+        end
+        receiving.names[normalized] = true
+        table.insert(receiving.rows, {
+            guid = guid,
+            name = name,
+            classId = classId,
+            serverState = serverState,
+            group = group == "1",
+            location = location,
+        })
+        return true, "row", normalized
+    end
+
+    if msg == "TBM:ROSTER_END" then
+        if not receiving then
+            snapshotError("unexpected_end", "Unexpected roster snapshot end.")
+            return true, "error"
+        end
+        local batch = receiving
+        receiving = nil
+        if table.getn(batch.rows) ~= batch.expected then
+            snapshotError("count_mismatch", "Incomplete roster snapshot.")
+            return true, "error"
+        end
+        commitSnapshot(batch.rows)
+        return true, "end", batch.expected
+    end
+
+    fields = protocolFields(msg, "TBM:ROSTER_ERROR|")
+    if fields then
+        if table.getn(fields) ~= 2 then
+            snapshotError("malformed_error", "Roster request failed.")
+        else
+            snapshotError(fields[1], fields[2])
+        end
+        return true, "error", rosterSnapshotError
+    end
+
+    return false
+end
+
+function TB.HasRosterSnapshot()
+    return rosterSnapshotReady
+end
+
+function TB.GetRosterSnapshotError()
+    return rosterSnapshotError
+end
+
+function TB.GetRosterSnapshot()
+    local rows = {}
+    for _, entry in ipairs(TB.GetDisplayRows and TB.GetDisplayRows("") or {}) do
+        table.insert(rows, entry)
+    end
+    return rows
 end
 
 -- ── lifecycle ───────────────────────────────────────────────────────────────
 function TB.InitRoster()
-    for name, _ in pairs(dbRoster()) do
-        if not state[name] then state[name] = { status = C.STATUS.OFFLINE, online = false } end
-    end
+    clearTable(state)
+    clearTable(groupMembers)
+    clearTable(TB.rosterSelection)
+    clearTable(legacyState)
+    clearTable(pollSeen)
+    rosterSnapshotReady = false
+    rosterSnapshotCount = 0
+    rosterSnapshotError = nil
+    receiving = nil
+    groupKnown = false
+    pollActive = false
+    pollGotAny = false
+    pollNoReplyCount = 0
+    TB.rosterSnapshotReady = false
+    TB.rosterSnapshotError = nil
 end
 
--- ── poll window ─────────────────────────────────────────────────────────────
-function TB.BeginPoll()
-    for k in pairs(pollSeen) do pollSeen[k]=nil end
+-- ── legacy poll window ──────────────────────────────────────────────────────
+function TB.BeginPoll(verb)
+    clearTable(pollSeen)
     pollActive = true
     pollGotAny = false
+    TB._pollVerb = verb or "roster"
 end
 
 function TB.MarkPollSeen(name)
-    name = TB.NormalizeName(name)
-    if name and pollActive then pollSeen[name]=true; pollGotAny=true end
+    name = normalize(name)
+    if name and pollActive then
+        pollSeen[name] = true
+        pollGotAny = true
+    end
 end
 
 function TB.MarkPollGotAny()
     pollGotAny = true
 end
 
--- Called ~1.2s after .bot list was sent, once replies should have arrived.
--- If we got at least one list/noBots line, any online name not seen is stale.
--- Requires 2 consecutive misses to go offline (avoids flicker on lag).
 function TB.ReconcilePoll()
     if not pollActive then return end
-    pollActive=false
-    if TB._pollPending ~= nil then TB._pollPending=false end
+    pollActive = false
+    if TB._pollPending ~= nil then TB._pollPending = false end
+    -- A structured snapshot commits itself at ROSTER_END; this path is only
+    -- for the compatibility .bot list stream.
+    if rosterSnapshotReady then return end
     if not pollGotAny then
         pollNoReplyCount = pollNoReplyCount + 1
         if pollNoReplyCount >= (C.POLL_NO_REPLY_LIMIT or 2) then
             for _, st in pairs(state) do
-                if st.online and not st.operation then st.status=C.STATUS.UNKNOWN end
+                if st.source == "legacy" and st.online and not st.operation then
+                    st.status = S.UNKNOWN
+                end
             end
         end
         if TB.Refresh then TB.Refresh() end
-        return -- no reply yet / lag; preserve truth as Unknown after repeated silence
+        return
     end
     pollNoReplyCount = 0
     for name, st in pairs(state) do
-        if st.online and not pollSeen[name] then
+        if st.source == "legacy" and st.online and not pollSeen[name] then
             st.onlinePending = (st.onlinePending or 0) + 1
             if st.onlinePending >= 2 then
-                st.online=false; st.status=C.STATUS.OFFLINE
-                st.enteredWorld=false; st.hasAI=false
-                if st.operation and st.operation.verb == "remove" then st.operation=nil end
+                st.online = false
+                st.status = S.OFFLINE
+                st.enteredWorld = false
+                st.hasAI = false
             else
-                if not (st.operation and st.operation.verb == "remove") then
-                    st.status=C.STATUS.OFFLINE_PENDING
-                end
+                st.status = S.OFFLINE_PENDING
             end
         end
     end
     if TB.Refresh then TB.Refresh() end
 end
 
--- ── roster (persisted) ──────────────────────────────────────────────────────
+-- ── compatibility roster APIs (never persisted) ────────────────────────────
 function TB.GetRosterNames()
-    local out, seen = {}, {}
-    for n in pairs(dbRoster()) do seen[n]=true end
-    for n, st in pairs(state) do if st.online and not seen[n] then seen[n]=true end end
-    for n in pairs(seen) do table.insert(out, n) end
+    local out = {}
+    for name, st in pairs(state) do
+        if displayState(st) then table.insert(out, name) end
+    end
     table.sort(out)
     return out
 end
 
-function TB.GetRosterCount() return TB.CountKeys(dbRoster()) end
+function TB.GetRosterCount()
+    if rosterSnapshotReady then return rosterSnapshotCount end
+    local count = 0
+    for _, st in pairs(state) do
+        if displayState(st) then count = count + 1 end
+    end
+    return count
+end
 
 function TB.AddToRoster(name, opts)
-    opts = opts or {}
-    name = TB.NormalizeName(name)
+    -- Legacy callers may still optimistically track a named add, but this is
+    -- never persisted and an offline diagnostic is intentionally undisplayable.
+    name = normalize(name)
     if not name then return false, "Invalid name." end
-    local db = TortoiseBotsDB
-    if not db.roster[name] then
-        db.roster[name] = { addedAt = time(), discovered = opts.discovered and true or false }
+    if not state[name] then
+        state[name] = {
+            name = name, source = "legacy", status = S.OFFLINE, online = false,
+            enteredWorld = false, hasAI = false,
+        }
     end
-    if not state[name] then state[name] = { status = C.STATUS.OFFLINE, online = false } end
-    state[name].discovered = opts.discovered
+    state[name].discovered = opts and opts.discovered and true or nil
+    legacyState[name] = state[name]
     return true
 end
 
 function TB.RemoveFromRoster(name)
-    name = TB.NormalizeName(name)
+    name = normalize(name)
     if not name then return end
-    if TortoiseBotsDB and TortoiseBotsDB.roster then TortoiseBotsDB.roster[name] = nil end
-    groupMembers[name] = nil
-    if TB.selected == name then TB.selected = nil end
-    if state[name] and not state[name].online then state[name] = nil end
+    local st = state[name]
+    if st and st.source ~= "snapshot" then state[name] = nil end
+    legacyState[name] = nil
+    TB.rosterSelection[name] = nil
 end
 
--- ── live state (ephemeral) ──────────────────────────────────────────────────
+-- ── live/diagnostic state ───────────────────────────────────────────────────
 function TB.GetState(name)
-    name = TB.NormalizeName(name)
+    name = normalize(name)
     return name and state[name] or nil
 end
 
-function TB.GetAllState() return state end -- for count; treat as read-only
+function TB.GetAllState()
+    return state
+end
 
 function TB.IsInGroup(name)
-    name = TB.NormalizeName(name)
-    return name and groupMembers[name] and true or false
+    name = normalize(name)
+    if not name then return false end
+    if groupMembers[name] then return true end
+    if groupKnown then return false end
+    local st = state[name]
+    return st and st.group == true or false
 end
 
 function TB.SetState(name, fields)
-    name = TB.NormalizeName(name)
+    name = normalize(name)
     if not name then return end
     fields = fields or {}
-    if not state[name] then state[name] = { status = C.STATUS.OFFLINE, online = false } end
-    for k, v in pairs(fields) do state[name][k] = v end
-    if fields.online == false then
-        state[name].enteredWorld = false
-        state[name].hasAI = false
-        state[name].random = nil
+    if not state[name] then
+        state[name] = { name = name, source = "legacy", status = S.OFFLINE, online = false }
+        legacyState[name] = state[name]
     end
-    if fields.online then
-        if TortoiseBotsDB and TortoiseBotsDB.roster and not TortoiseBotsDB.roster[name] then
-            TB.AddToRoster(name, { discovered = true })
-        end
+    local st = state[name]
+    for key, value in pairs(fields) do st[key] = value end
+    if fields.serverState then
+        st.status, st.online, st.enteredWorld = serverStatus(fields.serverState)
+    elseif fields.online == false then
+        st.enteredWorld = false
+        st.hasAI = false
+        st.random = nil
+    elseif fields.online then
+        if not st.status or st.status == S.OFFLINE then st.status = S.ONLINE end
+        st.enteredWorld = fields.enteredWorld ~= false
     end
+    if st.source ~= "snapshot" then legacyState[name] = st end
 end
 
 local function operationTimeout(verb)
     if verb == "add" then return C.ADD_TIMEOUT or 30 end
-    if verb == "remove" then return C.REMOVE_TIMEOUT or 15 end
+    if verb == "remove" or verb == "logout" then return C.REMOVE_TIMEOUT or 15 end
     return C.ACTION_TIMEOUT or 8
 end
 
 function TB.BeginOperation(name, verb, queued)
-    name = TB.NormalizeName(name)
+    name = normalize(name)
     if not name or not verb then return nil end
-    if not state[name] then state[name] = { status = C.STATUS.OFFLINE, online = false } end
-    local now = (GetTime and GetTime()) or 0
-    local operation = {
-        verb = verb,
-        queued = queued and true or false,
-        startedAt = now,
-        deadline = now + operationTimeout(verb),
-    }
-    state[name].operation = operation
-    state[name].lastError = nil
-    if verb ~= "command" then
-        state[name].pendingAI = nil
-        state[name].pendingAIUntil = nil
+    if not state[name] then
+        state[name] = { name = name, source = "legacy", status = S.OFFLINE, online = false }
+        legacyState[name] = state[name]
     end
+    local st = state[name]
+    local operation = {
+        verb = verb, queued = queued and true or false, startedAt = now(),
+        deadline = now() + operationTimeout(verb),
+    }
+    st.operation = operation
+    st.lastError = nil
     if verb == "add" then
-        state[name].online = false
-        state[name].enteredWorld = false
-        state[name].hasAI = false
-        state[name].status = queued and C.STATUS.QUEUED or C.STATUS.STARTING
+        st.online = false; st.enteredWorld = false; st.hasAI = false
+        st.status = queued and S.QUEUED or S.STARTING
     elseif queued then
-        state[name].status = C.STATUS.QUEUED
-    elseif verb == "remove" then
-        state[name].status = C.STATUS.REMOVING
+        st.status = S.QUEUED
+    elseif verb == "remove" or verb == "logout" then
+        st.status = S.REMOVING
     elseif verb == "summon" then
-        state[name].status = C.STATUS.SUMMONING
+        st.status = S.SUMMONING
     elseif verb == "invite" then
-        state[name].status = C.STATUS.INVITING
+        st.status = S.INVITING
     elseif verb == "uninvite" then
-        state[name].status = C.STATUS.KICKING
+        st.status = S.KICKING
     elseif verb ~= "status" then
-        state[name].status = C.STATUS.COMMANDING
+        st.status = S.COMMANDING
     end
     return operation
 end
@@ -203,9 +477,6 @@ function TB.IsOperationPending(name, verb)
     return st and st.operation and (not verb or st.operation.verb == verb) or false
 end
 
--- Some server actions acknowledge receipt before the gameplay transition is
--- complete. Clear the command acknowledgement without presenting that as a
--- completed gameplay action; the caller keeps an explicit transient status.
 function TB.AcknowledgeOperation(name, verb)
     local st = TB.GetState(name)
     if not st or not st.operation or (verb and st.operation.verb ~= verb) then return false end
@@ -218,148 +489,199 @@ function TB.CompleteOperation(name, verb, success, message)
     local st = TB.GetState(name)
     if not st or (st.operation and verb and st.operation.verb ~= verb) then return false end
     if st.operation then st.operation = nil end
-    if verb == "command" then
-        st.pendingAI = nil
-        st.pendingAIUntil = nil
-    end
     if success then
         st.lastError = nil
-        if st.online then st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
-        else st.status = C.STATUS.OFFLINE end
+        if st.online then st.status = st.enteredWorld and S.ONLINE or S.STARTING
+        else st.status = S.OFFLINE end
     else
         st.lastError = message or "Command failed."
-        if verb == "remove" and st.online then st.status = C.STATUS.ONLINE
-        elseif st.online then st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
-        else st.status = C.STATUS.OFFLINE end
+        if (verb == "remove" or verb == "logout") and st.online then st.status = S.ONLINE
+        elseif st.online then st.status = st.enteredWorld and S.ONLINE or S.STARTING
+        else st.status = S.OFFLINE end
     end
     if TB.Refresh then TB.Refresh() end
     return true
 end
 
-function TB.UpdateStateTimers(now)
-    now = now or ((GetTime and GetTime()) or 0)
+function TB.UpdateStateTimers(current)
+    current = current or now()
     local changed = false
     local timedOutName
     for name, st in pairs(state) do
-        if st.summonPendingUntil and now >= st.summonPendingUntil then
+        if st.summonPendingUntil and current >= st.summonPendingUntil then
             st.summonPendingUntil = nil
             if not st.operation and st.online then
-                st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+                st.status = st.enteredWorld and S.ONLINE or S.STARTING
                 changed = true
             end
         end
-        if st.pendingAI and st.pendingAIUntil and now >= st.pendingAIUntil then
-            st.pendingAI = nil
-            st.pendingAIUntil = nil
-            changed = true
+        if st.pendingAI and st.pendingAIUntil and current >= st.pendingAIUntil then
+            st.pendingAI = nil; st.pendingAIUntil = nil; changed = true
         end
         local operation = st.operation
-        if operation and now >= operation.deadline then
+        if operation and current >= operation.deadline then
             st.operation = nil
-            if operation.verb == "command" then
-                st.pendingAI = nil
-                st.pendingAIUntil = nil
-            end
             st.lastError = operation.verb .. " timed out."
             if operation.verb == "add" then
-                st.online = false
-                st.enteredWorld = false
-                st.hasAI = false
-                st.status = C.STATUS.FAILED
+                st.online = false; st.enteredWorld = false; st.hasAI = false; st.status = S.FAILED
             elseif operation.verb == "status" then
-                st.status = C.STATUS.UNKNOWN
-            elseif operation.verb == "remove" then
-                st.status = st.online and C.STATUS.UNKNOWN or C.STATUS.OFFLINE
+                st.status = S.UNKNOWN
+            elseif operation.verb == "remove" or operation.verb == "logout" then
+                st.status = st.online and S.UNKNOWN or S.OFFLINE
             elseif st.online then
-                st.status = st.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+                st.status = st.enteredWorld and S.ONLINE or S.STARTING
             else
-                st.status = C.STATUS.OFFLINE
+                st.status = S.OFFLINE
             end
             timedOutName = timedOutName or name
             changed = true
         end
     end
-    if timedOutName and TB.SetStatus then
-        TB.SetStatus(timedOutName .. ": operation timed out.", "warn")
-    end
+    if timedOutName and TB.SetStatus then TB.SetStatus(timedOutName .. ": operation timed out.", "warn") end
     if changed and TB.Refresh then TB.Refresh() end
 end
 
 function TB.ConfirmSeen(name, info)
-    -- info = { enteredWorld, random, hasAI }
-    name = TB.NormalizeName(name)
+    name = normalize(name)
     if not name then return end
+    info = info or {}
     local st = state[name]
-    if not st then st = {}; state[name] = st end
-    st.online = true; st.onlinePending = 0
-    st.enteredWorld = info.enteredWorld
-    st.random       = info.random
-    st.hasAI        = info.hasAI
-    local operation = st.operation
-    if operation and operation.verb == "add" and info.enteredWorld then
-        st.operation = nil
-        st.lastError = nil
-        st.status = C.STATUS.ONLINE
-    elseif operation and operation.verb == "remove" then
-        st.status = C.STATUS.REMOVING
-    elseif operation and operation.verb == "summon" then
-        st.status = C.STATUS.SUMMONING
-    elseif operation and operation.verb == "invite" then
-        st.status = C.STATUS.INVITING
-    elseif operation then
-        -- A list snapshot confirms presence, but not completion of a named
-        -- action. Keep the optimistic state until its matching reply arrives
-        -- or the operation timer expires.
-        st.status = st.status or (info.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING)
-    else
-        st.lastError = nil
-        st.status = info.enteredWorld and C.STATUS.ONLINE or C.STATUS.STARTING
+    if not st then
+        if rosterSnapshotReady then return end
+        st = { name = name, source = "legacy" }
+        state[name] = st
+        legacyState[name] = st
     end
+    st.online = true
+    st.onlinePending = 0
+    st.enteredWorld = info.enteredWorld ~= false
+    st.random = info.random
+    st.hasAI = info.hasAI
+    st.serverState = st.enteredWorld and "online" or "starting"
+    st.status = st.enteredWorld and S.ONLINE or S.STARTING
     TB.MarkPollSeen(name)
-    TB.AddToRoster(name, { discovered = true })
 end
 
--- Sorted view for UI
+-- ── server-backed roster rows ───────────────────────────────────────────────
 function TB.GetDisplayRows(filter)
     filter = string.lower(filter or "")
     local rows = {}
-    local seen = {}
-    for _, n in ipairs(TB.GetRosterNames()) do seen[n]=true end
-    for n, st in pairs(state) do if st.online then seen[n]=true end end
-
-    for name in pairs(seen) do
-        if filter == "" or string.find(string.lower(name), filter, 1, true) then
-            local st = state[name] or { status = C.STATUS.OFFLINE, online = false }
-            table.insert(rows, { name=name, st=st, inGroup = groupMembers[name] and true or false })
+    for name, st in pairs(state) do
+        if displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true)) then
+            table.insert(rows, {
+                name = name,
+                guid = st.guid,
+                classId = st.classId,
+                className = st.className,
+                state = st.state,
+                serverState = st.serverState,
+                location = st.location,
+                st = st,
+                inGroup = TB.IsInGroup(name),
+            })
         end
     end
-    table.sort(rows, function(a,b)
+    table.sort(rows, function(a, b)
         if a.st.online ~= b.st.online then return a.st.online end
         return a.name < b.name
     end)
     return rows
 end
 
--- ── group tracking (authoritative, not inferred) ────────────────────────────
+function TB.GetRosterEntry(name)
+    name = normalize(name)
+    local st = name and state[name] or nil
+    if not st or st.source ~= "snapshot" then return nil end
+    return st
+end
+
+-- ── checkbox selection and lifecycle eligibility ────────────────────────────
+function TB.ClearRosterSelection()
+    clearTable(TB.rosterSelection)
+    if TB.Refresh then TB.Refresh() end
+end
+
+function TB.IsRosterSelected(name)
+    name = normalize(name)
+    return name and TB.rosterSelection[name] and true or false
+end
+
+function TB.ToggleRosterSelection(name, selected)
+    name = normalize(name)
+    local st = name and state[name] or nil
+    if not st or st.source ~= "snapshot" then return false end
+    if selected == nil then selected = not TB.rosterSelection[name] end
+    if selected then TB.rosterSelection[name] = true else TB.rosterSelection[name] = nil end
+    if TB.Refresh then TB.Refresh() end
+    return selected and true or false
+end
+
+function TB.GetSelectedRosterNames()
+    local names = {}
+    for name in pairs(TB.rosterSelection) do
+        local st = state[name]
+        if st and st.source == "snapshot" then table.insert(names, name) end
+    end
+    table.sort(names)
+    return names
+end
+
+local function lifecycleEligible(name, action)
+    local st = state[name]
+    if not st or st.source ~= "snapshot" or st.operation then return false end
+    local live = isControllable(st)
+    local grouped = TB.IsInGroup(name)
+    action = string.lower(TB.Trim(action or ""))
+    if action == "login" or action == "add" then return not live and st.serverState == "offline" end
+    if action == "logout" or action == "remove" then return live end
+    if action == "invite" then return live and not grouped end
+    if action == "kick" or action == "uninvite" then return live and grouped end
+    if action == "summon" then return live end
+    return false
+end
+
+function TB.IsRosterActionEligible(name, action)
+    name = normalize(name)
+    return name and lifecycleEligible(name, action) or false
+end
+
+function TB.GetEligibleRosterNames(action)
+    local names = {}
+    for _, name in ipairs(TB.GetSelectedRosterNames()) do
+        if lifecycleEligible(name, action) then table.insert(names, name) end
+    end
+    return names
+end
+
+-- Friendly aliases for callers that describe the same contextual bottom bar.
+TB.GetEligibleSelection = TB.GetEligibleRosterNames
+TB.GetSelectedNames = TB.GetSelectedRosterNames
+
+-- ── group tracking (client group events refine snapshot membership) ──────────
 local gf = CreateFrame("Frame", "TortoiseBotsManagerGroupWatcher")
 gf:RegisterEvent("GROUP_ROSTER_UPDATE")
 gf:RegisterEvent("PARTY_MEMBERS_CHANGED")
 gf:RegisterEvent("PLAYER_ENTERING_WORLD")
 gf:SetScript("OnEvent", function()
     local members = {}
-    for i = 1, GetNumPartyMembers() do
-        local n = UnitName("party"..i)
-        if n and n ~= "" then members[TB.NormalizeName(n) or n] = true end
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    for i = 1, partyCount do
+        local n = UnitName("party" .. i)
+        if n and n ~= "" then members[normalize(n) or n] = true end
     end
-    for i = 1, GetNumRaidMembers() do
-        local n = UnitName("raid"..i)
-        if n and n ~= "" then members[TB.NormalizeName(n) or n] = true end
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    for i = 1, raidCount do
+        local n = UnitName("raid" .. i)
+        if n and n ~= "" then members[normalize(n) or n] = true end
     end
-    local selfName = UnitName("player")
-    if selfName then members[TB.NormalizeName(selfName) or selfName] = true end
-    for k in pairs(groupMembers) do groupMembers[k]=nil end
-    for k,v in pairs(members) do groupMembers[k]=v end
+    local selfName = UnitName and UnitName("player") or nil
+    if selfName then members[normalize(selfName) or selfName] = true end
+    clearTable(groupMembers)
+    for key, value in pairs(members) do groupMembers[key] = value end
+    groupKnown = true
+
     for name, st in pairs(state) do
+        if st.source == "snapshot" then st.group = members[name] and true or false end
         if st.operation and st.operation.verb == "invite" and members[name] then
             TB.CompleteOperation(name, "invite", true, "Group invite accepted.")
         elseif st.operation and st.operation.verb == "uninvite" and not members[name] then

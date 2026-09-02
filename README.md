@@ -1,10 +1,10 @@
 # TortoiseBots Manager
 
-Lightweight, nice-looking **Vanilla 1.12 (11200)** addon to control your owned bots on [Tortoise WoW 1.18.1](https://github.com/Penqle/tortoise-wow) — without typing in chat.
+Lightweight, nice-looking **Vanilla 1.12 (11200)** addon for the Actions and Roster surfaces of [Tortoise WoW 1.18.1](https://github.com/Penqle/tortoise-wow).
 
-Press buttons instead of `/.bot` commands. List your alts, see who is online/starting/offline, and summon / follow / stay / group / pull.
+Actions use normal WoW targeting for gameplay intent. Roster is a server-owned lifecycle list for logging bots in/out and managing group membership; no combat controls are attached to rows.
 
-> **Requires the server-side module:** [tortoise-wow-stack/TortoiseBots](https://github.com/tortoise-wow-stack/TortoiseBots) (`modules/TortoiseBots`). The addon is a pure UI front-end — it sends `.bot …` chat commands and parses native system plus bot whisper replies. It does not work without the module.
+> **Requires the server-side module:** [tortoise-wow-stack/TortoiseBots](https://github.com/tortoise-wow-stack/TortoiseBots) (`modules/TortoiseBots`). The addon sends `.bot` transport commands, consumes structured `TBM:` responses, and keeps legacy command compatibility.
 
 ![TortoiseBots Manager panel](https://raw.githubusercontent.com/tortoise-wow-stack/TortoiseBotsManager/main/.github/preview.png)
 
@@ -12,15 +12,13 @@ Press buttons instead of `/.bot` commands. List your alts, see who is online/sta
 
 ## Features
 
-* **Roster you own** — remembers your alt names (same account) via `SavedVariables`. Auto-discovers bots seen in `.bot list`.
-* **State** — `Offline → Starting → Online`, with `Queued`, `Working`, `Summoning…`, `Inviting…`, `Kicking…`, `Removing…`, `Unknown`, and `Failed` states plus `Random`/`AI` and group hints.
-* **Spawn / Despawn** — `.bot add` / `.bot remove` from an input box or per-row Spawn button (same-account check stays server-side).
-* **Per-bot quick** — `Summ`/`Spawn`, `Follow`, `Invite`/`Kick`, `X` Remove — one click per row.
-* **Party** — filtered `Summon` / `Follow` / `Invite` / `Kick` bulk actions plus target-aware `Pullback`, which dispatches the server's native pull-and-return strategy.
-* **Public controls** — selected-bot `Follow`, `Stay`, `Guard`, `Free`, `Attack`, `Ready`, `Formation`, and `Status` buttons; controls not advertised by `.bot help` stay disabled.
-* **Server tools** — explicit `Stats` / `Help` buttons, plus an `Advanced AI` box for the full transitional `.bot command` surface. Forwarded AI replies appear in the status line and remain in a short in-memory history.
-* **Nice looking & simple** — 520×520 dark parchment with themed **TortoiseBots Manager** title (gold + turtle green), draggable, `Esc` closes, remembers position, minimap button, search filter, tooltips.
-* **Correct** — throttled sends (350 ms), throttled polls (5 s hard, 8 s panel / 20 s hidden), operation timeouts, stale-reply protection, 2-poll anti-flicker for offline, right-click row to forget offline, and server checks honoured (combat/taxi/teleport/group).
+* **Actions** — `Attack`, `Stop`, `Pull`, `Pullback`, `Come`, `Stay`, `Follow`, `Focus Skull`, `CC Moon`, and `AoE`.
+* **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
+* **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available.
+* **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
+* **Quiet transport** — addon command echoes are locally filtered when the client supports message filters, and new gameplay requests return one compact structured result instead of per-bot chat.
+* **Compact UI** — `Actions` is the default tab; `Roster` has checkbox rows and no per-row combat controls. The draggable panel remembers position and supports `Esc` close, minimap toggle, search, and tooltips.
+* **Compatibility** — legacy `.bot` commands and `.bot command` remain available server-side; the primary UI does not expose the advanced command console.
 
 ## Companion Module
 
@@ -50,7 +48,7 @@ No module → addon loads but every action replies “TortoiseBots module not lo
    ```
    The folder must be named `TortoiseBotsManager` (so the `.toc` is found).
 2. Restart the client fully (Vanilla loads addons at startup).
-3. Log in — you should see `TortoiseBots Manager v0.1.2 loaded. /tbm to open.` in chat.
+3. Log in — you should see `TortoiseBots Manager v1.1.0 loaded. /tbm to open.` in chat.
 
 ### From this repo
 
@@ -64,21 +62,18 @@ ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interfa
 ## Use
 
 * `/tbm` (primary) — toggle panel. Aliases `/tb` / `/tbot` / `/tortoise` still work.
-* `/tbm list` — force poll, `/tbm help`, `/tbm resetpos`.
-* **Minimap button** — left-click toggle (`/tbm`), right-click refresh, drag to move (80 px ring).
-* **Add bot** — type exact alt name (same account) → `Spawn`. Server replies `queued for login; it will follow you`.
-* **Row** — left-click select, right-click (when offline) forget. Per-row: `Summ`/`Spawn`, `Follow`, `Invite`/`Kick`, `X` (despawn).
-* **Party bar** — bulk actions apply to filtered rows; pending, unknown, failed, and inapplicable bots are skipped. `Pullback` uses your current living target and lets the server choose an eligible tank.
-* **Server tools** — `Stats` and `Help` send `.bot stats` and `.bot help`; help discovery also gates optional public controls.
-* **Selected bar** — click a row, then use the public movement/combat/status buttons. `Attack` and `Pullback` require a living target. `Advanced AI` forwards a mature Playerbot command and shows its reply when the bot whispers back.
-* **Search** — filters by substring.
+* `/tbm list` — force a server roster refresh. `/tbm help` and `/tbm resetpos` remain available.
+* **Actions** — use normal WoW target selection. With an enemy target, `Attack`, `Pull`, and `Pullback` operate on the party; with an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
+* **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows.
+* **Focus / CC** — mark an enemy with the normal Skull or Moon raid icon, then press `Focus Skull` or `CC Moon`. Target your owned bot before `CC Moon` to request that executor specifically.
+* **Search** — filters the server snapshot by name.
 
 ## How it works (edge cases)
 
-* `CHAT_MSG_SYSTEM` scraping is lenient — matches list/status lines and native action replies. Advanced `.bot command` responses are accepted from `CHAT_MSG_WHISPER` and `CHAT_MSG_ADDON` while a command is pending.
-* All precondition checks (alive/combat/taxi/teleporting/group-full) are re-checked server-side; the addon disables buttons early for UX and treats matching server replies as truth.
-* Named operations time out instead of remaining permanently optimistic. A late reply cannot overwrite a newer operation, and repeated silent list polls show `Unknown` rather than falsely claiming the bot is online.
-* Rate: one `.bot` per 350 ms, one `list` per 5 s. Bulk actions queue eligible work and skip pending operations.
+* `TBM:ROSTER_*` and `TBM:ACTION_*` system messages are parsed as structured state; legacy human-readable responses remain a compatibility fallback.
+* Server-side ownership, Headless lifecycle, target validation, executor selection, and mature PlayerbotAI behavior are authoritative. The client only disables obviously unavailable controls.
+* Roster lifecycle operations remain individually acknowledged and time out instead of staying optimistic forever. Gameplay never loops over roster selection.
+* Normal `.bot` command echoes are hidden locally when `ChatFrame_AddMessageEventFilter` is available; critical system errors and compact structured results stay visible.
 
 ## Requirements
 
@@ -91,10 +86,10 @@ ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interfa
 TortoiseBotsManager.toc
 Constants.lua   — geometry, colors, delays, status
 Utils.lua       — Trim, NormalizeName, backdrop, Status helpers
-Core.lua        — slash (/tbm), throttle, poll, SavedVariables
-Roster.lua      — roster + live state + group + poll reconcile
-Comms.lua       — build .bot and parse system messages
-UI.lua          — 520×520 panel, rows, public controls, Party & Selected bars
+Core.lua        — slash commands, throttled transport, roster polling, SavedVariables UI preferences
+Roster.lua      — authoritative snapshot, live state, group membership, checkbox eligibility
+Comms.lua       — structured `TBM:` responses plus legacy command parsing
+UI.lua          — compact Actions/Roster tabs and contextual lifecycle bar
 Minimap.lua     — draggable minimap button
 ```
 
@@ -108,8 +103,7 @@ lua5.1 tests/regression.lua .
 
 ## Roadmap
 
-* v0.2 — optional server seam `.bot listowned` (offline roster + level/class/spec) and addon-channel `TB:OWN|…` so you don't have to type alt names; distance/health column.
-* Future — strategy presets, per-bot talent/gear hint (requires module surface).
+* Future — richer structured acknowledgements, configurable raid marks, strategy presets, and role-aware filters after dungeon playtest.
 
 ## Project scope and affiliation
 

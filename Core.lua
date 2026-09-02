@@ -1,8 +1,8 @@
 -- TortoiseBotsManager/Core.lua
 -- Responsibilities:
---   * SavedVariables init + migration
+--   * UI-preference SavedVariables init + migration
 --   * Throttled SendChatMessage queue for ".bot …"
---   * Poll orchestration (.bot list)
+--   * Authoritative roster poll orchestration (.bot roster)
 --   * Slash commands (/tbm primary, /tb /tbot aliases)
 --   * Lifecycle (ADDON_LOADED, PLAYER_ENTERING_WORLD)
 --
@@ -15,29 +15,51 @@ local C = TB.C or {} -- from Constants.lua (defensive fallback)
 TB.version = (C and C.VERSION) or TB.version or "0.1.0"
 TB.ADDON_NAME = "TortoiseBotsManager"
 
--- ── SavedVariables ──────────────────────────────────────────────────────────
+-- ── SavedVariables (UI preferences only) ─────────────────────────────────────
 local function initDB()
     if not TortoiseBotsDB then TortoiseBotsDB = {} end
     local db = TortoiseBotsDB
 
-    if not db.roster  then db.roster  = {} end -- [Name] = { addedAt, discovered }
-    -- C may be nil if Constants.lua failed to load; use hard defaults
-    local defMinimap = (C and C.MINIMAP_DEFAULT) or { x = 52, y = 52 }
-    if not db.minimap then db.minimap = { x = defMinimap.x, y = defMinimap.y } end
-    if not db.frame   then db.frame   = { point = "CENTER", rpoint = "CENTER", x = 0, y = 15 } end
-    if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
-    if db.autoPoll == nil  then db.autoPoll = true end
-    -- migration: old list form
-    if db.rosterList then
-        for _, n in ipairs(db.rosterList) do
-            local key = TB.NormalizeName(n)
-            if key and not db.roster[key] then db.roster[key] = { addedAt = time() } end
-        end
-        db.rosterList = nil
-    end
+    -- Roster ownership is durable on the server now.  Drop old local roster
+    -- shapes so they cannot accidentally become authoritative after reload.
+    db.roster = nil
+    db.rosterList = nil
 
-    if not TortoiseBotsCharDB then TortoiseBotsCharDB = {} end
-    if not TortoiseBotsCharDB.recent then TortoiseBotsCharDB.recent = {} end
+    -- C may be nil if Constants.lua failed to load; use hard defaults.
+    local defMinimap = (C and C.MINIMAP_DEFAULT) or { x = 52, y = 52 }
+    if type(db.minimap) ~= "table" then db.minimap = {} end
+    if db.minimap.x == nil then db.minimap.x = defMinimap.x end
+    if db.minimap.y == nil then db.minimap.y = defMinimap.y end
+    if type(db.frame) ~= "table" then db.frame = {} end
+    if not db.frame.point then db.frame.point = "CENTER" end
+    if not db.frame.rpoint then db.frame.rpoint = "CENTER" end
+    if db.frame.x == nil then db.frame.x = 0 end
+    if db.frame.y == nil then db.frame.y = 15 end
+    if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
+    if db.autoPoll == nil then db.autoPoll = true end
+    if db.activeTab ~= "actions" and db.activeTab ~= "roster" then
+        db.activeTab = "actions"
+    end
+end
+
+-- The server still consumes normal chat commands on this client version.
+-- Hide transport echoes and machine-readable TBM payloads when the client
+-- exposes the standard message filter API; human critical errors stay visible.
+local function installBotCommandChatFilter()
+    if TB._chatFilterInstalled or not ChatFrame_AddMessageEventFilter then return end
+    local function filter(_, _, message)
+        if message and (string.find(message, "^%.bot%s") or string.find(message, "^TBM:")) then
+            return true
+        end
+    end
+    for _, eventName in ipairs({
+        "CHAT_MSG_SYSTEM", "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY",
+        "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_CHANNEL",
+        "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
+    }) do
+        ChatFrame_AddMessageEventFilter(eventName, filter)
+    end
+    TB._chatFilterInstalled = true
 end
 
 -- ── Throttled send queue ────────────────────────────────────────────────────
@@ -77,9 +99,10 @@ function TB.SendBotCommand(cmd, opts)
         TB.lastCommand   = cmd
         TB.lastCommandAt = lastSend
         if TB.OnCommandSent then TB.OnCommandSent(cmd) end
-        if string.lower(string.gsub(cmd, "%s+.*", "")) == "list" then
+        local verb = string.lower(string.gsub(cmd, "%s+.*", ""))
+        if verb == "roster" or verb == "list" then
             TB._lastPoll = lastSend
-            if TB.OnListCommandSent then TB.OnListCommandSent() end
+            if TB.OnListCommandSent then TB.OnListCommandSent(verb) end
         end
         return true
     else
@@ -88,6 +111,14 @@ function TB.SendBotCommand(cmd, opts)
         ensureQueueFrame()
         return false
     end
+end
+
+-- One gameplay intent is one server request.  Roster selection never enters
+-- this path; the server resolves dynamic scope from the normal WoW target.
+function TB.SendActionIntent(intent)
+    intent = TB.Trim(intent or "")
+    if intent == "" then return false end
+    return TB.SendBotCommand("action " .. intent)
 end
 
 function TB.RequestServerCapabilities()
@@ -125,24 +156,26 @@ local function scheduleReconcile()
     if pendingReconcileFrame.Show then pendingReconcileFrame:Show() end
 end
 
--- Called only after a list command has actually left the client, including
--- commands released from the throttle queue.
+-- Called only after a roster/list command has actually left the client,
+-- including commands released from the throttle queue.
 TB._pollPending = TB._pollPending or false
 TB._pollQueued = false
-TB.OnListCommandSent = function()
+TB.OnListCommandSent = function(verb)
     TB._pollQueued = false
     TB._pollPending = true
-    if TB.BeginPoll then TB.BeginPoll() end
+    if TB.BeginPoll then TB.BeginPoll(verb) end
     scheduleReconcile()
 end
 
 function TB.PollList(force)
     local now = (GetTime and GetTime()) or 0
-    local throttle = (C and C.LIST_THROTTLE) or 5
+    local throttle = (C and (C.ROSTER_THROTTLE or C.LIST_THROTTLE)) or 5
     if TB._pollPending or TB._pollQueued then return false end
-    if (TB._lastPoll or 0) > 0 and (now - TB._lastPoll) < throttle then return false end
+    if not force and (TB._lastPoll or 0) > 0 and (now - TB._lastPoll) < throttle then
+        return false
+    end
     TB._pollQueued = true
-    local sent = TB.SendBotCommand("list")
+    local sent = TB.SendBotCommand("roster")
     return sent
 end
 
@@ -179,7 +212,7 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
         TB.Print("Commands: /tbm — toggle, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         return
     elseif msg == "list" then
-        TB.PollList(true); TB.Print("Polling .bot list…"); return
+        TB.PollList(true); TB.Print("Polling server roster…"); return
     elseif msg == "resetpos" then
         TortoiseBotsDB.frame = { point = "CENTER", rpoint = "CENTER", x = 0, y = 15 }
         if TB.frame then TB.frame:ClearAllPoints(); TB.frame:SetPoint("CENTER", UIParent, "CENTER", 0, 15) end
@@ -200,6 +233,7 @@ ef:RegisterEvent("PLAYER_LOGIN")
 ef:SetScript("OnEvent", function()
     if event == "ADDON_LOADED" and (arg1 == "TortoiseBotsManager" or arg1 == "TortoiseBots") then
         initDB()
+        installBotCommandChatFilter()
         if TB.InitRoster  then TB.InitRoster()  end
         if TB.InitComms   then TB.InitComms()   end
         if TB.InitUI      then TB.InitUI()      end

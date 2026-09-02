@@ -77,6 +77,98 @@ local PAT = {
 local serverCommands = {}
 local serverCapabilitiesKnown = false
 local responseHistory = {}
+local function splitProtocol(text)
+    local fields = {}
+    local start = 1
+    while true do
+        local at = string.find(text, "|", start, true)
+        if at then
+            table.insert(fields, string.sub(text, start, at - 1))
+            start = at + 1
+        else
+            table.insert(fields, string.sub(text, start))
+            break
+        end
+    end
+    return fields
+end
+
+local function actionLabel(intent)
+    if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
+    return intent
+end
+
+local function setActionAck(fields)
+    if table.getn(fields) ~= 4 then return nil end
+    local intent, scope, count, executor = fields[1], fields[2], fields[3], fields[4]
+    if TB.Trim(intent) == "" or (scope ~= "party" and string.sub(scope, 1, 4) ~= "bot:")
+        or not string.find(count, "^%d+$") or TB.Trim(executor) == "" then
+        return nil
+    end
+    if string.sub(scope, 1, 4) == "bot:" and TB.Trim(string.sub(scope, 5)) == "" then return nil end
+    return {
+        intent = intent,
+        scope = scope,
+        count = tonumber(count),
+        executor = executor,
+    }
+end
+
+local function setActionError(fields)
+    if table.getn(fields) ~= 3 or TB.Trim(fields[1]) == "" or TB.Trim(fields[2]) == "" then
+        return nil
+    end
+    return { intent = fields[1], code = fields[2], message = fields[3] }
+end
+
+-- Parse the machine-readable gameplay response.  This is public so the Lua
+-- harness and alternate front ends can consume packets without scraping text.
+function TB.ParseActionMessage(msg)
+    if not msg or msg == "" then return false end
+    local ackPrefix = "TBM:ACTION_ACK|"
+    if string.sub(msg, 1, string.len(ackPrefix)) == ackPrefix then
+        local packet = setActionAck(splitProtocol(string.sub(msg, string.len(ackPrefix) + 1)))
+        if not packet then
+            TB.lastActionError = { intent = "unknown", code = "malformed", message = "Malformed action response." }
+            if TB.SetStatus then TB.SetStatus("Malformed action response.", "warn") end
+            return true, "error", TB.lastActionError
+        end
+        TB.lastActionAck = packet
+        TB.lastActionError = nil
+        if packet.intent == "aoe" then
+            TB.aoePending = false
+            if packet.executor == "on" or packet.executor == "off" then
+                TB.aoeEnabled = packet.executor == "on"
+                if TB.actionButtons and TB.actionButtons.aoe then
+                    TB.actionButtons.aoe:SetText("AoE " .. (TB.aoeEnabled and "On" or "Off"))
+                end
+            end
+        end
+        local scope = packet.scope == "party" and "party" or packet.scope
+        local text = actionLabel(packet.intent) .. " accepted · " .. scope .. " · " .. packet.count
+        if packet.executor ~= "-" then text = text .. " (" .. packet.executor .. ")" end
+        if TB.SetStatus then TB.SetStatus(text, "ok") end
+        if TB.Refresh then TB.Refresh() end
+        return true, "ack", packet
+    end
+
+    local errorPrefix = "TBM:ACTION_ERR|"
+    if string.sub(msg, 1, string.len(errorPrefix)) == errorPrefix then
+        local packet = setActionError(splitProtocol(string.sub(msg, string.len(errorPrefix) + 1)))
+        if not packet then
+            packet = { intent = "unknown", code = "malformed", message = "Malformed action response." }
+        end
+        TB.lastActionError = packet
+        TB.lastActionAck = nil
+        if packet.intent == "aoe" then TB.aoePending = false end
+        local text = actionLabel(packet.intent) .. ": " .. packet.code
+        if packet.message ~= "" then text = text .. " — " .. packet.message end
+        if TB.SetStatus then TB.SetStatus(text, "warn") end
+        if TB.Refresh then TB.Refresh() end
+        return true, "error", packet
+    end
+    return false
+end
 
 function TB.HasServerCommand(command)
     if not command then return false end
@@ -197,7 +289,8 @@ end
 function TB.OnCommandQueued(cmd)
     local verb = string.lower(string.gsub(cmd or "", "%s+.*", ""))
     local name = commandTargetName(cmd)
-    if name and verb ~= "list" and verb ~= "stats" and verb ~= "help" and TB.BeginOperation then
+    if name and verb ~= "list" and verb ~= "roster" and verb ~= "stats"
+        and verb ~= "help" and verb ~= "action" and TB.BeginOperation then
         if verb == "add" then TB.AddToRoster(name) end
         TB.BeginOperation(name, verb, true)
         if TB.Refresh then TB.Refresh() end
@@ -208,26 +301,29 @@ function TB.OnCommandSent(cmd)
     local verb = string.lower(string.gsub(cmd, "%s+.*", ""))
     local name = commandTargetName(cmd)
 
-    if verb == "list" then
-        -- actual send time is authoritative for throttle (Core also sets _lastPoll)
+    if verb == "list" or verb == "roster" then
+        -- Actual send time is authoritative for throttle (Core also sets
+        -- _lastPoll).  The structured stream commits the roster at END.
         return
     end
 
     if verb == "add" and name then TB.AddToRoster(name) end
-    if name and TB.BeginOperation then
+    if name and verb ~= "action" and TB.BeginOperation then
         TB.BeginOperation(name, verb, false)
     end
 
     if verb == "command" and name then
         local st = TB.GetState and TB.GetState(name) or nil
-        if st then st.pendingAI = true; st.pendingAIUntil = ((GetTime and GetTime()) or 0) + (C.ACTION_TIMEOUT or 8) end
+        if st then
+            st.pendingAI = true
+            st.pendingAIUntil = ((GetTime and GetTime()) or 0) + (C.ACTION_TIMEOUT or 8)
+        end
     end
     if verb == "summon" and name then
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
     end
     if TB.Refresh then TB.Refresh() end
-    TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4)
-
+    if verb ~= "action" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
@@ -270,6 +366,28 @@ function TB.OnSystemMessage(msg)
     if not msg or msg == "" then return end
     local handled = false
 
+    local rosterHandled, rosterKind, rosterData = false, nil, nil
+    if TB.ParseRosterMessage then
+        rosterHandled, rosterKind, rosterData = TB.ParseRosterMessage(msg)
+    end
+    if rosterHandled then
+        if rosterKind == "begin" then
+            if TB.SetStatus then TB.SetStatus("Syncing roster…", "pending") end
+        elseif rosterKind == "end" then
+            if TB.SetStatus then TB.SetStatus("Roster updated · " .. tostring(rosterData), "ok") end
+        elseif rosterKind == "error" then
+            local message = rosterData and rosterData.message or "Roster request failed."
+            if TB.SetStatus then TB.SetStatus("Roster: " .. message, "warn") end
+        end
+        TB.lastSystem = msg
+        return
+    end
+
+    local actionHandled = TB.ParseActionMessage and TB.ParseActionMessage(msg)
+    if actionHandled then
+        TB.lastSystem = msg
+        return
+    end
     if updateServerCommands(msg) then
         if TB.SetStatus then TB.SetStatus(msg, "muted") end
         TB.lastSystem = msg

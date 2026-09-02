@@ -1,34 +1,78 @@
--- TortoiseBots/UI.lua
--- Layout (top → bottom):
---   Header (title + close)
---   Filter row (search + Clear + Refresh + count)
---   Scroll list (6 rows, FauxScroll)
---   Add bar (EditBox + Spawn)
---   Party bar (bulk actions + target-scoped Pullback)
---   Selected bar (per-bot public controls + Reset)
---   Status bar
+-- TortoiseBotsManager/UI.lua
 --
--- Grouping principle: no same-scope duplicates.
---   Row: per-bot quick (Summ/Spawn, Follow, Invite) + Remove (X)
---   Party: filtered bulk (Summon, Follow, Invite, Kick) + target Pullback
---   Selected: public single-bot actions + Reset
--- Every visual knob lives in Constants.lua. Helpers are top-level locals.
+-- Two independent surfaces:
+--   Actions — compact gameplay intents.  Every click sends exactly one
+--             `.bot action ...` command and never inspects roster selection.
+--   Roster  — server snapshot rows with checkbox multi-select and a contextual
+--             lifecycle/group bar.  Selection is used only by that bar.
+--
+-- The panel uses only Vanilla 1.12 widgets and keeps command construction in
+-- Comms.lua for callers that still use the legacy raw command API.
 
 local TB = TortoiseBots
-local C  = TB.C
-local W, H   = C.PANEL_W, C.PANEL_H
-local ROW_H, ROW_N = C.ROW_H, C.ROW_N
-local COL = C.COLOR
+local C  = TB.C or {}
+local W, H = C.PANEL_W or 500, C.PANEL_H or 395
+local ROW_H, ROW_N = C.ROW_H or 28, C.ROW_N or 7
+local COL = C.COLOR or {}
 
--- ── forward decls ───────────────────────────────────────────────────────────
 local CreateHeader, CreateFilterRow, CreateScroll, CreateRow
-local CreateHeader, CreateFilterRow, CreateScroll, CreateRow
-local CreatePartyBar, CreateSelectedBar, CreateStatusBar
-local RefreshCounts, RefreshRows, RefreshSelection
+local CreateRosterBar, CreateActions, CreateStatusBar
+local RefreshCounts, RefreshRows, RefreshRosterSelection
+
+local function color(name, fallback)
+    return COL[name] or fallback or { 1, 1, 1 }
+end
 
 local function hasCurrentTarget()
-    if not UnitExists then return true end
-    return UnitExists("target") and (not UnitIsDead or not UnitIsDead("target"))
+    if UnitExists and not UnitExists("target") then return false end
+    if UnitIsDead and UnitIsDead("target") then return false end
+    return true
+end
+local function targetIsPlayer()
+    return not UnitIsPlayer or UnitIsPlayer("target")
+end
+
+local function targetName()
+    if UnitExists and not UnitExists("target") then return nil end
+    if not UnitName then return nil end
+    local name = UnitName("target")
+    return name and TB.NormalizeName(name) or nil
+end
+
+local function hasValidEnemyTarget()
+    if not hasCurrentTarget() then return false end
+    if not targetIsPlayer() then return true end
+    local name = targetName()
+    if name and TB.GetRosterEntry then
+        local entry = TB.GetRosterEntry(name)
+        if entry and entry.source == "snapshot" and entry.serverState ~= "offline" then
+            return false
+        end
+    end
+    return true
+end
+
+local function targetScope()
+    local name = targetName()
+    if targetIsPlayer() and name and TB.GetRosterEntry then
+        local entry = TB.GetRosterEntry(name)
+        local serverState = entry and (entry.serverState or (entry.st and entry.st.serverState))
+        if entry and serverState == "online" then
+            return "bot:" .. (entry.name or name), entry.name or name
+        end
+    end
+    return "party", nil
+end
+
+function TB.GetActionScope()
+    local scope = targetScope()
+    return scope
+end
+
+function TB.GetActionScopeHint()
+    local scope, name = targetScope()
+    if scope == "party" then return "Party actions" end
+    return "Target: " .. name
 end
 
 local function serverSupports(command)
@@ -36,84 +80,82 @@ local function serverSupports(command)
     return TB.HasServerCommand and TB.HasServerCommand(command) or false
 end
 
--- ── helpers ─────────────────────────────────────────────────────────────────
-local function onRowClick(row)
-    if not row.entry then return end
-    if arg1 == "RightButton" and not row.entry.st.online then
-        local name = row.entry.name
-        TB.RemoveFromRoster(name)
-        TB.Refresh()
-        TB.SetStatus("Removed " .. name .. " from roster (offline).", "muted")
-        return
-    end
-    TB.selected = row.entry.name
-    TB.Refresh()
-end
+local ACTION_TOOLTIPS = {
+    pull = "Tank uses the native pull action; it does not return to the pull position.",
+    pullback = "Tank uses the native pull action and returns to the pull position.",
+}
 
-local function rowTooltip(row)
-    if not row.entry then return end
-    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-    GameTooltip:SetText(row.entry.name)
-    GameTooltip:AddLine(TB.StatusText(row.entry.st, row.entry.inGroup), 1,1,1)
-    if row.entry.st.lastError then
-        GameTooltip:AddLine(row.entry.st.lastError, COL.red[1], COL.red[2], COL.red[3])
-    end
-    if row.entry.st.random then GameTooltip:AddLine("Random bot", COL.muted[1], COL.muted[2], COL.muted[3]) end
-    if row.entry.st.hasAI == false and row.entry.st.online then
-        GameTooltip:AddLine("No AI yet (starting)", 1, 0.34, 0.28)
-    end
-    if row.entry.inGroup then GameTooltip:AddLine("In your group", COL.blue[1], COL.blue[2], COL.blue[3]) end
-    if not row.entry.st.online then GameTooltip:AddLine("Right-click to remove from roster", COL.muted[1], COL.muted[2], COL.muted[3]) end
-    GameTooltip:Show()
+local function setButtonTooltip(button, text)
+    button:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:SetText(text)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 -- ── section factories ───────────────────────────────────────────────────────
-
 CreateHeader = function(parent)
-    local db = TortoiseBotsDB
-    parent:SetWidth(W); parent:SetHeight(H)
-    parent:SetPoint(db.frame.point or "CENTER", UIParent, db.frame.rpoint or "CENTER", db.frame.x or 0, db.frame.y or 15)
-    parent:SetFrameStrata("DIALOG"); parent:SetMovable(true); parent:EnableMouse(true)
+    local db = TortoiseBotsDB or {}
+    parent:SetWidth(W)
+    parent:SetHeight(H)
+    local frameDB = db.frame or {}
+    parent:SetPoint(frameDB.point or "CENTER", UIParent, frameDB.rpoint or "CENTER",
+        frameDB.x or 0, frameDB.y or 15)
+    parent:SetFrameStrata("DIALOG")
+    parent:SetMovable(true)
+    parent:EnableMouse(true)
     parent:RegisterForDrag("LeftButton")
     parent:SetScript("OnDragStart", function() this:StartMoving() end)
     parent:SetScript("OnDragStop", function()
         this:StopMovingOrSizing()
         local p, _, rp, x, y = this:GetPoint()
-        db.frame.point=p; db.frame.rpoint=rp; db.frame.x=x; db.frame.y=y
+        db.frame = db.frame or {}
+        db.frame.point, db.frame.rpoint = p, rp
+        db.frame.x, db.frame.y = x, y
     end)
     TB.ApplyBackdrop(parent, 0.98, 1.0)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerFrame") end
 
     local icon = parent:CreateTexture(nil, "ARTWORK")
-    icon:SetWidth(22); icon:SetHeight(22); icon:SetPoint("TOPLEFT", parent, "TOPLEFT", C.PAD, -7)
-    icon:SetTexture("Interface\\Icons\\Ability_Hunter_Pet_Turtle"); icon:SetTexCoord(0.08,0.92,0.08,0.92)
+    icon:SetWidth(22); icon:SetHeight(22)
+    icon:SetPoint("TOPLEFT", parent, "TOPLEFT", C.PAD or 10, -7)
+    icon:SetTexture("Interface\\Icons\\Ability_Hunter_Pet_Turtle")
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-    -- Themed title: Tortoise (gold) + Bots (turtle green) + Manager (ivory) + version
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-    title:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cffffd200v" .. (TB.version or "?") .. "|r")
+    title:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cffffd200v"
+        .. (TB.version or "?") .. "|r")
 
     local glow = parent:CreateTexture(nil, "BACKGROUND")
-    glow:SetTexture(0.55,0.35,0.08,0.12)
-    glow:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, -4); glow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -4); glow:SetHeight(30)
+    glow:SetTexture(0.55, 0.35, 0.08, 0.12)
+    glow:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, -4)
+    glow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -4)
+    glow:SetHeight(30)
 
     local close = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -2,-2)
+    close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -2, -2)
 
     local divider = parent:CreateTexture(nil, "ARTWORK")
-    divider:SetTexture(0.48,0.36,0.15,0.70)
-    divider:SetPoint("TOPLEFT", parent, "TOPLEFT", C.PAD, -34); divider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -C.PAD, -34); divider:SetHeight(1)
+    divider:SetTexture(0.48, 0.36, 0.15, 0.70)
+    divider:SetPoint("TOPLEFT", parent, "TOPLEFT", C.PAD or 10, -34)
+    divider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(C.PAD or 10), -34)
+    divider:SetHeight(1)
 end
 
 CreateFilterRow = function(parent)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0); label:SetText("Filter"); TB.SetTextColor(label, COL.muted)
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    label:SetText("Filter")
+    TB.SetTextColor(label, color("muted"))
 
     local search = CreateFrame("EditBox", "TortoiseBotsManagerSearch", parent, "InputBoxTemplate")
-    search:SetWidth(135); search:SetHeight(20); search:SetPoint("LEFT", label, "RIGHT", 6, 0)
+    search:SetWidth(145); search:SetHeight(20)
+    search:SetPoint("LEFT", label, "RIGHT", 6, 0)
     search:SetAutoFocus(false)
     search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
-    search:SetScript("OnEnterPressed",  function() this:ClearFocus() end)
+    search:SetScript("OnEnterPressed", function() this:ClearFocus() end)
     search:SetScript("OnTextChanged", function()
         TB.filterText = this:GetText() or ""
         TB.Refresh()
@@ -121,258 +163,247 @@ CreateFilterRow = function(parent)
     TB.searchBox = search
 
     local clear = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    clear:SetWidth(40); clear:SetHeight(18); clear:SetPoint("LEFT", search, "RIGHT", C.GAP_BTN, 0); clear:SetText("Clear")
-    clear:SetScript("OnClick", function() search:SetText(""); search:ClearFocus() end)
+    clear:SetWidth(40); clear:SetHeight(18)
+    clear:SetPoint("LEFT", search, "RIGHT", C.GAP_BTN or 4, 0)
+    clear:SetText("Clear")
+    clear:SetScript("OnClick", function()
+        search:SetText("")
+        search:ClearFocus()
+        TB.filterText = ""
+        TB.Refresh()
+    end)
 
     local refresh = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    refresh:SetWidth(54); refresh:SetHeight(18); refresh:SetPoint("LEFT", clear, "RIGHT", C.GAP_BTN, 0); refresh:SetText("Refresh")
+    refresh:SetWidth(58); refresh:SetHeight(18)
+    refresh:SetPoint("LEFT", clear, "RIGHT", C.GAP_BTN or 4, 0)
+    refresh:SetText("Refresh")
     refresh:SetScript("OnClick", function() TB.PollList(true) end)
     TB.refreshButton = refresh
 
-    local stats = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    stats:SetWidth(46); stats:SetHeight(18); stats:SetPoint("LEFT", refresh, "RIGHT", C.GAP_BTN, 0); stats:SetText("Stats")
-    stats:SetScript("OnClick", function() TB.SendBotCommand("stats") end)
-    TB.statsButton = stats
-
-    local help = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    help:SetWidth(40); help:SetHeight(18); help:SetPoint("LEFT", stats, "RIGHT", C.GAP_BTN, 0); help:SetText("Help")
-    help:SetScript("OnClick", function() TB.SendBotCommand("help") end)
-    TB.helpButton = help
-
     local count = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    count:SetPoint("LEFT", help, "RIGHT", 6, 0); count:SetWidth(88); count:SetJustifyH("LEFT"); TB.SetTextColor(count, COL.muted)
+    count:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
+    count:SetWidth(150)
+    count:SetJustifyH("LEFT")
+    TB.SetTextColor(count, color("muted"))
     TB.countLabel = count
 end
 
+local function createRosterColumnHeaders(parent)
+    local left = 26
+    local headers = {
+        { text = "Name", width = C.ROSTER_NAME_W or 118 },
+        { text = "Class", width = C.ROSTER_CLASS_W or 70 },
+        { text = "Status", width = C.ROSTER_STATUS_W or 145 },
+        { text = "Last location", width = 100 },
+    }
+    local x = left
+    for _, header in ipairs(headers) do
+        local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x, 0)
+        fs:SetWidth(header.width)
+        fs:SetText(header.text)
+        TB.SetTextColor(fs, color("muted"))
+        x = x + header.width + (C.GAP_BTN or 4)
+    end
+end
+
 CreateScroll = function(parent)
+    createRosterColumnHeaders(parent)
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerScroll", parent, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -24); scroll:SetWidth(W- C.PAD*2); scroll:SetHeight(ROW_N*ROW_H+4)
+    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -20)
+    scroll:SetWidth(W - (C.PAD or 10) * 2)
+    scroll:SetHeight(ROW_N * ROW_H + 4)
     scroll:SetScript("OnVerticalScroll", function() FauxScrollFrame_OnVerticalScroll(ROW_H, TB.Refresh) end)
     TB.scroll = scroll
 
     local rows = {}
-    for i = 1, ROW_N do
-        local row = CreateRow(scroll, i)
-        table.insert(rows, row)
-    end
+    for i = 1, ROW_N do table.insert(rows, CreateRow(scroll, i)) end
     TB.rows = rows
-    TB.selected = nil
 end
 
--- Row: per-bot quick — Summ/Spawn, Follow, Invite — plus Remove (X). Compact 32px.
 CreateRow = function(scroll, index)
-    local row = CreateFrame("Button", nil, scroll)
-    row:SetWidth(W - C.PAD*2 - 18); row:SetHeight(ROW_H-2)
-    row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, - (index-1)*ROW_H)
+    local row = CreateFrame("Frame", nil, scroll)
+    row:SetWidth(W - (C.PAD or 10) * 2 - 18)
+    row:SetHeight(ROW_H - 2)
+    row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(index - 1) * ROW_H)
     TB.ApplyBackdrop(row, 0.62, 0.52)
+    row:EnableMouse(true)
 
     row.accent = row:CreateTexture(nil, "ARTWORK")
-    row.accent:SetWidth(3); row.accent:SetPoint("TOPLEFT", row, "TOPLEFT", 2, -3); row.accent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 2, 3)
+    row.accent:SetWidth(3)
+    row.accent:SetPoint("TOPLEFT", row, "TOPLEFT", 2, -2)
+    row.accent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 2, 2)
     row.accent:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.95)
-    row.hover = row:CreateTexture(nil, "HIGHLIGHT")
-    row.hover:SetAllPoints(row); row.hover:SetTexture(COL.accentHi[1], COL.accentHi[2], COL.accentHi[3], 0.08)
 
-    row.icon = row:CreateTexture(nil, "ARTWORK")
-    row.icon:SetWidth(18); row.icon:SetHeight(18); row.icon:SetPoint("LEFT", row, "LEFT", 6, 0)
-    row.icon:SetTexCoord(0.08,0.92,0.08,0.92); row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 5); row.name:SetWidth(102); row.name:SetJustifyH("LEFT")
-    row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.status:SetPoint("LEFT", row.icon, "RIGHT", 6, -7); row.status:SetWidth(102); row.status:SetJustifyH("LEFT")
-
-    row:EnableMouse(true); row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    row:SetScript("OnClick", function() onRowClick(this) end)
-    row:SetScript("OnEnter", function() rowTooltip(this) end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    local function mkBtn(w, label, tip)
-        local b = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        b:SetWidth(w); b:SetHeight(15); b:SetText(label)
-        b:SetScript("OnEnter", function() GameTooltip:SetOwner(this,"ANCHOR_RIGHT"); GameTooltip:SetText(tip or label); GameTooltip:Show() end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        return b
-    end
-
-    -- 3 quick per-bot + Remove. Fixed right-aligned, no overflow.
-    local xBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    xBtn:SetWidth(18); xBtn:SetHeight(15); xBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0);
-    xBtn:SetScript("OnClick", function()
-        local e = this:GetParent().entry; if not e then return end
-        TB.SendBotCommand(TB.BuildCommand("remove", e.name))
+    row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    row.check:SetWidth(20); row.check:SetHeight(20)
+    row.check:SetPoint("LEFT", row, "LEFT", 5, 0)
+    row.check:SetScript("OnClick", function()
+        local entry = this:GetParent().entry
+        if entry then TB.ToggleRosterSelection(entry.name, this:GetChecked()) end
     end)
-    xBtn:SetScript("OnEnter", function()
-        GameTooltip:SetOwner(this, "ANCHOR_RIGHT"); GameTooltip:SetText("Remove (.bot remove)")
-        GameTooltip:AddLine("Despawns bot. Right-click row when offline to forget.", COL.muted[1], COL.muted[2], COL.muted[3])
+
+    local nameWidth = C.ROSTER_NAME_W or 118
+    local classWidth = C.ROSTER_CLASS_W or 70
+    local statusWidth = C.ROSTER_STATUS_W or 145
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
+    row.name:SetWidth(nameWidth)
+    row.name:SetJustifyH("LEFT")
+
+    row.class = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.class:SetPoint("LEFT", row.name, "RIGHT", C.GAP_BTN or 4, 0)
+    row.class:SetWidth(classWidth)
+    row.class:SetJustifyH("LEFT")
+
+    row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.status:SetPoint("LEFT", row.class, "RIGHT", C.GAP_BTN or 4, 0)
+    row.status:SetWidth(statusWidth)
+    row.status:SetJustifyH("LEFT")
+
+    row.location = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.location:SetPoint("LEFT", row.status, "RIGHT", C.GAP_BTN or 4, 0)
+    row.location:SetWidth(100)
+    row.location:SetJustifyH("LEFT")
+    TB.SetTextColor(row.location, color("muted"))
+
+    row:SetScript("OnEnter", function()
+        local entry = this.entry
+        if not entry then return end
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:SetText(entry.name)
+        GameTooltip:AddLine(TB.StatusText(entry.st, entry.inGroup), 1, 1, 1)
+        if entry.location then GameTooltip:AddLine("Last: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3]) end
         GameTooltip:Show()
     end)
-    xBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    row.btnRemove = xBtn
-
-    row.btnInvite = mkBtn(36, "Invite", "Group invite (.bot invite)")
-    row.btnInvite:SetPoint("RIGHT", xBtn, "LEFT", -2, 0)
-    row.btnInvite:SetScript("OnClick", function()
-        local e = this:GetParent().entry; if not e then return end
-        if e.inGroup then TB.SendBotCommand(TB.BuildCommand("uninvite", e.name))
-        else TB.SendBotCommand(TB.BuildCommand("invite", e.name)) end
-    end)
-
-    row.btnFollow = mkBtn(36, "Follow", "Follow you (.bot follow)")
-    row.btnFollow:SetPoint("RIGHT", row.btnInvite, "LEFT", -2, 0)
-    row.btnFollow:SetScript("OnClick", function()
-        local e = this:GetParent().entry; if not e then return end
-        TB.SendBotCommand(TB.BuildCommand("follow", e.name))
-    end)
-
-    row.btnSummon = mkBtn(44, "Summ", "Summon to you (.bot summon)")
-    row.btnSummon:SetPoint("RIGHT", row.btnFollow, "LEFT", -2, 0)
-    row.btnSummon:SetScript("OnClick", function()
-        local e = this:GetParent().entry; if not e then return end
-        if not e.st.online then TB.SendBotCommand(TB.BuildCommand("add", e.name))
-        else TB.SendBotCommand(TB.BuildCommand("summon", e.name)) end
-    end)
-
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     return row
 end
 
--- Party bar: filtered bulk scope plus target-scoped pullback (Party tab, first)
-CreatePartyBar = function(parent)
+local function lifecycleCommand(action, verb)
+    local names = TB.GetEligibleRosterNames and TB.GetEligibleRosterNames(action) or {}
+    for _, name in ipairs(names) do
+        TB.SendBotCommand(TB.BuildCommand(verb, name))
+    end
+    if table.getn(names) == 0 and TB.SetStatus then
+        TB.SetStatus("No eligible selected bots.", "muted")
+    end
+end
+
+CreateRosterBar = function(parent)
     local bar = CreateFrame("Frame", nil, parent)
-    bar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0); bar:SetWidth(W- C.PAD*2); bar:SetHeight(18)
+    bar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(ROW_N * ROW_H + 29))
+    bar:SetWidth(W - (C.PAD or 10) * 2)
+    bar:SetHeight(34)
 
-    local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("LEFT", bar, "LEFT", 0, 0); title:SetText("Party:"); TB.SetTextColor(title, COL.muted)
+    local selection = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    selection:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+    selection:SetWidth(105)
+    selection:SetJustifyH("LEFT")
+    TB.selectionLabel = selection
+    TB.SetTextColor(selection, color("muted"))
 
-    local function btn(label, w, tip, fn)
-        local b = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-        b:SetWidth(w); b:SetHeight(17); b:SetText(label)
-        b:SetScript("OnClick", fn)
-        b:SetScript("OnEnter", function() GameTooltip:SetOwner(this,"ANCHOR_RIGHT"); GameTooltip:SetText(tip); GameTooltip:Show() end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        return b
+    local function button(label, width, action, verb, tip)
+        local button = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        button:SetWidth(width); button:SetHeight(18)
+        button:SetText(label)
+        button:SetScript("OnClick", function() lifecycleCommand(action, verb) end)
+        setButtonTooltip(button, tip)
+        return button
     end
 
-    local b1 = btn("Summon All", 76, "Summon all online bots to you", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
-            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
-                and e.st.status ~= C.STATUS.FAILED and not e.st.operation and serverSupports("summon") then
-                TB.SendBotCommand(TB.BuildCommand("summon", e.name))
-            end
-        end
-    end); b1:SetPoint("LEFT", title, "RIGHT", 6, 0)
+    local login = button("Login", 52, "login", "add", "Log in selected offline owned bots")
+    login:SetPoint("LEFT", selection, "RIGHT", 4, 0)
+    local logout = button("Logout", 58, "logout", "logout", "Log out selected online owned bots")
+    logout:SetPoint("LEFT", login, "RIGHT", C.GAP_BTN or 4, 0)
+    local invite = button("Invite", 52, "invite", "invite", "Invite selected online bots not in your group")
+    invite:SetPoint("LEFT", logout, "RIGHT", C.GAP_BTN or 4, 0)
+    local kick = button("Kick", 46, "kick", "uninvite", "Kick selected online bots from your group")
+    kick:SetPoint("LEFT", invite, "RIGHT", C.GAP_BTN or 4, 0)
+    local summon = button("Summon", 60, "summon", "summon", "Summon selected online bots")
+    summon:SetPoint("LEFT", kick, "RIGHT", C.GAP_BTN or 4, 0)
 
-    local b2 = btn("Follow All", 72, "All online follow you", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
-            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
-                and e.st.status ~= C.STATUS.FAILED and not e.st.operation and serverSupports("follow") then
-                TB.SendBotCommand(TB.BuildCommand("follow", e.name))
-            end
-        end
-    end); b2:SetPoint("LEFT", b1, "RIGHT", C.GAP_BTN, 0)
-
-    local b3 = btn("Invite All", 72, "Invite all online to group", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
-            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
-                and e.st.status ~= C.STATUS.FAILED and not e.inGroup and not e.st.operation
-                and serverSupports("invite") then
-                TB.SendBotCommand(TB.BuildCommand("invite", e.name))
-            end
-        end
-    end); b3:SetPoint("LEFT", b2, "RIGHT", C.GAP_BTN, 0)
-
-    local b4 = btn("Kick All", 66, "Uninvite all visible bots in your group", function()
-        for _, e in ipairs(TB.GetDisplayRows(TB.filterText or "")) do
-            if e.st.online and e.st.enteredWorld and e.st.status ~= C.STATUS.UNKNOWN
-                and e.st.status ~= C.STATUS.FAILED and e.inGroup and not e.st.operation
-                and serverSupports("uninvite") then
-                TB.SendBotCommand(TB.BuildCommand("uninvite", e.name))
-            end
-        end
-    end); b4:SetPoint("LEFT", b3, "RIGHT", C.GAP_BTN, 0)
-
-    local b5 = btn("Pullback", 64, "Ask a tank bot to use its native pull-and-return strategy on your target (.bot pullback)", function()
-        if not serverSupports("pullback") then
-            TB.SetStatus("The server does not advertise pullback.", "warn")
-        elseif hasCurrentTarget() then
-            TB.SendBotCommand("pullback")
-        else
-            TB.SetStatus("Select a living target first.", "warn")
-        end
-    end); b5:SetPoint("LEFT", b4, "RIGHT", C.GAP_BTN, 0)
-
-    TB.partyButtons = { summon = b1, follow = b2, invite = b3, kick = b4, pullback = b5 }
+    TB.lifecycleButtons = { login = login, logout = logout, invite = invite, kick = kick, summon = summon }
+    TB.rosterBar = bar
     return bar
 end
 
--- Selected bar: public single-bot controls. Always visible below tabs — with divider for organisation.
-CreateSelectedBar = function(parent)
-    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0); label:SetWidth(W- C.PAD*2); label:SetJustifyH("LEFT"); TB.SetTextColor(label, COL.text)
-    TB.selLabel = label
-
-    local bar = CreateFrame("Frame", nil, parent)
-    bar:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4); bar:SetWidth(W- C.PAD*2); bar:SetHeight(36)
-
-    local function sbtn(text, w, tip, fn)
-        local b = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-        b:SetWidth(w); b:SetHeight(17); b:SetText(text)
-        b:SetScript("OnClick", fn)
-        b:SetScript("OnEnter", function() GameTooltip:SetOwner(this,"ANCHOR_RIGHT"); GameTooltip:SetText(tip); GameTooltip:Show() end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        return b
-    end
-
-    local function selectedCommand(verb, tip, width)
-        local b = sbtn(verb, width, tip, function()
-            if TB.selected then TB.SendBotCommand(TB.BuildCommand(string.lower(verb), TB.selected)) end
-        end)
-        return b
-    end
-
-    local follow = selectedCommand("Follow", "Selected bot follows you (.bot follow)", 52)
-    follow:SetPoint("LEFT", bar, "LEFT", 0, 0)
-    local stay = selectedCommand("Stay", "Selected bot stays (.bot stay)", 46)
-    stay:SetPoint("LEFT", follow, "RIGHT", C.GAP_BTN, 0)
-    local guard = selectedCommand("Guard", "Selected bot guards this position (.bot guard)", 50)
-    guard:SetPoint("LEFT", stay, "RIGHT", C.GAP_BTN, 0)
-    local free = selectedCommand("Free", "Selected bot is free to move (.bot free)", 48)
-    free:SetPoint("LEFT", guard, "RIGHT", C.GAP_BTN, 0)
-    local status = selectedCommand("Status", "Show lifecycle and movement status (.bot status)", 52)
-    status:SetPoint("LEFT", free, "RIGHT", C.GAP_BTN, 0)
-
-    local attack = selectedCommand("Attack", "Selected bot attacks your current target (.bot attack)", 54)
-    attack:SetPoint("LEFT", bar, "LEFT", 0, -19)
-    local ready = selectedCommand("Ready", "Ask selected bot for a readiness check (.bot ready)", 50)
-    ready:SetPoint("LEFT", attack, "RIGHT", C.GAP_BTN, 0)
-
-    local formationIndex = 1
-    local formation
-    formation = sbtn("Form: " .. C.FORMATIONS[formationIndex], 100, "Cycle the fixed formation catalog (.bot formation)", function()
-        if not TB.selected then return end
-        TB.SendBotCommand(TB.BuildCommand("formation", TB.selected, C.FORMATIONS[formationIndex]))
-        formationIndex = formationIndex + 1
-        if formationIndex > table.getn(C.FORMATIONS) then formationIndex = 1 end
-        formation:SetText("Form: " .. C.FORMATIONS[formationIndex])
+local function makeActionButton(parent, intent, width, x, y)
+    local labels = C.ACTION_LABELS or {}
+    local label = labels[intent] or intent
+    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    button:SetWidth(width); button:SetHeight(24)
+    button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    button:SetText(label)
+    setButtonTooltip(button, ACTION_TOOLTIPS[intent] or "Send .bot action " .. intent)
+    button:SetScript("OnClick", function()
+        if intent == "aoe" then
+            if TB.aoePending then return end
+            local enabled = not TB.aoeEnabled
+            TB.aoePending = true
+            TB.SendActionIntent("aoe " .. (enabled and "on" or "off"))
+        else
+            TB.SendActionIntent(intent)
+        end
     end)
-    formation:SetPoint("LEFT", ready, "RIGHT", C.GAP_BTN, 0)
+    return button
+end
 
-    local reset = sbtn("Reset", 52, "Reset selected bot AI (.bot command reset)", function()
-        if TB.selected then TB.SendBotCommand(TB.BuildCommand("command", TB.selected, "reset")) end
-    end)
-    reset:SetPoint("LEFT", formation, "RIGHT", C.GAP_BTN, 0)
+local function addRaidIcon(button, iconIndex)
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetWidth(14); icon:SetHeight(14)
+    icon:SetPoint("RIGHT", button, "RIGHT", -4, 0)
+    icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. iconIndex)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    button.raidIcon = icon
+end
 
-    TB.selButtons = { follow, stay, guard, free, status, attack, ready, formation, reset }
-    TB.followButton, TB.stayButton = follow, stay
-    TB.guardButton, TB.freeButton = guard, free
-    TB.statusButton, TB.attackButton, TB.readyButton = status, attack, ready
-    TB.formationButton, TB.resetButton = formation, reset
-    return bar
+CreateActions = function(parent)
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    frame:SetWidth(W - (C.PAD or 10) * 2)
+    frame:SetHeight(300)
+
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    title:SetText("Actions")
+    TB.SetTextColor(title, color("gold"))
+
+    local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+    hint:SetWidth(W - (C.PAD or 10) * 2)
+    hint:SetJustifyH("LEFT")
+    TB.scopeHint = hint
+    TB.SetTextColor(hint, color("muted"))
+
+    local rowY1, rowY2 = -48, -78
+    local buttons = {}
+    buttons.attack = makeActionButton(frame, "attack", 70, 0, rowY1)
+    buttons.stop = makeActionButton(frame, "stop", 62, 74, rowY1)
+    buttons.pull = makeActionButton(frame, "pull", 62, 140, rowY1)
+    buttons.pullback = makeActionButton(frame, "pullback", 76, 206, rowY1)
+    buttons.come = makeActionButton(frame, "come", 62, 286, rowY1)
+    buttons.stay = makeActionButton(frame, "stay", 62, 0, rowY2)
+    buttons.follow = makeActionButton(frame, "follow", 66, 66, rowY2)
+    buttons.focusSkull = makeActionButton(frame, "focus skull", 92, 136, rowY2)
+    buttons.ccMoon = makeActionButton(frame, "cc moon", 82, 232, rowY2)
+    addRaidIcon(buttons.focusSkull, 8)
+    addRaidIcon(buttons.ccMoon, 5)
+    buttons.aoe = makeActionButton(frame, "aoe", 78, 318, rowY2)
+    buttons.aoe:SetText("AoE Off")
+
+    TB.actionButtons = buttons
+    TB.actions = buttons
+    return frame
 end
 
 CreateStatusBar = function(parent)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", C.PAD, 8); fs:SetWidth(W- C.PAD*2); fs:SetJustifyH("LEFT"); TB.SetTextColor(fs, COL.muted)
-    fs:SetText("Ready. /tb to toggle. Add your alts, then Spawn.")
+    fs:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", C.PAD or 10, 8)
+    fs:SetWidth(W - (C.PAD or 10) * 2)
+    fs:SetJustifyH("LEFT")
+    TB.SetTextColor(fs, color("muted"))
+    fs:SetText("Ready. Select Actions or Roster.")
     TB.statusText = fs
 end
 
@@ -380,91 +411,87 @@ end
 function TB.InitUI()
     if TB.uiReady then return end
     TB.uiReady = false
+    TB.filterText = TB.filterText or ""
+    TB.aoeEnabled = false
+
     local main = CreateFrame("Frame", "TortoiseBotsManagerFrame", UIParent)
     CreateHeader(main)
-    -- Small-screen scaling: 500×395 is roomy on 1080p, too big on 800×600
     if main.SetScale then
-        local sh = (GetScreenHeight and GetScreenHeight() or 768)
+        local sh = (GetScreenHeight and GetScreenHeight()) or 768
         if sh < 700 then main:SetScale(0.82)
         elseif sh < 860 then main:SetScale(0.90)
         else main:SetScale(1) end
     end
 
-
-    -- Tabs: Party (first, all buttons) | Roster (list) — custom backdrop tabs
     local tabBar = CreateFrame("Frame", nil, main)
-    tabBar:SetPoint("TOPLEFT", main, "TOPLEFT", C.PAD, -40); tabBar:SetWidth(W- C.PAD*2); tabBar:SetHeight(20)
+    tabBar:SetPoint("TOPLEFT", main, "TOPLEFT", C.PAD or 10, -40)
+    tabBar:SetWidth(W - (C.PAD or 10) * 2)
+    tabBar:SetHeight(20)
 
-    local function MakeTab(label, offset)
-        local btn = CreateFrame("Button", nil, tabBar)
-        btn:SetWidth(72); btn:SetHeight(20); btn:SetPoint("LEFT", tabBar, "LEFT", offset, 0)
-        btn:EnableMouse(true); btn:RegisterForClicks("LeftButtonUp")
-        TB.ApplyBackdrop(btn, 0.88, 0.9)
-        local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("CENTER", btn, "CENTER", 0, 1); fs:SetText(label)
-        btn.text = fs
-        local hl = btn:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints(btn); hl:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.10)
-        return btn
+    local function makeTab(label, offset)
+        local button = CreateFrame("Button", nil, tabBar)
+        button:SetWidth(82); button:SetHeight(20)
+        button:SetPoint("LEFT", tabBar, "LEFT", offset, 0)
+        button:EnableMouse(true); button:RegisterForClicks("LeftButtonUp")
+        TB.ApplyBackdrop(button, 0.88, 0.9)
+        local text = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        text:SetPoint("CENTER", button, "CENTER", 0, 1)
+        text:SetText(label)
+        button.text = text
+        local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+        highlight:SetAllPoints(button)
+        highlight:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.10)
+        return button
     end
-    local tabParty = MakeTab("Party", 0)
-    local tabRoster = MakeTab("Roster", 76)
 
-    local rosterFrame = CreateFrame("Frame", nil, main)
-    rosterFrame:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6); rosterFrame:SetWidth(W- C.PAD*2); rosterFrame:SetHeight(220)
-    local partyFrame = CreateFrame("Frame", nil, main)
-    partyFrame:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6); partyFrame:SetWidth(W- C.PAD*2); partyFrame:SetHeight(40)
+    local tabActions = makeTab("Actions", 0)
+    local tabRoster = makeTab("Roster", 86)
+    local content = CreateFrame("Frame", nil, main)
+    content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
+    content:SetWidth(W - (C.PAD or 10) * 2)
+    content:SetHeight(325)
 
+    local actionsFrame = CreateActions(content)
+    local rosterFrame = CreateFrame("Frame", nil, content)
+    rosterFrame:SetWidth(W - (C.PAD or 10) * 2)
+    rosterFrame:SetHeight(325)
     CreateFilterRow(rosterFrame)
     CreateScroll(rosterFrame)
+    CreateRosterBar(rosterFrame)
 
-    local partyBar = CreatePartyBar(partyFrame)
-    -- Selected controls: inside Party tab only (with divider below partyBar)
-    local divSel = partyFrame:CreateTexture(nil, "ARTWORK")
-    divSel:SetTexture(0.48,0.36,0.15,0.30)
-    divSel:SetPoint("TOPLEFT", partyBar, "BOTTOMLEFT", 0, -6); divSel:SetPoint("TOPRIGHT", partyBar, "BOTTOMRIGHT", 0, -6); divSel:SetHeight(1)
-    local selectedBar = CreateSelectedBar(partyFrame)
-    if TB.selLabel then
-        TB.selLabel:ClearAllPoints()
-        TB.selLabel:SetPoint("TOPLEFT", divSel, "BOTTOMLEFT", 0, -6)
-    end
-    if selectedBar then
-        selectedBar:ClearAllPoints()
-        selectedBar:SetPoint("TOPLEFT", TB.selLabel, "BOTTOMLEFT", 0, -4)
-    end
-
-    CreateStatusBar(main)
-
-    local function ShowTab(name)
-        if name == "party" then
-            partyFrame:Show(); rosterFrame:Hide()
-            tabParty.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
-            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
-            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabParty:Disable(); tabRoster:Enable()
-        else
-            rosterFrame:Show(); partyFrame:Hide()
+    local function showTab(name)
+        if name == "roster" then
+            rosterFrame:Show(); actionsFrame:Hide()
             tabRoster.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
-            tabParty.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
             tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
-            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabRoster:Disable(); tabParty:Enable()
+            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabRoster:Disable(); tabActions:Enable()
+        else
+            actionsFrame:Show(); rosterFrame:Hide()
+            tabActions.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
+            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabActions:Disable(); tabRoster:Enable()
         end
         TortoiseBotsDB.activeTab = name
     end
-    local initial = TortoiseBotsDB.activeTab or "party"
-    ShowTab(initial)
-    tabParty:SetScript("OnClick", function() ShowTab("party") end)
-    tabRoster:SetScript("OnClick", function() ShowTab("roster") end)
-    TB.ShowTab = ShowTab
-    TB.tabParty = tabParty
-    TB.tabRoster = tabRoster
-    TB.rosterFrame = rosterFrame
-    TB.partyFrame = partyFrame
+
+    local initial = (TortoiseBotsDB and TortoiseBotsDB.activeTab) or "actions"
+    if initial ~= "roster" then initial = "actions" end
+    showTab(initial)
+    tabActions:SetScript("OnClick", function() showTab("actions") end)
+    tabRoster:SetScript("OnClick", function() showTab("roster") end)
+
+    TB.ShowTab = showTab
+    TB.tabActions, TB.tabRoster = tabActions, tabRoster
+    TB.actionsFrame, TB.rosterFrame = actionsFrame, rosterFrame
+
     local targetWatcher = CreateFrame("Frame", "TortoiseBotsManagerTargetWatcher")
     targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
     targetWatcher:SetScript("OnEvent", function() TB.Refresh() end)
+
     main:Hide()
     TB.frame = main
     TB.uiReady = true
@@ -475,13 +502,16 @@ function TB.SetStatus(msg, kind)
     if not TB.statusText then return end
     msg = msg or ""
     if string.len(msg) > 120 then msg = string.sub(msg, 1, 120) .. "…" end
-    local c = COL.muted
-    if kind == "ok"      then c = COL.green
-    elseif kind == "warn"   then c = COL.red
-    elseif kind == "pending" then c = COL.yellow end
-    TB.statusText:SetText(msg); TB.SetTextColor(TB.statusText, c)
+    local c = color("muted")
+    if kind == "ok" then c = color("green")
+    elseif kind == "warn" then c = color("red")
+    elseif kind == "pending" then c = color("yellow") end
+    TB.statusText:SetText(msg)
+    TB.SetTextColor(TB.statusText, c)
 end
 
+-- Raw command callers retain the old safety helper even though the advanced
+-- command box is intentionally no longer part of the UI.
 function TB.IsDangerousCommand(command)
     command = string.lower(TB.Trim(command or ""))
     local dangerous = {
@@ -496,9 +526,14 @@ function TB.IsDangerousCommand(command)
 end
 
 RefreshCounts = function()
+    local rows = TB.GetDisplayRows("")
     local online = 0
-    for _, st in pairs(TB.GetAllState()) do if st.online then online = online + 1 end end
-    if TB.countLabel then TB.countLabel:SetText(string.format("%d roster · %d online", TB.GetRosterCount(), online)) end
+    for _, entry in ipairs(rows) do
+        if entry.st and entry.st.serverState == "online" then online = online + 1 end
+    end
+    if TB.countLabel then
+        TB.countLabel:SetText(string.format("%d owned · %d online", table.getn(rows), online))
+    end
 end
 
 RefreshRows = function(rows)
@@ -507,121 +542,83 @@ RefreshRows = function(rows)
     for i = 1, ROW_N do
         local row = TB.rows[i]
         if not row then break end
-        local e   = rows[i + offset]
-        row.entry = e
-        if e then
+        local entry = rows[i + offset]
+        row.entry = entry
+        if entry then
             row:Show()
-            row.name:SetText(e.name)
-            row.status:SetText(TB.StatusText(e.st, e.inGroup))
-            TB.SetTextColor(row.status, TB.StatusColor(e.st))
-
-            if TB.selected == e.name then
+            row.name:SetText(entry.name or "")
+            row.class:SetText(entry.className or tostring(entry.classId or "?"))
+            row.status:SetText(TB.StatusText(entry.st, entry.inGroup))
+            row.location:SetText(entry.location or "-")
+            TB.SetTextColor(row.status, TB.StatusColor(entry.st))
+            row.check:SetChecked(TB.IsRosterSelected(entry.name))
+            if TB.IsRosterSelected(entry.name) then
                 row:SetBackdropColor(0.12, 0.10, 0.04, 0.92)
                 row.accent:SetTexture(COL.accentHi[1], COL.accentHi[2], COL.accentHi[3], 1)
             else
                 row:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
                 row.accent:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.95)
             end
-
-            local on = e.st.online
-            row.btnSummon:SetText(on and "Summ" or "Spawn")
-            row.btnSummon:Enable(); row.btnFollow:Enable(); row.btnInvite:Enable(); row.btnRemove:Enable()
-
-            if not on then
-                row.btnFollow:Disable(); row.btnInvite:Disable()
-            elseif not e.st.enteredWorld then
-                row.btnSummon:Disable(); row.btnFollow:Disable(); row.btnInvite:Disable()
-            end
-            if on then
-                if not serverSupports("summon") then row.btnSummon:Disable() end
-            elseif not serverSupports("add") then
-                row.btnSummon:Disable()
-            end
-            if not serverSupports("follow") then row.btnFollow:Disable() end
-            if not serverSupports(e.inGroup and "uninvite" or "invite") then row.btnInvite:Disable() end
-            if not serverSupports("remove") then row.btnRemove:Disable() end
-            if e.st.status == C.STATUS.UNKNOWN then
-                row.btnSummon:Disable(); row.btnFollow:Disable(); row.btnInvite:Disable()
-            end
-            if e.st.operation then
-                row.btnSummon:Disable(); row.btnFollow:Disable(); row.btnInvite:Disable(); row.btnRemove:Disable()
-            end
-            row.btnInvite:SetText(e.inGroup and "Kick" or "Invite")
-            row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            row.icon:SetAlpha(on and 1 or 0.55)
         else
-            row:Hide(); row.entry = nil
+            row:Hide()
+            row.entry = nil
         end
     end
 end
 
-RefreshSelection = function()
-    if not TB.selLabel then return end
-    if TB.selected then
-        local st = TB.GetState(TB.selected)
-        local inG = TB.IsInGroup(TB.selected)
-        TB.selLabel:SetText("Selected: " .. TB.selected .. "  ·  " .. TB.StatusText(st, inG) .. (inG and " · in group" or ""))
-        TB.SetTextColor(TB.selLabel, COL.text)
-    else
-        TB.selLabel:SetText("Selected: none — click a row")
-        TB.SetTextColor(TB.selLabel, COL.muted)
+RefreshRosterSelection = function()
+    if TB.selectionLabel then
+        local names = TB.GetSelectedRosterNames and TB.GetSelectedRosterNames() or {}
+        TB.selectionLabel:SetText(table.getn(names) .. " selected")
+        TB.SetTextColor(TB.selectionLabel, table.getn(names) > 0 and color("text") or color("muted"))
     end
-    if TB.selButtons then
-        local hasSel = TB.selected ~= nil
-        local selectedState = hasSel and TB.GetState(TB.selected) or nil
-        local canAct = selectedState and selectedState.online and selectedState.enteredWorld
-            and selectedState.hasAI ~= false and selectedState.status ~= C.STATUS.UNKNOWN
-            and selectedState.status ~= C.STATUS.FAILED and not selectedState.operation
-        local optional = {
-            [TB.followButton] = "follow", [TB.stayButton] = "stay",
-            [TB.guardButton] = "guard", [TB.freeButton] = "free", [TB.attackButton] = "attack",
-            [TB.readyButton] = "ready", [TB.formationButton] = "formation",
-            [TB.resetButton] = "command",
-        }
-        for _, b in ipairs(TB.selButtons) do
-            if b == TB.statusButton then
-                if selectedState and selectedState.online and not selectedState.operation and serverSupports("status") then
-                    b:Enable()
-                else
-                    b:Disable()
-                end
-            elseif b == TB.attackButton then
-                if canAct and hasCurrentTarget() and serverSupports(optional[b]) then b:Enable() else b:Disable() end
-            elseif optional[b] then
-                if canAct and serverSupports(optional[b]) then b:Enable() else b:Disable() end
-            elseif canAct then b:Enable() else b:Disable() end
+    if TB.lifecycleButtons then
+        local actions = { "login", "logout", "invite", "kick", "summon" }
+        for _, action in ipairs(actions) do
+            local button = TB.lifecycleButtons[action]
+            local eligible = TB.GetEligibleRosterNames and TB.GetEligibleRosterNames(action) or {}
+            local command = action
+            if action == "login" then command = "add"
+            elseif action == "kick" then command = "uninvite" end
+            if serverSupports(command) and table.getn(eligible) > 0 then
+                button:Enable()
+            else
+                button:Disable()
+            end
         end
-
     end
-    if TB.RefreshTargetControls then TB.RefreshTargetControls() end
 end
 
-function TB.RefreshTargetControls()
-    if not TB.partyButtons or not TB.partyButtons.pullback then return end
-    if hasCurrentTarget() and serverSupports("pullback") then TB.partyButtons.pullback:Enable()
-    else TB.partyButtons.pullback:Disable() end
-end
-
-function TB.RefreshPartyLabels()
-    if not TB.partyButtons then return end
-    local suffix = TB.Trim(TB.filterText or "") == "" and " All" or " Vis"
-    TB.partyButtons.summon:SetText("Summon" .. suffix)
-    TB.partyButtons.follow:SetText("Follow" .. suffix)
-    TB.partyButtons.invite:SetText("Invite" .. suffix)
-    TB.partyButtons.kick:SetText("Kick" .. suffix)
+function TB.RefreshActionControls()
+    if not TB.actionButtons then return end
+    local hasEnemyTarget = hasValidEnemyTarget()
+    local targetOnly = { "attack", "pull", "pullback" }
+    for _, key in ipairs(targetOnly) do
+        if hasEnemyTarget then TB.actionButtons[key]:Enable() else TB.actionButtons[key]:Disable() end
+    end
+    if TB.aoePending then TB.actionButtons.aoe:Disable() else TB.actionButtons.aoe:Enable() end
+    if TB.scopeHint then
+        TB.scopeHint:SetText(TB.GetActionScopeHint())
+        TB.SetTextColor(TB.scopeHint, color("muted"))
+    end
 end
 
 function TB.Refresh()
     if not TB.uiReady or not TB.frame or not TB.scroll or not TB.rows then return end
     local rows = TB.GetDisplayRows(TB.filterText or "")
-    TB.RefreshPartyLabels()
     RefreshCounts()
     RefreshRows(rows)
-    RefreshSelection()
+    RefreshRosterSelection()
+    TB.RefreshActionControls()
 end
 
 function TB.Toggle()
     if not TB.uiReady or not TB.frame then return end
-    if TB.frame:IsVisible() then TB.frame:Hide()
-    else TB.frame:Show(); TB.Refresh(); TB.PollList(true) end
+    if TB.frame:IsVisible() then
+        TB.frame:Hide()
+    else
+        TB.frame:Show()
+        TB.Refresh()
+        TB.PollList(true)
+    end
 end

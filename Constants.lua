@@ -6,23 +6,61 @@ TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
 TB.C = TB.C or {}
 
-TB.C.VERSION = "1.0.0"
+TB.C.VERSION = "1.1.0"
 
--- Panel geometry — compact 500x395 (was 520x520), 32px rows, no AI Command bar
+-- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
 TB.C.PANEL_H = 395
-TB.C.ROW_H   = 32
-TB.C.ROW_N   = 6
+TB.C.ROW_H   = 28
+TB.C.ROW_N   = 7
 TB.C.PAD     = 10  -- outer margin
 TB.C.GAP_S   = 8   -- section gap
 TB.C.GAP_BTN = 4   -- button gap
 
+-- Column widths for the snapshot roster. The last-location column is allowed
+-- to collapse in UI.lua when a server row has no location metadata.
+TB.C.ROSTER_NAME_W = 118
+TB.C.ROSTER_CLASS_W = 70
+TB.C.ROSTER_STATUS_W = 145
+
+TB.C.CLASS_NAMES = {
+    [1] = "Warrior",
+    [2] = "Paladin",
+    [3] = "Hunter",
+    [4] = "Rogue",
+    [5] = "Priest",
+    [6] = "Death Knight",
+    [7] = "Shaman",
+    [8] = "Mage",
+    [9] = "Warlock",
+    [11] = "Druid",
+}
+
+TB.C.ACTIONS = {
+    "attack", "stop", "pull", "pullback", "come", "stay", "follow",
+    "focus skull", "cc moon", "aoe",
+}
+
+TB.C.ACTION_LABELS = {
+    attack = "Attack",
+    stop = "Stop",
+    pullback = "Pullback",
+    pull = "Pull",
+    come = "Come",
+    stay = "Stay",
+    follow = "Follow",
+    ["focus skull"] = "Focus Skull",
+    ["cc moon"] = "CC Moon",
+    aoe = "AoE",
+}
+
 -- Throttle / poll
 TB.C.SEND_DELAY      = 0.35  -- min seconds between SendChatMessage(".bot …")
-TB.C.LIST_THROTTLE   = 5     -- hard throttle for .bot list
+TB.C.LIST_THROTTLE   = 5     -- hard throttle for .bot roster
+TB.C.ROSTER_THROTTLE = TB.C.LIST_THROTTLE
 TB.C.POLL_PANEL_IV   = 8     -- poll every N sec while panel open
 TB.C.POLL_HIDDEN_IV  = 20    -- while hidden, if autoPoll
-TB.C.POLL_AFTER_CMD  = 1.4   -- poll soon after any command
+TB.C.POLL_AFTER_CMD  = 1.4   -- poll soon after any lifecycle command
 TB.C.POLL_AFTER_ADD  = 2.0
 TB.C.ADD_TIMEOUT     = 30    -- seconds without login confirmation
 TB.C.REMOVE_TIMEOUT  = 15    -- seconds without removal confirmation
