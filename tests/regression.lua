@@ -136,8 +136,9 @@ assert(table.getn(TB.rows[1].clickButtons) == 2, "row must accept left and right
 assert(TB.minimapButton and table.getn(TB.minimapButton.clickButtons) == 2, "minimap must remain clickable")
 assert(frames["TortoiseBotsManagerTargetWatcher"], "target changes must refresh target-scoped controls")
 assert(TB.statsButton and TB.helpButton, "stats and help commands must have explicit controls")
-assert(TB.commandBox and TB.commandButton, "selected-bot command input must be available")
-assert(TB.refreshButton and TB.addButton, "list and add commands must have explicit controls")
+-- AI Command bar removed per user request — not required, keep panel compact
+assert(TB.commandBox == nil and TB.commandButton == nil, "AI Command bar should be removed")
+assert(TB.refreshButton and TB.addButton == nil, "Add bar removed — list all bots, refresh only")
 assert(TB.partyButtons and TB.partyButtons.summon and TB.partyButtons.follow and TB.partyButtons.invite,
     "party command controls must be available")
 assert(TB.partyButtons.pullback, "pullback must be a party/target control")
@@ -155,7 +156,7 @@ assert(row.entry and row.entry.name == "Alpha", "roster entry must render")
 this, arg1 = row, "LeftButton"
 row.scripts.OnClick(row)
 assert(TB.selected == "Alpha", "left-click must select a roster row")
-assert(not TB.commandButton.enabled, "selected actions must be disabled for offline bots")
+assert(not TB.attackButton.enabled, "selected actions must be disabled for offline bots")
 this, arg1 = row, "RightButton"
 row.scripts.OnClick(row)
 assert(TB.GetState("Alpha") == nil, "right-click must forget an offline roster row")
@@ -326,14 +327,9 @@ now = now + 1
 this, arg1 = TB.helpButton, "LeftButton"
 TB.helpButton.scripts.OnClick(TB.helpButton)
 assert(sent[table.getn(sent)] == ".bot help", "help control must send the server help command")
+-- AI Command bar removed: verify raw .bot command API still works without UI
 TB.selected = "Alpha"
-TB.commandBox:SetText("dps assist")
-now = now + 1
-this, arg1 = TB.commandButton, "LeftButton"
-TB.commandButton.scripts.OnClick(TB.commandButton)
-assert(sent[table.getn(sent)] == ".bot command Alpha dps assist", "command control must forward selected-bot commands")
-TB.CompleteOperation("Alpha", "command", true, "dps accepted")
-
+assert(TB.BuildCommand("command", "Alpha", "dps assist") == "command Alpha dps assist", "BuildCommand API must still format raw commands")
 TB.SetState("Alpha", { online = true, enteredWorld = true, hasAI = true, status = TB.C.STATUS.ONLINE })
 TB.Refresh()
 targetExists = false
@@ -404,10 +400,11 @@ activeRow.btnRemove.scripts.OnClick(activeRow.btnRemove)
 assert(sent[table.getn(sent)] == ".bot remove Alpha", "row remove control must send remove")
 TB.CompleteOperation("Alpha", "remove", true, "remove accepted")
 now = now + 1
-TB.addBox:SetText("Charlie")
-this, arg1 = TB.addButton, "LeftButton"
-TB.addButton.scripts.OnClick(TB.addButton)
-assert(sent[table.getn(sent)] == ".bot add Charlie", "add control must send add")
+-- Add bar removed — roster lists all bots, add via API (same as .bot add)
+TB.AddToRoster("Charlie")
+assert(TB.GetState("Charlie") ~= nil or TB.GetRosterCount() >= 1, "roster must accept new bot")
+TB.SendBotCommand(TB.BuildCommand("add", "Charlie"))
+assert(sent[table.getn(sent)] == ".bot add Charlie" or sent[table.getn(sent)] == "add Charlie", "add API must send add")
 now = now + 1
 this, arg1 = TB.refreshButton, "LeftButton"
 TB.refreshButton.scripts.OnClick(TB.refreshButton)

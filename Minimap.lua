@@ -5,18 +5,21 @@ local C  = TB.C
 function TB.InitMinimap()
     local db = TortoiseBotsDB
     local btn = CreateFrame("Button", "TortoiseBotsManagerMinimapButton", Minimap)
-    btn:SetWidth(32); btn:SetHeight(32); btn:SetFrameStrata("MEDIUM")
+    btn:SetWidth(30); btn:SetHeight(30); btn:SetFrameStrata("MEDIUM")
     btn:SetMovable(true); btn:EnableMouse(true)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:RegisterForDrag("LeftButton")
 
-    local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetWidth(52); bg:SetHeight(52); bg:SetPoint("TOPLEFT", btn, "TOPLEFT", -10, 10)
-    bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    -- Exact pattern from TortoiseGMManager (proven in your client):
+    --  icon BACKGROUND 20 CENTER, border OVERLAY 52 TOPLEFT 0,0, highlight via SetHighlightTexture
+    --  Border's opaque ring sits ON TOP of the square turtle → circle encapsulates icon.
+    local icon = btn:CreateTexture(nil, "BACKGROUND")
+    icon:SetWidth(20); icon:SetHeight(20); icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    icon:SetTexture("Interface\\Icons\\Ability_Hunter_Pet_Turtle"); icon:SetTexCoord(0.08,0.92,0.08,0.92)
 
-    local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetWidth(18); icon:SetHeight(18); icon:SetPoint("CENTER", btn, "CENTER", 0, 1)
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01"); icon:SetTexCoord(0.08,0.92,0.08,0.92)
+    local border = btn:CreateTexture(nil, "OVERLAY")
+    border:SetWidth(52); border:SetHeight(52); border:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 
     local hl = btn:CreateTexture(nil, "HIGHLIGHT")
     hl:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight"); hl:SetAllPoints(btn); hl:SetBlendMode("ADD")
