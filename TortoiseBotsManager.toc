@@ -2,7 +2,7 @@
 ## Title: |cffd8a657TortoiseBots|r |cffffffffManager|r
 ## Notes: Manager for your TortoiseBots — state, movement, group and public Playerbot controls.
 ## Author: TortoiseBots
-## Version: 0.1.2
+## Version: 1.0.0
 ## SavedVariables: TortoiseBotsDB
 ## SavedVariablesPerCharacter: TortoiseBotsCharDB
 

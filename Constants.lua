@@ -6,13 +6,16 @@ TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
 TB.C = TB.C or {}
 
-TB.C.VERSION = "0.1.2"
+TB.C.VERSION = "1.0.0"
 
--- Panel geometry
-TB.C.PANEL_W = 520
-TB.C.PANEL_H = 520
-TB.C.ROW_H   = 36
+-- Panel geometry — compact 500x395 (was 520x520), 32px rows, no AI Command bar
+TB.C.PANEL_W = 500
+TB.C.PANEL_H = 395
+TB.C.ROW_H   = 32
 TB.C.ROW_N   = 6
+TB.C.PAD     = 10  -- outer margin
+TB.C.GAP_S   = 8   -- section gap
+TB.C.GAP_BTN = 4   -- button gap
 
 -- Throttle / poll
 TB.C.SEND_DELAY      = 0.35  -- min seconds between SendChatMessage(".bot …")
