@@ -93,6 +93,8 @@ SlashCmdList = {}
 DEFAULT_CHAT_FRAME = { AddMessage = function() end }
 local chatFilters = {}
 function ChatFrame_AddMessageEventFilter(eventName, filter) chatFilters[eventName] = filter end
+local chatEventPassed = false
+function ChatFrame_OnEvent() chatEventPassed = true end
 GameTooltip = {
     SetOwner = function() end,
     SetText = function() end,
@@ -144,6 +146,13 @@ assert(chatFilters.CHAT_MSG_SYSTEM and chatFilters.CHAT_MSG_SAY and chatFilters.
 assert(chatFilters.CHAT_MSG_SAY(nil, nil, ".bot action stay") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ACTION_ACK|stay|party|2|-") == true
     and not chatFilters.CHAT_MSG_SYSTEM(nil, nil, "A critical server error"), "chat noise must be hidden locally")
+event, arg1 = "CHAT_MSG_SYSTEM", "TBM:ROSTER_BEGIN0"
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must hide structured roster noise")
+event, arg1 = "CHAT_MSG_SYSTEM", "A critical server error"
+ChatFrame_OnEvent()
+assert(chatEventPassed, "legacy chat dispatcher must preserve critical errors")
 assert(TortoiseBotsDB.roster == nil and TortoiseBotsDB.rosterList == nil,
     "old local roster data must be ignored and removed")
 assert(TortoiseBotsDB.activeTab == "actions", "Actions must be the default tab")

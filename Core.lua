@@ -43,23 +43,45 @@ local function initDB()
 end
 
 -- The server still consumes normal chat commands on this client version.
--- Hide transport echoes and machine-readable TBM payloads when the client
--- exposes the standard message filter API; human critical errors stay visible.
+-- Hide transport echoes and machine-readable TBM payloads.  Turtle clients
+-- may omit ChatFrame_AddMessageEventFilter, so also guard the legacy global
+-- ChatFrame_OnEvent dispatcher when it exists; critical non-TBM errors stay
+-- visible.
+local function isBotCommandMessage(message)
+    return message and (string.find(message, "^%.bot%s") or string.find(message, "^TBM:"))
+end
+
 local function installBotCommandChatFilter()
-    if TB._chatFilterInstalled or not ChatFrame_AddMessageEventFilter then return end
+    if TB._chatFilterInstalled then return end
+    local installed = false
     local function filter(_, _, message)
-        if message and (string.find(message, "^%.bot%s") or string.find(message, "^TBM:")) then
-            return true
+        if isBotCommandMessage(message) then return true end
+    end
+    if ChatFrame_AddMessageEventFilter then
+        for _, eventName in ipairs({
+            "CHAT_MSG_SYSTEM", "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY",
+            "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_CHANNEL",
+            "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
+        }) do
+            ChatFrame_AddMessageEventFilter(eventName, filter)
         end
+        installed = true
     end
-    for _, eventName in ipairs({
-        "CHAT_MSG_SYSTEM", "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY",
-        "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_CHANNEL",
-        "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
-    }) do
-        ChatFrame_AddMessageEventFilter(eventName, filter)
+    if ChatFrame_OnEvent and not TB._chatEventFilterInstalled then
+        local previousChatFrameOnEvent = ChatFrame_OnEvent
+        ChatFrame_OnEvent = function(...)
+            local args = {...}
+            local eventName = args[2] or event
+            local message = args[3] or arg1
+            if eventName == "CHAT_MSG_SYSTEM" and isBotCommandMessage(message) then
+                return
+            end
+            return previousChatFrameOnEvent(...)
+        end
+        TB._chatEventFilterInstalled = true
+        installed = true
     end
-    TB._chatFilterInstalled = true
+    TB._chatFilterInstalled = installed
 end
 
 -- ── Throttled send queue ────────────────────────────────────────────────────
@@ -240,6 +262,7 @@ ef:SetScript("OnEvent", function()
         if TB.InitMinimap then TB.InitMinimap() end
         TB.Print("v" .. TB.version .. " loaded. /tbm to open. Requires TortoiseBots module on server.")
     elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
+        installBotCommandChatFilter()
         if TB.RequestServerCapabilities then TB.RequestServerCapabilities() end
         TB.RequestPollSoon(3.5)
     end

@@ -73,7 +73,7 @@ ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interfa
 * `TBM:ROSTER_*` and `TBM:ACTION_*` system messages are parsed as structured state; legacy human-readable responses remain a compatibility fallback.
 * Server-side ownership, Headless lifecycle, target validation, executor selection, and mature PlayerbotAI behavior are authoritative. The client only disables obviously unavailable controls.
 * Roster lifecycle operations remain individually acknowledged and time out instead of staying optimistic forever. Gameplay never loops over roster selection.
-* Normal `.bot` command echoes are hidden locally when `ChatFrame_AddMessageEventFilter` is available; critical system errors and compact structured results stay visible.
+* Normal `.bot` command echoes and structured `TBM:` transport messages are hidden locally through the standard chat filter or the legacy chat dispatcher; critical system errors stay visible.
 
 ## Requirements
 
