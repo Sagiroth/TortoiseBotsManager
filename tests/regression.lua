@@ -160,6 +160,8 @@ assert(TB.commandBox == nil and TB.commandButton == nil,
 assert(TB.statsButton == nil and TB.helpButton == nil,
     "server tools must not displace the compact surfaces")
 assert(TB.actionButtons and TB.lifecycleButtons, "Actions and lifecycle bars must exist")
+assert(TB.actionButtons.pull and TB.C.ACTIONS[3] == "pull",
+    "distinct mature Pull behavior must remain exposed")
 assert(rawget(TB, "selected") == nil, "legacy gameplay selection alias must not exist")
 
 -- A structured snapshot is authoritative and includes offline owned rows.
@@ -252,22 +254,43 @@ TB.OnSystemMessage("TBM:ACTION_ACK|aoe|party|2|on")
 assert(TB.aoeEnabled and TB.actionButtons.aoe.text == "AoE On",
     "accepted AoE state must be reflected by the ACK")
 
--- Scope hint is display-only and follows the normal WoW target.
+-- Target/context feedback is descriptive, not a universal scope promise.
 targetNameValue = "Alpha"
 TB.Refresh()
-assert(TB.GetActionScope() == "bot:Alpha" and string.find(TB.scopeHint.text, "Alpha", 1, true),
-    "owned target must show selected-bot scope hint")
+assert(TB.GetActionScope() == "bot:Alpha" and TB.scopeHint.text == "Target: Alpha",
+    "owned target should be shown as context only")
+assert(not TB.actionButtons.attack.enabled and not TB.actionButtons.pull.enabled
+    and not TB.actionButtons.pullback.enabled,
+    "owned bot targets must disable enemy-only actions")
+assert(TB.actionButtons.stay.enabled and TB.actionButtons.follow.enabled
+    and TB.actionButtons.aoe.enabled, "dynamic actions remain usable for owned targets")
 targetNameValue = "Enemy"
 TB.Refresh()
-assert(TB.GetActionScope() == "party" and TB.scopeHint.text == "Scope: Party bots",
-    "non-owned target must show party scope hint")
+assert(TB.GetActionScope() == "party" and TB.scopeHint.text == "Party actions",
+    "non-owned targets should use neutral context wording")
+assert(TB.actionButtons.attack.enabled and TB.actionButtons.pull.enabled
+    and TB.actionButtons.pullback.enabled,
+    "normal targets should enable enemy-only actions")
+now = now + 1
+local beforePull = table.getn(sent)
+this = TB.actionButtons.pull
+TB.actionButtons.pull.scripts.OnClick(TB.actionButtons.pull)
+assert(table.getn(sent) == beforePull + 1 and sent[table.getn(sent)] == ".bot action pull",
+    "Pull must send the supported ordinary-pull intent")
+targetExists = false
+TB.Refresh()
+assert(not TB.actionButtons.attack.enabled and not TB.actionButtons.pull.enabled
+    and not TB.actionButtons.pullback.enabled,
+    "missing targets must disable enemy-only actions")
+targetExists = true
+TB.Refresh()
 
 -- Structured action feedback remains machine-readable and terse.
 TB.OnSystemMessage("TBM:ACTION_ACK|attack|party|2|-")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "attack"
     and TB.lastActionAck.scope == "party" and TB.lastActionAck.count == 2,
     "structured action ACK must be parsed")
-TB.OnSystemMessage("TBM:ACTION_ERR|pull|NO_TARGET|Select a living target")
+TB.OnSystemMessage("TBM:ACTION_ERR|pullback|NO_TARGET|Select a living target")
 assert(TB.lastActionError and TB.lastActionError.code == "NO_TARGET",
     "structured action ERR must be parsed")
 

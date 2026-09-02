@@ -36,6 +36,18 @@ local function targetName()
     return name and TB.NormalizeName(name) or nil
 end
 
+local function hasValidEnemyTarget()
+    if not hasCurrentTarget() then return false end
+    local name = targetName()
+    if name and TB.GetRosterEntry then
+        local entry = TB.GetRosterEntry(name)
+        if entry and entry.source == "snapshot" and entry.serverState ~= "offline" then
+            return false
+        end
+    end
+    return true
+end
+
 local function targetScope()
     local name = targetName()
     if name and TB.GetRosterEntry then
@@ -55,14 +67,19 @@ end
 
 function TB.GetActionScopeHint()
     local scope, name = targetScope()
-    if scope == "party" then return "Scope: Party bots" end
-    return "Scope: Selected bot — " .. name
+    if scope == "party" then return "Party actions" end
+    return "Target: " .. name
 end
 
 local function serverSupports(command)
     if not TB.ServerCapabilitiesKnown or not TB.ServerCapabilitiesKnown() then return true end
     return TB.HasServerCommand and TB.HasServerCommand(command) or false
 end
+
+local ACTION_TOOLTIPS = {
+    pull = "Tank uses the native pull action; it does not return to the pull position.",
+    pullback = "Tank uses the native pull action and returns to the pull position.",
+}
 
 local function setButtonTooltip(button, text)
     button:SetScript("OnEnter", function()
@@ -314,7 +331,7 @@ local function makeActionButton(parent, intent, width, x, y)
     button:SetWidth(width); button:SetHeight(24)
     button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     button:SetText(label)
-    setButtonTooltip(button, "Send .bot action " .. intent)
+    setButtonTooltip(button, ACTION_TOOLTIPS[intent] or "Send .bot action " .. intent)
     button:SetScript("OnClick", function()
         if intent == "aoe" then
             if TB.aoePending then return end
@@ -570,10 +587,10 @@ end
 
 function TB.RefreshActionControls()
     if not TB.actionButtons then return end
-    local hasTarget = hasCurrentTarget()
+    local hasEnemyTarget = hasValidEnemyTarget()
     local targetOnly = { "attack", "pull", "pullback" }
     for _, key in ipairs(targetOnly) do
-        if hasTarget then TB.actionButtons[key]:Enable() else TB.actionButtons[key]:Disable() end
+        if hasEnemyTarget then TB.actionButtons[key]:Enable() else TB.actionButtons[key]:Disable() end
     end
     if TB.aoePending then TB.actionButtons.aoe:Disable() else TB.actionButtons.aoe:Enable() end
     if TB.scopeHint then
