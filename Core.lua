@@ -149,6 +149,18 @@ function TB.SendActionIntent(intent)
     return TB.SendBotCommand("action " .. intent)
 end
 
+function TB.SetFormation(formationId)
+    formationId = TB.Trim(formationId or "default")
+    TB.currentFormation = formationId
+    local scope, botName = TB.GetTargetScope and TB.GetTargetScope() or "party"
+    if scope == "bot" and botName then
+        TB.SendBotCommand("formation " .. botName .. " " .. formationId)
+    else
+        TB.SendBotCommand("formation " .. formationId)
+    end
+    if TB.UpdateFormationPills then TB.UpdateFormationPills() end
+end
+
 function TB.RequestServerCapabilities()
     if capabilitiesRequested then return false end
     capabilitiesRequested = true

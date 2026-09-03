@@ -81,8 +81,18 @@ local function serverSupports(command)
 end
 
 local ACTION_TOOLTIPS = {
-    pull = "Tank uses the native pull action; it does not return to the pull position.",
+    attack   = "Order scoped bots to attack selected enemy target",
+    stop     = "Stop combat and reset target (instant heals remain active)",
+    pull     = "Tank uses the native pull action; it does not return to the pull position.",
     pullback = "Tank uses the native pull action and returns to the pull position.",
+    follow   = "Scoped bots follow you in designated formation",
+    stay     = "Scoped bots hold their current position",
+    come     = "Scoped bots run to your position",
+    hold     = "Order scoped bots to run directly to your position and stay there (corner pull)",
+    ["focus skull"] = "Focus damage on target marked with Skull (RTI 8)",
+    ["cc moon"]     = "Maintain crowd control on target marked with Moon (RTI 5)",
+    aoe      = "Toggle area-of-effect spells on/off",
+    ready    = "Perform ready check: bots report HP, mana, water, and status",
 }
 
 local function setButtonTooltip(button, text)
@@ -427,33 +437,74 @@ CreateActions = function(parent)
         return card
     end
 
-    local cardCombat = makeSection("COMBAT & ENGAGEMENT", -42, 68)
-    local cardMove   = makeSection("FORMATION & MOVEMENT", -116, 68)
-    local cardTactics= makeSection("TACTICS & TARGETING", -190, 68)
+    local cardCombat = makeSection("COMBAT & ENGAGEMENT", -40, 58)
+    local cardTactics= makeSection("TACTICS & UTILITY", -102, 58)
+    local cardMove   = makeSection("FORMATION & MOVEMENT", -164, 88)
 
-    local btnY = -28
+    local btnY = -24
     local buttons = {}
     buttons.attack   = makeActionButton(cardCombat, "attack", 108, 8, btnY)
     buttons.stop     = makeActionButton(cardCombat, "stop", 108, 122, btnY)
     buttons.pull     = makeActionButton(cardCombat, "pull", 108, 236, btnY)
     buttons.pullback = makeActionButton(cardCombat, "pullback", 118, 350, btnY)
 
-    buttons.follow   = makeActionButton(cardMove, "follow", 148, 8, btnY)
-    buttons.stay     = makeActionButton(cardMove, "stay", 148, 164, btnY)
-    buttons.come     = makeActionButton(cardMove, "come", 148, 320, btnY)
-
-    buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 148, 8, btnY)
-    buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 148, 164, btnY)
+    buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 108, 8, btnY)
+    buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 108, 122, btnY)
     addRaidIcon(buttons.focusSkull, 8)
     addRaidIcon(buttons.ccMoon, 5)
-    buttons.aoe        = makeActionButton(cardTactics, "aoe", 148, 320, btnY)
+    buttons.aoe        = makeActionButton(cardTactics, "aoe", 108, 236, btnY)
     buttons.aoe:SetText("AoE Off")
+    buttons.ready      = makeActionButton(cardTactics, "ready", 118, 350, btnY)
+
+    buttons.follow   = makeActionButton(cardMove, "follow", 108, 8, btnY)
+    buttons.stay     = makeActionButton(cardMove, "stay", 108, 122, btnY)
+    buttons.come     = makeActionButton(cardMove, "come", 108, 236, btnY)
+    buttons.hold     = makeActionButton(cardMove, "hold", 118, 350, btnY)
+
+    -- Formation pills
+    local formLabel = cardMove:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    formLabel:SetPoint("TOPLEFT", cardMove, "TOPLEFT", 8, -58)
+    formLabel:SetText("Formation:")
+    TB.SetTextColor(formLabel, color("muted"))
+
+    local pills = {}
+    local function makeFormationPill(id, label, width, x, y, tip)
+        local btn = CreateFrame("Button", nil, cardMove, "UIPanelButtonTemplate")
+        btn:SetWidth(width); btn:SetHeight(18)
+        btn:SetPoint("TOPLEFT", cardMove, "TOPLEFT", x, y)
+        btn:SetText(label)
+        setButtonTooltip(btn, tip or ("Set formation to " .. label))
+        btn:SetScript("OnClick", function()
+            TB.SetFormation(id)
+        end)
+        pills[id] = btn
+        return btn
+    end
+
+    makeFormationPill("shield", "Shield", 70, 72, -56, "Dungeon standard: tank front, melee flank, healer rear")
+    makeFormationPill("near",   "Near",   64, 146, -56, "Tight stack within 4y for narrow corridors & patrols")
+    makeFormationPill("queue",  "Queue",  64, 214, -56, "Single file column behind master")
+    makeFormationPill("arrow",  "Arrow",  64, 282, -56, "V-wedge pointing forward for open terrain")
+    makeFormationPill("circle", "Circle", 64, 350, -56, "360-degree defensive perimeter")
+
+    TB.formationPills = pills
+    TB.UpdateFormationPills = function()
+        local active = TB.currentFormation or "shield"
+        for id, btn in pairs(pills) do
+            if id == active then
+                btn:Disable()
+            else
+                btn:Enable()
+            end
+        end
+    end
+    TB.UpdateFormationPills()
 
     local guide = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -266)
+    guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -260)
     guide:SetWidth(464)
     guide:SetJustifyH("LEFT")
-    guide:SetText("|cff626056Tip: Enemy target enables Attack/Pull. Target an owned bot to narrow commands.|r")
+    guide:SetText("|cff626056Tip: Enemy target enables Attack/Pull. Click a Formation to set party spacing.|r")
 
     TB.actionButtons = buttons
     TB.actions = buttons
@@ -728,6 +779,7 @@ function TB.RefreshActionControls()
         if hasEnemyTarget then TB.actionButtons[key]:Enable() else TB.actionButtons[key]:Disable() end
     end
     if TB.aoePending then TB.actionButtons.aoe:Disable() else TB.actionButtons.aoe:Enable() end
+    if TB.UpdateFormationPills then TB.UpdateFormationPills() end
 
     local scope, botName = targetScope()
     if TB.scopeIcon then
