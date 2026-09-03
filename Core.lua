@@ -47,8 +47,128 @@ end
 -- may omit ChatFrame_AddMessageEventFilter, so also guard the legacy global
 -- ChatFrame_OnEvent dispatcher when it exists; critical non-TBM errors stay
 -- visible.
+local function parseBotLifecycleMessage(message)
+    if not message or type(message) ~= "string" then return nil end
+    local _, _, b, m = string.find(message, "^Bot%s+(%S+)%s+queued for login;%s*it will follow%s+(%S+)%s+after entering the world%.?")
+    if b and m then
+        return b .. " queued for login (following " .. m .. ")"
+    end
+    local _, _, b2 = string.find(message, "^Bot%s+(%S+)%s+logout requested;%s*durable ownership was retained%.?")
+    if b2 then
+        return b2 .. " logout requested"
+    end
+    local _, _, b3 = string.find(message, "^Summoning%s+(%S+)%s+to a safe position near you %(3s%);%s*it will follow on arrival%.?")
+    if b3 then
+        return "Summoning " .. b3 .. " to your position (3s)"
+    end
+    local _, _, t = string.find(message, "^Pullback requested:%s*tank%s+(%S+)%s+is using its native pull strategy%.?")
+    if t then
+        return "Pullback requested for tank " .. t
+    end
+    local _, _, bo = string.find(message, "^Character%s+'([^']+)'%s+is already online")
+    if bo then
+        return "Character '" .. bo .. "' is already online"
+    end
+    local _, _, bow = string.find(message, "^Character%s+'([^']+)'%s+is already owned")
+    if bow then
+        return "Character '" .. bow .. "' is already owned"
+    end
+    local _, _, f = string.find(message, "^Failed to add bot%s+(%S+)")
+    if f then
+        return "Failed to add bot " .. f
+    end
+    local _, _, fs = string.find(message, "^Failed to summon bot%s+'([^']+)'")
+    if fs then
+        return "Failed to summon bot '" .. fs .. "'"
+    end
+    local _, _, bnf = string.find(message, "^Bot%s+'([^']+)'%s+not found or not online")
+    if bnf then
+        return "Bot '" .. bnf .. "' not found or not online"
+    end
+    local _, _, bd = string.find(message, "^Bot%s+'([^']+)'%s+is dead")
+    if bd then
+        return "Bot '" .. bd .. "' is dead"
+    end
+    local _, _, bc = string.find(message, "^Bot%s+'([^']+)'%s+is in combat")
+    if bc then
+        return "Bot '" .. bc .. "' is in combat"
+    end
+    return nil
+end
+
+function TB.GetLogChatFrame()
+    local numWindows = NUM_CHAT_WINDOWS or 7
+    for i = 1, numWindows do
+        local tab = getglobal and getglobal("ChatFrame" .. i .. "Tab")
+        local frame = getglobal and getglobal("ChatFrame" .. i)
+        if tab and tab.GetText and frame then
+            local text = tab:GetText()
+            if text and string.lower(text) == "log" then
+                return frame
+            end
+        end
+    end
+    return nil
+end
+
+function TB.EnsureLogChatFrame()
+    local existing = TB.GetLogChatFrame()
+    if existing then return existing end
+    if FCF_OpenNewWindow then
+        local newFrame = FCF_OpenNewWindow("Log")
+        if newFrame then
+            return newFrame
+        end
+    end
+    return nil
+end
+
+function TB.LogMessage(cleanMsg, rawMsg)
+    local timeStr = (date and date("%H:%M:%S")) or (os and os.date and os.date("%H:%M:%S")) or "00:00:00"
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.logHistory = TortoiseBotsDB.logHistory or {}
+    table.insert(TortoiseBotsDB.logHistory, {
+        time = timeStr,
+        msg = cleanMsg,
+        raw = rawMsg or cleanMsg,
+    })
+    if table.getn(TortoiseBotsDB.logHistory) > 150 then
+        table.remove(TortoiseBotsDB.logHistory, 1)
+    end
+    if TB.RefreshLogView then
+        TB.RefreshLogView()
+    end
+    local logFrame = TB.GetLogChatFrame()
+    if not logFrame and TB.EnsureLogChatFrame then
+        logFrame = TB.EnsureLogChatFrame()
+    end
+    if logFrame and logFrame.AddMessage then
+        logFrame:AddMessage("|cff888888[" .. timeStr .. "]|r |cffd8a657[Bot]|r " .. cleanMsg)
+    end
+end
+
+function TB.GetLogHistory()
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.logHistory = TortoiseBotsDB.logHistory or {}
+    return TortoiseBotsDB.logHistory
+end
+
+function TB.ClearLogHistory()
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.logHistory = {}
+end
+
 local function isBotCommandMessage(message)
-    return message and (string.find(message, "^%.bot%s") or string.find(message, "^TBM:"))
+    if not message then return false end
+    if string.find(message, "^%.bot%s") or string.find(message, "^TBM:") then
+        return true
+    end
+    local cleanMsg = parseBotLifecycleMessage(message)
+    if cleanMsg then
+        TB.LogMessage(cleanMsg, message)
+        return true
+    end
+    return false
 end
 
 local function installBotCommandChatFilter()
@@ -249,7 +369,11 @@ SLASH_TORTOISEBOTSMANAGER4 = "/tortoise"
 SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     msg = string.lower(TB.Trim(msg or ""))
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        return
+    elseif msg == "log" then
+        if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
+        if TB.ShowTab then TB.ShowTab("log") end
         return
     elseif msg == "list" then
         TB.PollList(true); TB.Print("Polling server roster…"); return

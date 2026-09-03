@@ -146,25 +146,38 @@ assert(chatFilters.CHAT_MSG_SYSTEM and chatFilters.CHAT_MSG_SAY and chatFilters.
 assert(chatFilters.CHAT_MSG_SAY(nil, nil, ".bot action stay") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ACTION_ACK|stay|party|2|-") == true
     and not chatFilters.CHAT_MSG_SYSTEM(nil, nil, "A critical server error"), "chat noise must be hidden locally")
+assert(chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Bot Arcana queued for login; it will follow Valguard after entering the world.") == true,
+    "bot login announcement must be intercepted")
+local history = TB.GetLogHistory()
+assert(table.getn(history) > 0, "log history must contain intercepted bot event")
+assert(history[table.getn(history)].msg == "Arcana queued for login (following Valguard)", "message must be tidied")
 event, arg1 = "CHAT_MSG_SYSTEM", "TBM:ROSTER_BEGIN0"
 chatEventPassed = false
 ChatFrame_OnEvent()
 assert(not chatEventPassed, "legacy chat dispatcher must hide structured roster noise")
+event, arg1 = "CHAT_MSG_SYSTEM", "Bot Arcana logout requested; durable ownership was retained."
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must intercept bot logout message")
+assert(history[table.getn(history)].msg == "Arcana logout requested", "logout message must be tidied in history")
 event, arg1 = "CHAT_MSG_SYSTEM", "A critical server error"
 ChatFrame_OnEvent()
 assert(chatEventPassed, "legacy chat dispatcher must preserve critical errors")
 assert(TortoiseBotsDB.roster == nil and TortoiseBotsDB.rosterList == nil,
     "old local roster data must be ignored and removed")
 assert(TortoiseBotsDB.activeTab == "actions", "Actions must be the default tab")
-assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Actions tab must be visible by default")
 assert(TB.rosterFrame.point and TB.rosterFrame.point[1] == "TOPLEFT",
     "rosterFrame must have anchor point set")
 TB.ShowTab("roster")
-assert(TB.rosterFrame:IsVisible() and not TB.actionsFrame:IsVisible(),
+assert(TB.rosterFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Roster tab must become visible after ShowTab('roster')")
+TB.ShowTab("log")
+assert(TB.logFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+    "Log tab must become visible after ShowTab('log')")
 TB.ShowTab("actions")
-assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Actions tab must be restored after ShowTab('actions')")
 assert(TB.rows and table.getn(TB.rows) == TB.C.ROW_N, "all roster rows must be created")
 assert(TB.rows[1].kind == "Frame", "roster rows must be passive containers")

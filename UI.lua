@@ -565,6 +565,7 @@ function TB.InitUI()
 
     local tabActions = makeTab("Actions", 0)
     local tabRoster = makeTab("Roster", 86)
+    local tabLog = makeTab("Log", 172)
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
@@ -579,39 +580,154 @@ function TB.InitUI()
     CreateScroll(rosterFrame)
     CreateRosterBar(rosterFrame)
 
+    local function CreateLogView(parent)
+        local logFrame = CreateFrame("Frame", nil, parent)
+        logFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        logFrame:SetWidth(W - (C.PAD or 10) * 2)
+        logFrame:SetHeight(325)
+
+        local title = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        title:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 6, 0)
+        title:SetText("|cffd8a657Bot Activity History|r (Timestamped)")
+
+        local clearBtn = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
+        clearBtn:SetWidth(65); clearBtn:SetHeight(18)
+        clearBtn:SetPoint("TOPRIGHT", logFrame, "TOPRIGHT", -24, 2)
+        clearBtn:SetText("Clear")
+        setButtonTooltip(clearBtn, "Clear recorded activity history")
+        clearBtn:SetScript("OnClick", function()
+            if TB.ClearLogHistory then TB.ClearLogHistory() end
+            if TB.RefreshLogView then TB.RefreshLogView() end
+        end)
+
+        local openChatTabBtn = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
+        openChatTabBtn:SetWidth(100); openChatTabBtn:SetHeight(18)
+        openChatTabBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
+        openChatTabBtn:SetText("Open Chat Tab")
+        setButtonTooltip(openChatTabBtn, "Ensure a 'Log' chat tab exists in your main chat window")
+        openChatTabBtn:SetScript("OnClick", function()
+            if TB.EnsureLogChatFrame then
+                local f = TB.EnsureLogChatFrame()
+                if f and TB.Print then TB.Print("Chat tab 'Log' ready.") end
+            end
+        end)
+
+        local LOG_ROW_H = 18
+        local LOG_ROW_N = 14
+        local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLogScroll", logFrame, "FauxScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 0, -22)
+        scroll:SetWidth(W - (C.PAD or 10) * 2)
+        scroll:SetHeight(LOG_ROW_N * LOG_ROW_H + 4)
+        scroll:SetScript("OnVerticalScroll", function()
+            FauxScrollFrame_OnVerticalScroll(LOG_ROW_H, TB.RefreshLogView)
+        end)
+        TB.logScroll = scroll
+
+        local rows = {}
+        for i = 1, LOG_ROW_N do
+            local row = CreateFrame("Frame", nil, logFrame)
+            row:SetWidth(W - (C.PAD or 10) * 2 - 20)
+            row:SetHeight(LOG_ROW_H)
+            row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(i - 1) * LOG_ROW_H)
+
+            local timeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            timeText:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -2)
+            timeText:SetWidth(60)
+            timeText:SetJustifyH("LEFT")
+            TB.SetTextColor(timeText, color("muted"))
+            row.timeText = timeText
+
+            local tagText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            tagText:SetPoint("LEFT", timeText, "RIGHT", 2, 0)
+            tagText:SetWidth(38)
+            tagText:SetJustifyH("LEFT")
+            tagText:SetText("|cffd8a657[Bot]|r")
+            row.tagText = tagText
+
+            local msgText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            msgText:SetPoint("LEFT", tagText, "RIGHT", 4, 0)
+            msgText:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            msgText:SetJustifyH("LEFT")
+            row.msgText = msgText
+
+            table.insert(rows, row)
+        end
+        TB.logRows = rows
+        return logFrame
+    end
+
+    local logFrame = CreateLogView(content)
+
+    function TB.RefreshLogView()
+        if not TB.logScroll or not TB.logRows then return end
+        local history = TB.GetLogHistory and TB.GetLogHistory() or {}
+        local total = table.getn(history)
+        local LOG_ROW_H = 18
+        local LOG_ROW_N = 14
+        FauxScrollFrame_Update(TB.logScroll, total, LOG_ROW_N, LOG_ROW_H)
+        local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(TB.logScroll)) or 0
+        for i = 1, LOG_ROW_N do
+            local row = TB.logRows[i]
+            local idx = total - (offset + i - 1)
+            if idx >= 1 and idx <= total then
+                local item = history[idx]
+                row.timeText:SetText(item.time or "")
+                row.msgText:SetText(item.msg or "")
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+    end
+
     local function showTab(name)
         if name == "roster" then
-            rosterFrame:Show(); actionsFrame:Hide()
+            rosterFrame:Show(); actionsFrame:Hide(); logFrame:Hide()
             tabRoster.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
             tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
             tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
             tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabRoster:Disable(); tabActions:Enable()
+            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabRoster:Disable(); tabActions:Enable(); tabLog:Enable()
             TB.Refresh()
             if not TB.HasRosterSnapshot or not TB.HasRosterSnapshot() then
                 TB.PollList(true)
             end
+        elseif name == "log" then
+            logFrame:Show(); actionsFrame:Hide(); rosterFrame:Hide()
+            tabLog.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+            tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
+            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabLog:Disable(); tabActions:Enable(); tabRoster:Enable()
+            if TB.RefreshLogView then TB.RefreshLogView() end
         else
-            actionsFrame:Show(); rosterFrame:Hide()
+            actionsFrame:Show(); rosterFrame:Hide(); logFrame:Hide()
             tabActions.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
             tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
             tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
             tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabActions:Disable(); tabRoster:Enable()
+            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabActions:Disable(); tabRoster:Enable(); tabLog:Enable()
             TB.Refresh()
         end
         TortoiseBotsDB.activeTab = name
     end
 
     local initial = (TortoiseBotsDB and TortoiseBotsDB.activeTab) or "actions"
-    if initial ~= "roster" then initial = "actions" end
+    if initial ~= "roster" and initial ~= "log" then initial = "actions" end
     showTab(initial)
     tabActions:SetScript("OnClick", function() showTab("actions") end)
     tabRoster:SetScript("OnClick", function() showTab("roster") end)
+    tabLog:SetScript("OnClick", function() showTab("log") end)
 
     TB.ShowTab = showTab
-    TB.tabActions, TB.tabRoster = tabActions, tabRoster
-    TB.actionsFrame, TB.rosterFrame = actionsFrame, rosterFrame
+    TB.tabActions, TB.tabRoster, TB.tabLog = tabActions, tabRoster, tabLog
+    TB.actionsFrame, TB.rosterFrame, TB.logFrame = actionsFrame, rosterFrame, logFrame
 
     local targetWatcher = CreateFrame("Frame", "TortoiseBotsManagerTargetWatcher")
     targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
