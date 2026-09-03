@@ -96,33 +96,6 @@ local function parseBotLifecycleMessage(message)
     return nil
 end
 
-function TB.GetLogChatFrame()
-    local numWindows = NUM_CHAT_WINDOWS or 7
-    for i = 1, numWindows do
-        local tab = getglobal and getglobal("ChatFrame" .. i .. "Tab")
-        local frame = getglobal and getglobal("ChatFrame" .. i)
-        if tab and tab.GetText and frame then
-            local text = tab:GetText()
-            if text and string.lower(text) == "log" then
-                return frame
-            end
-        end
-    end
-    return nil
-end
-
-function TB.EnsureLogChatFrame()
-    local existing = TB.GetLogChatFrame()
-    if existing then return existing end
-    if FCF_OpenNewWindow then
-        local newFrame = FCF_OpenNewWindow("Log")
-        if newFrame then
-            return newFrame
-        end
-    end
-    return nil
-end
-
 function TB.LogMessage(cleanMsg, rawMsg)
     local timeStr = (date and date("%H:%M:%S")) or (os and os.date and os.date("%H:%M:%S")) or "00:00:00"
     TortoiseBotsDB = TortoiseBotsDB or {}
@@ -137,13 +110,6 @@ function TB.LogMessage(cleanMsg, rawMsg)
     end
     if TB.RefreshLogView then
         TB.RefreshLogView()
-    end
-    local logFrame = TB.GetLogChatFrame()
-    if not logFrame and TB.EnsureLogChatFrame then
-        logFrame = TB.EnsureLogChatFrame()
-    end
-    if logFrame and logFrame.AddMessage then
-        logFrame:AddMessage("|cff888888[" .. timeStr .. "]|r |cffd8a657[Bot]|r " .. cleanMsg)
     end
 end
 
@@ -160,7 +126,17 @@ end
 
 local function isBotCommandMessage(message)
     if not message then return false end
-    if string.find(message, "^%.bot%s") or string.find(message, "^TBM:") then
+    if string.find(message, "^%.bot$") or string.find(message, "^%.bot%s") or string.find(message, "^TBM:") then
+        return true
+    end
+    if string.find(message, "^Bot commands:") then
+        local now = (GetTime and GetTime()) or 0
+        if now - (TB._lastEnabledPrint or 0) > 1 then
+            TB._lastEnabledPrint = now
+            if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+                DEFAULT_CHAT_FRAME:AddMessage("|cffd8a657TortoiseBots:|r |cff20ff20Enabled|r")
+            end
+        end
         return true
     end
     local cleanMsg = parseBotLifecycleMessage(message)
@@ -171,6 +147,18 @@ local function isBotCommandMessage(message)
     return false
 end
 
+local CHAT_FILTER_EVENTS = {
+    CHAT_MSG_SYSTEM = true,
+    CHAT_MSG_SAY = true,
+    CHAT_MSG_YELL = true,
+    CHAT_MSG_PARTY = true,
+    CHAT_MSG_RAID = true,
+    CHAT_MSG_RAID_LEADER = true,
+    CHAT_MSG_CHANNEL = true,
+    CHAT_MSG_WHISPER = true,
+    CHAT_MSG_WHISPER_INFORM = true,
+}
+
 local function installBotCommandChatFilter()
     if TB._chatFilterInstalled then return end
     local installed = false
@@ -178,11 +166,7 @@ local function installBotCommandChatFilter()
         if isBotCommandMessage(message) then return true end
     end
     if ChatFrame_AddMessageEventFilter then
-        for _, eventName in ipairs({
-            "CHAT_MSG_SYSTEM", "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY",
-            "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_CHANNEL",
-            "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
-        }) do
+        for eventName in pairs(CHAT_FILTER_EVENTS) do
             ChatFrame_AddMessageEventFilter(eventName, filter)
         end
         installed = true
@@ -199,7 +183,7 @@ local function installBotCommandChatFilter()
                 eventName = a2
                 message = a3 or arg1
             end
-            if eventName == "CHAT_MSG_SYSTEM" and isBotCommandMessage(message) then
+            if eventName and CHAT_FILTER_EVENTS[eventName] and isBotCommandMessage(message) then
                 return
             end
             return previousChatFrameOnEvent(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)

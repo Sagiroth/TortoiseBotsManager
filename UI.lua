@@ -600,17 +600,6 @@ function TB.InitUI()
             if TB.RefreshLogView then TB.RefreshLogView() end
         end)
 
-        local openChatTabBtn = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
-        openChatTabBtn:SetWidth(100); openChatTabBtn:SetHeight(18)
-        openChatTabBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
-        openChatTabBtn:SetText("Open Chat Tab")
-        setButtonTooltip(openChatTabBtn, "Ensure a 'Log' chat tab exists in your main chat window")
-        openChatTabBtn:SetScript("OnClick", function()
-            if TB.EnsureLogChatFrame then
-                local f = TB.EnsureLogChatFrame()
-                if f and TB.Print then TB.Print("Chat tab 'Log' ready.") end
-            end
-        end)
 
         local LOG_ROW_H = 18
         local LOG_ROW_N = 14

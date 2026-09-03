@@ -90,7 +90,8 @@ UIParent = CreateFrame("Frame", "UIParent")
 Minimap = CreateFrame("Frame", "Minimap")
 UISpecialFrames = {}
 SlashCmdList = {}
-DEFAULT_CHAT_FRAME = { AddMessage = function() end }
+local defaultChatMessages = {}
+DEFAULT_CHAT_FRAME = { AddMessage = function(self, msg) table.insert(defaultChatMessages, msg) end }
 local chatFilters = {}
 function ChatFrame_AddMessageEventFilter(eventName, filter) chatFilters[eventName] = filter end
 local chatEventPassed = false
@@ -163,6 +164,16 @@ assert(history[table.getn(history)].msg == "Arcana logout requested", "logout me
 event, arg1 = "CHAT_MSG_SYSTEM", "A critical server error"
 ChatFrame_OnEvent()
 assert(chatEventPassed, "legacy chat dispatcher must preserve critical errors")
+event, arg1 = "CHAT_MSG_SAY", ".bot action stay"
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must hide .bot say commands")
+event, arg1 = "CHAT_MSG_SYSTEM", "Bot commands: add/remove/logout/roster"
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must intercept Bot commands server message")
+assert(defaultChatMessages[table.getn(defaultChatMessages)] == "|cffd8a657TortoiseBots:|r |cff20ff20Enabled|r",
+    "Bot commands must be replaced with TortoiseBots: Enabled")
 assert(TortoiseBotsDB.roster == nil and TortoiseBotsDB.rosterList == nil,
     "old local roster data must be ignored and removed")
 assert(TortoiseBotsDB.activeTab == "actions", "Actions must be the default tab")
