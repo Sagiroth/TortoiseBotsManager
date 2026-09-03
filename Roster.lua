@@ -565,9 +565,19 @@ end
 -- ── server-backed roster rows ───────────────────────────────────────────────
 function TB.GetDisplayRows(filter)
     filter = string.lower(filter or "")
+    local quick = TB.rosterQuickFilter or "all"
     local rows = {}
     for name, st in pairs(state) do
-        if displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true)) then
+        local inGroup = TB.IsInGroup(name)
+        local quickMatch = true
+        if quick == "online" then
+            quickMatch = st.online == true
+        elseif quick == "offline" then
+            quickMatch = not st.online
+        elseif quick == "group" then
+            quickMatch = inGroup == true
+        end
+        if quickMatch and displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true)) then
             table.insert(rows, {
                 name = name,
                 guid = st.guid,
@@ -577,7 +587,7 @@ function TB.GetDisplayRows(filter)
                 serverState = st.serverState,
                 location = st.location,
                 st = st,
-                inGroup = TB.IsInGroup(name),
+                inGroup = inGroup,
             })
         end
     end

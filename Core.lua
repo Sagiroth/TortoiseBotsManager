@@ -69,14 +69,20 @@ local function installBotCommandChatFilter()
     end
     if ChatFrame_OnEvent and not TB._chatEventFilterInstalled then
         local previousChatFrameOnEvent = ChatFrame_OnEvent
-        ChatFrame_OnEvent = function(...)
-            local args = {...}
-            local eventName = args[2] or event
-            local message = args[3] or arg1
+        ChatFrame_OnEvent = function(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
+            local eventName = event
+            local message = arg1
+            if type(a1) == "string" then
+                eventName = a1
+                message = a2 or arg1
+            elseif type(a2) == "string" then
+                eventName = a2
+                message = a3 or arg1
+            end
             if eventName == "CHAT_MSG_SYSTEM" and isBotCommandMessage(message) then
                 return
             end
-            return previousChatFrameOnEvent(...)
+            return previousChatFrameOnEvent(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
         end
         TB._chatEventFilterInstalled = true
         installed = true
