@@ -199,14 +199,9 @@ assert(TB.GetState("Alpha").location == "map:1,zone:2,area:3",
     "snapshot location must be retained")
 assert(TB.GetRosterCount() == 3, "roster count must come from snapshot")
 
--- Quick filters
-TB.rosterQuickFilter = "online"
-assert(table.getn(TB.GetDisplayRows("")) == 2, "quick filter 'online' must filter offline rows")
-TB.rosterQuickFilter = "offline"
-assert(table.getn(TB.GetDisplayRows("")) == 1 and TB.GetDisplayRows("")[1].name == "Bravo",
-    "quick filter 'offline' must return only offline rows")
-TB.rosterQuickFilter = "all"
-assert(table.getn(TB.GetDisplayRows("")) == 3, "quick filter 'all' must return all rows")
+-- Display rows constantly show all bots with their state
+assert(table.getn(TB.GetDisplayRows("")) == 3, "roster must constantly show all bots")
+assert(table.getn(TB.GetDisplayRows("alpha")) == 1, "text search must filter by bot name")
 
 -- Class colors and status badge
 local warriorColor = TB.GetClassColor(1)

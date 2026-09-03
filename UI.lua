@@ -146,8 +146,8 @@ end
 
 CreateFilterRow = function(parent)
     local search = CreateFrame("EditBox", "TortoiseBotsManagerSearch", parent, "InputBoxTemplate")
-    search:SetWidth(110); search:SetHeight(20)
-    search:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, 0)
+    search:SetWidth(150); search:SetHeight(20)
+    search:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, 0)
     search:SetAutoFocus(false)
     search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     search:SetScript("OnEnterPressed", function() this:ClearFocus() end)
@@ -158,7 +158,7 @@ CreateFilterRow = function(parent)
     TB.searchBox = search
 
     local clear = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    clear:SetWidth(38); clear:SetHeight(18)
+    clear:SetWidth(42); clear:SetHeight(18)
     clear:SetPoint("LEFT", search, "RIGHT", 4, 0)
     clear:SetText("Clear")
     clear:SetScript("OnClick", function()
@@ -168,45 +168,17 @@ CreateFilterRow = function(parent)
         TB.Refresh()
     end)
 
-    local pills = {}
-    local function makePill(label, filterKey, width, anchor, x)
-        local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-        btn:SetWidth(width); btn:SetHeight(18)
-        btn:SetPoint("LEFT", anchor, "RIGHT", x, 0)
-        btn:SetText(label)
-        btn:SetScript("OnClick", function()
-            TB.rosterQuickFilter = filterKey
-            for k, b in pairs(pills) do
-                if k == filterKey then
-                    b:Disable()
-                else
-                    b:Enable()
-                end
-            end
-            TB.Refresh()
-        end)
-        pills[filterKey] = btn
-        return btn
-    end
-
-    local pillAll     = makePill("All", "all", 32, clear, 6)
-    local pillOnline  = makePill("Online", "online", 48, pillAll, 2)
-    local pillOffline = makePill("Offline", "offline", 48, pillOnline, 2)
-    local pillGroup   = makePill("Group", "group", 44, pillOffline, 2)
-    pillAll:Disable()
-    TB.quickFilterPills = pills
-
     local refresh = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    refresh:SetWidth(54); refresh:SetHeight(18)
-    refresh:SetPoint("LEFT", pillGroup, "RIGHT", 6, 0)
+    refresh:SetWidth(58); refresh:SetHeight(18)
+    refresh:SetPoint("LEFT", clear, "RIGHT", 6, 0)
     refresh:SetText("Refresh")
     refresh:SetScript("OnClick", function() TB.PollList(true) end)
     TB.refreshButton = refresh
 
     local count = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    count:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
-    count:SetWidth(78)
-    count:SetJustifyH("LEFT")
+    count:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -2)
+    count:SetWidth(200)
+    count:SetJustifyH("RIGHT")
     TB.SetTextColor(count, color("muted"))
     TB.countLabel = count
 end
