@@ -1,4 +1,6 @@
 # TortoiseBots Manager
+<img width="365" height="311" alt="2" src="https://github.com/user-attachments/assets/d35eaf72-9b88-462f-8f9a-7aa7051257e6" />
+<img width="368" height="310" alt="1" src="https://github.com/user-attachments/assets/16607951-fdcf-4496-a752-cde89e25096d" />
 
 Lightweight, nice-looking **Vanilla 1.12 (11200)** addon for the Actions and Roster surfaces of [Tortoise WoW 1.18.1](https://github.com/Penqle/tortoise-wow).
 
