@@ -51,7 +51,7 @@ TB.C.CLASS_COLORS = {
 
 TB.C.ACTIONS = {
     "attack", "stop", "pull", "pullback", "come", "stay", "follow",
-    "focus skull", "cc moon", "aoe",
+    "focus skull", "cc moon", "aoe", "hold", "ready",
 }
 
 TB.C.ACTION_ICONS = {
@@ -65,6 +65,8 @@ TB.C.ACTION_ICONS = {
     ["focus skull"] = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8",
     ["cc moon"]     = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5",
     aoe             = "Interface\\Icons\\Spell_Fire_FlameBlades",
+    hold            = "Interface\\Icons\\Spell_Nature_Slow",
+    ready           = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude",
 }
 
 TB.C.ACTION_LABELS = {
@@ -72,12 +74,22 @@ TB.C.ACTION_LABELS = {
     stop = "Stop",
     pullback = "Pullback",
     pull = "Pull",
-    come = "Come",
+    come = "Come & Hold",
     stay = "Stay",
     follow = "Follow",
     ["focus skull"] = "Focus Skull",
     ["cc moon"] = "CC Moon",
     aoe = "AoE",
+    hold = "Come & Hold",
+    ready = "Ready Check",
+}
+
+TB.C.FORMATIONS = {
+    { id = "shield", label = "Shield", tip = "Dungeon standard: tank front, melee flank, healer rear" },
+    { id = "near",   label = "Near",   tip = "Tight stack within 4y for narrow corridors & patrols" },
+    { id = "queue",  label = "Queue",  tip = "Single file column behind master (bridges & ledges)" },
+    { id = "arrow",  label = "Arrow",  tip = "V-wedge pointing forward for open terrain" },
+    { id = "circle", label = "Circle", tip = "360-degree defensive perimeter" },
 }
 
 -- Throttle / poll

@@ -199,14 +199,9 @@ assert(TB.GetState("Alpha").location == "map:1,zone:2,area:3",
     "snapshot location must be retained")
 assert(TB.GetRosterCount() == 3, "roster count must come from snapshot")
 
--- Quick filters
-TB.rosterQuickFilter = "online"
-assert(table.getn(TB.GetDisplayRows("")) == 2, "quick filter 'online' must filter offline rows")
-TB.rosterQuickFilter = "offline"
-assert(table.getn(TB.GetDisplayRows("")) == 1 and TB.GetDisplayRows("")[1].name == "Bravo",
-    "quick filter 'offline' must return only offline rows")
-TB.rosterQuickFilter = "all"
-assert(table.getn(TB.GetDisplayRows("")) == 3, "quick filter 'all' must return all rows")
+-- Display rows constantly show all bots with their state
+assert(table.getn(TB.GetDisplayRows("")) == 3, "roster must constantly show all bots")
+assert(table.getn(TB.GetDisplayRows("alpha")) == 1, "text search must filter by bot name")
 
 -- Class colors and status badge
 local warriorColor = TB.GetClassColor(1)
@@ -218,6 +213,20 @@ assert(string.find(badge, "Online"), "Status badge for online state must display
 assert(TB.actionButtons.attack and TB.actionButtons.attack.icon, "Attack button must have an icon")
 assert(TB.actionButtons.focusSkull and (TB.actionButtons.focusSkull.icon or TB.actionButtons.focusSkull.raidIcon),
     "Focus skull must have an icon")
+assert(TB.actionButtons.hold and TB.actionButtons.hold.icon, "Hold button must have an icon")
+assert(TB.actionButtons.ready and TB.actionButtons.ready.icon, "Ready check button must have an icon")
+
+-- Formation pills
+assert(TB.formationPills and TB.formationPills.shield and TB.formationPills.near,
+    "Formation pills must exist")
+assert(not TB.formationPills.shield.enabled, "Shield should start disabled (active)")
+assert(TB.formationPills.near.enabled, "Near should start enabled")
+now = now + 1
+this = TB.formationPills.near
+TB.formationPills.near.scripts.OnClick(TB.formationPills.near)
+assert(TB.currentFormation == "near", "Clicking near pill must set current formation to near")
+assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
+    "Active formation pill must become disabled")
 
 -- Local names and legacy list responses cannot add an offline canonical row.
 TB.AddToRoster("ClientOnly")
@@ -334,6 +343,16 @@ this = TB.actionButtons.pull
 TB.actionButtons.pull.scripts.OnClick(TB.actionButtons.pull)
 assert(table.getn(sent) == beforePull + 1 and sent[table.getn(sent)] == ".bot action pull",
     "Pull must send the supported ordinary-pull intent")
+now = now + 1
+this = TB.actionButtons.come
+TB.actionButtons.come.scripts.OnClick(TB.actionButtons.come)
+assert(sent[table.getn(sent)] == ".bot action come", "Come button must send action come")
+
+now = now + 1
+this = TB.actionButtons.ready
+TB.actionButtons.ready.scripts.OnClick(TB.actionButtons.ready)
+assert(sent[table.getn(sent)] == ".bot action ready", "Ready button must send action ready")
+
 targetExists = false
 TB.Refresh()
 assert(not TB.actionButtons.attack.enabled and not TB.actionButtons.pull.enabled

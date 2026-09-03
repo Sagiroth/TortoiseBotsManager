@@ -81,8 +81,18 @@ local function serverSupports(command)
 end
 
 local ACTION_TOOLTIPS = {
-    pull = "Tank uses the native pull action; it does not return to the pull position.",
+    attack   = "Order scoped bots to attack selected enemy target",
+    stop     = "Stop combat and reset target (instant heals remain active)",
+    pull     = "Tank uses the native pull action; it does not return to the pull position.",
     pullback = "Tank uses the native pull action and returns to the pull position.",
+    follow   = "Scoped bots follow you in designated formation",
+    stay     = "Scoped bots hold their current position",
+    come     = "Scoped bots run to your position",
+    hold     = "Order scoped bots to run directly to your position and stay there (corner pull)",
+    ["focus skull"] = "Focus damage on target marked with Skull (RTI 8)",
+    ["cc moon"]     = "Maintain crowd control on target marked with Moon (RTI 5)",
+    aoe      = "Toggle area-of-effect spells on/off",
+    ready    = "Perform ready check: bots report HP, mana, water, and status",
 }
 
 local function setButtonTooltip(button, text)
@@ -146,8 +156,8 @@ end
 
 CreateFilterRow = function(parent)
     local search = CreateFrame("EditBox", "TortoiseBotsManagerSearch", parent, "InputBoxTemplate")
-    search:SetWidth(110); search:SetHeight(20)
-    search:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, 0)
+    search:SetWidth(180); search:SetHeight(20)
+    search:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, 0)
     search:SetAutoFocus(false)
     search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     search:SetScript("OnEnterPressed", function() this:ClearFocus() end)
@@ -158,7 +168,7 @@ CreateFilterRow = function(parent)
     TB.searchBox = search
 
     local clear = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    clear:SetWidth(38); clear:SetHeight(18)
+    clear:SetWidth(42); clear:SetHeight(18)
     clear:SetPoint("LEFT", search, "RIGHT", 4, 0)
     clear:SetText("Clear")
     clear:SetScript("OnClick", function()
@@ -168,45 +178,10 @@ CreateFilterRow = function(parent)
         TB.Refresh()
     end)
 
-    local pills = {}
-    local function makePill(label, filterKey, width, anchor, x)
-        local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-        btn:SetWidth(width); btn:SetHeight(18)
-        btn:SetPoint("LEFT", anchor, "RIGHT", x, 0)
-        btn:SetText(label)
-        btn:SetScript("OnClick", function()
-            TB.rosterQuickFilter = filterKey
-            for k, b in pairs(pills) do
-                if k == filterKey then
-                    b:Disable()
-                else
-                    b:Enable()
-                end
-            end
-            TB.Refresh()
-        end)
-        pills[filterKey] = btn
-        return btn
-    end
-
-    local pillAll     = makePill("All", "all", 32, clear, 6)
-    local pillOnline  = makePill("Online", "online", 48, pillAll, 2)
-    local pillOffline = makePill("Offline", "offline", 48, pillOnline, 2)
-    local pillGroup   = makePill("Group", "group", 44, pillOffline, 2)
-    pillAll:Disable()
-    TB.quickFilterPills = pills
-
-    local refresh = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    refresh:SetWidth(54); refresh:SetHeight(18)
-    refresh:SetPoint("LEFT", pillGroup, "RIGHT", 6, 0)
-    refresh:SetText("Refresh")
-    refresh:SetScript("OnClick", function() TB.PollList(true) end)
-    TB.refreshButton = refresh
-
     local count = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    count:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
-    count:SetWidth(78)
-    count:SetJustifyH("LEFT")
+    count:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -2)
+    count:SetWidth(200)
+    count:SetJustifyH("RIGHT")
     TB.SetTextColor(count, color("muted"))
     TB.countLabel = count
 end
@@ -462,33 +437,74 @@ CreateActions = function(parent)
         return card
     end
 
-    local cardCombat = makeSection("COMBAT & ENGAGEMENT", -42, 68)
-    local cardMove   = makeSection("FORMATION & MOVEMENT", -116, 68)
-    local cardTactics= makeSection("TACTICS & TARGETING", -190, 68)
+    local cardCombat = makeSection("COMBAT & ENGAGEMENT", -40, 58)
+    local cardTactics= makeSection("TACTICS & UTILITY", -102, 58)
+    local cardMove   = makeSection("FORMATION & MOVEMENT", -164, 88)
 
-    local btnY = -28
+    local btnY = -24
     local buttons = {}
     buttons.attack   = makeActionButton(cardCombat, "attack", 108, 8, btnY)
     buttons.stop     = makeActionButton(cardCombat, "stop", 108, 122, btnY)
     buttons.pull     = makeActionButton(cardCombat, "pull", 108, 236, btnY)
     buttons.pullback = makeActionButton(cardCombat, "pullback", 118, 350, btnY)
 
+    buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 108, 8, btnY)
+    buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 108, 122, btnY)
+    addRaidIcon(buttons.focusSkull, 8)
+    addRaidIcon(buttons.ccMoon, 5)
+    buttons.aoe        = makeActionButton(cardTactics, "aoe", 108, 236, btnY)
+    buttons.aoe:SetText("AoE Off")
+    buttons.ready      = makeActionButton(cardTactics, "ready", 118, 350, btnY)
+
     buttons.follow   = makeActionButton(cardMove, "follow", 148, 8, btnY)
     buttons.stay     = makeActionButton(cardMove, "stay", 148, 164, btnY)
     buttons.come     = makeActionButton(cardMove, "come", 148, 320, btnY)
+    buttons.hold     = buttons.come
 
-    buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 148, 8, btnY)
-    buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 148, 164, btnY)
-    addRaidIcon(buttons.focusSkull, 8)
-    addRaidIcon(buttons.ccMoon, 5)
-    buttons.aoe        = makeActionButton(cardTactics, "aoe", 148, 320, btnY)
-    buttons.aoe:SetText("AoE Off")
+    -- Formation pills
+    local formLabel = cardMove:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    formLabel:SetPoint("TOPLEFT", cardMove, "TOPLEFT", 8, -58)
+    formLabel:SetText("Formation:")
+    TB.SetTextColor(formLabel, color("muted"))
+
+    local pills = {}
+    local function makeFormationPill(id, label, width, x, y, tip)
+        local btn = CreateFrame("Button", nil, cardMove, "UIPanelButtonTemplate")
+        btn:SetWidth(width); btn:SetHeight(18)
+        btn:SetPoint("TOPLEFT", cardMove, "TOPLEFT", x, y)
+        btn:SetText(label)
+        setButtonTooltip(btn, tip or ("Set formation to " .. label))
+        btn:SetScript("OnClick", function()
+            TB.SetFormation(id)
+        end)
+        pills[id] = btn
+        return btn
+    end
+
+    makeFormationPill("shield", "Shield", 70, 72, -56, "Dungeon standard: tank front, melee flank, healer rear")
+    makeFormationPill("near",   "Near",   64, 146, -56, "Tight stack within 4y for narrow corridors & patrols")
+    makeFormationPill("queue",  "Queue",  64, 214, -56, "Single file column behind master")
+    makeFormationPill("arrow",  "Arrow",  64, 282, -56, "V-wedge pointing forward for open terrain")
+    makeFormationPill("circle", "Circle", 64, 350, -56, "360-degree defensive perimeter")
+
+    TB.formationPills = pills
+    TB.UpdateFormationPills = function()
+        local active = TB.currentFormation or "shield"
+        for id, btn in pairs(pills) do
+            if id == active then
+                btn:Disable()
+            else
+                btn:Enable()
+            end
+        end
+    end
+    TB.UpdateFormationPills()
 
     local guide = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -266)
+    guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -260)
     guide:SetWidth(464)
     guide:SetJustifyH("LEFT")
-    guide:SetText("|cff626056Tip: Enemy target enables Attack/Pull. Target an owned bot to narrow commands.|r")
+    guide:SetText("|cff626056Tip: Enemy target enables Attack/Pull. Click a Formation to set party spacing.|r")
 
     TB.actionButtons = buttons
     TB.actions = buttons
@@ -763,6 +779,7 @@ function TB.RefreshActionControls()
         if hasEnemyTarget then TB.actionButtons[key]:Enable() else TB.actionButtons[key]:Disable() end
     end
     if TB.aoePending then TB.actionButtons.aoe:Disable() else TB.actionButtons.aoe:Enable() end
+    if TB.UpdateFormationPills then TB.UpdateFormationPills() end
 
     local scope, botName = targetScope()
     if TB.scopeIcon then
