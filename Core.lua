@@ -37,7 +37,8 @@ local function initDB()
     if db.frame.y == nil then db.frame.y = 15 end
     if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
     if db.autoPoll == nil then db.autoPoll = true end
-    if db.activeTab ~= "actions" and db.activeTab ~= "roster" then
+    if type(db.botRoles) ~= "table" then db.botRoles = {} end
+    if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster" and db.activeTab ~= "log" then
         db.activeTab = "actions"
     end
 end
@@ -353,7 +354,11 @@ SLASH_TORTOISEBOTSMANAGER4 = "/tortoise"
 SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     msg = string.lower(TB.Trim(msg or ""))
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        return
+    elseif msg == "party" then
+        if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
+        if TB.ShowTab then TB.ShowTab("party") end
         return
     elseif msg == "log" then
         if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end

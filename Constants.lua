@@ -49,6 +49,65 @@ TB.C.CLASS_COLORS = {
     [11] = { 1.00, 0.49, 0.04, hex = "ffff7d0a" }, -- Druid (Orange)
 }
 
+TB.C.CLASS_NAME_TO_ID = {
+    Warrior = 1, WARRIOR = 1,
+    Paladin = 2, PALADIN = 2,
+    Hunter = 3, HUNTER = 3,
+    Rogue = 4, ROGUE = 4,
+    Priest = 5, PRIEST = 5,
+    ["Death Knight"] = 6, DEATHKNIGHT = 6,
+    Shaman = 7, SHAMAN = 7,
+    Mage = 8, MAGE = 8,
+    Warlock = 9, WARLOCK = 9,
+    Druid = 11, DRUID = 11,
+}
+
+TB.C.CLASS_ROLES = {
+    [1] = { -- Warrior
+        { id = "tank", label = "Tank", strat = "+protection,-arms,-fury" },
+        { id = "dps", label = "DPS", strat = "+arms,-protection" },
+    },
+    [2] = { -- Paladin
+        { id = "tank", label = "Tank", strat = "+protection,-holy,-retribution" },
+        { id = "heal", label = "Healer", strat = "+holy,-protection,-retribution,-offdps" },
+        { id = "dps", label = "DPS", strat = "+retribution,-protection,-holy" },
+    },
+    [3] = { -- Hunter
+        { id = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
+        { id = "mm", label = "Marksman", strat = "+marksmanship,-beast mastery,-survival" },
+    },
+    [4] = { -- Rogue
+        { id = "combat", label = "Combat", strat = "+combat,-assassination,-subtlety" },
+        { id = "assa", label = "Assassination", strat = "+assassination,-combat,-subtlety" },
+    },
+    [5] = { -- Priest
+        { id = "heal", label = "Healer", strat = "+holy,-shadow,-offdps" },
+        { id = "hybrid", label = "Hybrid", strat = "+holy,+offdps,-shadow" },
+        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
+    },
+    [7] = { -- Shaman
+        { id = "heal", label = "Healer", strat = "+restoration,-elemental,-enhancement,-offdps" },
+        { id = "ele", label = "Ele DPS", strat = "+elemental,-restoration,-enhancement" },
+        { id = "enh", label = "Enh DPS", strat = "+enhancement,-restoration,-elemental" },
+    },
+    [8] = { -- Mage
+        { id = "frost", label = "Frost", strat = "+frost,-fire,-arcane" },
+        { id = "fire", label = "Fire", strat = "+fire,-frost,-arcane" },
+        { id = "arcane", label = "Arcane", strat = "+arcane,-frost,-fire" },
+    },
+    [9] = { -- Warlock
+        { id = "affliction", label = "Affliction", strat = "+affliction,-demonology,-destruction" },
+        { id = "demonology", label = "Demonology", strat = "+demonology,-affliction,-destruction" },
+        { id = "destruction", label = "Destruction", strat = "+destruction,-affliction,-demonology" },
+    },
+    [11] = { -- Druid
+        { id = "tank", label = "Bear Tank", strat = "+tank feral,-dps feral,-restoration,-balance" },
+        { id = "cat", label = "Cat DPS", strat = "+dps feral,-tank feral,-restoration,-balance" },
+        { id = "heal", label = "Resto Heal", strat = "+restoration,-tank feral,-dps feral,-balance,-offdps" },
+        { id = "boomkin", label = "Boomkin", strat = "+balance,-tank feral,-dps feral,-restoration" },
+    },
+}
+
 TB.C.ACTIONS = {
     "attack", "stop", "pull", "pullback", "come", "stay", "follow",
     "focus skull", "cc moon", "aoe", "hold", "ready",
