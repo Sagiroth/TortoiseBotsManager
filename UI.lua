@@ -146,7 +146,7 @@ end
 
 CreateFilterRow = function(parent)
     local search = CreateFrame("EditBox", "TortoiseBotsManagerSearch", parent, "InputBoxTemplate")
-    search:SetWidth(150); search:SetHeight(20)
+    search:SetWidth(180); search:SetHeight(20)
     search:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, 0)
     search:SetAutoFocus(false)
     search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
@@ -167,13 +167,6 @@ CreateFilterRow = function(parent)
         TB.filterText = ""
         TB.Refresh()
     end)
-
-    local refresh = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    refresh:SetWidth(58); refresh:SetHeight(18)
-    refresh:SetPoint("LEFT", clear, "RIGHT", 6, 0)
-    refresh:SetText("Refresh")
-    refresh:SetScript("OnClick", function() TB.PollList(true) end)
-    TB.refreshButton = refresh
 
     local count = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     count:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -2)
