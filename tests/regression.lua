@@ -344,9 +344,9 @@ TB.actionButtons.pull.scripts.OnClick(TB.actionButtons.pull)
 assert(table.getn(sent) == beforePull + 1 and sent[table.getn(sent)] == ".bot action pull",
     "Pull must send the supported ordinary-pull intent")
 now = now + 1
-this = TB.actionButtons.hold
-TB.actionButtons.hold.scripts.OnClick(TB.actionButtons.hold)
-assert(sent[table.getn(sent)] == ".bot action hold", "Hold button must send action hold")
+this = TB.actionButtons.come
+TB.actionButtons.come.scripts.OnClick(TB.actionButtons.come)
+assert(sent[table.getn(sent)] == ".bot action come", "Come button must send action come")
 
 now = now + 1
 this = TB.actionButtons.ready

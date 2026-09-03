@@ -456,10 +456,10 @@ CreateActions = function(parent)
     buttons.aoe:SetText("AoE Off")
     buttons.ready      = makeActionButton(cardTactics, "ready", 118, 350, btnY)
 
-    buttons.follow   = makeActionButton(cardMove, "follow", 108, 8, btnY)
-    buttons.stay     = makeActionButton(cardMove, "stay", 108, 122, btnY)
-    buttons.come     = makeActionButton(cardMove, "come", 108, 236, btnY)
-    buttons.hold     = makeActionButton(cardMove, "hold", 118, 350, btnY)
+    buttons.follow   = makeActionButton(cardMove, "follow", 148, 8, btnY)
+    buttons.stay     = makeActionButton(cardMove, "stay", 148, 164, btnY)
+    buttons.come     = makeActionButton(cardMove, "come", 148, 320, btnY)
+    buttons.hold     = buttons.come
 
     -- Formation pills
     local formLabel = cardMove:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")

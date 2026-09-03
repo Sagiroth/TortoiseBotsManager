@@ -74,13 +74,13 @@ TB.C.ACTION_LABELS = {
     stop = "Stop",
     pullback = "Pullback",
     pull = "Pull",
-    come = "Come",
+    come = "Come & Hold",
     stay = "Stay",
     follow = "Follow",
     ["focus skull"] = "Focus Skull",
     ["cc moon"] = "CC Moon",
     aoe = "AoE",
-    hold = "Hold / Stack",
+    hold = "Come & Hold",
     ready = "Ready Check",
 }
 
