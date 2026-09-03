@@ -16,7 +16,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 * **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
-* **Quiet transport** — addon command echoes are locally filtered when the client supports message filters, and new gameplay requests return one compact structured result instead of per-bot chat.
+* **Quiet transport** — addon command echoes and structured transport are locally filtered through the standard message filter or legacy chat dispatcher, while gameplay requests return one compact structured result instead of per-bot chat.
 * **Compact UI** — `Actions` is the default tab; `Roster` has checkbox rows and no per-row combat controls. The draggable panel remembers position and supports `Esc` close, minimap toggle, search, and tooltips.
 * **Compatibility** — legacy `.bot` commands and `.bot command` remain available server-side; the primary UI does not expose the advanced command console.
 
@@ -73,7 +73,7 @@ ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interfa
 * `TBM:ROSTER_*` and `TBM:ACTION_*` system messages are parsed as structured state; legacy human-readable responses remain a compatibility fallback.
 * Server-side ownership, Headless lifecycle, target validation, executor selection, and mature PlayerbotAI behavior are authoritative. The client only disables obviously unavailable controls.
 * Roster lifecycle operations remain individually acknowledged and time out instead of staying optimistic forever. Gameplay never loops over roster selection.
-* Normal `.bot` command echoes are hidden locally when `ChatFrame_AddMessageEventFilter` is available; critical system errors and compact structured results stay visible.
+* Normal `.bot` command echoes and structured `TBM:` transport messages are hidden locally through the standard chat filter or the legacy chat dispatcher; critical system errors stay visible.
 
 ## Requirements
 

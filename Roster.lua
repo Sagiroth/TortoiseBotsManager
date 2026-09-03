@@ -565,9 +565,19 @@ end
 -- ── server-backed roster rows ───────────────────────────────────────────────
 function TB.GetDisplayRows(filter)
     filter = string.lower(filter or "")
+    local quick = TB.rosterQuickFilter or "all"
     local rows = {}
     for name, st in pairs(state) do
-        if displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true)) then
+        local inGroup = TB.IsInGroup(name)
+        local quickMatch = true
+        if quick == "online" then
+            quickMatch = st.online == true
+        elseif quick == "offline" then
+            quickMatch = not st.online
+        elseif quick == "group" then
+            quickMatch = inGroup == true
+        end
+        if quickMatch and displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true)) then
             table.insert(rows, {
                 name = name,
                 guid = st.guid,
@@ -577,7 +587,7 @@ function TB.GetDisplayRows(filter)
                 serverState = st.serverState,
                 location = st.location,
                 st = st,
-                inGroup = TB.IsInGroup(name),
+                inGroup = inGroup,
             })
         end
     end
@@ -614,6 +624,40 @@ function TB.ToggleRosterSelection(name, selected)
     if selected then TB.rosterSelection[name] = true else TB.rosterSelection[name] = nil end
     if TB.Refresh then TB.Refresh() end
     return selected and true or false
+end
+
+function TB.SelectAllRoster(selectAll)
+    local rows = (TB.GetDisplayRows and TB.GetDisplayRows(TB.filterText or "")) or {}
+    if selectAll == nil then
+        local count = table.getn(rows)
+        local allSelected = count > 0
+        if count == 0 then
+            allSelected = false
+        else
+            for _, row in ipairs(rows) do
+                if not TB.rosterSelection[row.name] then
+                    allSelected = false
+                    break
+                end
+            end
+        end
+        selectAll = not allSelected
+    end
+
+    if not selectAll then
+        for _, row in ipairs(rows) do
+            TB.rosterSelection[row.name] = nil
+        end
+    else
+        for _, row in ipairs(rows) do
+            local st = row.name and state[row.name]
+            if st and st.source == "snapshot" then
+                TB.rosterSelection[row.name] = true
+            end
+        end
+    end
+    if TB.Refresh then TB.Refresh() end
+    return selectAll
 end
 
 function TB.GetSelectedRosterNames()

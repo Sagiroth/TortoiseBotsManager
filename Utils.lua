@@ -76,6 +76,46 @@ function TB.StatusText(st, inGroup)
     return "Online"
 end
 
+function TB.GetClassColor(classId)
+    local colors = (C and C.CLASS_COLORS) or {}
+    if classId and colors[classId] then
+        return colors[classId]
+    end
+    return { 0.92, 0.90, 0.84, hex = "ffebe6d6" }
+end
+
+function TB.StatusBadge(st, inGroup)
+    local S = C.STATUS
+    if not st then return "|cff757575○ Offline|r" end
+    if st.operation and st.operation.verb == "status" then return "|cffffb300● Checking…|r" end
+    if st.status == S.FAILED then return "|cffff5555● Failed|r" end
+    if st.status == S.UNKNOWN then return "|cffff5555● Unknown|r" end
+    if st.status == S.QUEUED then return "|cffffb300● Queued|r" end
+    if st.status == S.SUMMONING then return "|cffffb300● Summoning…|r" end
+    if st.status == S.INVITING then return "|cffffb300● Inviting…|r" end
+    if st.status == S.KICKING then return "|cffffb300● Kicking…|r" end
+    if st.status == S.REMOVING then return "|cffffb300● Removing…|r" end
+    if st.status == S.COMMANDING then return "|cffffb300● Working…|r" end
+    if not st.online then
+        if st.status == S.STARTING then return "|cffffb300● Starting|r" end
+        if st.status == S.OFFLINE_PENDING then return "|cffffb300● Checking…|r" end
+        return "|cff757575○ Offline|r"
+    end
+    if st.enteredWorld == false then return "|cffffb300● Starting|r" end
+    if inGroup then
+        if st.movement and st.movement ~= "" and st.movement ~= "custom" then
+            local mv = string.gsub(st.movement, "^%l", string.upper)
+            return "|cff42a5f5● Group|r · " .. mv
+        end
+        return "|cff42a5f5● Group|r"
+    end
+    if st.movement and st.movement ~= "" and st.movement ~= "custom" then
+        local mv = string.gsub(st.movement, "^%l", string.upper)
+        return "|cff4ecb5a● Online|r · " .. mv
+    end
+    return "|cff4ecb5a● Online|r"
+end
+
 -- table
 function TB.CountKeys(t)
     local n = 0; for _ in pairs(t or {}) do n = n + 1 end; return n

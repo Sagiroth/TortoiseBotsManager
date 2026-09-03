@@ -93,6 +93,8 @@ SlashCmdList = {}
 DEFAULT_CHAT_FRAME = { AddMessage = function() end }
 local chatFilters = {}
 function ChatFrame_AddMessageEventFilter(eventName, filter) chatFilters[eventName] = filter end
+local chatEventPassed = false
+function ChatFrame_OnEvent() chatEventPassed = true end
 GameTooltip = {
     SetOwner = function() end,
     SetText = function() end,
@@ -144,11 +146,26 @@ assert(chatFilters.CHAT_MSG_SYSTEM and chatFilters.CHAT_MSG_SAY and chatFilters.
 assert(chatFilters.CHAT_MSG_SAY(nil, nil, ".bot action stay") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ACTION_ACK|stay|party|2|-") == true
     and not chatFilters.CHAT_MSG_SYSTEM(nil, nil, "A critical server error"), "chat noise must be hidden locally")
+event, arg1 = "CHAT_MSG_SYSTEM", "TBM:ROSTER_BEGIN0"
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must hide structured roster noise")
+event, arg1 = "CHAT_MSG_SYSTEM", "A critical server error"
+ChatFrame_OnEvent()
+assert(chatEventPassed, "legacy chat dispatcher must preserve critical errors")
 assert(TortoiseBotsDB.roster == nil and TortoiseBotsDB.rosterList == nil,
     "old local roster data must be ignored and removed")
 assert(TortoiseBotsDB.activeTab == "actions", "Actions must be the default tab")
 assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
     "Actions tab must be visible by default")
+assert(TB.rosterFrame.point and TB.rosterFrame.point[1] == "TOPLEFT",
+    "rosterFrame must have anchor point set")
+TB.ShowTab("roster")
+assert(TB.rosterFrame:IsVisible() and not TB.actionsFrame:IsVisible(),
+    "Roster tab must become visible after ShowTab('roster')")
+TB.ShowTab("actions")
+assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+    "Actions tab must be restored after ShowTab('actions')")
 assert(TB.rows and table.getn(TB.rows) == TB.C.ROW_N, "all roster rows must be created")
 assert(TB.rows[1].kind == "Frame", "roster rows must be passive containers")
 assert(TB.rows[1].check and TB.rows[1].check.kind == "CheckButton",
@@ -182,6 +199,26 @@ assert(TB.GetState("Alpha").location == "map:1,zone:2,area:3",
     "snapshot location must be retained")
 assert(TB.GetRosterCount() == 3, "roster count must come from snapshot")
 
+-- Quick filters
+TB.rosterQuickFilter = "online"
+assert(table.getn(TB.GetDisplayRows("")) == 2, "quick filter 'online' must filter offline rows")
+TB.rosterQuickFilter = "offline"
+assert(table.getn(TB.GetDisplayRows("")) == 1 and TB.GetDisplayRows("")[1].name == "Bravo",
+    "quick filter 'offline' must return only offline rows")
+TB.rosterQuickFilter = "all"
+assert(table.getn(TB.GetDisplayRows("")) == 3, "quick filter 'all' must return all rows")
+
+-- Class colors and status badge
+local warriorColor = TB.GetClassColor(1)
+assert(warriorColor and warriorColor.hex == "ffc79c6e", "Warrior class color must match Turtle palette")
+local badge = TB.StatusBadge(TB.GetState("Alpha"), false)
+assert(string.find(badge, "Online"), "Status badge for online state must display Online")
+
+-- Action button icons
+assert(TB.actionButtons.attack and TB.actionButtons.attack.icon, "Attack button must have an icon")
+assert(TB.actionButtons.focusSkull and (TB.actionButtons.focusSkull.icon or TB.actionButtons.focusSkull.raidIcon),
+    "Focus skull must have an icon")
+
 -- Local names and legacy list responses cannot add an offline canonical row.
 TB.AddToRoster("ClientOnly")
 assert(TB.GetRosterEntry("ClientOnly") == nil, "client-only names are not roster rows")
@@ -195,12 +232,32 @@ this = alphaRow.check; alphaRow.check:SetChecked(true); alphaRow.check.scripts.O
 this = bravoRow.check; bravoRow.check:SetChecked(true); bravoRow.check.scripts.OnClick(bravoRow.check)
 assert(TB.IsRosterSelected("Alpha") and TB.IsRosterSelected("Bravo"),
     "checkboxes must select multiple names")
+this = alphaRow.check; alphaRow.check:SetChecked(false); alphaRow.check.scripts.OnClick(alphaRow.check)
+assert(not TB.IsRosterSelected("Alpha") and TB.IsRosterSelected("Bravo"),
+    "unchecking a box must deselect that name")
+this = alphaRow.check; alphaRow.check:SetChecked(true); alphaRow.check.scripts.OnClick(alphaRow.check)
 assert(table.getn(TB.GetEligibleRosterNames("logout")) == 1
     and TB.GetEligibleRosterNames("logout")[1] == "Alpha",
     "mixed logout selection must use only live eligible names")
 assert(table.getn(TB.GetEligibleRosterNames("login")) == 1
     and TB.GetEligibleRosterNames("login")[1] == "Bravo",
     "mixed login selection must use only offline eligible names")
+
+-- Master Select All Checkbox
+TB.ClearRosterSelection()
+assert(not TB.checkAll:GetChecked(), "checkAll must start unchecked when nothing is selected")
+this = TB.checkAll; TB.checkAll:SetChecked(true); TB.checkAll.scripts.OnClick(TB.checkAll)
+assert(TB.IsRosterSelected("Alpha") and TB.IsRosterSelected("Bravo") and TB.IsRosterSelected("Gamma"),
+    "clicking checkAll must select all displayed roster entries")
+assert(TB.checkAll:GetChecked(), "checkAll must remain checked when all entries are selected")
+assert(table.getn(TB.GetEligibleRosterNames("summon")) == 2,
+    "all live bots (Alpha, Gamma) must be eligible for summon when all selected")
+this = TB.checkAll; TB.checkAll:SetChecked(false); TB.checkAll.scripts.OnClick(TB.checkAll)
+assert(table.getn(TB.GetSelectedRosterNames()) == 0,
+    "unchecking checkAll must deselect all entries")
+assert(not TB.checkAll:GetChecked(), "checkAll must be unchecked after clearing")
+TB.ToggleRosterSelection("Alpha", true)
+TB.ToggleRosterSelection("Bravo", true)
 
 now = now + 1
 local beforeLogin = table.getn(sent)
