@@ -212,6 +212,16 @@ CreateFilterRow = function(parent)
 end
 
 local function createRosterColumnHeaders(parent)
+    local checkAll = CreateFrame("CheckButton", "TortoiseBotsManagerCheckAll", parent, "UICheckButtonTemplate")
+    checkAll:SetWidth(20); checkAll:SetHeight(20)
+    checkAll:SetPoint("TOPLEFT", parent, "TOPLEFT", 5, -20)
+    setButtonTooltip(checkAll, "Select or deselect all bots")
+    checkAll:SetScript("OnClick", function()
+        local isChecked = this:GetChecked() and true or false
+        TB.SelectAllRoster(isChecked)
+    end)
+    TB.checkAll = checkAll
+
     local left = 26
     local headers = {
         { text = "Name", width = C.ROSTER_NAME_W or 118 },
@@ -707,6 +717,22 @@ RefreshRows = function(rows)
 end
 
 RefreshRosterSelection = function()
+    if TB.checkAll then
+        local rows = (TB.GetDisplayRows and TB.GetDisplayRows(TB.filterText or "")) or {}
+        local count = table.getn(rows)
+        local allSelected = count > 0
+        if count == 0 then
+            allSelected = false
+        else
+            for _, r in ipairs(rows) do
+                if not TB.IsRosterSelected(r.name) then
+                    allSelected = false
+                    break
+                end
+            end
+        end
+        TB.checkAll:SetChecked(allSelected)
+    end
     if TB.selectionLabel then
         local names = TB.GetSelectedRosterNames and TB.GetSelectedRosterNames() or {}
         TB.selectionLabel:SetText(table.getn(names) .. " selected")

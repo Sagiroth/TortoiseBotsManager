@@ -243,6 +243,22 @@ assert(table.getn(TB.GetEligibleRosterNames("login")) == 1
     and TB.GetEligibleRosterNames("login")[1] == "Bravo",
     "mixed login selection must use only offline eligible names")
 
+-- Master Select All Checkbox
+TB.ClearRosterSelection()
+assert(not TB.checkAll:GetChecked(), "checkAll must start unchecked when nothing is selected")
+this = TB.checkAll; TB.checkAll:SetChecked(true); TB.checkAll.scripts.OnClick(TB.checkAll)
+assert(TB.IsRosterSelected("Alpha") and TB.IsRosterSelected("Bravo") and TB.IsRosterSelected("Gamma"),
+    "clicking checkAll must select all displayed roster entries")
+assert(TB.checkAll:GetChecked(), "checkAll must remain checked when all entries are selected")
+assert(table.getn(TB.GetEligibleRosterNames("summon")) == 2,
+    "all live bots (Alpha, Gamma) must be eligible for summon when all selected")
+this = TB.checkAll; TB.checkAll:SetChecked(false); TB.checkAll.scripts.OnClick(TB.checkAll)
+assert(table.getn(TB.GetSelectedRosterNames()) == 0,
+    "unchecking checkAll must deselect all entries")
+assert(not TB.checkAll:GetChecked(), "checkAll must be unchecked after clearing")
+TB.ToggleRosterSelection("Alpha", true)
+TB.ToggleRosterSelection("Bravo", true)
+
 now = now + 1
 local beforeLogin = table.getn(sent)
 this = TB.lifecycleButtons.login

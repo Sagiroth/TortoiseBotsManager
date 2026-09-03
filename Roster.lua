@@ -626,6 +626,40 @@ function TB.ToggleRosterSelection(name, selected)
     return selected and true or false
 end
 
+function TB.SelectAllRoster(selectAll)
+    local rows = (TB.GetDisplayRows and TB.GetDisplayRows(TB.filterText or "")) or {}
+    if selectAll == nil then
+        local count = table.getn(rows)
+        local allSelected = count > 0
+        if count == 0 then
+            allSelected = false
+        else
+            for _, row in ipairs(rows) do
+                if not TB.rosterSelection[row.name] then
+                    allSelected = false
+                    break
+                end
+            end
+        end
+        selectAll = not allSelected
+    end
+
+    if not selectAll then
+        for _, row in ipairs(rows) do
+            TB.rosterSelection[row.name] = nil
+        end
+    else
+        for _, row in ipairs(rows) do
+            local st = row.name and state[row.name]
+            if st and st.source == "snapshot" then
+                TB.rosterSelection[row.name] = true
+            end
+        end
+    end
+    if TB.Refresh then TB.Refresh() end
+    return selectAll
+end
+
 function TB.GetSelectedRosterNames()
     local names = {}
     for name in pairs(TB.rosterSelection) do
