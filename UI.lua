@@ -564,7 +564,9 @@ function TB.InitUI()
     end
 
     local tabActions = makeTab("Actions", 0)
-    local tabRoster = makeTab("Roster", 86)
+    local tabParty = makeTab("Party", 86)
+    local tabRoster = makeTab("Roster", 172)
+    local tabLog = makeTab("Log", 258)
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
@@ -579,42 +581,316 @@ function TB.InitUI()
     CreateScroll(rosterFrame)
     CreateRosterBar(rosterFrame)
 
+    local function CreatePartyView(parent)
+        local partyFrame = CreateFrame("Frame", nil, parent)
+        partyFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        partyFrame:SetWidth(W - (C.PAD or 10) * 2)
+        partyFrame:SetHeight(325)
+
+        local title = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        title:SetPoint("TOPLEFT", partyFrame, "TOPLEFT", 6, 0)
+        title:SetText("|cffd8a657Active Party Roles|r")
+
+        local subtitle = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        subtitle:SetPoint("LEFT", title, "RIGHT", 8, 0)
+        subtitle:SetText("|cff888888(Click role to assign bot strategy)|r")
+
+        local emptyMsg = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        emptyMsg:SetPoint("CENTER", partyFrame, "CENTER", 0, -20)
+        emptyMsg:SetWidth(380)
+        emptyMsg:SetJustifyH("CENTER")
+        emptyMsg:SetText("|cff888888No other party members.\nInvite your bots from the Roster tab to manage party roles.|r")
+        partyFrame.emptyMsg = emptyMsg
+
+        local rows = {}
+        for i = 1, 5 do
+            local row = CreateFrame("Frame", nil, partyFrame)
+            row:SetWidth(W - (C.PAD or 10) * 2)
+            row:SetHeight(52)
+            row:SetPoint("TOPLEFT", partyFrame, "TOPLEFT", 0, -(i - 1) * 56 - 22)
+            TB.ApplyBackdrop(row, 0.62, 0.45)
+
+            row.accent = row:CreateTexture(nil, "ARTWORK")
+            row.accent:SetWidth(3)
+            row.accent:SetPoint("TOPLEFT", row, "TOPLEFT", 2, -2)
+            row.accent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 2, 2)
+            row.accent:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.95)
+
+            local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            nameText:SetPoint("TOPLEFT", row, "TOPLEFT", 12, -8)
+            nameText:SetWidth(130)
+            nameText:SetJustifyH("LEFT")
+            row.nameText = nameText
+
+            local descText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            descText:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 12, 8)
+            descText:SetWidth(130)
+            descText:SetJustifyH("LEFT")
+            TB.SetTextColor(descText, color("muted"))
+            row.descText = descText
+
+            local playerLabel = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            playerLabel:SetPoint("LEFT", row, "LEFT", 150, 0)
+            playerLabel:SetText("|cffd8a657[ Player / Master ]|r")
+            row.playerLabel = playerLabel
+
+            local roleButtons = {}
+            for b = 1, 4 do
+                local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                btn:SetWidth(78)
+                btn:SetHeight(22)
+                btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * 82, 0)
+                roleButtons[b] = btn
+            end
+            row.roleButtons = roleButtons
+
+            table.insert(rows, row)
+        end
+        partyFrame.rows = rows
+        return partyFrame
+    end
+
+    local partyFrame = CreatePartyView(content)
+
+    local function CreateLogView(parent)
+        local logFrame = CreateFrame("Frame", nil, parent)
+        logFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        logFrame:SetWidth(W - (C.PAD or 10) * 2)
+        logFrame:SetHeight(325)
+
+        local title = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        title:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 6, 0)
+        title:SetText("|cffd8a657Bot Activity History|r (Timestamped)")
+
+        local clearBtn = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
+        clearBtn:SetWidth(65); clearBtn:SetHeight(18)
+        clearBtn:SetPoint("TOPRIGHT", logFrame, "TOPRIGHT", -24, 2)
+        clearBtn:SetText("Clear")
+        setButtonTooltip(clearBtn, "Clear recorded activity history")
+        clearBtn:SetScript("OnClick", function()
+            if TB.ClearLogHistory then TB.ClearLogHistory() end
+            if TB.RefreshLogView then TB.RefreshLogView() end
+        end)
+
+
+        local LOG_ROW_H = 18
+        local LOG_ROW_N = 14
+        local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLogScroll", logFrame, "FauxScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 0, -22)
+        scroll:SetWidth(W - (C.PAD or 10) * 2)
+        scroll:SetHeight(LOG_ROW_N * LOG_ROW_H + 4)
+        scroll:SetScript("OnVerticalScroll", function()
+            FauxScrollFrame_OnVerticalScroll(LOG_ROW_H, TB.RefreshLogView)
+        end)
+        TB.logScroll = scroll
+
+        local rows = {}
+        for i = 1, LOG_ROW_N do
+            local row = CreateFrame("Frame", nil, logFrame)
+            row:SetWidth(W - (C.PAD or 10) * 2 - 20)
+            row:SetHeight(LOG_ROW_H)
+            row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(i - 1) * LOG_ROW_H)
+
+            local timeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            timeText:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -2)
+            timeText:SetWidth(60)
+            timeText:SetJustifyH("LEFT")
+            TB.SetTextColor(timeText, color("muted"))
+            row.timeText = timeText
+
+            local tagText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            tagText:SetPoint("LEFT", timeText, "RIGHT", 2, 0)
+            tagText:SetWidth(38)
+            tagText:SetJustifyH("LEFT")
+            tagText:SetText("|cffd8a657[Bot]|r")
+            row.tagText = tagText
+
+            local msgText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            msgText:SetPoint("LEFT", tagText, "RIGHT", 4, 0)
+            msgText:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            msgText:SetJustifyH("LEFT")
+            row.msgText = msgText
+
+            table.insert(rows, row)
+        end
+        TB.logRows = rows
+        return logFrame
+    end
+
+    local logFrame = CreateLogView(content)
+
+    function TB.RefreshLogView()
+        if not TB.logScroll or not TB.logRows then return end
+        local history = TB.GetLogHistory and TB.GetLogHistory() or {}
+        local total = table.getn(history)
+        local LOG_ROW_H = 18
+        local LOG_ROW_N = 14
+        FauxScrollFrame_Update(TB.logScroll, total, LOG_ROW_N, LOG_ROW_H)
+        local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(TB.logScroll)) or 0
+        for i = 1, LOG_ROW_N do
+            local row = TB.logRows[i]
+            local idx = total - (offset + i - 1)
+            if idx >= 1 and idx <= total then
+                local item = history[idx]
+                row.timeText:SetText(item.time or "")
+                row.msgText:SetText(item.msg or "")
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+    end
+
+    function TB.RefreshPartyView()
+        if not TB.partyFrame or not TB.partyFrame.rows then return end
+        local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+        local units = { "player" }
+        for i = 1, partyCount do
+            table.insert(units, "party" .. i)
+        end
+
+        local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
+
+        for i = 1, 5 do
+            local row = TB.partyFrame.rows[i]
+            local unit = units[i]
+            if unit and (unit == "player" or (UnitExists and UnitExists(unit))) then
+                local name = (UnitName and UnitName(unit)) or (unit == "player" and "Player" or ("Party " .. i))
+                local level = (UnitLevel and UnitLevel(unit)) or 0
+                local lvlText = (level and level > 0 and ("Lvl " .. level)) or "Lvl ??"
+                local className, classFileName = (UnitClass and UnitClass(unit)) or "Unknown", "UNKNOWN"
+                local classId = (classFileName and TB.C.CLASS_NAME_TO_ID and TB.C.CLASS_NAME_TO_ID[classFileName])
+                    or (className and TB.C.CLASS_NAME_TO_ID and TB.C.CLASS_NAME_TO_ID[className])
+                    or 1
+                local col = (TB.C.CLASS_COLORS and TB.C.CLASS_COLORS[classId]) or COL.gold
+
+                row.nameText:SetText(name)
+                row.nameText:SetTextColor(col[1], col[2], col[3])
+                row.descText:SetText(lvlText .. " " .. (className or ""))
+                row.accent:SetTexture(col[1], col[2], col[3], 0.95)
+
+                if unit == "player" then
+                    row.playerLabel:Show()
+                    for b = 1, 4 do row.roleButtons[b]:Hide() end
+                else
+                    row.playerLabel:Hide()
+                    local roles = (TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
+                    local currentRole = dbRoles[name] or (roles[1] and roles[1].id)
+
+                    for b = 1, 4 do
+                        local btn = row.roleButtons[b]
+                        local role = roles[b]
+                        if role then
+                            local isSelected = (currentRole == role.id)
+                            if isSelected then
+                                btn:SetText("|cffffd200" .. role.label .. "|r")
+                            else
+                                btn:SetText("|cffa0a0a0" .. role.label .. "|r")
+                            end
+
+                            local capturedRole = role
+                            local capturedName = name
+                            btn:SetScript("OnClick", function()
+                                TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
+                                TortoiseBotsDB.botRoles[capturedName] = capturedRole.id
+                                if capturedRole.strat and capturedRole.strat ~= "" then
+                                    TB.SendBotCommand("command " .. capturedName .. " " .. capturedRole.strat)
+                                end
+                                TB.Print(capturedName .. " role set to " .. capturedRole.label)
+                                TB.RefreshPartyView()
+                            end)
+
+                            setButtonTooltip(btn, "Set " .. capturedName .. " role to " .. capturedRole.label .. (capturedRole.strat ~= "" and (" (" .. capturedRole.strat .. ")") or ""))
+                            btn:Show()
+                        else
+                            btn:Hide()
+                        end
+                    end
+                end
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+
+        if partyCount == 0 then
+            TB.partyFrame.emptyMsg:Show()
+        else
+            TB.partyFrame.emptyMsg:Hide()
+        end
+    end
+
     local function showTab(name)
         if name == "roster" then
-            rosterFrame:Show(); actionsFrame:Hide()
+            rosterFrame:Show(); actionsFrame:Hide(); partyFrame:Hide(); logFrame:Hide()
             tabRoster.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
             tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabParty.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
             tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
             tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabRoster:Disable(); tabActions:Enable()
+            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabRoster:Disable(); tabActions:Enable(); tabParty:Enable(); tabLog:Enable()
             TB.Refresh()
             if not TB.HasRosterSnapshot or not TB.HasRosterSnapshot() then
                 TB.PollList(true)
             end
-        else
-            actionsFrame:Show(); rosterFrame:Hide()
-            tabActions.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+        elseif name == "party" then
+            partyFrame:Show(); actionsFrame:Hide(); rosterFrame:Hide(); logFrame:Hide()
+            tabParty.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+            tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
             tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
+            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
+            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
             tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabActions:Disable(); tabRoster:Enable()
+            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabParty:Disable(); tabActions:Enable(); tabRoster:Enable(); tabLog:Enable()
+            if TB.RefreshPartyView then TB.RefreshPartyView() end
+        elseif name == "log" then
+            logFrame:Show(); actionsFrame:Hide(); rosterFrame:Hide(); partyFrame:Hide()
+            tabLog.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+            tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabParty.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
+            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabLog:Disable(); tabActions:Enable(); tabParty:Enable(); tabRoster:Enable()
+            if TB.RefreshLogView then TB.RefreshLogView() end
+        else
+            actionsFrame:Show(); partyFrame:Hide(); rosterFrame:Hide(); logFrame:Hide()
+            tabActions.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+            tabParty.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
+            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+            tabActions:Disable(); tabParty:Enable(); tabRoster:Enable(); tabLog:Enable()
             TB.Refresh()
         end
         TortoiseBotsDB.activeTab = name
     end
 
     local initial = (TortoiseBotsDB and TortoiseBotsDB.activeTab) or "actions"
-    if initial ~= "roster" then initial = "actions" end
+    if initial ~= "roster" and initial ~= "party" and initial ~= "log" then initial = "actions" end
     showTab(initial)
     tabActions:SetScript("OnClick", function() showTab("actions") end)
+    tabParty:SetScript("OnClick", function() showTab("party") end)
     tabRoster:SetScript("OnClick", function() showTab("roster") end)
+    tabLog:SetScript("OnClick", function() showTab("log") end)
 
     TB.ShowTab = showTab
-    TB.tabActions, TB.tabRoster = tabActions, tabRoster
-    TB.actionsFrame, TB.rosterFrame = actionsFrame, rosterFrame
+    TB.tabActions, TB.tabParty, TB.tabRoster, TB.tabLog = tabActions, tabParty, tabRoster, tabLog
+    TB.actionsFrame, TB.partyFrame, TB.rosterFrame, TB.logFrame = actionsFrame, partyFrame, rosterFrame, logFrame
 
     local targetWatcher = CreateFrame("Frame", "TortoiseBotsManagerTargetWatcher")
     targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
+    targetWatcher:RegisterEvent("PARTY_MEMBERS_CHANGED")
     targetWatcher:SetScript("OnEvent", function() TB.Refresh() end)
 
     main:Hide()
@@ -802,6 +1078,9 @@ function TB.Refresh()
     RefreshRows(rows)
     RefreshRosterSelection()
     TB.RefreshActionControls()
+    if TB.partyFrame and TB.partyFrame:IsVisible() and TB.RefreshPartyView then
+        TB.RefreshPartyView()
+    end
 end
 
 function TB.Toggle()

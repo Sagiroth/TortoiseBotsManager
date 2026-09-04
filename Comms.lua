@@ -180,6 +180,12 @@ function TB.ServerCapabilitiesKnown()
 end
 
 local function updateServerCommands(msg)
+    if string.find(msg, "^TortoiseBots:%s*Enabled") then
+        serverCapabilitiesKnown = true
+        TB._serverCommands = serverCommands
+        if TB.Refresh then TB.Refresh() end
+        return true
+    end
     local _, _, list = string.find(msg, "^Bot commands:%s*(.*)$")
     if not list then return false end
     for key in pairs(serverCommands) do serverCommands[key] = nil end

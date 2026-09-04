@@ -37,7 +37,8 @@ local function initDB()
     if db.frame.y == nil then db.frame.y = 15 end
     if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
     if db.autoPoll == nil then db.autoPoll = true end
-    if db.activeTab ~= "actions" and db.activeTab ~= "roster" then
+    if type(db.botRoles) ~= "table" then db.botRoles = {} end
+    if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster" and db.activeTab ~= "log" then
         db.activeTab = "actions"
     end
 end
@@ -47,9 +48,117 @@ end
 -- may omit ChatFrame_AddMessageEventFilter, so also guard the legacy global
 -- ChatFrame_OnEvent dispatcher when it exists; critical non-TBM errors stay
 -- visible.
-local function isBotCommandMessage(message)
-    return message and (string.find(message, "^%.bot%s") or string.find(message, "^TBM:"))
+local function parseBotLifecycleMessage(message)
+    if not message or type(message) ~= "string" then return nil end
+    local _, _, b, m = string.find(message, "^Bot%s+(%S+)%s+queued for login;%s*it will follow%s+(%S+)%s+after entering the world%.?")
+    if b and m then
+        return b .. " queued for login (following " .. m .. ")"
+    end
+    local _, _, b2 = string.find(message, "^Bot%s+(%S+)%s+logout requested;%s*durable ownership was retained%.?")
+    if b2 then
+        return b2 .. " logout requested"
+    end
+    local _, _, b3 = string.find(message, "^Summoning%s+(%S+)%s+to a safe position near you %(3s%);%s*it will follow on arrival%.?")
+    if b3 then
+        return "Summoning " .. b3 .. " to your position (3s)"
+    end
+    local _, _, t = string.find(message, "^Pullback requested:%s*tank%s+(%S+)%s+is using its native pull strategy%.?")
+    if t then
+        return "Pullback requested for tank " .. t
+    end
+    local _, _, bo = string.find(message, "^Character%s+'([^']+)'%s+is already online")
+    if bo then
+        return "Character '" .. bo .. "' is already online"
+    end
+    local _, _, bow = string.find(message, "^Character%s+'([^']+)'%s+is already owned")
+    if bow then
+        return "Character '" .. bow .. "' is already owned"
+    end
+    local _, _, f = string.find(message, "^Failed to add bot%s+(%S+)")
+    if f then
+        return "Failed to add bot " .. f
+    end
+    local _, _, fs = string.find(message, "^Failed to summon bot%s+'([^']+)'")
+    if fs then
+        return "Failed to summon bot '" .. fs .. "'"
+    end
+    local _, _, bnf = string.find(message, "^Bot%s+'([^']+)'%s+not found or not online")
+    if bnf then
+        return "Bot '" .. bnf .. "' not found or not online"
+    end
+    local _, _, bd = string.find(message, "^Bot%s+'([^']+)'%s+is dead")
+    if bd then
+        return "Bot '" .. bd .. "' is dead"
+    end
+    local _, _, bc = string.find(message, "^Bot%s+'([^']+)'%s+is in combat")
+    if bc then
+        return "Bot '" .. bc .. "' is in combat"
+    end
+    return nil
 end
+
+function TB.LogMessage(cleanMsg, rawMsg)
+    local timeStr = (date and date("%H:%M:%S")) or (os and os.date and os.date("%H:%M:%S")) or "00:00:00"
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.logHistory = TortoiseBotsDB.logHistory or {}
+    table.insert(TortoiseBotsDB.logHistory, {
+        time = timeStr,
+        msg = cleanMsg,
+        raw = rawMsg or cleanMsg,
+    })
+    if table.getn(TortoiseBotsDB.logHistory) > 150 then
+        table.remove(TortoiseBotsDB.logHistory, 1)
+    end
+    if TB.RefreshLogView then
+        TB.RefreshLogView()
+    end
+end
+
+function TB.GetLogHistory()
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.logHistory = TortoiseBotsDB.logHistory or {}
+    return TortoiseBotsDB.logHistory
+end
+
+function TB.ClearLogHistory()
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.logHistory = {}
+end
+
+local function isBotCommandMessage(message)
+    if not message then return false end
+    if string.find(message, "^%.bot$") or string.find(message, "^%.bot%s") or string.find(message, "^TBM:") then
+        return true
+    end
+    if string.find(message, "^Bot commands:") then
+        local now = (GetTime and GetTime()) or 0
+        if now - (TB._lastEnabledPrint or 0) > 1 then
+            TB._lastEnabledPrint = now
+            if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+                DEFAULT_CHAT_FRAME:AddMessage("|cffd8a657TortoiseBots:|r |cff20ff20Enabled|r")
+            end
+        end
+        return true
+    end
+    local cleanMsg = parseBotLifecycleMessage(message)
+    if cleanMsg then
+        TB.LogMessage(cleanMsg, message)
+        return true
+    end
+    return false
+end
+
+local CHAT_FILTER_EVENTS = {
+    CHAT_MSG_SYSTEM = true,
+    CHAT_MSG_SAY = true,
+    CHAT_MSG_YELL = true,
+    CHAT_MSG_PARTY = true,
+    CHAT_MSG_RAID = true,
+    CHAT_MSG_RAID_LEADER = true,
+    CHAT_MSG_CHANNEL = true,
+    CHAT_MSG_WHISPER = true,
+    CHAT_MSG_WHISPER_INFORM = true,
+}
 
 local function installBotCommandChatFilter()
     if TB._chatFilterInstalled then return end
@@ -58,11 +167,7 @@ local function installBotCommandChatFilter()
         if isBotCommandMessage(message) then return true end
     end
     if ChatFrame_AddMessageEventFilter then
-        for _, eventName in ipairs({
-            "CHAT_MSG_SYSTEM", "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY",
-            "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_CHANNEL",
-            "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
-        }) do
+        for eventName in pairs(CHAT_FILTER_EVENTS) do
             ChatFrame_AddMessageEventFilter(eventName, filter)
         end
         installed = true
@@ -79,7 +184,7 @@ local function installBotCommandChatFilter()
                 eventName = a2
                 message = a3 or arg1
             end
-            if eventName == "CHAT_MSG_SYSTEM" and isBotCommandMessage(message) then
+            if eventName and CHAT_FILTER_EVENTS[eventName] and isBotCommandMessage(message) then
                 return
             end
             return previousChatFrameOnEvent(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
@@ -249,7 +354,15 @@ SLASH_TORTOISEBOTSMANAGER4 = "/tortoise"
 SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     msg = string.lower(TB.Trim(msg or ""))
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        return
+    elseif msg == "party" then
+        if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
+        if TB.ShowTab then TB.ShowTab("party") end
+        return
+    elseif msg == "log" then
+        if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
+        if TB.ShowTab then TB.ShowTab("log") end
         return
     elseif msg == "list" then
         TB.PollList(true); TB.Print("Polling server roster…"); return

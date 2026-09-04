@@ -6,6 +6,8 @@
 --/CheckButton may register clicks; generic Frames may not.
 
 local root = arg[1] or "."
+if not table.getn then table.getn = function(t) return t and #t or 0 end end
+if not unpack then unpack = table.unpack end
 local frames = {}
 local sent = {}
 local now = 10
@@ -85,12 +87,13 @@ function CreateFrame(kind, name, parent)
     return frame
 end
 
-TortoiseBotsDB = { roster = { Stale = { addedAt = 1 } }, rosterList = { "Legacy" }, activeTab = "party" }
+TortoiseBotsDB = { roster = { Stale = { addedAt = 1 } }, rosterList = { "Legacy" }, activeTab = "legacy" }
 UIParent = CreateFrame("Frame", "UIParent")
 Minimap = CreateFrame("Frame", "Minimap")
 UISpecialFrames = {}
 SlashCmdList = {}
-DEFAULT_CHAT_FRAME = { AddMessage = function() end }
+local defaultChatMessages = {}
+DEFAULT_CHAT_FRAME = { AddMessage = function(self, msg) table.insert(defaultChatMessages, msg) end }
 local chatFilters = {}
 function ChatFrame_AddMessageEventFilter(eventName, filter) chatFilters[eventName] = filter end
 local chatEventPassed = false
@@ -107,8 +110,18 @@ function GetTime() return now end
 function time() return 123 end
 function SendChatMessage(message) table.insert(sent, message) end
 function GetCursorPosition() return 0, 0 end
-function UnitExists(unit) return unit == "target" and targetExists end
+function UnitExists(unit)
+    if unit == "player" then return true end
+    if unit == "target" then return targetExists end
+    local _, _, index = string.find(unit or "", "^party(%d+)$")
+    return index and tonumber(index) <= table.getn(partyMembers) or false
+end
 function UnitIsDead(unit) return false end
+function UnitLevel(unit) return 60 end
+function UnitClass(unit)
+    if unit == "player" then return "Warrior", "WARRIOR" end
+    return "Priest", "PRIEST"
+end
 function GetNumPartyMembers() return table.getn(partyMembers) end
 function GetNumRaidMembers() return 0 end
 function UnitName(unit)
@@ -146,25 +159,51 @@ assert(chatFilters.CHAT_MSG_SYSTEM and chatFilters.CHAT_MSG_SAY and chatFilters.
 assert(chatFilters.CHAT_MSG_SAY(nil, nil, ".bot action stay") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ACTION_ACK|stay|party|2|-") == true
     and not chatFilters.CHAT_MSG_SYSTEM(nil, nil, "A critical server error"), "chat noise must be hidden locally")
+assert(chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Bot Arcana queued for login; it will follow Valguard after entering the world.") == true,
+    "bot login announcement must be intercepted")
+local history = TB.GetLogHistory()
+assert(table.getn(history) > 0, "log history must contain intercepted bot event")
+assert(history[table.getn(history)].msg == "Arcana queued for login (following Valguard)", "message must be tidied")
 event, arg1 = "CHAT_MSG_SYSTEM", "TBM:ROSTER_BEGIN0"
 chatEventPassed = false
 ChatFrame_OnEvent()
 assert(not chatEventPassed, "legacy chat dispatcher must hide structured roster noise")
+event, arg1 = "CHAT_MSG_SYSTEM", "Bot Arcana logout requested; durable ownership was retained."
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must intercept bot logout message")
+assert(history[table.getn(history)].msg == "Arcana logout requested", "logout message must be tidied in history")
 event, arg1 = "CHAT_MSG_SYSTEM", "A critical server error"
 ChatFrame_OnEvent()
 assert(chatEventPassed, "legacy chat dispatcher must preserve critical errors")
+event, arg1 = "CHAT_MSG_SAY", ".bot action stay"
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must hide .bot say commands")
+event, arg1 = "CHAT_MSG_SYSTEM", "Bot commands: add/remove/logout/roster"
+chatEventPassed = false
+ChatFrame_OnEvent()
+assert(not chatEventPassed, "legacy chat dispatcher must intercept Bot commands server message")
+assert(defaultChatMessages[table.getn(defaultChatMessages)] == "|cffd8a657TortoiseBots:|r |cff20ff20Enabled|r",
+    "Bot commands must be replaced with TortoiseBots: Enabled")
 assert(TortoiseBotsDB.roster == nil and TortoiseBotsDB.rosterList == nil,
     "old local roster data must be ignored and removed")
 assert(TortoiseBotsDB.activeTab == "actions", "Actions must be the default tab")
-assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+assert(TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Actions tab must be visible by default")
 assert(TB.rosterFrame.point and TB.rosterFrame.point[1] == "TOPLEFT",
     "rosterFrame must have anchor point set")
+TB.ShowTab("party")
+assert(TB.partyFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
+    "Party tab must become visible after ShowTab('party')")
 TB.ShowTab("roster")
-assert(TB.rosterFrame:IsVisible() and not TB.actionsFrame:IsVisible(),
+assert(TB.rosterFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Roster tab must become visible after ShowTab('roster')")
+TB.ShowTab("log")
+assert(TB.logFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+    "Log tab must become visible after ShowTab('log')")
 TB.ShowTab("actions")
-assert(TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+assert(TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Actions tab must be restored after ShowTab('actions')")
 assert(TB.rows and table.getn(TB.rows) == TB.C.ROW_N, "all roster rows must be created")
 assert(TB.rows[1].kind == "Frame", "roster rows must be passive containers")
@@ -393,5 +432,27 @@ assert(TB.BuildCommand("command", "Alpha", "dps assist") == "command Alpha dps a
     "BuildCommand API must preserve legacy formatting")
 assert(TB.BuildCommand("action", nil, "focus skull") == "action focus skull",
     "BuildCommand must preserve command-only formatting")
+
+-- Party view and role button test
+partyMembers = { "Priestbot" }
+TB.ShowTab("party")
+TB.RefreshPartyView()
+assert(TB.partyFrame.rows[1]:IsVisible(), "Player row must be visible")
+assert(TB.partyFrame.rows[1].playerLabel:IsVisible(), "Player row must show player label")
+assert(TB.partyFrame.rows[2]:IsVisible(), "Priestbot party row must be visible")
+assert(TB.partyFrame.rows[2].nameText.text == "Priestbot", "Party row 2 must display Priestbot")
+assert(TB.partyFrame.rows[2].roleButtons[1]:IsVisible() and TB.partyFrame.rows[2].roleButtons[1].text:find("Healer"),
+    "Priestbot must have Healer role button")
+assert(TB.partyFrame.rows[2].roleButtons[3]:IsVisible() and TB.partyFrame.rows[2].roleButtons[3].text:find("Shadow"),
+    "Priestbot must have Shadow role button")
+
+-- Click Shadow role button
+now = now + 1
+local beforeRoleCmd = table.getn(sent)
+TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
+assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be stored as dps")
+assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot command Priestbot +shadow,-holy,-discipline,-offdps",
+    "Clicking Shadow role must send Playerbot strategy command")
+assert(TB.partyFrame.rows[2].roleButtons[3].text:find("|cffffd200Shadow|r"), "Selected Shadow button must be highlighted gold")
 
 print("PASS: TortoiseBotsManager regression checks")
