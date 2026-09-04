@@ -6,9 +6,7 @@ Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.
 
 Actions use normal WoW targeting for gameplay intent. Roster is a server-owned lifecycle list for logging bots in/out and managing group membership; no combat controls are attached to rows.
 
-> **Requires the server-side module:** [tortoise-wow-stack/TortoiseBots](https://github.com/tortoise-wow-stack/TortoiseBots) (`modules/TortoiseBots`). The addon sends `.bot` transport commands, consumes structured `TBM:` responses, and keeps legacy command compatibility.
-
-![TortoiseBots Manager panel](https://raw.githubusercontent.com/tortoise-wow-stack/TortoiseBotsManager/main/.github/preview.png)
+> **Requires the server-side module:** [Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots) (`modules/TortoiseBots`). The addon sends `.bot` transport commands, consumes structured `TBM:` responses, and keeps legacy command compatibility.
 
 ---
 
@@ -26,10 +24,10 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 
 This addon is the client half of:
 
-**[tortoise-wow-stack/TortoiseBots](https://github.com/tortoise-wow-stack/TortoiseBots)** — optional native PlayerBots module for Tortoise WoW 1.18.1 (`Penqle/tortoise-wow` + PRs #411/#416). It owns `BotManager`, `Headless` sessions, `.bot` commands and class AI. The addon requires it.
+**[Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots)** — optional native PlayerBots module for Tortoise WoW 1.18.1 (`Penqle/tortoise-wow` + PR #438). It owns `BotManager`, bot records, `.bot` commands and class AI. The addon requires it.
 
 ```
-Tortoise WoW core (Headless sessions #411)
+Tortoise WoW core (Headless sessions #438)
         │
         │  .bot chat commands
         ▼
@@ -55,10 +53,10 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 ### From this repo
 
 ```bash
-git clone https://github.com/tortoise-wow-stack/TortoiseBotsManager.git
-cp -r TortoiseBotsManager "/mnt/ssd/TurtleWoW eng client 1.18.1/Interface/AddOns/TortoiseBotsManager"
+git clone https://github.com/Sagiroth/TortoiseBotsManager.git
+cp -r TortoiseBotsManager "<TurtleWoW>/Interface/AddOns/TortoiseBotsManager"
 # or symlink
-ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interface/AddOns/TortoiseBotsManager"
+ln -s "$(pwd)/TortoiseBotsManager" "<TurtleWoW>/Interface/AddOns/TortoiseBotsManager"
 ```
 
 ## Use
@@ -75,12 +73,13 @@ ln -s "$(pwd)/TortoiseBotsManager" "/mnt/ssd/TurtleWoW eng client 1.18.1/Interfa
 * `TBM:ROSTER_*` and `TBM:ACTION_*` system messages are parsed as structured state; legacy human-readable responses remain a compatibility fallback.
 * Server-side ownership, Headless lifecycle, target validation, executor selection, and mature PlayerbotAI behavior are authoritative. The client only disables obviously unavailable controls.
 * Roster lifecycle operations remain individually acknowledged and time out instead of staying optimistic forever. Gameplay never loops over roster selection.
+* Multi-bot Invite advances only after each bot is a real group member, not merely after the server creates its pending invite. Full normal parties upgrade to a raid before another owned bot is invited.
 * Normal `.bot` command echoes and structured `TBM:` transport messages are hidden locally through the standard chat filter or the legacy chat dispatcher; critical system errors stay visible.
 
 ## Requirements
 
 * **Client:** Turtle WoW English 1.18.1 (Interface 11200).
-* **Server:** TortoiseBots module built with `MODULE_TORTOISEBOTS=static` and Headless PR #411 (`SessionTransport::Headless`). Without it, `.bot` returns “unknown command”.
+* **Server:** TortoiseBots module built with `MODULE_TORTOISEBOTS=static` and core PR #438 (`SessionTransport::Headless`). Without it, `.bot` returns “unknown command”.
 
 ## Files
 
@@ -122,6 +121,6 @@ uses the client addon interface under `Interface/AddOns`.
 
 ## Links
 
-* Module: https://github.com/tortoise-wow-stack/TortoiseBots
+* Module: https://github.com/Sagiroth/TortoiseBots
 * Core: https://github.com/Penqle/tortoise-wow
-* Issues: https://github.com/tortoise-wow-stack/TortoiseBotsManager/issues
+* Issues: https://github.com/Sagiroth/TortoiseBotsManager/issues
