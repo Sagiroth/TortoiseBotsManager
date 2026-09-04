@@ -294,8 +294,12 @@ end
 
 local function lifecycleCommand(action, verb)
     local names = TB.GetEligibleRosterNames and TB.GetEligibleRosterNames(action) or {}
-    for _, name in ipairs(names) do
-        TB.SendBotCommand(TB.BuildCommand(verb, name))
+    if table.getn(names) > 0 and action == "invite" and TB.QueueRosterBatch then
+        TB.QueueRosterBatch(verb, names)
+    else
+        for _, name in ipairs(names) do
+            TB.SendBotCommand(TB.BuildCommand(verb, name))
+        end
     end
     if table.getn(names) == 0 and TB.SetStatus then
         TB.SetStatus("No eligible selected bots.", "muted")
@@ -660,7 +664,7 @@ function TB.InitUI()
 
         local title = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         title:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 6, 0)
-        title:SetText("|cffd8a657Bot Activity History|r (Timestamped)")
+        title:SetText("|cffd8a657Bot activity log|r")
 
         local clearBtn = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
         clearBtn:SetWidth(65); clearBtn:SetHeight(18)
@@ -1038,7 +1042,8 @@ RefreshRosterSelection = function()
             local command = action
             if action == "login" then command = "add"
             elseif action == "kick" then command = "uninvite" end
-            if serverSupports(command) and table.getn(eligible) > 0 then
+            local busy = TB.IsRosterBatchActive and TB.IsRosterBatchActive(command)
+            if not busy and serverSupports(command) and table.getn(eligible) > 0 then
                 button:Enable()
             else
                 button:Disable()

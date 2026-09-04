@@ -199,6 +199,10 @@ end
 local sendQueue = {} -- { {cmd, at} }
 local lastSend = 0
 local capabilitiesRequested = false
+local rosterBatchQueue = {}
+local activeRosterBatch = nil
+local rosterBatchFrame
+local rosterBatchId = 0
 
 function TB.CanSend()
     local now = (GetTime and GetTime()) or 0
@@ -216,7 +220,7 @@ local function ensureQueueFrame()
         if not TB.CanSend() then return end
         local item = table.remove(sendQueue, 1)
         if item and item.cmd then
-            TB.SendBotCommand(item.cmd, { queued = true })
+            TB.SendBotCommand(item.cmd, item.opts or { queued = true })
         end
     end)
 end
@@ -232,6 +236,9 @@ function TB.SendBotCommand(cmd, opts)
         TB.lastCommand   = cmd
         TB.lastCommandAt = lastSend
         if TB.OnCommandSent then TB.OnCommandSent(cmd) end
+        if opts.rosterBatch and TB.OnRosterBatchCommandSent then
+            TB.OnRosterBatchCommandSent(cmd)
+        end
         local verb = string.lower(string.gsub(cmd, "%s+.*", ""))
         if verb == "roster" or verb == "list" then
             TB._lastPoll = lastSend
@@ -239,11 +246,187 @@ function TB.SendBotCommand(cmd, opts)
         end
         return true
     else
-        table.insert(sendQueue, { cmd = cmd, at = (GetTime and GetTime()) or 0 })
+        table.insert(sendQueue, {
+            cmd = cmd, opts = opts, at = (GetTime and GetTime()) or 0,
+        })
         if TB.OnCommandQueued then TB.OnCommandQueued(cmd) end
         ensureQueueFrame()
         return false
     end
+end
+
+-- Roster lifecycle batches are serialized at the server-response boundary.
+-- The generic transport queue still handles chat throttling, but a second
+-- invite is not released until the first invite has been accepted or rejected.
+local function rosterBatchNow()
+    return (GetTime and GetTime()) or 0
+end
+
+local startRosterBatch
+
+local function finishRosterBatch(batch)
+    if activeRosterBatch ~= batch then return end
+    activeRosterBatch = nil
+    if rosterBatchFrame and rosterBatchFrame.Hide then rosterBatchFrame:Hide() end
+    local total = table.getn(batch.names)
+    local completed = batch.succeeded or 0
+    local failed = batch.failed or 0
+    if TB.SetStatus then
+        local kind = failed > 0 and "warn" or "ok"
+        local outcome = batch.verb == "invite" and "joined" or "acknowledged"
+        TB.SetStatus(batch.verb .. " complete · " .. completed .. "/" .. total .. " " .. outcome, kind)
+    end
+    local nextBatch = table.remove(rosterBatchQueue, 1)
+    if nextBatch then startRosterBatch(nextBatch) end
+end
+
+local function rosterBatchTimeout()
+    local batch = activeRosterBatch
+    if not batch or not batch.sentAt then return end
+    local timeout = (C and C.ACTION_TIMEOUT) or 8
+    if batch.verb == "invite" and batch.inviteDispatched then
+        timeout = (C and C.INVITE_ACCEPT_TIMEOUT) or 20
+    end
+    if rosterBatchNow() - batch.sentAt < timeout then return end
+
+    local name = batch.names[batch.index]
+    if not name then return end
+    local message = name .. " " .. batch.verb .. " timed out."
+    if batch.verb == "invite" and batch.inviteDispatched then
+        if TB.CompleteOperation then
+            TB.CompleteOperation(name, batch.verb, false, message)
+        end
+        if TB.OnRosterBatchResult then
+            TB.OnRosterBatchResult(name, batch.verb, false, message)
+        end
+    elseif (batch.attempts or 0) < 2 then
+        batch.sentAt = nil
+        if TB.AcknowledgeOperation then TB.AcknowledgeOperation(name, batch.verb) end
+        if TB.BeginOperation then TB.BeginOperation(name, batch.verb, true) end
+        if TB.SetStatus then TB.SetStatus("Retrying " .. batch.verb .. " for " .. name .. "…", "pending") end
+        TB.SendBotCommand(batch.command, { rosterBatch = true })
+    else
+        if TB.CompleteOperation then
+            TB.CompleteOperation(name, batch.verb, false, message)
+        end
+        if TB.OnRosterBatchResult then
+            TB.OnRosterBatchResult(name, batch.verb, false, message)
+        end
+    end
+end
+
+local function ensureRosterBatchFrame()
+    if rosterBatchFrame then return end
+    rosterBatchFrame = CreateFrame("Frame", "TortoiseBotsManagerRosterBatchFrame")
+    rosterBatchFrame:SetScript("OnUpdate", function()
+        rosterBatchTimeout()
+    end)
+end
+
+startRosterBatch = function(batch)
+    activeRosterBatch = batch
+    batch.index = 1
+    batch.attempts = 0
+    batch.succeeded = 0
+    batch.failed = 0
+
+    local timeout = (batch.verb == "invite" and (C and C.INVITE_ACCEPT_TIMEOUT))
+        or (C and C.ACTION_TIMEOUT) or 8
+    local batchDeadline = rosterBatchNow() + timeout * (table.getn(batch.names) * 2 + 1)
+    for _, name in ipairs(batch.names) do
+        if TB.BeginOperation then TB.BeginOperation(name, batch.verb, true) end
+        local st = TB.GetState and TB.GetState(name) or nil
+        if st and st.operation then st.operation.deadline = batchDeadline end
+    end
+
+    ensureRosterBatchFrame()
+    if rosterBatchFrame.Show then rosterBatchFrame:Show() end
+    batch.command = TB.BuildCommand(batch.verb, batch.names[batch.index])
+    TB.SendBotCommand(batch.command, { rosterBatch = true })
+end
+
+function TB.IsRosterBatchActive(verb)
+    verb = verb and string.lower(TB.Trim(verb)) or nil
+    if activeRosterBatch and (not verb or activeRosterBatch.verb == verb) then return true end
+    for _, batch in ipairs(rosterBatchQueue) do
+        if not verb or batch.verb == verb then return true end
+    end
+    return false
+end
+
+function TB.QueueRosterBatch(verb, names)
+    verb = string.lower(TB.Trim(verb or ""))
+    if verb == "" or type(names) ~= "table" then return false end
+    local clean, seen = {}, {}
+    for _, name in ipairs(names) do
+        name = TB.NormalizeName and TB.NormalizeName(name or "") or name
+        if name and name ~= "" and not seen[name] then
+            seen[name] = true
+            table.insert(clean, name)
+        end
+    end
+    if table.getn(clean) == 0 then return false end
+
+    rosterBatchId = rosterBatchId + 1
+    local batch = { id = rosterBatchId, verb = verb, names = clean }
+    table.insert(rosterBatchQueue, batch)
+    if not activeRosterBatch then
+        startRosterBatch(table.remove(rosterBatchQueue, 1))
+    elseif TB.SetStatus then
+        TB.SetStatus(verb .. " queued · " .. table.getn(clean) .. " bots", "pending")
+    end
+    return true
+end
+
+function TB.OnRosterBatchCommandSent(cmd)
+    local batch = activeRosterBatch
+    if not batch or batch.command ~= cmd then return false end
+    batch.sentAt = rosterBatchNow()
+    batch.inviteDispatched = nil
+    batch.attempts = (batch.attempts or 0) + 1
+    return true
+end
+
+function TB.OnRosterBatchInviteDispatched(name)
+    local batch = activeRosterBatch
+    name = TB.NormalizeName and TB.NormalizeName(name or "") or name
+    if not batch or not batch.sentAt or batch.verb ~= "invite"
+        or batch.names[batch.index] ~= name then
+        return false
+    end
+    batch.inviteDispatched = true
+    batch.sentAt = rosterBatchNow()
+    return true
+end
+
+function TB.OnRosterBatchInviteJoined(name)
+    if not TB.OnRosterBatchResult then return false end
+    return TB.OnRosterBatchResult(name, "invite", true)
+end
+
+function TB.OnRosterBatchResult(name, verb, success)
+    local batch = activeRosterBatch
+    name = TB.NormalizeName and TB.NormalizeName(name or "") or name
+    verb = string.lower(TB.Trim(verb or ""))
+    if not batch or not batch.sentAt or batch.verb ~= verb
+        or batch.names[batch.index] ~= name then
+        return false
+    end
+
+    batch.sentAt = nil
+    if success then batch.succeeded = batch.succeeded + 1
+    else batch.failed = batch.failed + 1 end
+    batch.index = batch.index + 1
+    batch.attempts = 0
+
+    local nextName = batch.names[batch.index]
+    if not nextName then
+        finishRosterBatch(batch)
+        return true
+    end
+    batch.command = TB.BuildCommand(batch.verb, nextName)
+    TB.SendBotCommand(batch.command, { rosterBatch = true })
+    return true
 end
 
 -- One gameplay intent is one server request.  Roster selection never enters
