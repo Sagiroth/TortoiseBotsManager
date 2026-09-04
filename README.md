@@ -6,7 +6,7 @@ Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.
 
 Actions use normal WoW targeting for gameplay intent. Roster is a server-owned lifecycle list for logging bots in/out and managing group membership; no combat controls are attached to rows.
 
-> **Requires the server-side module:** [tortoise-wow-stack/TortoiseBots](https://github.com/tortoise-wow-stack/TortoiseBots) (`modules/TortoiseBots`). The addon sends `.bot` transport commands, consumes structured `TBM:` responses, and keeps legacy command compatibility.
+> **Requires the server-side module:** [Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots) (`modules/TortoiseBots`). The addon sends `.bot` transport commands, consumes structured `TBM:` responses, and keeps legacy command compatibility.
 
 ![TortoiseBots Manager panel](https://raw.githubusercontent.com/tortoise-wow-stack/TortoiseBotsManager/main/.github/preview.png)
 
