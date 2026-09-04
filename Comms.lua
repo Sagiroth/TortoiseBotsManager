@@ -181,8 +181,9 @@ end
 
 local function updateServerCommands(msg)
     if string.find(msg, "^TortoiseBots:%s*Enabled") then
-        serverCapabilitiesKnown = true
-        TB._serverCommands = serverCommands
+        -- This is a module health response, not a command capability list.
+        -- Keep capabilities unknown until the server sends an explicit list;
+        -- UI controls otherwise fail closed even though the module is usable.
         if TB.Refresh then TB.Refresh() end
         return true
     end
@@ -257,6 +258,11 @@ end
 
 local function markFailure(msg, includeStarting, expectedVerb)
     rollbackTransient(msg, includeStarting, expectedVerb)
+    local name = messageBotName(msg) or lastCommandBotName(expectedVerb)
+    local verb = expectedVerb or lastCommandVerb()
+    if name and TB.OnRosterBatchResult then
+        TB.OnRosterBatchResult(name, verb, false, msg)
+    end
     if TB.SetStatus then TB.SetStatus(msg, "warn") end
     if TB.RequestPollSoon then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
 end
@@ -269,7 +275,21 @@ local function acknowledgeAction(msg, verb, movement)
     local completed = TB.CompleteOperation and TB.CompleteOperation(name, verb, true, msg)
     st = TB.GetState(name)
     if st and completed and movement then st.movement = movement end
+    if completed and TB.OnRosterBatchResult then
+        TB.OnRosterBatchResult(name, verb, true, msg)
+    end
     return completed and true or false
+end
+
+local function acknowledgeInviteDispatch(msg)
+    local name = messageBotName(msg) or lastCommandBotName("invite")
+    if not name then return nil end
+    local st = TB.GetState and TB.GetState(name) or nil
+    if st and st.operation and st.operation.verb ~= "invite" then return nil end
+    if TB.OnRosterBatchInviteDispatched then
+        TB.OnRosterBatchInviteDispatched(name)
+    end
+    return name
 end
 
 -- ── outbound ────────────────────────────────────────────────────────────────
@@ -475,8 +495,11 @@ function TB.OnSystemMessage(msg)
         if TB.SetStatus then TB.SetStatus(msg, "pending") end; handled = true
 
     elseif string.find(msg, PAT.inviteSent) then
-        acknowledgeAction(msg, "invite")
-        if TB.SetStatus then TB.SetStatus(msg, "pending") end
+        local name = acknowledgeInviteDispatch(msg)
+        if TB.SetStatus then
+            local text = name and (name .. ": invite sent; waiting for group join…") or msg
+            TB.SetStatus(text, "pending")
+        end
         TB.RequestPollSoon(C.POLL_AFTER_CMD); handled = true
 
     elseif string.find(msg, PAT.inviteReject) then

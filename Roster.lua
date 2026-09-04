@@ -165,6 +165,14 @@ local function commitSnapshot(rows)
             present[entry.name] = true
         end
     end
+    -- A roster response can arrive before the client receives a group event.
+    -- Treat the server's group flag as the same authoritative completion
+    -- signal for an invite batch.
+    for name, entry in pairs(state) do
+        if entry.group and TB.OnRosterBatchInviteJoined then
+            TB.OnRosterBatchInviteJoined(name)
+        end
+    end
     clearTable(TB.rosterSelection)
     for name in pairs(previousSelection) do
         if state[name] then TB.rosterSelection[name] = true end
@@ -436,6 +444,7 @@ end
 local function operationTimeout(verb)
     if verb == "add" then return C.ADD_TIMEOUT or 30 end
     if verb == "remove" or verb == "logout" then return C.REMOVE_TIMEOUT or 15 end
+    if verb == "invite" then return C.INVITE_ACCEPT_TIMEOUT or 20 end
     return C.ACTION_TIMEOUT or 8
 end
 
@@ -717,7 +726,12 @@ gf:SetScript("OnEvent", function()
     for name, st in pairs(state) do
         if st.source == "snapshot" then st.group = members[name] and true or false end
         if st.operation and st.operation.verb == "invite" and members[name] then
-            TB.CompleteOperation(name, "invite", true, "Group invite accepted.")
+            local completed = TB.CompleteOperation(name, "invite", true, "Group invite accepted.")
+            if completed and TB.OnRosterBatchInviteJoined then
+                TB.OnRosterBatchInviteJoined(name)
+            end
+        elseif members[name] and TB.OnRosterBatchInviteJoined then
+            TB.OnRosterBatchInviteJoined(name)
         elseif st.operation and st.operation.verb == "uninvite" and not members[name] then
             TB.CompleteOperation(name, "uninvite", true, "Bot left your group.")
         end

@@ -186,6 +186,8 @@ ChatFrame_OnEvent()
 assert(not chatEventPassed, "legacy chat dispatcher must intercept Bot commands server message")
 assert(defaultChatMessages[table.getn(defaultChatMessages)] == "|cffd8a657TortoiseBots:|r |cff20ff20Enabled|r",
     "Bot commands must be replaced with TortoiseBots: Enabled")
+-- The current server's .bot help response only confirms the module is enabled.
+TB.OnSystemMessage("TortoiseBots: Enabled")
 assert(TortoiseBotsDB.roster == nil and TortoiseBotsDB.rosterList == nil,
     "old local roster data must be ignored and removed")
 assert(TortoiseBotsDB.activeTab == "actions", "Actions must be the default tab")
@@ -306,6 +308,9 @@ assert(table.getn(TB.GetSelectedRosterNames()) == 0,
 assert(not TB.checkAll:GetChecked(), "checkAll must be unchecked after clearing")
 TB.ToggleRosterSelection("Alpha", true)
 TB.ToggleRosterSelection("Bravo", true)
+TB.Refresh()
+assert(TB.lifecycleButtons.login.enabled,
+    "Login must enable for a selected offline snapshot row when the server is enabled")
 
 now = now + 1
 local beforeLogin = table.getn(sent)
@@ -315,14 +320,65 @@ assert(table.getn(sent) == beforeLogin + 1 and sent[table.getn(sent)] == ".bot a
     "Login must send one command for the eligible subset")
 
 TB.ClearRosterSelection()
+TB.SetState("Gamma", { group = false })
 TB.ToggleRosterSelection("Alpha", true)
 TB.ToggleRosterSelection("Gamma", true)
+assert(table.getn(TB.GetEligibleRosterNames("invite")) == 2,
+    "two selected ungrouped bots must be eligible for invite")
 now = now + 1
 local beforeInvite = table.getn(sent)
 this = TB.lifecycleButtons.invite
 TB.lifecycleButtons.invite.scripts.OnClick(TB.lifecycleButtons.invite)
+assert(TB.IsRosterBatchActive("invite"), "multi-invite must remain active until all results arrive")
 assert(table.getn(sent) == beforeInvite + 1 and sent[table.getn(sent)] == ".bot invite Alpha",
+    "multi-invite must send the first selected bot immediately")
+now = now + 1
+local queueFrame = frames["TortoiseBotsManagerQueueFrame"]
+if queueFrame then
+    this, arg1 = queueFrame, 0.1
+    queueFrame.scripts.OnUpdate(queueFrame)
+end
+TB.OnSystemMessage("Invitation sent to bot Alpha; it may accept it asynchronously.")
+-- Polling may replace optimistic state before the bot's asynchronous accept.
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|0|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+assert(table.getn(sent) == beforeInvite + 1,
+    "multi-invite must wait for the first bot to join before sending the next invite")
+partyMembers = { "Alpha" }
+local groupWatcher = frames["TortoiseBotsManagerGroupWatcher"]
+assert(groupWatcher, "group watcher must observe invite acceptance")
+event, this = "GROUP_ROSTER_UPDATE", groupWatcher
+groupWatcher.scripts.OnEvent(groupWatcher)
+assert(table.getn(sent) == beforeInvite + 2 and sent[table.getn(sent)] == ".bot invite Gamma",
+    "multi-invite must continue only after the first bot joins the group")
+TB.OnSystemMessage("Invitation sent to bot Gamma; it may accept it asynchronously.")
+partyMembers = { "Alpha", "Gamma" }
+event, this = "GROUP_ROSTER_UPDATE", groupWatcher
+groupWatcher.scripts.OnEvent(groupWatcher)
+assert(not TB.IsRosterBatchActive("invite"), "multi-invite must finish after every bot joins")
+partyMembers = { "Gamma" }
+event, this = "GROUP_ROSTER_UPDATE", groupWatcher
+groupWatcher.scripts.OnEvent(groupWatcher)
+TB.Refresh()
+TB.ClearRosterSelection()
+TB.ToggleRosterSelection("Alpha", true)
+TB.ToggleRosterSelection("Gamma", true)
+now = now + 1
+local beforeMixedInvite = table.getn(sent)
+this = TB.lifecycleButtons.invite
+TB.lifecycleButtons.invite.scripts.OnClick(TB.lifecycleButtons.invite)
+assert(table.getn(sent) == beforeMixedInvite + 1 and sent[table.getn(sent)] == ".bot invite Alpha",
     "Invite must skip selected bots already in the group")
+TB.OnSystemMessage("Invitation sent to bot Alpha; it may accept it asynchronously.")
+partyMembers = { "Alpha", "Gamma" }
+event, this = "GROUP_ROSTER_UPDATE", groupWatcher
+groupWatcher.scripts.OnEvent(groupWatcher)
+partyMembers = { "Gamma" }
+event, this = "GROUP_ROSTER_UPDATE", groupWatcher
+groupWatcher.scripts.OnEvent(groupWatcher)
 now = now + 1
 local beforeKick = table.getn(sent)
 this = TB.lifecycleButtons.kick
