@@ -440,8 +440,11 @@ end
 function TB.SetFormation(formationId)
     formationId = TB.Trim(formationId or "default")
     TB.currentFormation = formationId
-    local scope, botName = TB.GetTargetScope and TB.GetTargetScope() or "party"
-    if scope == "bot" and botName then
+    local scope, botName = "party", nil
+    if TB.GetTargetScope then
+        scope, botName = TB.GetTargetScope()
+    end
+    if botName then
         TB.SendBotCommand("formation " .. botName .. " " .. formationId)
     else
         TB.SendBotCommand("formation " .. formationId)

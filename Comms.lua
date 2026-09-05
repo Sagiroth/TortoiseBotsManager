@@ -1,5 +1,7 @@
 -- TortoiseBotsManager/Comms.lua
 -- Protocol: send ".bot <verb> [name] [extra]" and parse CHAT_MSG_SYSTEM replies.
+-- The roster response also carries a separate TBM:CC_ASSIGN_* snapshot for
+-- live per-bot crowd-control mark preferences.
 --
 -- Source of truth for every pattern is commands/BotCommands.cpp (module repo).
 -- Keep PAT lenient (substring, not full equality) so minor wording tweaks don't
@@ -95,6 +97,10 @@ end
 
 local function actionLabel(intent)
     if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
+    local _, _, mark = string.find(intent or "", "^cc%s+(%a+)$")
+    if mark and C.CC_MARK_LABELS and C.CC_MARK_LABELS[mark] then
+        return "CC " .. C.CC_MARK_LABELS[mark]
+    end
     return intent
 end
 
@@ -135,6 +141,10 @@ function TB.ParseActionMessage(msg)
         end
         TB.lastActionAck = packet
         TB.lastActionError = nil
+        local _, _, ccMark = string.find(packet.intent or "", "^cc%s+(%a+)$")
+        if ccMark and packet.executor ~= "-" and TB.SetCcAssignment then
+            TB.SetCcAssignment(packet.executor, ccMark)
+        end
         if packet.intent == "aoe" then
             TB.aoePending = false
             if packet.executor == "on" or packet.executor == "off" then

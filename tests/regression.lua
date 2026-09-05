@@ -14,6 +14,7 @@ local now = 10
 local targetExists = true
 local targetNameValue = "Training Dummy"
 local partyMembers = {}
+local partyClassName = "Priest"
 
 local function object(kind, parent)
     local value = {
@@ -120,7 +121,7 @@ function UnitIsDead(unit) return false end
 function UnitLevel(unit) return 60 end
 function UnitClass(unit)
     if unit == "player" then return "Warrior", "WARRIOR" end
-    return "Priest", "PRIEST"
+    return partyClassName, string.upper(partyClassName)
 end
 function GetNumPartyMembers() return table.getn(partyMembers) end
 function GetNumRaidMembers() return 0 end
@@ -220,6 +221,10 @@ assert(TB.statsButton == nil and TB.helpButton == nil,
 assert(TB.actionButtons and TB.lifecycleButtons, "Actions and lifecycle bars must exist")
 assert(TB.actionButtons.pull and TB.C.ACTIONS[3] == "pull",
     "distinct mature Pull behavior must remain exposed")
+assert(TB.C.CC_MARKS and TB.C.CC_MARK_LABELS.circle == "Circle"
+    and TB.C.CC_MARK_ICONS.moon == 5, "all CC raid marks must have stable labels/icons")
+assert(TB.ccMenu and TB.ccMenu.buttons.circle and TB.ccMenu.buttons.moon,
+    "CC Mark must expose a compact raid-icon picker")
 assert(rawget(TB, "selected") == nil, "legacy gameplay selection alias must not exist")
 
 -- A structured snapshot is authoritative and includes offline owned rows.
@@ -228,6 +233,9 @@ TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
 TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
 TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
 TB.OnSystemMessage("TBM:ROSTER_END")
+TB.OnSystemMessage("TBM:CC_ASSIGN_BEGIN|1")
+TB.OnSystemMessage("TBM:CC_ASSIGN|Alpha|circle")
+TB.OnSystemMessage("TBM:CC_ASSIGN_END")
 local rows = TB.GetDisplayRows("")
 assert(table.getn(rows) == 3, "snapshot must render all owned rows, including offline")
 assert(rows[1].name == "Alpha" and rows[1].className == "Warrior",
@@ -238,6 +246,8 @@ assert(TB.GetState("Bravo").status == TB.C.STATUS.OFFLINE,
     "offline snapshot state must remain offline")
 assert(TB.GetState("Alpha").location == "map:1,zone:2,area:3",
     "snapshot location must be retained")
+assert(TB.GetRosterEntry("Alpha").ccMark == "circle",
+    "CC assignment snapshot must expose the server-owned CC mark")
 assert(TB.GetRosterCount() == 3, "roster count must come from snapshot")
 
 -- Display rows constantly show all bots with their state
@@ -433,6 +443,30 @@ assert(TB.GetActionScope() == "party" and TB.scopeHint.text == "Party actions",
 assert(TB.actionButtons.attack.enabled and TB.actionButtons.pull.enabled
     and TB.actionButtons.pullback.enabled,
     "normal targets should enable enemy-only actions")
+
+-- CC Mark picker: targeting an owned bot makes the assignment bot-scoped.
+targetNameValue = "Alpha"
+TB.Refresh()
+now = now + 1
+TB.SetFormation("far")
+assert(sent[table.getn(sent)] == ".bot formation Alpha far",
+    "targeted bot formation must use the bot-qualified scope")
+now = now + 1
+this = TB.actionButtons.ccMoon
+TB.actionButtons.ccMoon.scripts.OnClick(TB.actionButtons.ccMoon)
+assert(TB.ccMenu:IsVisible(), "CC Mark button must open the mark picker")
+assert(TB.ccMenu.hint.text:find("Bot: Alpha"),
+    "CC picker must report bot-scoped targeting")
+this = TB.ccMenu.buttons.circle
+TB.ccMenu.buttons.circle.scripts.OnClick(TB.ccMenu.buttons.circle)
+assert(sent[table.getn(sent)] == ".bot action cc circle",
+    "selecting Circle must send the generalized CC action")
+assert(not TB.ccMenu:IsVisible(), "CC mark picker must close after selection")
+TB.OnSystemMessage("TBM:ACTION_ACK|cc circle|bot:Alpha|1|Alpha")
+assert(TB.GetCcAssignment("Alpha") == "circle",
+    "CC ACK must update the visible bot assignment")
+targetNameValue = "Enemy"
+TB.Refresh()
 now = now + 1
 local beforePull = table.getn(sent)
 this = TB.actionButtons.pull
@@ -525,5 +559,29 @@ assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be st
 assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot command Priestbot +shadow,-holy,-discipline,-offdps",
     "Clicking Shadow role must send Playerbot strategy command")
 assert(TB.partyFrame.rows[2].roleButtons[3].text:find("|cffffd200Shadow|r"), "Selected Shadow button must be highlighted gold")
+
+TB.SetCcAssignment("Priestbot", "moon")
+TB.RefreshPartyView()
+assert(TB.partyFrame.rows[2].ccMark == "moon" and TB.partyFrame.rows[2].ccIcon:IsVisible(),
+    "Party view must show the assigned CC icon beside each bot")
+assert(TB.partyFrame.rows[2].ccIcon.texture[1] == "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5",
+    "Party CC icon must match the assigned raid mark")
+assert(TB.partyFrame.rows[2].ccIcon.point[1] == "BOTTOMRIGHT"
+    and TB.partyFrame.rows[2].roleButtons[4].point[5] == 8,
+    "CC icon must be reflowed below the role-button row")
+
+-- Four-role rows reserve the lower-right CC column instead of letting the
+-- fourth role button obscure the assigned mark (Druid is the current case).
+partyClassName = "Druid"
+TB.RefreshPartyView()
+local druidRow = TB.partyFrame.rows[2]
+assert(druidRow.roleButtons[4]:IsVisible()
+    and druidRow.roleButtons[4].width == 70
+    and druidRow.roleButtons[4].point[4] + druidRow.roleButtons[4].width <= 440,
+    "Four-role rows must leave a dedicated column for the CC icon")
+assert(druidRow.ccIcon.point[1] == "BOTTOMRIGHT"
+    and druidRow.ccIcon.point[5] == 4
+    and druidRow.ccLabel.point[1] == "BOTTOMRIGHT",
+    "CC indicator must occupy the lower-right row slot")
 
 print("PASS: TortoiseBotsManager regression checks")
