@@ -93,6 +93,7 @@ local ACTION_TOOLTIPS = {
     ["cc moon"]     = "Maintain crowd control on target marked with Moon (RTI 5)",
     aoe      = "Toggle area-of-effect spells on/off",
     ready    = "Perform ready check: bots report HP, mana, water, and status",
+    interrupt = "Interrupt the selected enemy's active spell with the best ready bot",
 }
 
 local function setButtonTooltip(button, text)
@@ -393,7 +394,7 @@ CreateActions = function(parent)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     frame:SetWidth(W - (C.PAD or 10) * 2)
-    frame:SetHeight(325)
+    frame:SetHeight(350)
 
     -- Scope Banner Card
     local scopeCard = CreateFrame("Frame", nil, frame)
@@ -441,9 +442,9 @@ CreateActions = function(parent)
         return card
     end
 
-    local cardCombat = makeSection("COMBAT & ENGAGEMENT", -40, 58)
-    local cardTactics= makeSection("TACTICS & UTILITY", -102, 58)
-    local cardMove   = makeSection("FORMATION & MOVEMENT", -164, 88)
+    local cardCombat = makeSection("COMBAT & ENGAGEMENT", -40, 88)
+    local cardTactics= makeSection("TACTICS & UTILITY", -132, 58)
+    local cardMove   = makeSection("FORMATION & MOVEMENT", -194, 88)
 
     local btnY = -24
     local buttons = {}
@@ -451,6 +452,7 @@ CreateActions = function(parent)
     buttons.stop     = makeActionButton(cardCombat, "stop", 108, 122, btnY)
     buttons.pull     = makeActionButton(cardCombat, "pull", 108, 236, btnY)
     buttons.pullback = makeActionButton(cardCombat, "pullback", 118, 350, btnY)
+    buttons.interrupt = makeActionButton(cardCombat, "interrupt", 118, 8, -54)
 
     buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 108, 8, btnY)
     buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 108, 122, btnY)
@@ -505,10 +507,10 @@ CreateActions = function(parent)
     TB.UpdateFormationPills()
 
     local guide = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -260)
+    guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -290)
     guide:SetWidth(464)
     guide:SetJustifyH("LEFT")
-    guide:SetText("|cff626056Tip: Enemy target enables Attack/Pull. Click a Formation to set party spacing.|r")
+    guide:SetText("|cff626056Tip: Enemy target enables Attack/Pull/Interrupt. Click a Formation to set party spacing.|r")
 
     TB.actionButtons = buttons
     TB.actions = buttons
@@ -574,7 +576,7 @@ function TB.InitUI()
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
-    content:SetHeight(325)
+    content:SetHeight(350)
 
     local actionsFrame = CreateActions(content)
     local rosterFrame = CreateFrame("Frame", nil, content)
@@ -1055,7 +1057,7 @@ end
 function TB.RefreshActionControls()
     if not TB.actionButtons then return end
     local hasEnemyTarget = hasValidEnemyTarget()
-    local targetOnly = { "attack", "pull", "pullback" }
+    local targetOnly = { "attack", "pull", "pullback", "interrupt" }
     for _, key in ipairs(targetOnly) do
         if hasEnemyTarget then TB.actionButtons[key]:Enable() else TB.actionButtons[key]:Disable() end
     end
