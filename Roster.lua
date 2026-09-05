@@ -3,8 +3,10 @@
 -- The server-owned snapshot is the only roster authority.  SavedVariables are
 -- intentionally not consulted here: offline ownership rows arrive in the
 -- TBM:ROSTER_BEGIN/ROSTER/ROSTER_END stream and disappear only when the server
--- says they do.  Legacy .bot list/status replies are retained as an online
--- diagnostic until the first structured snapshot has completed.
+-- says they do.  Live CC preferences arrive in the separate
+-- TBM:CC_ASSIGN_BEGIN/CC_ASSIGN/CC_ASSIGN_END stream. Legacy .bot list/status
+-- replies are retained as an online diagnostic until the first structured
+-- snapshot has completed.
 
 local TB = TortoiseBots
 local C = TB.C or {}
@@ -26,7 +28,9 @@ local rosterSnapshotReady = false
 local rosterSnapshotCount = 0
 local rosterSnapshotError = nil
 local receiving = nil
+local ccReceiving = nil
 local legacyState = {}
+local ccAssignments = {}
 
 -- Legacy list reconciliation remains useful when talking to an older module,
 -- but is deliberately not used once a structured snapshot is available.
@@ -38,6 +42,7 @@ local pollNoReplyCount = 0
 TB.rosterSelection = TB.rosterSelection or {}
 TB._debugState = state
 TB._debugGroup = groupMembers
+TB._debugCcAssignments = ccAssignments
 TB.rosterSnapshotReady = false
 
 local function normalize(name)
@@ -101,6 +106,11 @@ local function setSnapshotRow(row)
     -- The protocol promises pipe-safe fields.  Keep the UI safe even if an
     -- older module violates that promise.
     if location then location = string.gsub(location, "|", "/") end
+    local ccMark = string.lower(TB.Trim(row.ccMark or ""))
+    local ccMarkKnown = row.ccMark ~= nil
+    if ccMark == "" or ccMark == "-" or not (C.CC_MARK_LABELS and C.CC_MARK_LABELS[ccMark]) then
+        ccMark = nil
+    end
     return {
         guid = tostring(row.guid or ""),
         name = name,
@@ -110,6 +120,8 @@ local function setSnapshotRow(row)
         state = row.serverState,
         group = row.group == true and true or false,
         location = location,
+        ccMark = ccMark,
+        ccMarkKnown = ccMarkKnown,
         source = "snapshot",
         status = status,
         online = online,
@@ -146,6 +158,7 @@ local function snapshotError(code, message)
         message = TB.Trim(message or "Roster request failed."),
     }
     receiving = nil
+    ccReceiving = nil
     TB._pollPending = false
     TB._pollQueued = false
     TB.rosterSnapshotError = rosterSnapshotError
@@ -161,6 +174,13 @@ local function commitSnapshot(rows)
     for _, row in ipairs(rows) do
         local entry = setSnapshotRow(row)
         if entry and not present[entry.name] then
+            if not entry.ccMark and not entry.ccMarkKnown and ccAssignments[entry.name] then
+                entry.ccMark = ccAssignments[entry.name]
+            elseif entry.ccMark then
+                ccAssignments[entry.name] = entry.ccMark
+            elseif entry.ccMarkKnown then
+                ccAssignments[entry.name] = nil
+            end
             state[entry.name] = entry
             present[entry.name] = true
         end
@@ -188,13 +208,72 @@ local function commitSnapshot(rows)
     if TB.Refresh then TB.Refresh() end
 end
 
+local function commitCcAssignments(rows)
+    clearTable(ccAssignments)
+    local present = {}
+    for _, row in ipairs(rows) do
+        ccAssignments[row.name] = row.mark
+        present[row.name] = true
+        if state[row.name] then state[row.name].ccMark = row.mark end
+    end
+    -- The assignment stream only reports live AI records. Clear stale values
+    -- from online snapshot rows while leaving offline rows unknown.
+    for name, entry in pairs(state) do
+        if entry.source == "snapshot" and entry.online and not present[name] then
+            entry.ccMark = nil
+        end
+    end
+    if TB.Refresh then TB.Refresh() end
+end
+
 -- Called by Comms.lua for each structured line.  Return true for every
 -- TBM-prefixed line, including malformed lines, so legacy text handlers do not
 -- reinterpret a protocol error as a bot name.
 function TB.ParseRosterMessage(msg)
     if not msg or msg == "" then return false end
 
-    local fields = protocolFields(msg, "TBM:ROSTER_BEGIN|")
+    local fields = protocolFields(msg, "TBM:CC_ASSIGN_BEGIN|")
+    if fields then
+        if table.getn(fields) ~= 1 or not string.find(fields[1], "^%d+$") then
+            ccReceiving = nil
+            return true, "error", { code = "malformed_cc_begin", message = "Malformed CC assignment snapshot." }
+        end
+        ccReceiving = { expected = tonumber(fields[1]), rows = {}, names = {} }
+        return true, "cc_begin", ccReceiving.expected
+    end
+
+    fields = protocolFields(msg, "TBM:CC_ASSIGN|")
+    if fields then
+        if not ccReceiving or table.getn(fields) ~= 2 then
+            ccReceiving = nil
+            return true, "error", { code = "malformed_cc_row", message = "Malformed CC assignment snapshot." }
+        end
+        local name, mark = unpack(fields)
+        name = normalize(name)
+        mark = string.lower(TB.Trim(mark or ""))
+        if not name or ccReceiving.names[name] or not (C.CC_MARK_LABELS and C.CC_MARK_LABELS[mark]) then
+            ccReceiving = nil
+            return true, "error", { code = "malformed_cc_row", message = "Malformed CC assignment snapshot." }
+        end
+        ccReceiving.names[name] = true
+        table.insert(ccReceiving.rows, { name = name, mark = mark })
+        return true, "cc_row", name
+    end
+
+    if msg == "TBM:CC_ASSIGN_END" then
+        if not ccReceiving then
+            return true, "error", { code = "unexpected_cc_end", message = "Unexpected CC assignment snapshot end." }
+        end
+        local batch = ccReceiving
+        ccReceiving = nil
+        if table.getn(batch.rows) ~= batch.expected then
+            return true, "error", { code = "cc_count_mismatch", message = "Incomplete CC assignment snapshot." }
+        end
+        commitCcAssignments(batch.rows)
+        return true, "cc_end", batch.expected
+    end
+
+    fields = protocolFields(msg, "TBM:ROSTER_BEGIN|")
     if fields then
         if table.getn(fields) ~= 1 or not string.find(fields[1], "^%d+$") then
             snapshotError("malformed_begin", "Malformed roster snapshot.")
@@ -208,11 +287,11 @@ function TB.ParseRosterMessage(msg)
 
     fields = protocolFields(msg, "TBM:ROSTER|")
     if fields then
-        if not receiving or table.getn(fields) ~= 6 then
+        if not receiving or (table.getn(fields) ~= 6 and table.getn(fields) ~= 7) then
             snapshotError("malformed_row", "Malformed roster snapshot.")
             return true, "error"
         end
-        local guid, name, classId, serverState, group, location = unpack(fields)
+        local guid, name, classId, serverState, group, location, ccMark = unpack(fields)
         if TB.Trim(guid) == "" or TB.Trim(name) == "" or not string.find(classId, "^%d+$")
             or TB.Trim(serverState) == "" or (group ~= "0" and group ~= "1")
             or TB.Trim(location) == "" then
@@ -232,6 +311,7 @@ function TB.ParseRosterMessage(msg)
             serverState = serverState,
             group = group == "1",
             location = location,
+            ccMark = ccMark,
         })
         return true, "row", normalized
     end
@@ -286,6 +366,7 @@ function TB.InitRoster()
     clearTable(groupMembers)
     clearTable(TB.rosterSelection)
     clearTable(legacyState)
+    clearTable(ccAssignments)
     clearTable(pollSeen)
     rosterSnapshotReady = false
     rosterSnapshotCount = 0
@@ -585,6 +666,7 @@ function TB.GetDisplayRows(filter)
                 state = st.state,
                 serverState = st.serverState,
                 location = st.location,
+                ccMark = st.ccMark,
                 st = st,
                 inGroup = TB.IsInGroup(name),
             })
@@ -602,6 +684,25 @@ function TB.GetRosterEntry(name)
     local st = name and state[name] or nil
     if not st or st.source ~= "snapshot" then return nil end
     return st
+end
+
+-- CC assignments are server-owned.  ACKs update this cache immediately, while
+-- the optional roster field reconciles it after a poll or reload.
+function TB.SetCcAssignment(name, mark)
+    name = normalize(name)
+    mark = string.lower(TB.Trim(mark or ""))
+    if not name or not (C.CC_MARK_LABELS and C.CC_MARK_LABELS[mark]) then return false end
+    ccAssignments[name] = mark
+    if state[name] then state[name].ccMark = mark end
+    if TB.Refresh then TB.Refresh() end
+    return true
+end
+
+function TB.GetCcAssignment(name)
+    name = normalize(name)
+    local st = name and state[name] or nil
+    if st and st.ccMark then return st.ccMark end
+    return name and ccAssignments[name] or nil
 end
 
 -- ── checkbox selection and lifecycle eligibility ────────────────────────────

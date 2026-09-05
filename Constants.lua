@@ -6,7 +6,7 @@ TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
 TB.C = TB.C or {}
 
-TB.C.VERSION = "1.1.0"
+TB.C.VERSION = "1.2.0"
 
 -- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
@@ -144,6 +144,25 @@ TB.C.ACTION_LABELS = {
     ready = "Ready Check",
     interrupt = "Interrupt",
 }
+
+-- Raid icons use the client's 1-based texture numbering. The server stores
+-- the matching lowercase name as each bot's CC preference.
+TB.C.CC_MARKS = {
+    { id = "moon",    label = "Moon",    icon = 5 },
+    { id = "circle",  label = "Circle",  icon = 2 },
+    { id = "square",  label = "Square",  icon = 6 },
+    { id = "cross",   label = "Cross",   icon = 7 },
+    { id = "triangle",label = "Triangle",icon = 4 },
+    { id = "diamond", label = "Diamond", icon = 3 },
+    { id = "star",    label = "Star",    icon = 1 },
+    { id = "skull",   label = "Skull",   icon = 8 },
+}
+TB.C.CC_MARK_LABELS = {}
+TB.C.CC_MARK_ICONS = {}
+for _, mark in ipairs(TB.C.CC_MARKS or {}) do
+    TB.C.CC_MARK_LABELS[mark.id] = mark.label
+    TB.C.CC_MARK_ICONS[mark.id] = mark.icon
+end
 
 TB.C.FORMATIONS = {
     { id = "shield", label = "Shield", tip = "Dungeon standard: tank front, melee flank, healer rear" },

@@ -2,7 +2,7 @@
 ## Title: |cffd8a657TortoiseBots|r |cffffffffManager|r
 ## Notes: Manager for your server-owned TortoiseBots — actions, lifecycle, and roster state.
 ## Author: TortoiseBots
-## Version: 1.1.0
+## Version: 1.2.0
 ## SavedVariables: TortoiseBotsDB
 
 Constants.lua

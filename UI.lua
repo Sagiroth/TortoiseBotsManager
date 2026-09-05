@@ -69,6 +69,12 @@ function TB.GetActionScope()
     return scope
 end
 
+-- Expose both pieces for small UI controls that need to explain where an
+-- action will land. Gameplay still resolves the authoritative scope server-side.
+function TB.GetTargetScope()
+    return targetScope()
+end
+
 function TB.GetActionScopeHint()
     local scope, name = targetScope()
     if scope == "party" then return "Party actions" end
@@ -90,7 +96,7 @@ local ACTION_TOOLTIPS = {
     come     = "Scoped bots run to your position",
     hold     = "Order scoped bots to run directly to your position and stay there (corner pull)",
     ["focus skull"] = "Focus damage on target marked with Skull (RTI 8)",
-    ["cc moon"]     = "Maintain crowd control on target marked with Moon (RTI 5)",
+    ["cc moon"]     = "Choose the raid icon this scoped bot should own for crowd control",
     aoe      = "Toggle area-of-effect spells on/off",
     ready    = "Perform ready check: bots report HP, mana, water, and status",
     interrupt = "Interrupt the selected enemy's active spell with the best ready bot",
@@ -448,6 +454,78 @@ CreateActions = function(parent)
 
     local btnY = -24
     local buttons = {}
+
+    -- The CC button opens a compact mark picker instead of forcing Moon as the
+    -- only choice.  Targeting an owned bot first makes the assignment explicit;
+    -- with a normal enemy target the server still chooses a capable executor.
+    local ccMenu = CreateFrame("Frame", "TortoiseBotsManagerCcMenu", frame)
+    ccMenu:SetWidth(246)
+    ccMenu:SetHeight(154)
+    ccMenu:SetFrameStrata("DIALOG")
+    ccMenu:EnableMouse(true)
+    TB.ApplyBackdrop(ccMenu, 0.98, 1.0)
+
+    local ccTitle = ccMenu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ccTitle:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -6)
+    ccTitle:SetText("Assign CC mark")
+    TB.SetTextColor(ccTitle, color("gold"))
+
+    local ccHint = ccMenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ccHint:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -22)
+    ccHint:SetWidth(230)
+    ccHint:SetJustifyH("LEFT")
+    TB.SetTextColor(ccHint, color("muted"))
+    ccMenu.hint = ccHint
+
+    local ccButtons = {}
+    for i, mark in ipairs(C.CC_MARKS or {}) do
+        local markButton = CreateFrame("Button", nil, ccMenu, "UIPanelButtonTemplate")
+        local column = (i - 1) % 2
+        local row = math.floor((i - 1) / 2)
+        markButton:SetWidth(114)
+        markButton:SetHeight(25)
+        markButton:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 7 + column * 119, -44 - row * 27)
+        markButton:SetText(mark.label)
+        local markIcon = markButton:CreateTexture(nil, "OVERLAY")
+        markIcon:SetWidth(16); markIcon:SetHeight(16)
+        markIcon:SetPoint("LEFT", markButton, "LEFT", 5, 0)
+        markIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. mark.icon)
+        markIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        markButton.mark = mark.id
+        markButton.icon = markIcon
+        markButton:SetScript("OnClick", function()
+            TB.SendActionIntent("cc " .. mark.id)
+            ccMenu:Hide()
+        end)
+        setButtonTooltip(markButton, "Assign " .. mark.label .. " to the scoped CC bot")
+        ccButtons[mark.id] = markButton
+    end
+    ccMenu.buttons = ccButtons
+    ccMenu:Hide()
+
+    ccMenu.Update = function()
+        local scope, botName = targetScope()
+        if scope == "bot" and botName then
+            local current = TB.GetCcAssignment and TB.GetCcAssignment(botName) or nil
+            local label = current and C.CC_MARK_LABELS and C.CC_MARK_LABELS[current]
+            ccHint:SetText("Bot: " .. botName .. (label and (" · current " .. label) or " · choose an icon"))
+        else
+            ccHint:SetText("Party: automatic CC. Target a bot first to assign it.")
+        end
+    end
+
+    TB.ToggleCcMenu = function()
+        if ccMenu:IsVisible() then
+            ccMenu:Hide()
+        else
+            ccMenu:Show()
+            ccMenu:ClearAllPoints()
+            ccMenu:SetPoint("TOPLEFT", buttons.ccMoon, "BOTTOMLEFT", 0, -4)
+            ccMenu:Update()
+        end
+    end
+    TB.ccMenu = ccMenu
+
     buttons.attack   = makeActionButton(cardCombat, "attack", 108, 8, btnY)
     buttons.stop     = makeActionButton(cardCombat, "stop", 108, 122, btnY)
     buttons.pull     = makeActionButton(cardCombat, "pull", 108, 236, btnY)
@@ -456,6 +534,9 @@ CreateActions = function(parent)
 
     buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 108, 8, btnY)
     buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 108, 122, btnY)
+    buttons.ccMoon:SetText("CC Mark")
+    buttons.ccMoon:SetScript("OnClick", function() TB.ToggleCcMenu() end)
+    buttons.ccMark     = buttons.ccMoon
     addRaidIcon(buttons.focusSkull, 8)
     addRaidIcon(buttons.ccMoon, 5)
     buttons.aoe        = makeActionButton(cardTactics, "aoe", 108, 236, btnY)
@@ -510,7 +591,7 @@ CreateActions = function(parent)
     guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -290)
     guide:SetWidth(464)
     guide:SetJustifyH("LEFT")
-    guide:SetText("|cff626056Tip: Enemy target enables Attack/Pull/Interrupt. Click a Formation to set party spacing.|r")
+    guide:SetText("|cff626056Tip: target a bot in Party, then use CC Mark to assign its raid icon; target an enemy for Attack/Pull/Interrupt. Click a Formation for spacing.|r")
 
     TB.actionButtons = buttons
     TB.actions = buttons
@@ -599,7 +680,7 @@ function TB.InitUI()
 
         local subtitle = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         subtitle:SetPoint("LEFT", title, "RIGHT", 8, 0)
-        subtitle:SetText("|cff888888(Click role to assign bot strategy)|r")
+        subtitle:SetText("|cff888888(role buttons · CC icon = mark · click bot row to target)|r")
 
         local emptyMsg = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         emptyMsg:SetPoint("CENTER", partyFrame, "CENTER", 0, -20)
@@ -614,6 +695,7 @@ function TB.InitUI()
             row:SetWidth(W - (C.PAD or 10) * 2)
             row:SetHeight(52)
             row:SetPoint("TOPLEFT", partyFrame, "TOPLEFT", 0, -(i - 1) * 56 - 22)
+            row:EnableMouse(true)
             TB.ApplyBackdrop(row, 0.62, 0.45)
 
             row.accent = row:CreateTexture(nil, "ARTWORK")
@@ -635,6 +717,19 @@ function TB.InitUI()
             TB.SetTextColor(descText, color("muted"))
             row.descText = descText
 
+            local ccIcon = row:CreateTexture(nil, "ARTWORK")
+            ccIcon:SetWidth(18); ccIcon:SetHeight(18)
+            ccIcon:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -5)
+            ccIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            ccIcon:Hide()
+            row.ccIcon = ccIcon
+
+            local ccLabel = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            ccLabel:SetPoint("RIGHT", ccIcon, "LEFT", -4, 0)
+            ccLabel:SetText("CC")
+            TB.SetTextColor(ccLabel, color("muted"))
+            row.ccLabel = ccLabel
+
             local playerLabel = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             playerLabel:SetPoint("LEFT", row, "LEFT", 150, 0)
             playerLabel:SetText("|cffd8a657[ Player / Master ]|r")
@@ -649,6 +744,33 @@ function TB.InitUI()
                 roleButtons[b] = btn
             end
             row.roleButtons = roleButtons
+
+            row:SetScript("OnMouseUp", function()
+                if arg1 and arg1 ~= "LeftButton" then return end
+                if not row.partyUnit or row.partyUnit == "player" then return end
+                if TargetUnit then
+                    TargetUnit(row.partyUnit)
+                elseif TargetByName and row.partyName then
+                    TargetByName(row.partyName, true)
+                end
+                if TB.Refresh then TB.Refresh() end
+            end)
+            row:SetScript("OnEnter", function()
+                if not row.partyName then return end
+                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                GameTooltip:SetText(row.partyName)
+                local mark = row.ccMark and C.CC_MARK_LABELS and C.CC_MARK_LABELS[row.ccMark]
+                if mark then
+                    GameTooltip:AddLine("CC mark: " .. mark, 0.9, 0.9, 0.9, 1)
+                elseif row.partyUnit ~= "player" then
+                    GameTooltip:AddLine("CC mark: not reported", COL.muted[1], COL.muted[2], COL.muted[3])
+                end
+                if row.partyUnit ~= "player" then
+                    GameTooltip:AddLine("Click row to target this bot for CC assignment.", COL.muted[1], COL.muted[2], COL.muted[3])
+                end
+                GameTooltip:Show()
+            end)
+            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
             table.insert(rows, row)
         end
@@ -762,6 +884,8 @@ function TB.InitUI()
             local unit = units[i]
             if unit and (unit == "player" or (UnitExists and UnitExists(unit))) then
                 local name = (UnitName and UnitName(unit)) or (unit == "player" and "Player" or ("Party " .. i))
+                row.partyUnit = unit
+                row.partyName = name
                 local level = (UnitLevel and UnitLevel(unit)) or 0
                 local lvlText = (level and level > 0 and ("Lvl " .. level)) or "Lvl ??"
                 local className, classFileName = (UnitClass and UnitClass(unit)) or "Unknown", "UNKNOWN"
@@ -774,6 +898,16 @@ function TB.InitUI()
                 row.nameText:SetTextColor(col[1], col[2], col[3])
                 row.descText:SetText(lvlText .. " " .. (className or ""))
                 row.accent:SetTexture(col[1], col[2], col[3], 0.95)
+
+                local ccMark = unit ~= "player" and TB.GetCcAssignment and TB.GetCcAssignment(name) or nil
+                row.ccMark = ccMark
+                local ccIconId = ccMark and C.CC_MARK_ICONS and C.CC_MARK_ICONS[ccMark]
+                if ccIconId then
+                    row.ccIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. ccIconId)
+                    row.ccIcon:Show()
+                else
+                    row.ccIcon:Hide()
+                end
 
                 if unit == "player" then
                     row.playerLabel:Show()
@@ -816,6 +950,10 @@ function TB.InitUI()
                 row:Show()
             else
                 row:Hide()
+                row.partyUnit = nil
+                row.partyName = nil
+                row.ccMark = nil
+                row.ccIcon:Hide()
             end
         end
 
@@ -897,7 +1035,10 @@ function TB.InitUI()
     local targetWatcher = CreateFrame("Frame", "TortoiseBotsManagerTargetWatcher")
     targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
     targetWatcher:RegisterEvent("PARTY_MEMBERS_CHANGED")
-    targetWatcher:SetScript("OnEvent", function() TB.Refresh() end)
+    targetWatcher:SetScript("OnEvent", function()
+        if TB.ccMenu and TB.ccMenu:IsVisible() then TB.ccMenu:Hide() end
+        TB.Refresh()
+    end)
 
     main:Hide()
     TB.frame = main
