@@ -505,7 +505,7 @@ CreateActions = function(parent)
 
     ccMenu.Update = function()
         local scope, botName = targetScope()
-        if scope == "bot" and botName then
+        if botName then
             local current = TB.GetCcAssignment and TB.GetCcAssignment(botName) or nil
             local label = current and C.CC_MARK_LABELS and C.CC_MARK_LABELS[current]
             ccHint:SetText("Bot: " .. botName .. (label and (" · current " .. label) or " · choose an icon"))
@@ -719,13 +719,16 @@ function TB.InitUI()
 
             local ccIcon = row:CreateTexture(nil, "ARTWORK")
             ccIcon:SetWidth(18); ccIcon:SetHeight(18)
-            ccIcon:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -5)
+            -- Keep the indicator in its own lower-right slot. Role buttons are
+            -- reflowed to the upper row below, so four-role classes (notably
+            -- Druids) can never cover the assignment icon.
+            ccIcon:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -8, 4)
             ccIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             ccIcon:Hide()
             row.ccIcon = ccIcon
 
             local ccLabel = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            ccLabel:SetPoint("RIGHT", ccIcon, "LEFT", -4, 0)
+            ccLabel:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -31, 5)
             ccLabel:SetText("CC")
             TB.SetTextColor(ccLabel, color("muted"))
             row.ccLabel = ccLabel
@@ -740,7 +743,7 @@ function TB.InitUI()
                 local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                 btn:SetWidth(78)
                 btn:SetHeight(22)
-                btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * 82, 0)
+                btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * 82, 8)
                 roleButtons[b] = btn
             end
             row.roleButtons = roleButtons
@@ -916,10 +919,19 @@ function TB.InitUI()
                     row.playerLabel:Hide()
                     local roles = (TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
                     local currentRole = dbRoles[name] or (roles[1] and roles[1].id)
+                    -- Four-role rows need a reserved CC column on the right.
+                    -- Keep the normal button width for other classes so their
+                    -- longer role labels remain readable.
+                    local roleCount = table.getn(roles)
+                    local roleWidth = roleCount >= 4 and 70 or 78
+                    local roleStep = roleCount >= 4 and 72 or 82
 
                     for b = 1, 4 do
                         local btn = row.roleButtons[b]
                         local role = roles[b]
+                        btn:ClearAllPoints()
+                        btn:SetWidth(roleWidth)
+                        btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * roleStep, 8)
                         if role then
                             local isSelected = (currentRole == role.id)
                             if isSelected then

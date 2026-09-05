@@ -14,6 +14,7 @@ local now = 10
 local targetExists = true
 local targetNameValue = "Training Dummy"
 local partyMembers = {}
+local partyClassName = "Priest"
 
 local function object(kind, parent)
     local value = {
@@ -120,7 +121,7 @@ function UnitIsDead(unit) return false end
 function UnitLevel(unit) return 60 end
 function UnitClass(unit)
     if unit == "player" then return "Warrior", "WARRIOR" end
-    return "Priest", "PRIEST"
+    return partyClassName, string.upper(partyClassName)
 end
 function GetNumPartyMembers() return table.getn(partyMembers) end
 function GetNumRaidMembers() return 0 end
@@ -447,9 +448,15 @@ assert(TB.actionButtons.attack.enabled and TB.actionButtons.pull.enabled
 targetNameValue = "Alpha"
 TB.Refresh()
 now = now + 1
+TB.SetFormation("far")
+assert(sent[table.getn(sent)] == ".bot formation Alpha far",
+    "targeted bot formation must use the bot-qualified scope")
+now = now + 1
 this = TB.actionButtons.ccMoon
 TB.actionButtons.ccMoon.scripts.OnClick(TB.actionButtons.ccMoon)
 assert(TB.ccMenu:IsVisible(), "CC Mark button must open the mark picker")
+assert(TB.ccMenu.hint.text:find("Bot: Alpha"),
+    "CC picker must report bot-scoped targeting")
 this = TB.ccMenu.buttons.circle
 TB.ccMenu.buttons.circle.scripts.OnClick(TB.ccMenu.buttons.circle)
 assert(sent[table.getn(sent)] == ".bot action cc circle",
@@ -559,5 +566,22 @@ assert(TB.partyFrame.rows[2].ccMark == "moon" and TB.partyFrame.rows[2].ccIcon:I
     "Party view must show the assigned CC icon beside each bot")
 assert(TB.partyFrame.rows[2].ccIcon.texture[1] == "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5",
     "Party CC icon must match the assigned raid mark")
+assert(TB.partyFrame.rows[2].ccIcon.point[1] == "BOTTOMRIGHT"
+    and TB.partyFrame.rows[2].roleButtons[4].point[5] == 8,
+    "CC icon must be reflowed below the role-button row")
+
+-- Four-role rows reserve the lower-right CC column instead of letting the
+-- fourth role button obscure the assigned mark (Druid is the current case).
+partyClassName = "Druid"
+TB.RefreshPartyView()
+local druidRow = TB.partyFrame.rows[2]
+assert(druidRow.roleButtons[4]:IsVisible()
+    and druidRow.roleButtons[4].width == 70
+    and druidRow.roleButtons[4].point[4] + druidRow.roleButtons[4].width <= 440,
+    "Four-role rows must leave a dedicated column for the CC icon")
+assert(druidRow.ccIcon.point[1] == "BOTTOMRIGHT"
+    and druidRow.ccIcon.point[5] == 4
+    and druidRow.ccLabel.point[1] == "BOTTOMRIGHT",
+    "CC indicator must occupy the lower-right row slot")
 
 print("PASS: TortoiseBotsManager regression checks")
