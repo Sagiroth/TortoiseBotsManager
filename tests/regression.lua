@@ -252,6 +252,7 @@ assert(string.find(badge, "Online"), "Status badge for online state must display
 
 -- Action button icons
 assert(TB.actionButtons.attack and TB.actionButtons.attack.icon, "Attack button must have an icon")
+assert(TB.actionButtons.interrupt and TB.actionButtons.interrupt.icon, "Interrupt button must have an icon")
 assert(TB.actionButtons.focusSkull and (TB.actionButtons.focusSkull.icon or TB.actionButtons.focusSkull.raidIcon),
     "Focus skull must have an icon")
 assert(TB.actionButtons.hold and TB.actionButtons.hold.icon, "Hold button must have an icon")
@@ -439,6 +440,12 @@ TB.actionButtons.pull.scripts.OnClick(TB.actionButtons.pull)
 assert(table.getn(sent) == beforePull + 1 and sent[table.getn(sent)] == ".bot action pull",
     "Pull must send the supported ordinary-pull intent")
 now = now + 1
+local beforeInterrupt = table.getn(sent)
+this = TB.actionButtons.interrupt
+TB.actionButtons.interrupt.scripts.OnClick(TB.actionButtons.interrupt)
+assert(table.getn(sent) == beforeInterrupt + 1 and sent[table.getn(sent)] == ".bot action interrupt",
+    "Interrupt must send one executor intent")
+now = now + 1
 this = TB.actionButtons.come
 TB.actionButtons.come.scripts.OnClick(TB.actionButtons.come)
 assert(sent[table.getn(sent)] == ".bot action come", "Come button must send action come")
@@ -464,6 +471,14 @@ assert(TB.lastActionAck and TB.lastActionAck.intent == "attack"
 TB.OnSystemMessage("TBM:ACTION_ERR|pullback|NO_TARGET|Select a living target")
 assert(TB.lastActionError and TB.lastActionError.code == "NO_TARGET",
     "structured action ERR must be parsed")
+TB.OnSystemMessage("TBM:ACTION_ACK|interrupt|party|1|Arcana")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "interrupt"
+    and TB.lastActionAck.executor == "Arcana",
+    "structured interrupt ACK must be parsed")
+TB.OnSystemMessage("TBM:ACTION_ERR|interrupt|not-casting|The target is not casting")
+assert(TB.lastActionError and TB.lastActionError.intent == "interrupt"
+    and TB.lastActionError.code == "not-casting",
+    "structured interrupt ERR must be parsed")
 
 -- Polling now requests the authoritative roster command and deduplicates
 -- queued refreshes; BuildCommand remains available for legacy callers.

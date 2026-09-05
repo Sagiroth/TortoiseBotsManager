@@ -13,7 +13,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 
 ## Features
 
-* **Actions** — `Attack`, `Stop`, `Pull`, `Pullback`, `Come`, `Stay`, `Follow`, `Focus Skull`, `CC Moon`, and `AoE`.
+* **Actions** — `Attack`, `Interrupt`, `Stop`, `Pull`, `Pullback`, `Come`, `Stay`, `Follow`, `Focus Skull`, `CC Moon`, and `AoE`.
 * **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
@@ -64,7 +64,7 @@ ln -s "$(pwd)/TortoiseBotsManager" "<TurtleWoW>/Interface/AddOns/TortoiseBotsMan
 
 * `/tbm` (primary) — toggle panel. Aliases `/tb` / `/tbot` / `/tortoise` still work.
 * `/tbm list` — force a server roster refresh. `/tbm help` and `/tbm resetpos` remain available.
-* **Actions** — use normal WoW target selection. With an enemy target, `Attack`, `Pull`, and `Pullback` operate on the party; with an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
+* **Actions** — use normal WoW target selection. With an enemy target, `Attack`, `Interrupt`, `Pull`, and `Pullback` operate on the party; `Interrupt` chooses one capable bot server-side. With an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
 * **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows.
 * **Focus / CC** — mark an enemy with the normal Skull or Moon raid icon, then press `Focus Skull` or `CC Moon`. Target your owned bot before `CC Moon` to request that executor specifically.
 * **Search** — filters the server snapshot by name.

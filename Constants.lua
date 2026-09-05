@@ -10,7 +10,7 @@ TB.C.VERSION = "1.1.0"
 
 -- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
-TB.C.PANEL_H = 395
+TB.C.PANEL_H = 430
 TB.C.ROW_H   = 28
 TB.C.ROW_N   = 7
 TB.C.PAD     = 10  -- outer margin
@@ -110,7 +110,7 @@ TB.C.CLASS_ROLES = {
 
 TB.C.ACTIONS = {
     "attack", "stop", "pull", "pullback", "come", "stay", "follow",
-    "focus skull", "cc moon", "aoe", "hold", "ready",
+    "focus skull", "cc moon", "aoe", "hold", "ready", "interrupt",
 }
 
 TB.C.ACTION_ICONS = {
@@ -126,6 +126,7 @@ TB.C.ACTION_ICONS = {
     aoe             = "Interface\\Icons\\Spell_Fire_FlameBlades",
     hold            = "Interface\\Icons\\Spell_Nature_Slow",
     ready           = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude",
+    interrupt       = "Interface\\Icons\\Ability_Kick",
 }
 
 TB.C.ACTION_LABELS = {
@@ -141,6 +142,7 @@ TB.C.ACTION_LABELS = {
     aoe = "AoE",
     hold = "Come & Hold",
     ready = "Ready Check",
+    interrupt = "Interrupt",
 }
 
 TB.C.FORMATIONS = {
