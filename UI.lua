@@ -480,7 +480,7 @@ CreateActions = function(parent)
     local ccButtons = {}
     for i, mark in ipairs(C.CC_MARKS or {}) do
         local markButton = CreateFrame("Button", nil, ccMenu, "UIPanelButtonTemplate")
-        local column = (i - 1) % 2
+        local column = math.mod(i - 1, 2) -- Lua 5.0 (1.12 client) has no % operator
         local row = math.floor((i - 1) / 2)
         markButton:SetWidth(114)
         markButton:SetHeight(25)
