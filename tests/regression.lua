@@ -256,7 +256,7 @@ assert(table.getn(TB.GetDisplayRows("alpha")) == 1, "text search must filter by 
 
 -- Class colors and status badge
 local warriorColor = TB.GetClassColor(1)
-assert(warriorColor and warriorColor.hex == "ffc79c6e", "Warrior class color must match Turtle palette")
+assert(warriorColor and warriorColor.hex == "ffc79c6e", "Warrior class color must match Tortoise palette")
 local badge = TB.StatusBadge(TB.GetState("Alpha"), false)
 assert(string.find(badge, "Online"), "Status badge for online state must display Online")
 

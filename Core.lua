@@ -44,7 +44,7 @@ local function initDB()
 end
 
 -- The server still consumes normal chat commands on this client version.
--- Hide transport echoes and machine-readable TBM payloads.  Turtle clients
+-- Hide transport echoes and machine-readable TBM payloads.  Tortoise clients
 -- may omit ChatFrame_AddMessageEventFilter, so also guard the legacy global
 -- ChatFrame_OnEvent dispatcher when it exists; critical non-TBM errors stay
 -- visible.
