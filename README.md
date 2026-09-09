@@ -41,16 +41,6 @@ TortoiseBots Manager (in-game, /tbm, optimistic UI)
 
 No module → addon loads but every action replies “TortoiseBots module not loaded” from the server.
 
-## Install
-
-1. Download this repo into your addons folder (or `git clone` it there):
-   ```bash
-   git clone https://github.com/Sagiroth/TortoiseBotsManager.git
-   ```
-   The folder must be named `TortoiseBotsManager` (so the `.toc` is found).
-2. Restart the game fully (Vanilla loads addons at startup).
-3. Log in — you should see `TortoiseBots Manager v1.2.0 loaded. /tbm to open.` in chat.
-
 ## Use
 
 * `/tbm` (primary) — toggle panel. Aliases `/tb` / `/tbot` / `/tortoise` still work.
