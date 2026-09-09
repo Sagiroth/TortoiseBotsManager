@@ -192,7 +192,7 @@ TB.C.POLL_NO_REPLY_LIMIT = 2 -- consecutive silent polls before Unknown
 TB.C.MINIMAP_RADIUS = 80
 TB.C.MINIMAP_DEFAULT = { x = 52, y = 52 }
 
--- Colors (r,g,b) — Turtle palette
+-- Colors (r,g,b) — Tortoise palette
 TB.C.COLOR = {
     gold   = { 0.95, 0.72, 0.28 },
     text   = { 0.92, 0.90, 0.84 },
