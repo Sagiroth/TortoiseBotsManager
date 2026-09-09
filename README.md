@@ -23,7 +23,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 
 ## Companion Module
 
-This addon is the client half of:
+This addon is the in-game half of:
 
 **[Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots)** — optional native PlayerBots module for Tortoise WoW 1.18.1 (`Penqle/tortoise-wow` + PR #438). It owns `BotManager`, bot records, `.bot` commands and class AI. The addon requires it.
 
@@ -36,29 +36,20 @@ TortoiseBots module (server, authoritative)
         │
         │  CHAT_MSG_SYSTEM + bot whisper replies
         ▼
-TortoiseBots Manager (client, /tbm, optimistic UI)
+TortoiseBots Manager (in-game, /tbm, optimistic UI)
 ```
 
 No module → addon loads but every action replies “TortoiseBots module not loaded” from the server.
 
 ## Install
 
-1. Download or `git clone` this repo into your client:
-   ```
-   <WoW>/Interface/AddOns/TortoiseBotsManager/
+1. Download this repo into your addons folder (or `git clone` it there):
+   ```bash
+   git clone https://github.com/Sagiroth/TortoiseBotsManager.git
    ```
    The folder must be named `TortoiseBotsManager` (so the `.toc` is found).
-2. Restart the client fully (Vanilla loads addons at startup).
+2. Restart the game fully (Vanilla loads addons at startup).
 3. Log in — you should see `TortoiseBots Manager v1.2.0 loaded. /tbm to open.` in chat.
-
-### From this repo
-
-```bash
-git clone https://github.com/Sagiroth/TortoiseBotsManager.git
-cp -r TortoiseBotsManager "<WoW>/Interface/AddOns/TortoiseBotsManager"
-# or symlink
-ln -s "$(pwd)/TortoiseBotsManager" "<WoW>/Interface/AddOns/TortoiseBotsManager"
-```
 
 ## Use
 
@@ -72,14 +63,14 @@ ln -s "$(pwd)/TortoiseBotsManager" "<WoW>/Interface/AddOns/TortoiseBotsManager"
 ## How it works (edge cases)
 
 * `TBM:ROSTER_*` and `TBM:ACTION_*` system messages are parsed as structured state; legacy human-readable responses remain a compatibility fallback.
-* Server-side ownership, Headless lifecycle, target validation, executor selection, and mature PlayerbotAI behavior are authoritative. The client only disables obviously unavailable controls.
+* Server-side ownership, Headless lifecycle, target validation, executor selection, and mature PlayerbotAI behavior are authoritative. The addon only disables obviously unavailable controls.
 * Roster lifecycle operations remain individually acknowledged and time out instead of staying optimistic forever. Gameplay never loops over roster selection.
 * Multi-bot Invite advances only after each bot is a real group member, not merely after the server creates its pending invite. Full normal parties upgrade to a raid before another owned bot is invited.
 * Normal `.bot` command echoes and structured `TBM:` transport messages are hidden locally through the standard chat filter or the legacy chat dispatcher; critical system errors stay visible.
 
 ## Requirements
 
-* **Client:** Tortoise WoW English 1.18.1 (Interface 11200).
+* **Game:** Tortoise WoW English 1.18.1 (Interface 11200).
 * **Server:** TortoiseBots module built with `MODULE_TORTOISEBOTS=static` and core PR #438 (`SessionTransport::Headless`). Without it, `.bot` returns “unknown command”.
 
 ## Files
@@ -109,16 +100,16 @@ lua5.1 tests/regression.lua .
 
 ## Project scope and affiliation
 
-This repository contains client-addon source code only. It does not distribute
-game-client binaries or extracted game data/assets, provide hosting, or operate
+This repository contains addon source code only. It does not distribute
+game binaries or extracted game data/assets, provide hosting, or operate
 a game service. It is not affiliated with or endorsed by Blizzard Entertainment
 or Tortoise WoW. World of Warcraft and related marks belong to their respective
 owners.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). The game client is proprietary; this addon only
-uses the client addon interface under `Interface/AddOns`.
+MIT — see [LICENSE](LICENSE). The game is proprietary; this addon only
+uses the standard addon interface.
 
 ## Links
 
