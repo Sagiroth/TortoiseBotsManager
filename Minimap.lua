@@ -12,7 +12,7 @@ function TB.InitMinimap()
 
     -- Exact pattern from TortoiseGMManager (proven in your client):
     --  icon BACKGROUND 20 CENTER, border OVERLAY 52 TOPLEFT 0,0, highlight via SetHighlightTexture
-    --  Border's opaque ring sits ON TOP of the square turtle → circle encapsulates icon.
+    --  Border's opaque ring sits ON TOP of the square icon → circle encapsulates icon.
     local icon = btn:CreateTexture(nil, "BACKGROUND")
     icon:SetWidth(20); icon:SetHeight(20); icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
     icon:SetTexture("Interface\\Icons\\Ability_Hunter_Pet_Turtle"); icon:SetTexCoord(0.08,0.92,0.08,0.92)

@@ -45,7 +45,7 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 
 1. Download or `git clone` this repo into your client:
    ```
-   <TurtleWoW>/Interface/AddOns/TortoiseBotsManager/
+   <WoW>/Interface/AddOns/TortoiseBotsManager/
    ```
    The folder must be named `TortoiseBotsManager` (so the `.toc` is found).
 2. Restart the client fully (Vanilla loads addons at startup).
@@ -55,9 +55,9 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 
 ```bash
 git clone https://github.com/Sagiroth/TortoiseBotsManager.git
-cp -r TortoiseBotsManager "<TurtleWoW>/Interface/AddOns/TortoiseBotsManager"
+cp -r TortoiseBotsManager "<WoW>/Interface/AddOns/TortoiseBotsManager"
 # or symlink
-ln -s "$(pwd)/TortoiseBotsManager" "<TurtleWoW>/Interface/AddOns/TortoiseBotsManager"
+ln -s "$(pwd)/TortoiseBotsManager" "<WoW>/Interface/AddOns/TortoiseBotsManager"
 ```
 
 ## Use
@@ -79,7 +79,7 @@ ln -s "$(pwd)/TortoiseBotsManager" "<TurtleWoW>/Interface/AddOns/TortoiseBotsMan
 
 ## Requirements
 
-* **Client:** Turtle WoW English 1.18.1 (Interface 11200).
+* **Client:** Tortoise WoW English 1.18.1 (Interface 11200).
 * **Server:** TortoiseBots module built with `MODULE_TORTOISEBOTS=static` and core PR #438 (`SessionTransport::Headless`). Without it, `.bot` returns “unknown command”.
 
 ## Files
@@ -112,7 +112,7 @@ lua5.1 tests/regression.lua .
 This repository contains client-addon source code only. It does not distribute
 game-client binaries or extracted game data/assets, provide hosting, or operate
 a game service. It is not affiliated with or endorsed by Blizzard Entertainment
-or Turtle WoW. World of Warcraft and related marks belong to their respective
+or Tortoise WoW. World of Warcraft and related marks belong to their respective
 owners.
 
 ## Licence
