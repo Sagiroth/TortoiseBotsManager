@@ -2,7 +2,7 @@
 <img width="365" height="311" alt="2" src="https://github.com/user-attachments/assets/d35eaf72-9b88-462f-8f9a-7aa7051257e6" />
 <img width="368" height="310" alt="1" src="https://github.com/user-attachments/assets/16607951-fdcf-4496-a752-cde89e25096d" />
 
-Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.18.1](https://github.com/Penqle/tortoise-wow).
+Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.18.1](https://github.com/tortoise-wow/tortoise-wow).
 
 Actions use normal WoW targeting for gameplay intent. Roster is a server-owned lifecycle list for logging bots in/out and managing group membership; no combat controls are attached to rows.
 
@@ -25,7 +25,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 
 This addon is the in-game half of:
 
-**[Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots)** — optional native PlayerBots module for Tortoise WoW 1.18.1 (`Penqle/tortoise-wow` + PR #438). It owns `BotManager`, bot records, `.bot` commands and class AI. The addon requires it.
+**[Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots)** — optional native PlayerBots module for Tortoise WoW 1.18.1 (`tortoise-wow/tortoise-wow` + PR #438). It owns `BotManager`, bot records, `.bot` commands and class AI. The addon requires it.
 
 ```
 Tortoise WoW core (Headless sessions #438)
@@ -104,5 +104,5 @@ uses the standard addon interface.
 ## Links
 
 * Module: https://github.com/Sagiroth/TortoiseBots
-* Core: https://github.com/Penqle/tortoise-wow
+* Core: https://github.com/tortoise-wow/tortoise-wow
 * Issues: https://github.com/Sagiroth/TortoiseBotsManager/issues
