@@ -8,6 +8,7 @@
 local root = arg[1] or "."
 if not table.getn then table.getn = function(t) return t and #t or 0 end end
 if not unpack then unpack = table.unpack end
+if not math.mod then math.mod = math.fmod end
 local frames = {}
 local sent = {}
 local now = 10
