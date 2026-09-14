@@ -824,6 +824,10 @@ gf:SetScript("OnEvent", function()
     for key, value in pairs(members) do groupMembers[key] = value end
     groupKnown = true
 
+    -- Group membership decides whether the core dispatches addon commands, so
+    -- drop the cached transport verdict; the next roster reply re-states it.
+    if TB.InvalidateAddonTransport then TB.InvalidateAddonTransport() end
+
     for name, st in pairs(state) do
         if st.source == "snapshot" then st.group = members[name] and true or false end
         if st.operation and st.operation.verb == "invite" and members[name] then

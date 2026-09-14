@@ -1,5 +1,9 @@
 -- TortoiseBotsManager/Comms.lua
--- Protocol: send ".bot <verb> [name] [extra]" and parse CHAT_MSG_SYSTEM replies.
+-- Protocol: send "<verb> [name] [extra]" and parse the server's replies.
+-- Transport: the addon command channel (addon message, prefix TBM) while the
+-- server advertises TBM:TRANSPORT|party on a roster response, otherwise plain
+-- ".bot" chat. Replies arrive on the transport that carried the request:
+-- addon messages for the addon channel, CHAT_MSG_SYSTEM for chat.
 -- The roster response also carries a separate TBM:CC_ASSIGN_* snapshot for
 -- live per-bot crowd-control mark preferences.
 --
@@ -9,9 +13,10 @@
 --
 -- Flow:
 --   UI/Core calls TB.SendBotCommand("summon Aran")
---     → Throttled SendChatMessage
+--     → Addon command channel or throttled SendChatMessage
 --     → TB.OnCommandSent  (optimistic state)
---   Server whispers CHAT_MSG_SYSTEM "Summoning Aran to a safe position near you…"
+--   Server answers "Summoning Aran to a safe position near you…" on the same
+--   transport
 --     → TB.OnSystemMessage (reconcile, status, refresh)
 
 local TB = TortoiseBots
@@ -74,11 +79,42 @@ local PAT = {
     noAI          = "has no AI yet",
     unknownCommand = "Unknown bot command",
     unknownModuleCommand = "Unknown command",
+    -- transport trailer on a roster response: "party" or "none"
+    transportLine = "^TBM:TRANSPORT|(%S+)",
 }
 
 local serverCommands = {}
 local serverCapabilitiesKnown = false
 local responseHistory = {}
+
+-- ── command transport ───────────────────────────────────────────────────────
+-- The module answers every roster request with "TBM:TRANSPORT|<channel>".
+-- "party" means the core dispatches addon messages for the requester's current
+-- group, so UI commands can travel as addon messages and never reach the chat
+-- frame. Anything else - a missing verdict, an older module, or one invalidated
+-- by a group change - keeps the ".bot" chat transport.
+local addonTransport = nil
+local addonTransportKnown = false
+
+function TB.InvalidateAddonTransport()
+    addonTransportKnown = false
+end
+
+function TB.SetAddonTransport(channel)
+    channel = string.lower(TB.Trim(channel or ""))
+    if channel ~= "party" and channel ~= "none" then return false end
+    addonTransport = channel
+    addonTransportKnown = true
+    return true
+end
+
+function TB.AddonCommandChannel()
+    local c = TB.C or C
+    if not addonTransportKnown or addonTransport ~= "party" then return nil end
+    if not SendAddonMessage then return nil end
+    return (c and c.ADDON_TRANSPORT) or "PARTY"
+end
+
 local function splitProtocol(text)
     local fields = {}
     local start = 1
@@ -390,6 +426,12 @@ function TB.OnWhisperMessage(msg, sender)
 end
 
 function TB.OnAddonMessage(prefix, msg, channel, sender)
+    if prefix == ((C and C.ADDON_PREFIX) or "TBM") then
+        -- Reply to a command sent over the addon channel: the module mirrors
+        -- its chat replies onto this transport, so parse them the same way.
+        if TB.OnSystemMessage then TB.OnSystemMessage(msg) end
+        return
+    end
     local name = TB.NormalizeName(sender or "")
     local st = name and TB.GetState and TB.GetState(name) or nil
     if not st or not st.pendingAI or not st.operation or st.operation.verb ~= "command" then return end
@@ -401,6 +443,15 @@ end
 function TB.OnSystemMessage(msg)
     if not msg or msg == "" then return end
     local handled = false
+
+    do
+        local _, _, transport = string.find(msg, PAT.transportLine)
+        if transport then
+            TB.SetAddonTransport(transport)
+            TB.lastSystem = msg
+            return
+        end
+    end
 
     local rosterHandled, rosterKind, rosterData = false, nil, nil
     if TB.ParseRosterMessage then

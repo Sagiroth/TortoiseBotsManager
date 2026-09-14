@@ -230,9 +230,14 @@ function TB.SendBotCommand(cmd, opts)
     if cmd == "" then return false end
 
     local full = ".bot " .. cmd
+    local channel = TB.AddonCommandChannel and TB.AddonCommandChannel()
     if TB.CanSend() then
         lastSend = (GetTime and GetTime()) or 0
-        if SendChatMessage then SendChatMessage(full) end
+        if channel then
+            SendAddonMessage((C and C.ADDON_PREFIX) or "TBM", cmd, channel)
+        elseif SendChatMessage then
+            SendChatMessage(full)
+        end
         TB.lastCommand   = cmd
         TB.lastCommandAt = lastSend
         if TB.OnCommandSent then TB.OnCommandSent(cmd) end
