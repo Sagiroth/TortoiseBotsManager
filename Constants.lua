@@ -172,8 +172,14 @@ TB.C.FORMATIONS = {
     { id = "circle", label = "Circle", tip = "360-degree defensive perimeter" },
 }
 
+-- Addon command transport (server side: host/BotAddonAdapter.cpp).
+-- The prefix carries both directions; the channel is what SendAddonMessage
+-- takes while the server advertises TBM:TRANSPORT|party.
+TB.C.ADDON_PREFIX    = "TBM"
+TB.C.ADDON_TRANSPORT = "PARTY"
+
 -- Throttle / poll
-TB.C.SEND_DELAY      = 0.35  -- min seconds between SendChatMessage(".bot …")
+TB.C.SEND_DELAY      = 0.35  -- min seconds between requests ("addon" or ".bot …")
 TB.C.LIST_THROTTLE   = 5     -- hard throttle for .bot roster
 TB.C.ROSTER_THROTTLE = TB.C.LIST_THROTTLE
 TB.C.POLL_PANEL_IV   = 8     -- poll every N sec while panel open

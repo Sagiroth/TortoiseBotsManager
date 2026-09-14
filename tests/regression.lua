@@ -11,6 +11,7 @@ if not unpack then unpack = table.unpack end
 if not math.mod then math.mod = math.fmod end
 local frames = {}
 local sent = {}
+local addonSent = {}
 local now = 10
 local targetExists = true
 local targetNameValue = "Training Dummy"
@@ -111,6 +112,9 @@ GameTooltip = {
 function GetTime() return now end
 function time() return 123 end
 function SendChatMessage(message) table.insert(sent, message) end
+function SendAddonMessage(prefix, message, channel)
+    table.insert(addonSent, { prefix = prefix, message = message, channel = channel })
+end
 function GetCursorPosition() return 0, 0 end
 function UnitExists(unit)
     if unit == "player" then return true end
@@ -584,5 +588,80 @@ assert(druidRow.ccIcon.point[1] == "BOTTOMRIGHT"
     and druidRow.ccIcon.point[5] == 4
     and druidRow.ccLabel.point[1] == "BOTTOMRIGHT",
     "CC indicator must occupy the lower-right row slot")
+
+-- ── addon command transport ────────────────────────────────────────────────
+-- UI commands travel as addon messages only while the server says the core
+-- dispatches them for this group (TBM:TRANSPORT|party). Until a verdict
+-- arrives, after a group change, or when it reads "none", the ".bot" chat
+-- transport stays.
+TB.InvalidateAddonTransport()
+now = now + 1
+local beforeUnknownChat = table.getn(sent)
+local beforeUnknownAddon = table.getn(addonSent)
+TB.SendActionIntent("stay")
+assert(table.getn(sent) == beforeUnknownChat + 1 and sent[table.getn(sent)] == ".bot action stay",
+    "without a server verdict UI commands must keep using .bot chat")
+assert(table.getn(addonSent) == beforeUnknownAddon,
+    "no addon message may be sent before the server advertises the channel")
+
+TB.OnSystemMessage("TBM:TRANSPORT|party")
+now = now + 1
+local beforePartyAddon = table.getn(addonSent)
+local beforePartyChat = table.getn(sent)
+TB.SendActionIntent("attack")
+assert(table.getn(addonSent) == beforePartyAddon + 1,
+    "the party verdict must send the command over the addon channel")
+local addonCommand = addonSent[table.getn(addonSent)]
+assert(addonCommand.prefix == "TBM" and addonCommand.message == "action attack"
+    and addonCommand.channel == "PARTY",
+    "addon command must carry the TBM prefix, the bare command and PARTY")
+assert(table.getn(sent) == beforePartyChat, "addon transport must not also send a chat echo")
+
+-- Replies on the addon channel are parsed exactly like system replies.
+TB.OnAddonMessage("TBM", "TBM:ACTION_ACK|attack|party|2|-", "GUILD", "Tester")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "attack" and TB.lastActionAck.count == 2,
+    "addon-channel replies must feed the structured parser")
+
+-- A group change invalidates the verdict until the next roster reply.
+local groupWatcher = frames["TortoiseBotsManagerGroupWatcher"]
+assert(groupWatcher, "group watcher must exist")
+event = "PARTY_MEMBERS_CHANGED"
+groupWatcher.scripts.OnEvent(groupWatcher)
+now = now + 1
+local beforeStaleAddon = table.getn(addonSent)
+local beforeStaleChat = table.getn(sent)
+TB.SendActionIntent("come")
+assert(table.getn(addonSent) == beforeStaleAddon,
+    "a verdict invalidated by a group change must not use the addon channel")
+assert(table.getn(sent) == beforeStaleChat + 1 and sent[table.getn(sent)] == ".bot action come",
+    "a verdict invalidated by a group change must fall back to .bot chat")
+
+-- Re-learned over the addon channel itself: the steady state once live.
+TB.OnAddonMessage("TBM", "TBM:TRANSPORT|party", "GUILD", "Tester")
+now = now + 1
+local beforeRelearnAddon = table.getn(addonSent)
+TB.SendActionIntent("focus skull")
+assert(table.getn(addonSent) == beforeRelearnAddon + 1
+    and addonSent[table.getn(addonSent)].message == "action focus skull",
+    "an addon-delivered verdict must restore the addon transport")
+
+-- "none" is a hard no: battleground group without a pre-battleground group.
+TB.OnSystemMessage("TBM:TRANSPORT|none")
+assert(TB.AddonCommandChannel() == nil, "the none verdict must not expose a channel")
+now = now + 1
+local beforeNoneChat = table.getn(sent)
+local beforeNoneAddon = table.getn(addonSent)
+TB.SendActionIntent("stay")
+assert(table.getn(addonSent) == beforeNoneAddon
+    and table.getn(sent) == beforeNoneChat + 1 and sent[table.getn(sent)] == ".bot action stay",
+    "the none verdict must keep using .bot chat")
+
+-- Only the module prefix is a command reply; other addon prefixes stay on the
+-- legacy AI-reply path.
+local ackBefore = TB.lastActionAck
+local errBefore = TB.lastActionError
+TB.OnAddonMessage("OTHER", "TBM:ACTION_ERR|attack|foreign|not ours", "WHISPER", "Alpha")
+assert(TB.lastActionAck == ackBefore and TB.lastActionError == errBefore,
+    "only the module prefix may be parsed as a command reply")
 
 print("PASS: TortoiseBotsManager regression checks")

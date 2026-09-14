@@ -6,7 +6,7 @@ Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.
 
 Actions use normal WoW targeting for gameplay intent. Roster is a server-owned lifecycle list for logging bots in/out and managing group membership; no combat controls are attached to rows.
 
-> **Requires the server-side module:** [Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots) (`modules/TortoiseBots`). The addon sends `.bot` transport commands, consumes structured `TBM:` responses, and keeps legacy command compatibility.
+> **Requires the server-side module:** [Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots) (`modules/TortoiseBots`). The addon sends its UI commands over the addon command channel while the server advertises it, falls back to `.bot` chat, and consumes structured `TBM:` replies on the transport that carried the request.
 
 
 ---
@@ -17,7 +17,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 * **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available. A separate assignment snapshot supplies each live bot's current CC mark.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
-* **Quiet transport** — addon command echoes and structured transport are locally filtered through the standard message filter or legacy chat dispatcher, while gameplay requests return one compact structured result instead of per-bot chat.
+* **Quiet transport** — UI commands travel as addon messages while the server advertises the addon command channel, so a button click prints nothing to chat for you or anyone nearby; `.bot` chat stays for ungrouped or battleground-group cases and for hand-typed commands. Gameplay requests return one compact structured result instead of per-bot chat.
 * **Compact UI** — `Actions` is the default tab; `Roster` has checkbox rows and no per-row combat controls. The draggable panel remembers position and supports `Esc` close, minimap toggle, search, and tooltips.
 * **Compatibility** — legacy `.bot` commands and `.bot command` remain available server-side; the primary UI does not expose the advanced command console.
 
@@ -28,13 +28,13 @@ This addon is the in-game half of:
 **[Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots)** — optional native PlayerBots module for Tortoise WoW 1.18.1 (`tortoise-wow/tortoise-wow` + PR #438). It owns `BotManager`, bot records, `.bot` commands and class AI. The addon requires it.
 
 ```
-Tortoise WoW core (Headless sessions #438)
+Tortoise WoW core (Headless sessions #438 + addon message hooks #476)
         │
-        │  .bot chat commands
+        │  addon command channel (prefix TBM) — ".bot" chat as fallback
         ▼
 TortoiseBots module (server, authoritative)
         │
-        │  CHAT_MSG_SYSTEM + bot whisper replies
+        │  addon replies or CHAT_MSG_SYSTEM, same transport as the request
         ▼
 TortoiseBots Manager (in-game, /tbm, optimistic UI)
 ```
@@ -57,6 +57,7 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 * Roster lifecycle operations remain individually acknowledged and time out instead of staying optimistic forever. Gameplay never loops over roster selection.
 * Multi-bot Invite advances only after each bot is a real group member, not merely after the server creates its pending invite. Full normal parties upgrade to a raid before another owned bot is invited.
 * Normal `.bot` command echoes and structured `TBM:` transport messages are hidden locally through the standard chat filter or the legacy chat dispatcher; critical system errors stay visible.
+* UI commands use the addon command channel only while the server says so: every roster reply ends with `TBM:TRANSPORT|party` or `|none`. A group change invalidates that verdict, so the next command falls back to `.bot` chat until the server restates it; a battleground group with no pre-battleground group reports `none`, because the core never dispatches those addon messages to the module.
 
 ## Requirements
 
@@ -69,9 +70,9 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 TortoiseBotsManager.toc
 Constants.lua   — geometry, colors, delays, status
 Utils.lua       — Trim, NormalizeName, backdrop, Status helpers
-Core.lua        — slash commands, throttled transport, roster polling, SavedVariables UI preferences
+Core.lua        — slash commands, throttled transport (addon channel or `.bot` chat), roster polling, SavedVariables UI preferences
 Roster.lua      — authoritative snapshot, live state, group membership, CC assignments, checkbox eligibility
-Comms.lua       — structured `TBM:` responses plus legacy command parsing
+Comms.lua       — addon command channel, structured `TBM:` responses plus legacy command parsing
 UI.lua          — compact Actions/Roster/Party tabs and contextual lifecycle bar
 Minimap.lua     — draggable minimap button
 ```
