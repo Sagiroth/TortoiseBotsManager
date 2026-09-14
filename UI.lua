@@ -944,9 +944,24 @@ function TB.InitUI()
                             local capturedName = name
                             btn:SetScript("OnClick", function()
                                 TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
+                                local previousRole = TortoiseBotsDB.botRoles[capturedName]
                                 TortoiseBotsDB.botRoles[capturedName] = capturedRole.id
-                                if capturedRole.strat and capturedRole.strat ~= "" then
-                                    TB.SendBotCommand("command " .. capturedName .. " " .. capturedRole.strat)
+                                -- Explicit tank designation drives the server-side
+                                -- forced role (pull qualification), so it uses
+                                -- the dedicated role command. Other roles keep
+                                -- the mature Playerbot strategy command.
+                                if capturedRole.id == "tank" then
+                                    TB.SendBotCommand("role " .. capturedName .. " tank")
+                                else
+                                    -- Demotion: a stale forced tank would still
+                                    -- qualify for pulls, so clear it before the
+                                    -- spec strategy is applied.
+                                    if previousRole == "tank" then
+                                        TB.SendBotCommand("role " .. capturedName .. " clear")
+                                    end
+                                    if capturedRole.strat and capturedRole.strat ~= "" then
+                                        TB.SendBotCommand("command " .. capturedName .. " " .. capturedRole.strat)
+                                    end
                                 end
                                 TB.Print(capturedName .. " role set to " .. capturedRole.label)
                                 TB.RefreshPartyView()
