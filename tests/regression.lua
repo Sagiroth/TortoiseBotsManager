@@ -565,6 +565,40 @@ assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot
     "Clicking Shadow role must send Playerbot strategy command")
 assert(TB.partyFrame.rows[2].roleButtons[3].text:find("|cffffd200Shadow|r"), "Selected Shadow button must be highlighted gold")
 
+-- Tank designation uses the explicit role command (forced role + pull kit).
+partyClassName = "Warrior"
+partyMembers = { "Tankbot" }
+TB.RefreshPartyView()
+assert(TB.partyFrame.rows[2].nameText.text == "Tankbot", "Party row 2 must display Tankbot")
+assert(TB.partyFrame.rows[2].roleButtons[1]:IsVisible() and TB.partyFrame.rows[2].roleButtons[1].text:find("Tank"),
+    "Tankbot must have Tank role button")
+now = now + 1
+local beforeTankCmd = table.getn(sent)
+TB.partyFrame.rows[2].roleButtons[1].scripts.OnClick()
+assert(TortoiseBotsDB.botRoles["Tankbot"] == "tank", "Tankbot role must be stored as tank")
+assert(table.getn(sent) == beforeTankCmd + 1 and sent[table.getn(sent)] == ".bot role Tankbot tank",
+    "Clicking Tank role must send the explicit role command")
+-- Demotion clears the stale forced tank before the spec strategy is applied.
+-- Two commands in the same tick: first sends, second queues on SEND_DELAY.
+now = now + 1
+local beforeDemoteCmd = table.getn(sent)
+TB.partyFrame.rows[2].roleButtons[2].scripts.OnClick()
+assert(TortoiseBotsDB.botRoles["Tankbot"] == "dps", "Tankbot role must be stored as dps")
+assert(table.getn(sent) == beforeDemoteCmd + 1
+    and sent[table.getn(sent)] == ".bot role Tankbot clear",
+    "Demotion from Tank must clear the forced role first")
+now = now + 1
+local queueFrame = frames["TortoiseBotsManagerQueueFrame"]
+assert(queueFrame, "demotion spec strategy must queue behind the throttle")
+this, arg1 = queueFrame, 0.1
+queueFrame.scripts.OnUpdate(queueFrame)
+assert(table.getn(sent) == beforeDemoteCmd + 2
+    and sent[table.getn(sent)] == ".bot command Tankbot +arms,-protection",
+    "Demotion spec strategy must follow after the throttle clears")
+partyClassName = "Priest"
+partyMembers = { "Priestbot" }
+TB.RefreshPartyView()
+
 TB.SetCcAssignment("Priestbot", "moon")
 TB.RefreshPartyView()
 assert(TB.partyFrame.rows[2].ccMark == "moon" and TB.partyFrame.rows[2].ccIcon:IsVisible(),
