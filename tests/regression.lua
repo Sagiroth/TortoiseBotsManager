@@ -285,6 +285,17 @@ assert(TB.currentFormation == "near", "Clicking near pill must set current forma
 assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
     "Active formation pill must become disabled")
 
+-- Constants: structured formation metadata must survive (no raw-list clobber),
+-- and Hunter/Rogue must expose all three backend-supported specs.
+assert(TB.C.FORMATIONS[1].id == "shield" and TB.C.FORMATIONS[1].label == "Shield",
+    "structured formation metadata must remain intact")
+assert(table.getn(TB.C.FORMATION_IDS) == 10 and TB.C.FORMATION_IDS[7] == "shield",
+    "full formation ID list must live under FORMATION_IDS")
+assert(table.getn(TB.C.CLASS_ROLES[3]) == 3 and TB.C.CLASS_ROLES[3][3].id == "survival",
+    "Hunter must expose Survival alongside Beastmaster and Marksman")
+assert(table.getn(TB.C.CLASS_ROLES[4]) == 3 and TB.C.CLASS_ROLES[4][3].id == "subtlety",
+    "Rogue must expose Subtlety alongside Combat and Assassination")
+
 -- Local names and legacy list responses cannot add an offline canonical row.
 TB.AddToRoster("ClientOnly")
 assert(TB.GetRosterEntry("ClientOnly") == nil, "client-only names are not roster rows")
@@ -390,10 +401,15 @@ assert(table.getn(sent) == beforeMixedInvite + 1 and sent[table.getn(sent)] == "
     "Invite must skip selected bots already in the group")
 TB.OnSystemMessage("Invitation sent to bot Alpha; it may accept it asynchronously.")
 partyMembers = { "Alpha", "Gamma" }
-event, this = "GROUP_ROSTER_UPDATE", groupWatcher
+-- Canonical 1.12 raid event must be registered and drive the watcher.
+assert(groupWatcher.events and groupWatcher.events["RAID_ROSTER_UPDATE"],
+    "group watcher must listen for RAID_ROSTER_UPDATE (Vanilla 1.12 raid event)")
+event, this = "RAID_ROSTER_UPDATE", groupWatcher
 groupWatcher.scripts.OnEvent(groupWatcher)
+assert(TB.IsInGroup("Alpha") and TB.IsInGroup("Gamma"),
+    "RAID_ROSTER_UPDATE must refresh client group membership")
 partyMembers = { "Gamma" }
-event, this = "GROUP_ROSTER_UPDATE", groupWatcher
+event, this = "RAID_ROSTER_UPDATE", groupWatcher
 groupWatcher.scripts.OnEvent(groupWatcher)
 now = now + 1
 local beforeKick = table.getn(sent)

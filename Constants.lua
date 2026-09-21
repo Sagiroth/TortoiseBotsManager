@@ -75,10 +75,12 @@ TB.C.CLASS_ROLES = {
     [3] = { -- Hunter
         { id = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
         { id = "mm", label = "Marksman", strat = "+marksmanship,-beast mastery,-survival" },
+        { id = "survival", label = "Survival", strat = "+survival,-beast mastery,-marksmanship" },
     },
     [4] = { -- Rogue
         { id = "combat", label = "Combat", strat = "+combat,-assassination,-subtlety" },
         { id = "assa", label = "Assassination", strat = "+assassination,-combat,-subtlety" },
+        { id = "subtlety", label = "Subtlety", strat = "+subtlety,-combat,-assassination" },
     },
     [5] = { -- Priest
         { id = "heal", label = "Healer", strat = "+holy,-shadow,-offdps" },
@@ -228,7 +230,10 @@ TB.C.STATUS = {
     REMOVING       = "removing",
 }
 
-TB.C.FORMATIONS = {
+-- Full server-supported formation IDs (the pill row exposes the structured
+-- subset above). Kept under a separate key so it never clobbers
+-- TB.C.FORMATIONS metadata ({ id, label, tip }).
+TB.C.FORMATION_IDS = {
     "default", "melee", "queue", "chaos", "circle",
     "line", "shield", "arrow", "near", "far",
 }

@@ -801,11 +801,15 @@ end
 TB.GetEligibleSelection = TB.GetEligibleRosterNames
 TB.GetSelectedNames = TB.GetSelectedRosterNames
 
--- ── group tracking (client group events refine snapshot membership) ──────────
+-- Vanilla 1.12 canonical group events: PARTY_MEMBERS_CHANGED covers party,
+-- RAID_ROSTER_UPDATE covers raid (subgroup shifts, convert to raid).
+-- GROUP_ROSTER_UPDATE is a post-4.0 Retail event that never fires on 1.12;
+-- keep it guarded so modern test shims can still drive the watcher.
 local gf = CreateFrame("Frame", "TortoiseBotsManagerGroupWatcher")
-gf:RegisterEvent("GROUP_ROSTER_UPDATE")
 gf:RegisterEvent("PARTY_MEMBERS_CHANGED")
+gf:RegisterEvent("RAID_ROSTER_UPDATE")
 gf:RegisterEvent("PLAYER_ENTERING_WORLD")
+pcall(function() gf:RegisterEvent("GROUP_ROSTER_UPDATE") end)
 gf:SetScript("OnEvent", function()
     local members = {}
     local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
