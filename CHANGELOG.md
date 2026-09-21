@@ -35,3 +35,12 @@ All notable changes to TortoiseBotsManager are documented here.
 - Added core, comms, roster, and UI updates with regression coverage. [#12](https://github.com/Sagiroth/TortoiseBotsManager/pull/12)
 
 ---
+
+### Roster & Lifecycle
+- Raid roster changes now refresh reactively: the watcher listens to the 1.12-compatible `RAID_ROSTER_UPDATE` event instead of the Retail-only `GROUP_ROSTER_UPDATE`, so raid converts and subgroup shifts update group membership correctly. [#19](https://github.com/Sagiroth/TortoiseBotsManager/pull/19)
+
+### UI & Controls
+- Fixed formation metadata being clobbered: structured `TB.C.FORMATIONS` now stays intact for id/label/tip lookups, while raw formation IDs live in `TB.C.FORMATION_IDS`, restoring formation labels and tooltips. [#19](https://github.com/Sagiroth/TortoiseBotsManager/pull/19)
+
+### Tactical & Actions
+- Hunter Survival and Rogue Subtlety are back in `CLASS_ROLES`, matching backend strategy support so those specs can be assigned and recognized properly. [#19](https://github.com/Sagiroth/TortoiseBotsManager/pull/19)
