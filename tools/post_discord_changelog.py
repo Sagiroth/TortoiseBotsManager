@@ -122,6 +122,14 @@ def main():
 
         if args.tag and i == 1:
             embed["url"] = f"https://github.com/{args.repo}/releases/tag/{args.tag}"
+            download_url = f"https://github.com/{args.repo}/releases/download/{args.tag}/TortoiseBotsManager.zip"
+            embed["fields"] = [
+                {
+                    "name": "📦 Direct Addon Download",
+                    "value": f"[Download TortoiseBotsManager.zip]({download_url})",
+                    "inline": False,
+                }
+            ]
 
         if i == total_parts:
             embed["footer"] = {
