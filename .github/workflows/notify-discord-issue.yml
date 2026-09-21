@@ -1,0 +1,185 @@
+name: Notify Discord on New Issue
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to update in Discord'
+        required: false
+        default: '1'
+      delete_message_id:
+        description: 'Discord Message ID to delete (optional)'
+        required: false
+        default: ''
+
+permissions:
+  issues: write
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync issue alert with Discord
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          INPUT_DELETE_MESSAGE_ID: ${{ inputs.delete_message_id }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_ISSUE_THREAD_ID: ${{ secrets.DISCORD_ISSUE_THREAD_ID || '1542647578548772954' }}
+          EVENT_ACTION: ${{ github.event.action }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_STATE_REASON: ${{ github.event.issue.state_reason }}
+          EVENT_SENDER: ${{ github.event.sender.login }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          import urllib.request
+          import urllib.error
+
+          webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+          if not webhook:
+              print("Warning: DISCORD_WEBHOOK_URL is not set. Skipping Discord sync.")
+              sys.exit(0)
+
+          base_webhook = webhook.split('?')[0].rstrip('/')
+          thread_id = os.environ.get("DISCORD_ISSUE_THREAD_ID", "").strip() or "1542647578548772954"
+
+          delete_id = os.environ.get("INPUT_DELETE_MESSAGE_ID", "").strip()
+          if delete_id:
+              endpoint = f"{base_webhook}/messages/{delete_id}"
+              if thread_id:
+                  endpoint += f"?thread_id={thread_id}"
+              print(f"Deleting Discord message {delete_id}...")
+              req = urllib.request.Request(endpoint, headers={"User-Agent": "TortoiseBotsManager-Issue-Notifier/1.0"}, method="DELETE")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      print(f"Successfully deleted Discord message {delete_id} (status {resp.status}).")
+                      sys.exit(0)
+              except Exception as e:
+                  print(f"Error deleting message {delete_id}: {e}", file=sys.stderr)
+                  sys.exit(1)
+
+          number = os.environ.get("ISSUE_NUMBER", "").strip()
+          title = os.environ.get("ISSUE_TITLE", "").strip()
+          url = os.environ.get("ISSUE_URL", "").strip()
+          author = os.environ.get("ISSUE_AUTHOR", "").strip()
+          body = os.environ.get("ISSUE_BODY", "")
+          labels = os.environ.get("ISSUE_LABELS", "").strip()
+          action = os.environ.get("EVENT_ACTION", "").strip() or "opened"
+          state_reason = os.environ.get("ISSUE_STATE_REASON", "").strip()
+          sender = os.environ.get("EVENT_SENDER", "").strip() or author
+
+          input_number = os.environ.get("INPUT_ISSUE_NUMBER", "").strip()
+          if not number and input_number:
+              try:
+                  out = subprocess.check_output(
+                      ["gh", "issue", "view", input_number, "--repo", "Sagiroth/TortoiseBotsManager", "--json", "number,title,url,author,body,labels,state,stateReason"],
+                      text=True
+                  )
+                  data = json.loads(out)
+                  number = str(data.get("number", input_number))
+                  title = data.get("title", "(no title)")
+                  url = data.get("url", "")
+                  author = data.get("author", {}).get("login", "someone")
+                  body = data.get("body", "")
+                  labels = ", ".join(lbl.get("name", "") for lbl in data.get("labels", []) if lbl.get("name"))
+                  state = data.get("state", "OPEN")
+                  state_reason = data.get("stateReason", "")
+                  action = "closed" if state == "CLOSED" else "opened"
+              except Exception as e:
+                  print(f"Error resolving issue #{input_number}: {e}", file=sys.stderr)
+                  sys.exit(1)
+
+          # Extract existing Discord message ID if present in issue body
+          msg_id_match = re.search(r"<!--\s*discord_msg_id:\s*(\d+)\s*-->", body)
+          msg_id = msg_id_match.group(1) if msg_id_match else None
+
+          # Build embed depending on status
+          if action == "closed":
+              if state_reason == "not_planned":
+                  status_prefix = "[Not Planned]"
+                  color = 0x95A5A6  # Grey
+                  status_desc = f"Closed as not planned by @{sender}"
+              else:
+                  status_prefix = "[Completed]"
+                  color = 0x2ECC71  # Green
+                  status_desc = f"Completed by @{sender}"
+              embed_title = f"{status_prefix} Issue #{number}: {title}"
+          elif action == "reopened":
+              color = 0xE67E22  # Orange
+              status_desc = f"Reopened by @{sender}"
+              embed_title = f"[Reopened] Issue #{number}: {title}"
+          else:
+              color = 0x3498DB  # Blue
+              status_desc = f"Opened by @{author}"
+              embed_title = f"Issue #{number}: {title}"
+
+          if labels:
+              status_desc += f" • {labels}"
+
+          embed = {
+              "title": embed_title[:256],
+              "url": url,
+              "description": status_desc,
+              "color": color,
+          }
+          payload = {"username": "TortoiseBotsManager Issue", "embeds": [embed]}
+          payload_bytes = json.dumps(payload).encode("utf-8")
+          headers = {"Content-Type": "application/json", "User-Agent": "TortoiseBotsManager-Issue-Notifier/1.0"}
+
+          # If we already have a message ID, edit the existing message!
+          if msg_id:
+              endpoint = f"{base_webhook}/messages/{msg_id}"
+              if thread_id:
+                  endpoint += f"?thread_id={thread_id}"
+              print(f"Editing existing Discord message {msg_id} for Issue #{number} ({action})...")
+              req = urllib.request.Request(endpoint, data=payload_bytes, headers=headers, method="PATCH")
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      if resp.status in (200, 204):
+                          print(f"Successfully edited Discord message {msg_id} for Issue #{number}.")
+                          sys.exit(0)
+                      print(f"Discord edit returned status {resp.status}")
+              except urllib.error.HTTPError as e:
+                  print(f"Failed to edit Discord message {msg_id} (HTTP {e.code}): {e.read().decode('utf-8', errors='replace')}")
+                  print("Falling back to creating a new message.")
+
+          # Otherwise, post a new message and save its message ID to the issue
+          endpoint = f"{base_webhook}?wait=true"
+          if thread_id:
+              endpoint += f"&thread_id={thread_id}"
+
+          print(f"Posting new Discord message for Issue #{number}...")
+          req = urllib.request.Request(endpoint, data=payload_bytes, headers=headers, method="POST")
+          try:
+              with urllib.request.urlopen(req, timeout=15) as resp:
+                  resp_data = json.loads(resp.read().decode("utf-8"))
+                  new_msg_id = resp_data.get("id")
+                  print(f"Posted alert for #{number} to Discord thread {thread_id} (msg_id={new_msg_id}).")
+          except Exception as e:
+              print(f"Error posting to Discord: {e}", file=sys.stderr)
+              sys.exit(1)
+
+          if new_msg_id:
+              try:
+                  new_body = body.rstrip() + f"\n\n<!-- discord_msg_id: {new_msg_id} -->\n"
+                  subprocess.run(
+                      ["gh", "issue", "edit", str(number), "--repo", "Sagiroth/TortoiseBotsManager", "--body", new_body],
+                      check=True, capture_output=True, text=True
+                  )
+                  print(f"Saved discord_msg_id {new_msg_id} to Issue #{number} body.")
+              except Exception as e:
+                  print(f"Warning: could not save discord_msg_id to issue body: {e}", file=sys.stderr)
+
+          PYEOF
