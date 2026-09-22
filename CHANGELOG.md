@@ -2,6 +2,14 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-09-22
+
+### Comms & Protocol
+- Summon rejections caused by the server's GM-gate are now recognized, so the optimistic `SUMMONING` state resolves to a visible failure instead of hanging until it times out. [#20](https://github.com/Sagiroth/TortoiseBotsManager/pull/20)
+- Adds a `summonRestricted` pattern included in the summon-failure disjunction, mirroring the NonGmFreeSummon gate from TortoiseBots #255; regression.lua passes. [#20](https://github.com/Sagiroth/TortoiseBotsManager/pull/20)
+
+---
+
 ## 2026-09-21
 
 ### CI, Docs & Project
