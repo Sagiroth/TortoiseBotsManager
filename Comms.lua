@@ -71,6 +71,7 @@ local PAT = {
     summonTeleporting = "is already teleporting",
     summonTaxi    = "is on a taxi",
     summonAssignFailed = "could not be assigned to you for summon",
+    summonRestricted = "restricted to GameMasters",
     followFailed  = "could not enter follow mode",
     stayFailed    = "could not enter stay mode",
     addNotFound   = "Character '[^']+' not found",
@@ -627,7 +628,7 @@ function TB.OnSystemMessage(msg)
     elseif string.find(msg, PAT.summonFailed) or string.find(msg, PAT.summonNoWorld)
         or string.find(msg, PAT.summonTeleporting) or string.find(msg, PAT.summonTaxi)
         or string.find(msg, PAT.summonFail) or string.find(msg, PAT.alreadySummon)
-        or string.find(msg, PAT.summonAssignFailed) then
+        or string.find(msg, PAT.summonAssignFailed) or string.find(msg, PAT.summonRestricted) then
         markFailure(msg, false, "summon"); handled = true
 
     elseif string.find(msg, PAT.followFailed) then
