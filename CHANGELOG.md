@@ -2,6 +2,13 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-09-23
+
+### Roles & Party
+- The Party tab now exposes player role buttons, persists the selected display role, and sends `.bot role self <tank|healer|dps>`. [#264](https://github.com/Sagiroth/TortoiseBots/issues/264)
+
+---
+
 ## 2026-09-22
 
 ### Comms & Protocol
