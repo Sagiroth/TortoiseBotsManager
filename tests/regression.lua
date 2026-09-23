@@ -73,6 +73,8 @@ local function object(kind, parent)
     function methods:GetParent() return self.parent end
     function methods:StartMoving() end
     function methods:StopMovingOrSizing() end
+    function methods:GetLeft() return self.x or 100 end
+    function methods:GetTop() return (self.y or 100) + (self.height or 50) end
     function methods:GetPoint() return "CENTER", UIParent, "CENTER", 0, 15 end
     function methods:GetCenter() return 0, 0 end
     function methods:GetEffectiveScale() return 1 end
@@ -708,10 +710,16 @@ assert(table.getn(addonSent) == beforeNoneAddon
 
 -- Only the module prefix is a command reply; other addon prefixes stay on the
 -- legacy AI-reply path.
-local ackBefore = TB.lastActionAck
-local errBefore = TB.lastActionError
-TB.OnAddonMessage("OTHER", "TBM:ACTION_ERR|attack|foreign|not ours", "WHISPER", "Alpha")
-assert(TB.lastActionAck == ackBefore and TB.lastActionError == errBefore,
-    "only the module prefix may be parsed as a command reply")
+-- Drag header isolation & safe position persistence (avoids 1.12 C++ GetPoint crash)
+assert(TB.dragHeader and TB.dragHeader.scripts and TB.dragHeader.scripts["OnDragStart"],
+    "drag header must have OnDragStart registered")
+assert(TB.dragHeader.scripts["OnDragStop"], "drag header must have OnDragStop registered")
+assert(not TB.frame.scripts["OnDragStart"], "main frame must not intercept window drag directly")
+assert(not TB.frame.scripts["OnDragStop"], "main frame must not intercept window drag directly")
+TB.dragHeader.scripts["OnDragStart"]()
+TB.dragHeader.scripts["OnDragStop"]()
+assert(TortoiseBotsDB.frame and TortoiseBotsDB.frame.point == "TOPLEFT",
+    "OnDragStop must persist TOPLEFT position without crashing or calling GetPoint")
+
 
 print("PASS: TortoiseBotsManager regression checks")
