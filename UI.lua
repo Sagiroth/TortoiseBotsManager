@@ -121,16 +121,34 @@ CreateHeader = function(parent)
         frameDB.x or 0, frameDB.y or 15)
     parent:SetFrameStrata("DIALOG")
     parent:SetMovable(true)
-    parent:EnableMouse(true)
-    parent:RegisterForDrag("LeftButton")
-    parent:SetScript("OnDragStart", function() this:StartMoving() end)
-    parent:SetScript("OnDragStop", function()
-        this:StopMovingOrSizing()
-        local p, _, rp, x, y = this:GetPoint()
-        db.frame = db.frame or {}
-        db.frame.point, db.frame.rpoint = p, rp
-        db.frame.x, db.frame.y = x, y
+    -- Dedicated drag header bar across the top.
+    -- Moving dragging to a dedicated header prevents clicks on child action buttons
+    -- (Attack, Stop, etc.) from inadvertently triggering drag events on the main dialog.
+    -- Crucially: in the WoW 1.12 client, calling GetPoint() after StopMovingOrSizing()
+    -- triggers a fatal C++ access violation (0x007A2452) because StopMovingOrSizing()
+    -- anchors to the root screen layout (CSimpleTop) which lacks a Lua CScriptObject.
+    -- Instead, we re-anchor safely to UIParent using GetLeft() / GetTop().
+    local dragBar = CreateFrame("Frame", "TortoiseBotsManagerDragHeader", parent)
+    dragBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    dragBar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -30, 0)
+    dragBar:SetHeight(32)
+    dragBar:EnableMouse(true)
+    dragBar:RegisterForDrag("LeftButton")
+    dragBar:SetScript("OnDragStart", function() parent:StartMoving() end)
+    dragBar:SetScript("OnDragStop", function()
+        parent:StopMovingOrSizing()
+        local left, top = parent:GetLeft(), parent:GetTop()
+        if left and top then
+            parent:ClearAllPoints()
+            parent:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+            db.frame = db.frame or {}
+            db.frame.point = "TOPLEFT"
+            db.frame.rpoint = "BOTTOMLEFT"
+            db.frame.x = left
+            db.frame.y = top
+        end
     end)
+    TB.dragHeader = dragBar
     TB.ApplyBackdrop(parent, 0.98, 1.0)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerFrame") end
 
