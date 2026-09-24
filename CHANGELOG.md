@@ -2,6 +2,20 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-09-24
+
+### UI & Controls
+- Added one-click player role override buttons on your row in the Party tab, using your class’s available roles so you can swap without leaving `/tbm`. [#22](https://github.com/Sagiroth/TortoiseBotsManager/pull/22)
+- Selected role now highlights in gold for instant feedback. [#22](https://github.com/Sagiroth/TortoiseBotsManager/pull/22)
+
+### Tactical & Actions
+- Clicking a role button sets `TortoiseBotsDB.playerRole` and issues `.bot role self <tank|healer|dps>` to the server. [#22](https://github.com/Sagiroth/TortoiseBotsManager/pull/22)
+
+### Testing & Docs
+- Added unit and regression coverage in `tests/regression.lua`, and updated README and CHANGELOG. [#22](https://github.com/Sagiroth/TortoiseBotsManager/pull/22)
+
+---
+
 ## 2026-09-23
 
 ### UI & Controls
