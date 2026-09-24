@@ -567,6 +567,20 @@ TB.ShowTab("party")
 TB.RefreshPartyView()
 assert(TB.partyFrame.rows[1]:IsVisible(), "Player row must be visible")
 assert(TB.partyFrame.rows[1].playerLabel:IsVisible(), "Player row must show player label")
+local playerRow = TB.partyFrame.rows[1]
+assert(playerRow.roleButtons[1]:IsVisible() and playerRow.roleButtons[2]:IsVisible(),
+    "Player role buttons must be visible for the current class")
+assert(type(playerRow.roleButtons[1].scripts.OnClick) == "function",
+    "Player role button must have a click handler")
+now = now + 1
+local beforePlayerRole = table.getn(sent)
+playerRow.roleButtons[1].scripts.OnClick()
+assert(TortoiseBotsDB.playerRole == "tank",
+    "Clicking the player Tank role must persist the selected role")
+assert(table.getn(sent) == beforePlayerRole + 1 and sent[table.getn(sent)] == ".bot role self tank",
+    "Clicking the player Tank role must send the self role command")
+assert(playerRow.roleButtons[1].text:find("|cffffd200Tank|r"),
+    "Selected player role button must be highlighted gold")
 assert(TB.partyFrame.rows[2]:IsVisible(), "Priestbot party row must be visible")
 assert(TB.partyFrame.rows[2].nameText.text == "Priestbot", "Party row 2 must display Priestbot")
 assert(TB.partyFrame.rows[2].roleButtons[1]:IsVisible() and TB.partyFrame.rows[2].roleButtons[1].text:find("Healer"),

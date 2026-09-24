@@ -17,6 +17,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 * **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available. A separate assignment snapshot supplies each live bot's current CC mark.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
+* **Party roles** — assign class roles to bots or set your own tank/healer/DPS role from the Party tab; player selections are saved locally and sent to the server.
 * **Quiet transport** — UI commands travel as addon messages while the server advertises the addon command channel, so a button click prints nothing to chat for you or anyone nearby; `.bot` chat stays for ungrouped or battleground-group cases and for hand-typed commands. Gameplay requests return one compact structured result instead of per-bot chat.
 * **Compact UI** — `Actions` is the default tab; `Roster` has checkbox rows and no per-row combat controls. The draggable panel remembers position and supports `Esc` close, minimap toggle, search, and tooltips.
 * **Compatibility** — legacy `.bot` commands and `.bot command` remain available server-side; the primary UI does not expose the advanced command console.
@@ -47,6 +48,7 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 * `/tbm list` — force a server roster refresh. `/tbm help` and `/tbm resetpos` remain available.
 * **Actions** — use normal WoW target selection. With an enemy target, `Attack`, `Interrupt`, `Pull`, and `Pullback` operate on the party; `Interrupt` chooses one capable bot server-side. With an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
 * **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows.
+* **Party** — use the player row's class-role buttons to tell bots whether you are tank, healer, or DPS. The selection sends `.bot role self <role>`; bot rows retain their existing role controls.
 * **Focus / CC** — mark enemies with normal raid icons. Open `CC Mark`, then choose an icon: target a bot first to assign that bot, or target an enemy/leave party scope for automatic executor selection. The Party tab shows each bot's current CC icon; click a bot row to target it for assignment.
 * **Search** — filters the server snapshot by name.
 

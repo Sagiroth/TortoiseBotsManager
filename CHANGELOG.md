@@ -10,6 +10,10 @@ All notable changes to TortoiseBotsManager are documented here.
 - Eliminated the fatal client crash (**ERROR #132 ACCESS_VIOLATION**) caused by `StopMovingOrSizing()` re-anchoring the main dialog during unintended drags. [#21](https://github.com/Sagiroth/TortoiseBotsManager/pull/21)
 - Buttons and controls inside the dialog now respond reliably without moving the parent window. [#21](https://github.com/Sagiroth/TortoiseBotsManager/pull/21)
 
+### Roles & Party
+
+- The Party tab now exposes player role buttons, persists the selected display role, and sends `.bot role self <tank|healer|dps>`. [#264](https://github.com/Sagiroth/TortoiseBots/issues/264)
+
 ---
 
 ## 2026-09-22

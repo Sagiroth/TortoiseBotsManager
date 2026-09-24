@@ -930,37 +930,54 @@ function TB.InitUI()
                     row.ccIcon:Hide()
                 end
 
-                if unit == "player" then
+                local isPlayer = unit == "player"
+                if isPlayer then
+                    row.playerLabel:ClearAllPoints()
+                    row.playerLabel:SetPoint("LEFT", row, "LEFT", 150, -13)
                     row.playerLabel:Show()
-                    for b = 1, 4 do row.roleButtons[b]:Hide() end
                 else
                     row.playerLabel:Hide()
-                    local roles = (TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
-                    local currentRole = dbRoles[name] or (roles[1] and roles[1].id)
-                    -- Four-role rows need a reserved CC column on the right.
-                    -- Keep the normal button width for other classes so their
-                    -- longer role labels remain readable.
-                    local roleCount = table.getn(roles)
-                    local roleWidth = roleCount >= 4 and 70 or 78
-                    local roleStep = roleCount >= 4 and 72 or 82
+                end
 
-                    for b = 1, 4 do
-                        local btn = row.roleButtons[b]
-                        local role = roles[b]
-                        btn:ClearAllPoints()
-                        btn:SetWidth(roleWidth)
-                        btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * roleStep, 8)
-                        if role then
-                            local isSelected = (currentRole == role.id)
-                            if isSelected then
-                                btn:SetText("|cffffd200" .. role.label .. "|r")
+                local roles = (TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
+                local currentRole
+                if isPlayer then
+                    currentRole = TortoiseBotsDB and TortoiseBotsDB.playerRole
+                else
+                    currentRole = dbRoles[name] or (roles[1] and roles[1].id)
+                end
+                -- Four-role rows need a reserved CC column on the right.
+                -- Keep the normal button width for other classes so their
+                -- longer role labels remain readable.
+                local roleCount = table.getn(roles)
+                local roleWidth = roleCount >= 4 and 70 or 78
+                local roleStep = roleCount >= 4 and 72 or 82
+
+                for b = 1, 4 do
+                    local btn = row.roleButtons[b]
+                    local role = roles[b]
+                    btn:ClearAllPoints()
+                    btn:SetWidth(roleWidth)
+                    btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * roleStep, 8)
+                    if role then
+                        local isSelected = currentRole == role.id
+                        if isSelected then
+                            btn:SetText("|cffffd200" .. role.label .. "|r")
+                        else
+                            btn:SetText("|cffa0a0a0" .. role.label .. "|r")
+                        end
+
+                        local capturedRole = role
+                        local capturedName = name
+                        local playerRoleToken = capturedRole.id == "tank" and "tank"
+                            or (capturedRole.id == "heal" and "healer" or "dps")
+                        btn:SetScript("OnClick", function()
+                            if isPlayer then
+                                TortoiseBotsDB = TortoiseBotsDB or {}
+                                TortoiseBotsDB.playerRole = capturedRole.id
+                                TB.SendBotCommand("role self " .. playerRoleToken)
+                                TB.Print("Your role set to " .. capturedRole.label)
                             else
-                                btn:SetText("|cffa0a0a0" .. role.label .. "|r")
-                            end
-
-                            local capturedRole = role
-                            local capturedName = name
-                            btn:SetScript("OnClick", function()
                                 TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
                                 local previousRole = TortoiseBotsDB.botRoles[capturedName]
                                 TortoiseBotsDB.botRoles[capturedName] = capturedRole.id
@@ -982,14 +999,20 @@ function TB.InitUI()
                                     end
                                 end
                                 TB.Print(capturedName .. " role set to " .. capturedRole.label)
-                                TB.RefreshPartyView()
-                            end)
+                            end
+                            TB.RefreshPartyView()
+                        end)
 
-                            setButtonTooltip(btn, "Set " .. capturedName .. " role to " .. capturedRole.label .. (capturedRole.strat ~= "" and (" (" .. capturedRole.strat .. ")") or ""))
-                            btn:Show()
+                        if isPlayer then
+                            setButtonTooltip(btn, "Set your role to " .. capturedRole.label ..
+                                " (bots use " .. playerRoleToken .. ").")
                         else
-                            btn:Hide()
+                            setButtonTooltip(btn, "Set " .. capturedName .. " role to " .. capturedRole.label ..
+                                (capturedRole.strat ~= "" and (" (" .. capturedRole.strat .. ")") or ""))
                         end
+                        btn:Show()
+                    else
+                        btn:Hide()
                     end
                 end
                 row:Show()
