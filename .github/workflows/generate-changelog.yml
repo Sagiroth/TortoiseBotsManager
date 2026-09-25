@@ -78,6 +78,7 @@ jobs:
             if gh release view "${{ steps.version.outputs.release_tag }}" --repo Sagiroth/TortoiseBotsManager --json tagName >/dev/null 2>&1; then
               echo "Release ${{ steps.version.outputs.release_tag }} already exists. Updating release notes..."
               gh release edit "${{ steps.version.outputs.release_tag }}" \
+                --title "TortoiseBotsManager $(date -u +%Y-%m-%d) (builds v1–v${{ steps.version.outputs.build_number }})" \
                 --repo Sagiroth/TortoiseBotsManager \
                 --notes-file /tmp/release_notes.md
               gh release upload "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
@@ -86,7 +87,7 @@ jobs:
               echo "Creating new release ${{ steps.version.outputs.release_tag }}..."
               gh release create "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
                 --repo Sagiroth/TortoiseBotsManager \
-                --title "TortoiseBotsManager ($(date -u +%Y-%m-%d))" \
+                --title "TortoiseBotsManager $(date -u +%Y-%m-%d) (builds v1–v${{ steps.version.outputs.build_number }})" \
                 --notes-file /tmp/release_notes.md \
                 --target main
             fi
@@ -103,7 +104,7 @@ jobs:
         run: |
           python3 tools/post_discord_changelog.py \
             --notes /tmp/discord_notes.md \
-            --title "TortoiseBotsManager ($(date -u +%Y-%m-%d))" \
+            --title "TortoiseBotsManager build ${{ steps.version.outputs.build_version }}" \
             --tag "${{ steps.version.outputs.release_tag }}" \
             --repo "Sagiroth/TortoiseBotsManager" \
             --thread-id "1542647578548772954" \
