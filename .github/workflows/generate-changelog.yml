@@ -87,6 +87,9 @@ jobs:
               --notes-file /tmp/release_notes.md \
               --target main
           fi
+          # Move the daily tag to this build: re-point it locally first (the
+          # checkout holds the old tag, or none on a new day), then force-push.
+          git tag -f "${{ steps.version.outputs.release_tag }}" HEAD
           git push -f origin "${{ steps.version.outputs.release_tag }}"
 
       - name: Post Changelog to Discord Thread
