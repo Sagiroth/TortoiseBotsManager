@@ -2,6 +2,21 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-09-25
+
+### Tactical & Actions
+- New **CC Marks panel** replaces the old target-first picker — open it from the Actions tab's "CC Mark" button and assign marks without targeting a bot first. [#23](https://github.com/Sagiroth/TortoiseBotsManager/pull/23)
+- Eight rows, one per raid icon, each showing the mark's current owner at a glance. [#23](https://github.com/Sagiroth/TortoiseBotsManager/pull/23)
+- **Next** per row sends `cc <mark> <Bot>`, cycling through bots by name so you can rotate marks without retyping names. [#23](https://github.com/Sagiroth/TortoiseBotsManager/pull/23)
+- **X** per row sends `cc clear <Owner>` to release a single mark. [#23](https://github.com/Sagiroth/TortoiseBotsManager/pull/23)
+- **Clear all** at the bottom sends `cc clear` to wipe every assignment in one click. [#23](https://github.com/Sagiroth/TortoiseBotsManager/pull/23)
+
+### UI & Controls
+- Panel stays open across target changes, so you can hand out several marks in one pass. [#23](https://github.com/Sagiroth/TortoiseBotsManager/pull/23)
+- "CC Mark" button is now a plain label — no more hardcoded Moon icon misleading you about the current assignment. [#23](https://github.com/Sagiroth/TortoiseBotsManager/pull/23)
+
+---
+
 ## 2026-09-24
 
 ### UI & Controls
