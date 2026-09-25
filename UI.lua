@@ -406,6 +406,8 @@ local function makeActionButton(parent, intent, width, x, y)
             local enabled = not TB.aoeEnabled
             TB.aoePending = true
             TB.SendActionIntent("aoe " .. (enabled and "on" or "off"))
+        elseif intent == "pull" or intent == "pullback" then
+            TB.SendActionIntent(TB.PullIntent and TB.PullIntent(intent) or intent)
         else
             TB.SendActionIntent(intent)
         end
@@ -616,6 +618,65 @@ CreateActions = function(parent)
     buttons.pull     = makeActionButton(cardCombat, "pull", 108, 236, btnY)
     buttons.pullback = makeActionButton(cardCombat, "pullback", 118, 350, btnY)
     buttons.interrupt = makeActionButton(cardCombat, "interrupt", 118, 8, -54)
+
+    -- Adjustable pull timers: small "- N s +" steppers under the Pull and
+    -- Pull back buttons, same UIPanelButtonTemplate style as the bar.
+    local function makePullStepper(kind, anchorButton, dx, tip)
+        local row = CreateFrame("Frame", nil, cardCombat)
+        row:SetPoint("TOPLEFT", anchorButton, "BOTTOMLEFT", dx, -2)
+        row:SetWidth(108); row:SetHeight(18)
+
+        local minus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        minus:SetWidth(22); minus:SetHeight(18)
+        minus:SetPoint("LEFT", row, "LEFT", 0, 0)
+        minus:SetText("-")
+
+        local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+        label:SetWidth(38)
+        label:SetJustifyH("CENTER")
+
+        local plus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        plus:SetWidth(22); plus:SetHeight(18)
+        plus:SetPoint("LEFT", label, "RIGHT", 2, 0)
+        plus:SetText("+")
+
+        local function current()
+            local dbNow = TortoiseBotsDB or {}
+            if kind == "pullback" then return TB.ClampPullSeconds(dbNow.pullbackDelay)
+            else return TB.ClampPullSeconds(dbNow.pullDelay) end
+        end
+        local function paint()
+            label:SetText(current() .. " s")
+        end
+        local function bump(step)
+            TortoiseBotsDB = TortoiseBotsDB or {}
+            if kind == "pullback" then
+                TortoiseBotsDB.pullbackDelay = TB.ClampPullSeconds(current() + step)
+            else
+                TortoiseBotsDB.pullDelay = TB.ClampPullSeconds(current() + step)
+            end
+            paint()
+        end
+        minus:SetScript("OnClick", function()
+            if IsShiftKeyDown and IsShiftKeyDown() then bump(-5) else bump(-1) end
+        end)
+        plus:SetScript("OnClick", function()
+            if IsShiftKeyDown and IsShiftKeyDown() then bump(5) else bump(1) end
+        end)
+        setButtonTooltip(minus, tip)
+        setButtonTooltip(plus, tip)
+        paint()
+        row.label = label
+        row.repaint = paint
+        return row
+    end
+
+    buttons.pullTimer = makePullStepper("pull", buttons.pull, 0,
+        "DPS delay before Pull (0-60 s, shift-click = 5). Sent as 'pull <n>' when the server advertises pull-seconds, otherwise plain Pull.")
+    buttons.pullbackTimer = makePullStepper("pullback", buttons.pullback, 5,
+        "Join delay before Pull back (0-60 s, shift-click = 5). Sent as 'pullback <n>' when the server advertises pull-seconds, otherwise plain Pull back.")
+    TB.pullTimers = { pull = buttons.pullTimer, pullback = buttons.pullbackTimer }
 
     buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 108, 8, btnY)
     buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 108, 122, btnY)

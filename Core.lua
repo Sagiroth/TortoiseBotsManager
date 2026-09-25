@@ -53,6 +53,14 @@ local function initDB()
     if db.frame.y == nil then db.frame.y = 15 end
     if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
     if db.autoPoll == nil then db.autoPoll = true end
+    -- Adjustable pull timers (seconds, 0-60): DPS delay before pull, join
+    -- delay before pullback. Sent as "pull <n>" / "pullback <n>" only when
+    -- the server advertises the pull-seconds capability; older servers get
+    -- the plain intents. Clamped on load so stale values cannot escape.
+    if type(db.pullDelay) ~= "number" then db.pullDelay = (C and C.PULL_DELAY_DEFAULT) or 10 end
+    if type(db.pullbackDelay) ~= "number" then db.pullbackDelay = (C and C.PULLBACK_DELAY_DEFAULT) or 3 end
+    db.pullDelay = TB.ClampPullSeconds(db.pullDelay)
+    db.pullbackDelay = TB.ClampPullSeconds(db.pullbackDelay)
     if type(db.botRoles) ~= "table" then db.botRoles = {} end
     if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster" and db.activeTab ~= "log" then
         db.activeTab = "actions"
@@ -456,6 +464,25 @@ function TB.SendActionIntent(intent)
     intent = TB.Trim(intent or "")
     if intent == "" then return false end
     return TB.SendBotCommand("action " .. intent)
+end
+
+-- Pull timers: clamp to 0-60 whole seconds, then append only when the server
+-- advertised pull-seconds. Old servers (no CAPS line) get the plain intent.
+function TB.ClampPullSeconds(value)
+    local n = tonumber(value) or 0
+    n = math.floor(n + 0.5)
+    if n < 0 then n = 0 end
+    if n > 60 then n = 60 end
+    return n
+end
+
+function TB.PullIntent(kind)
+    local db = TortoiseBotsDB or {}
+    local raw = (kind == "pullback") and db.pullbackDelay or db.pullDelay
+    if TB.HasServerCapability and TB.HasServerCapability("pull-seconds") then
+        return kind .. " " .. TB.ClampPullSeconds(raw)
+    end
+    return kind
 end
 
 function TB.SetFormation(formationId)

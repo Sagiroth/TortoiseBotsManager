@@ -191,6 +191,13 @@ TB.C.POLL_AFTER_ADD  = 2.0
 TB.C.ADD_TIMEOUT     = 30    -- seconds without login confirmation
 TB.C.REMOVE_TIMEOUT  = 15    -- seconds without removal confirmation
 TB.C.ACTION_TIMEOUT  = 8     -- seconds for a named action acknowledgement
+
+-- Adjustable pull timers: DPS delay before pull, join delay before
+-- pullback. Persisted per character in SavedVariables, 0-60 s step 1.
+TB.C.PULL_DELAY_DEFAULT = 10
+TB.C.PULLBACK_DELAY_DEFAULT = 3
+TB.C.PULL_DELAY_MIN = 0
+TB.C.PULL_DELAY_MAX = 60
 TB.C.INVITE_ACCEPT_TIMEOUT = 20 -- seconds for a sent native invite to become group membership
 TB.C.SUMMON_SETTLE   = 15    -- accepted summon stays visibly pending while teleport completes
 TB.C.POLL_WAIT       = 1.2   -- seconds before reconciling a list snapshot

@@ -87,6 +87,15 @@ local PAT = {
 local serverCommands = {}
 local serverCapabilitiesKnown = false
 local responseHistory = {}
+-- Capability trailer ("TBM:CAPS|a,b|c") on a roster response. Newer servers
+-- advertise "pull-seconds" when ".bot action pull [seconds]" is accepted;
+-- older servers send no CAPS line at all, and every intent stays plain.
+local serverCaps = {}
+
+function TB.HasServerCapability(name)
+    if not name then return false end
+    return serverCaps[string.lower(TB.Trim(name))] and true or false
+end
 
 -- ── command transport ───────────────────────────────────────────────────────
 -- The module answers every roster request with "TBM:TRANSPORT|<channel>".
@@ -467,6 +476,21 @@ function TB.OnSystemMessage(msg)
         if serverVersion then
             TB.serverVersion = serverVersion
             if TB.RefreshVersionLine then TB.RefreshVersionLine() end
+            TB.lastSystem = msg
+            return
+        end
+    end
+
+    do
+        local _, _, caps = string.find(msg, "^TBM:CAPS|(.*)$")
+        if caps then
+            for key in pairs(serverCaps) do serverCaps[key] = nil end
+            -- Comma- and pipe-separated lists both parse ("a,b|c d"); empty
+            -- items and surrounding spaces are ignored.
+            for item in string.gfind(caps, "[^,%s|]+") do
+                serverCaps[string.lower(TB.Trim(item))] = true
+            end
+            TB._serverCaps = serverCaps
             TB.lastSystem = msg
             return
         end
