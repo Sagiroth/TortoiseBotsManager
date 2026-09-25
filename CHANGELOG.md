@@ -17,6 +17,16 @@ All notable changes to TortoiseBotsManager are documented here.
 
 ---
 
+### Build & Versioning
+- Per-merge build versions (`<UTC date>-v<N>`) are now stamped into `Constants.lua` (`TB.C.VERSION`) and the `.toc` `## Version:` field on each `[skip ci]` bot commit, with a lightweight tag per build — no more guessing which build you're running. [#24](https://github.com/Sagiroth/TortoiseBotsManager/pull/24)
+- The daily release, zip and Discord post stay in place, and the daily tag moves to the latest build. [#24](https://github.com/Sagiroth/TortoiseBotsManager/pull/24)
+- `/tbm` now displays `TBM <addon version> · server <server version>`, with the server version read from the module's `TBM:VERSION|…` line. [#24](https://github.com/Sagiroth/TortoiseBotsManager/pull/24)
+
+### CI & Releases
+- The build-version workflow now actually completes: stamped version files are committed before `git pull --rebase`, so the run no longer aborts on unstaged changes. [#25](https://github.com/Sagiroth/TortoiseBotsManager/pull/25)
+- Releases are only created or edited when notes were actually written; the daily tag still moves to the latest build. [#25](https://github.com/Sagiroth/TortoiseBotsManager/pull/25)
+- Build range now shows up in titles: releases list as `<repo> <date> (builds v1–vN)` and the Discord embed as `<repo> build <date>-vN`, with the link still pointing at the daily release. [#26](https://github.com/Sagiroth/TortoiseBotsManager/pull/26)
+
 ## 2026-09-24
 
 ### UI & Controls

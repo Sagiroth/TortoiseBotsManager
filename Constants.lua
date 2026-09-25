@@ -6,7 +6,7 @@ TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
 TB.C = TB.C or {}
 
-TB.C.VERSION = "2026-09-25-v1"
+TB.C.VERSION = "2026-09-25-v5"
 
 -- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
