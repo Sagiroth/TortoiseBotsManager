@@ -27,6 +27,18 @@ All notable changes to TortoiseBotsManager are documented here.
 - Releases are only created or edited when notes were actually written; the daily tag still moves to the latest build. [#25](https://github.com/Sagiroth/TortoiseBotsManager/pull/25)
 - Build range now shows up in titles: releases list as `<repo> <date> (builds v1–vN)` and the Discord embed as `<repo> build <date>-vN`, with the link still pointing at the daily release. [#26](https://github.com/Sagiroth/TortoiseBotsManager/pull/26)
 
+### Tactical & Actions
+- Pull and Pull back now accept an adjustable timer: set a pull DPS delay (default 10 s) and a pullback join delay (default 3 s), each tunable from 0-60 s, so your bots engage and regroup on your schedule instead of a fixed cadence. [#27](https://github.com/Sagiroth/TortoiseBotsManager/pull/27)
+- Timers are sent as `pull <n>` / `pullback <n>` commands, keeping the same command/addon transport you already use, so nothing changes in how you issue orders. [#27](https://github.com/Sagiroth/TortoiseBotsManager/pull/27)
+
+### UI & Controls
+- New compact "- N s +" steppers sit directly under the Pull and Pull back buttons in the Actions tab, styled to match the existing panel buttons; shift-click steps by 5 for fast coarse adjustment. [#27](https://github.com/Sagiroth/TortoiseBotsManager/pull/27)
+- Tooltips on the steppers explain what each delay controls, so group leaders can tune timing without guessing. [#27](https://github.com/Sagiroth/TortoiseBotsManager/pull/27)
+
+### Comms & Protocol
+- Both delays persist as SavedVariables, so your preferred timings are remembered across sessions. [#27](https://github.com/Sagiroth/TortoiseBotsManager/pull/27)
+- Timed pulls are only sent when the server advertises `pull-seconds` in its `TBM:CAPS` roster trailer; the capability list is parsed robustly. On older servers without it, the addon falls back to plain pull/pullback intents exactly as before — no breakage. [#27](https://github.com/Sagiroth/TortoiseBotsManager/pull/27)
+
 ## 2026-09-24
 
 ### UI & Controls
