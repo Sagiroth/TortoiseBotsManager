@@ -526,6 +526,59 @@ this = TB.actionButtons.pull
 TB.actionButtons.pull.scripts.OnClick(TB.actionButtons.pull)
 assert(table.getn(sent) == beforePull + 1 and sent[table.getn(sent)] == ".bot action pull",
     "Pull must send the supported ordinary-pull intent")
+
+-- Adjustable pull timers: persisted settings, clamped steppers, CAPS-gated
+-- seconds. Old servers (no CAPS line) keep the plain intents above.
+assert(TortoiseBotsDB.pullDelay == 10 and TortoiseBotsDB.pullbackDelay == 3,
+    "pull timers must default to 10 s / 3 s in SavedVariables")
+assert(TB.pullTimers and TB.pullTimers.pull and TB.pullTimers.pullback,
+    "pull steppers must exist under the Pull buttons")
+assert(TB.pullTimers.pull.label.text == "10 s" and TB.pullTimers.pullback.label.text == "3 s",
+    "stepper labels must show the persisted delays")
+assert(TB.ClampPullSeconds(-4) == 0 and TB.ClampPullSeconds(61) == 60
+    and TB.ClampPullSeconds(7.6) == 8 and TB.ClampPullSeconds("abc") == 0,
+    "timer values must clamp to whole seconds in 0-60")
+assert(TB.PullIntent("pull") == "pull" and TB.PullIntent("pullback") == "pullback",
+    "without the capability Pull intents must stay plain")
+assert(chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:CAPS|pull-seconds") == true,
+    "CAPS trailer must be hidden from chat like other TBM: lines")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+assert(TB.PullIntent("pull") == "pull 10" and TB.PullIntent("pullback") == "pullback 3",
+    "with the capability Pull intents must carry the persisted seconds")
+-- Stepper bumps persist and repaint the "- N s +" label.
+TortoiseBotsDB.pullDelay = TB.ClampPullSeconds(TortoiseBotsDB.pullDelay + 1)
+TB.pullTimers.pull.repaint()
+assert(TortoiseBotsDB.pullDelay == 11 and TB.pullTimers.pull.label.text == "11 s",
+    "stepper bump must persist and repaint the label")
+TortoiseBotsDB.pullDelay = TB.ClampPullSeconds(TortoiseBotsDB.pullDelay - 5)
+TB.pullTimers.pull.repaint()
+assert(TortoiseBotsDB.pullDelay == 6 and TB.pullTimers.pull.label.text == "6 s",
+    "shift-click step of 5 must persist and repaint the label")
+TortoiseBotsDB.pullDelay = 10
+TB.pullTimers.pull.repaint()
+-- Pull button sends seconds while the capability holds.
+now = now + 1
+local beforeTimedPull = table.getn(sent)
+this = TB.actionButtons.pull
+TB.actionButtons.pull.scripts.OnClick(TB.actionButtons.pull)
+assert(table.getn(sent) == beforeTimedPull + 1 and sent[table.getn(sent)] == ".bot action pull 10",
+    "Pull must send the timed intent while the server supports pull-seconds")
+-- Mixed and unknown capability lists parse robustly.
+TB.OnSystemMessage("TBM:CAPS|foo, pull-seconds|bar baz")
+assert(TB.HasServerCapability("pull-seconds") and TB.HasServerCapability("foo")
+    and TB.HasServerCapability("bar") and TB.HasServerCapability("baz"),
+    "CAPS lists must parse comma/pipe/space separated entries")
+TB.OnSystemMessage("TBM:CAPS|")
+assert(not TB.HasServerCapability("pull-seconds"),
+    "an empty CAPS line must clear capabilities")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+-- Pullback button likewise (clock advanced past the send throttle).
+now = now + 1
+local beforeTimedBack = table.getn(sent)
+this = TB.actionButtons.pullback
+TB.actionButtons.pullback.scripts.OnClick(TB.actionButtons.pullback)
+assert(table.getn(sent) == beforeTimedBack + 1 and sent[table.getn(sent)] == ".bot action pullback 3",
+    "Pull back must send the timed intent while the server supports pull-seconds")
 now = now + 1
 local beforeInterrupt = table.getn(sent)
 this = TB.actionButtons.interrupt
