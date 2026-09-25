@@ -1,20 +1,22 @@
 name: Generate Changelog & Release
 
 on:
-  workflow_dispatch:
-  schedule:
-    # Run weekly on Sunday at midnight UTC
-    - cron: "0 0 * * 0"
   push:
     branches:
       - main
     paths-ignore:
       - 'CHANGELOG.md'
+      - 'Constants.lua'
+      - 'TortoiseBotsManager.toc'
       - '.github/workflows/**'
 
 permissions:
   contents: write
   pull-requests: read
+
+concurrency:
+  group: changelog-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   changelog:
@@ -30,6 +32,17 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Compute build version
+        id: version
+        run: |
+          python3 tools/generate_changelog.py \
+            --out-version version \
+            --out-build-number /tmp/build_number.txt \
+            --dry-run
+          echo "build_version=$(grep -o 'TB.C.VERSION = "[^"]*"' Constants.lua | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+          echo "build_number=$(cat /tmp/build_number.txt)" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       - name: Generate Changelog & Notes
         id: generate
         env:
@@ -40,40 +53,44 @@ jobs:
         run: |
           python3 tools/generate_changelog.py --write --out-notes /tmp/release_notes.md --out-delta /tmp/discord_notes.md
 
-      - name: Commit CHANGELOG.md
-        if: steps.generate.outputs.has_changes == 'true'
+      - name: Commit CHANGELOG.md and version
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "docs: update CHANGELOG.md for ${{ steps.generate.outputs.release_tag }} [skip ci]"
+          git pull --rebase origin main
+          git add CHANGELOG.md Constants.lua TortoiseBotsManager.toc
+          git commit -m "docs: update CHANGELOG.md for ${{ steps.version.outputs.release_tag }} [skip ci]" || echo "Nothing to commit"
           git push origin main
+          git tag "${{ steps.version.outputs.build_version }}"
+          git push origin "${{ steps.version.outputs.build_version }}"
 
       - name: Package Addon Zip
-        if: steps.generate.outputs.has_changes == 'true'
         run: |
           python3 tools/package_addon.py --output /tmp/TortoiseBotsManager.zip
 
       - name: Create or Update GitHub Release
-        if: steps.generate.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ steps.generate.outputs.release_exists }}" = "true" ]; then
-            echo "Release ${{ steps.generate.outputs.release_tag }} already exists. Appending release notes..."
-            gh release edit "${{ steps.generate.outputs.release_tag }}" \
+          if gh release view "${{ steps.version.outputs.release_tag }}" --repo Sagiroth/TortoiseBotsManager --json tagName >/dev/null 2>&1; then
+            echo "Release ${{ steps.version.outputs.release_tag }} already exists. Updating release notes..."
+            gh release edit "${{ steps.version.outputs.release_tag }}" \
               --repo Sagiroth/TortoiseBotsManager \
               --notes-file /tmp/release_notes.md
-            gh release upload "${{ steps.generate.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
+            gh release upload "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
               --repo Sagiroth/TortoiseBotsManager --clobber
           else
-            echo "Creating new release ${{ steps.generate.outputs.release_tag }}..."
-            gh release create "${{ steps.generate.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
+            echo "Creating new release ${{ steps.version.outputs.release_tag }}..."
+            gh release create "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
               --repo Sagiroth/TortoiseBotsManager \
-              --title "${{ steps.generate.outputs.release_title }}" \
+              --title "TortoiseBotsManager ($(date -u +%Y-%m-%d))" \
               --notes-file /tmp/release_notes.md \
               --target main
           fi
+          # Move the daily tag to this build: re-point it locally first (the
+          # checkout holds the old tag, or none on a new day), then force-push.
+          git tag -f "${{ steps.version.outputs.release_tag }}" HEAD
+          git push -f origin "${{ steps.version.outputs.release_tag }}"
 
       - name: Post Changelog to Discord Thread
         if: steps.generate.outputs.has_changes == 'true'
@@ -82,8 +99,8 @@ jobs:
         run: |
           python3 tools/post_discord_changelog.py \
             --notes /tmp/discord_notes.md \
-            --title "${{ steps.generate.outputs.release_title }}" \
-            --tag "${{ steps.generate.outputs.release_tag }}" \
+            --title "TortoiseBotsManager ($(date -u +%Y-%m-%d))" \
+            --tag "${{ steps.version.outputs.release_tag }}" \
             --repo "Sagiroth/TortoiseBotsManager" \
             --thread-id "1542647578548772954" \
             --username "TortoiseBotsManager Changelog"

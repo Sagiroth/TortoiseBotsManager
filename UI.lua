@@ -160,8 +160,18 @@ CreateHeader = function(parent)
 
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-    title:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cffffd200v"
-        .. (TB.version or "?") .. "|r")
+    TB.versionTitle = title
+    if TB.RefreshVersionLine then TB.RefreshVersionLine() else
+        title:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cffffd200v"
+            .. (TB.version or "?") .. "|r")
+    end
+
+    local versionLine = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    versionLine:SetPoint("TOPLEFT", parent, "TOPLEFT", (C.PAD or 10) + 28, -24)
+    versionLine:SetWidth(400)
+    versionLine:SetJustifyH("LEFT")
+    TB.versionLine = versionLine
+    if TB.RefreshVersionLine then TB.RefreshVersionLine() end
 
     local glow = parent:CreateTexture(nil, "BACKGROUND")
     glow:SetTexture(0.55, 0.35, 0.08, 0.12)

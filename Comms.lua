@@ -463,6 +463,16 @@ function TB.OnSystemMessage(msg)
     local handled = false
 
     do
+        local _, _, serverVersion = string.find(msg, "^TBM:VERSION|(%S+)")
+        if serverVersion then
+            TB.serverVersion = serverVersion
+            if TB.RefreshVersionLine then TB.RefreshVersionLine() end
+            TB.lastSystem = msg
+            return
+        end
+    end
+
+    do
         local _, _, transport = string.find(msg, PAT.transportLine)
         if transport then
             TB.SetAddonTransport(transport)

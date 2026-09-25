@@ -14,6 +14,22 @@ local C = TB.C or {} -- from Constants.lua (defensive fallback)
 
 TB.version = (C and C.VERSION) or TB.version or "0.1.0"
 TB.ADDON_NAME = "TortoiseBotsManager"
+TB.serverVersion = TB.serverVersion or nil
+
+-- Window version line: "TBM <addon version> · server <server version>".
+-- Older servers never send TBM:VERSION, so the server half stays "?".
+function TB.RefreshVersionLine()
+    local addonVersion = TB.version or "?"
+    local serverVersion = TB.serverVersion or "?"
+    local text = "TBM " .. tostring(addonVersion) .. " · server " .. tostring(serverVersion)
+    if TB.versionLine and TB.versionLine.SetText then
+        TB.versionLine:SetText(text)
+    end
+    if TB.versionTitle and TB.versionTitle.SetText then
+        TB.versionTitle:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cffffd200v"
+            .. tostring(addonVersion) .. "|r")
+    end
+end
 
 -- ── SavedVariables (UI preferences only) ─────────────────────────────────────
 local function initDB()
