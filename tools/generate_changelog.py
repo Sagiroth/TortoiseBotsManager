@@ -188,8 +188,99 @@ def update_or_prepend_changelog(date_str, summary_text):
     print(f"Added new release section for {date_str} in {CHANGELOG_PATH}")
 
 
+ADDON_FILES = {
+    "constants": os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Constants.lua"),
+    "toc": os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "TortoiseBotsManager.toc"),
+}
+
+BOT_COMMIT_AUTHOR = "github-actions[bot]"
+SKIP_CI_MARKER = "[skip ci]"
+
+# Matches the header written by with_build_range below.
+BUILD_RANGE_RE = re.compile(r"^Builds \d{4}-\d{2}-\d{2}-v\d+ \S+ v\d+\s*$", re.MULTILINE)
+
+
+def parse_commit_line(line):
+    """Parse one `git log --format=%H|%cI|%an|%s` line (subject may contain '|')."""
+    parts = line.split("|", 3)
+    if len(parts) != 4 or not parts[0] or not parts[1]:
+        return None
+    return {"sha": parts[0], "date": parts[1], "author": parts[2], "subject": parts[3]}
+
+
+def iter_first_parent_commits(ref="HEAD"):
+    """Read first-parent history as parsed commit dicts (newest first)."""
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "--first-parent", "--format=%H|%cI|%an|%s", ref],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except Exception as e:
+        print(f"Warning: could not read git history ({e}); defaulting build number to 1")
+        return []
+    commits = []
+    for line in out.splitlines():
+        parsed = parse_commit_line(line)
+        if parsed:
+            commits.append(parsed)
+    return commits
+
+
+def is_real_merge(commit):
+    """True for real merges/commits; excludes the workflow's own bot commits."""
+    return commit["author"] != BOT_COMMIT_AUTHOR and SKIP_CI_MARKER not in commit["subject"]
+
+
+def commit_utc_day(iso_date):
+    """Return the UTC calendar day (YYYY-MM-DD) for an ISO-8601 commit date."""
+    try:
+        dt = datetime.datetime.fromisoformat(iso_date)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%d")
+    except Exception:
+        return iso_date[:10]
+
+
+def count_real_commits_on_day(commits, day):
+    """Nth-merge counter: real mainline commits whose UTC day is `day`."""
+    return sum(1 for c in commits if is_real_merge(c) and commit_utc_day(c["date"]) == day)
+
+
+def compute_build_version(commits, day):
+    """Return (version, number) with version `<UTC date>-v<N>`, N >= 1."""
+    n = max(count_real_commits_on_day(commits, day), 1)
+    return f"{day}-v{n}", n
+
+
+def with_build_range(notes, date_str, build_number):
+    """Prepend the day's build range header, replacing any stale one."""
+    header = f"Builds {date_str}-v1 \u2013 v{build_number}"
+    body = BUILD_RANGE_RE.sub("", notes or "").strip()
+    if body:
+        return f"{header}\n\n{body}\n"
+    return f"{header}\n"
+
+
+def write_addon_version(build_version):
+    """Write the per-merge build version into Constants.lua and the .toc."""
+    version = build_version.strip()
+    for path in ADDON_FILES.values():
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if path.endswith(".toc"):
+            updated, count = re.subn(r"(?m)^## Version:.*$", f"## Version: {version}", content, count=1)
+        else:
+            updated, count = re.subn(r'TB\.C\.VERSION\s*=\s*"[^"]*"', f'TB.C.VERSION = "{version}"', content, count=1)
+        if count:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(updated)
+            print(f"Saved build version to: {path}")
+
 def release_exists_on_github(tag_name):
-    """Check whether a release for tag_name already exists using gh CLI."""
     try:
         res = subprocess.run(
             ["gh", "release", "view", tag_name, "--repo", "Sagiroth/TortoiseBotsManager", "--json", "body"],
@@ -206,13 +297,34 @@ def release_exists_on_github(tag_name):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate release notes from merged PRs using OpenCode AI.")
-    parser.add_argument("--since", help="ISO timestamp or date to search PRs since (default: auto-detect from last tag/changelog)")
     parser.add_argument("--write", action="store_true", help="Prepend or append generated entry to CHANGELOG.md")
+    parser.add_argument("--since", help="ISO timestamp or date to search PRs since (default: auto-detect from last tag/changelog)")
     parser.add_argument("--out-notes", help="Write release notes to specified file (useful for gh release create)")
     parser.add_argument("--out-delta", help="Write delta release notes for current run only (useful for Discord notifications)")
     parser.add_argument("--dry-run", action="store_true", help="Print collected PRs without calling AI API")
+    parser.add_argument("--out-version", help="Write the per-merge build version (<UTC date>-v<N>) into Constants.lua and the .toc")
     parser.add_argument("--date", default=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"), help="Release date string (default: today)")
+    parser.add_argument("--out-build-number", help="Write the day's build number N to the given file")
+    parser.add_argument("--version-date", help="UTC date for the build version (default: --date)")
     args = parser.parse_args()
+
+    version_day = args.version_date or args.date
+    commits = iter_first_parent_commits()
+    build_version, build_number = compute_build_version(commits, version_day)
+    print(f"Build version for {version_day}: {build_version}")
+
+    if args.out_version:
+        write_addon_version(build_version)
+
+    if args.out_build_number:
+        with open(args.out_build_number, "w", encoding="utf-8") as f:
+            f.write(str(build_number) + "\n")
+        print(f"Saved build number to: {args.out_build_number}")
+
+    if "GITHUB_OUTPUT" in os.environ:
+        with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+            gh_out.write(f"build_version={build_version}\n")
+            gh_out.write(f"build_number={build_number}\n")
 
     api_key = os.environ.get("OPENCODE_API_KEY")
     base_url = os.environ.get("OPENCODE_BASE_URL", DEFAULT_BASE_URL)
@@ -267,10 +379,12 @@ def main():
     release_tag = f"v{args.date}"
     exists, existing_body = release_exists_on_github(release_tag)
 
+    # The daily release notes always open with the day's build range so players
+    # can map the release to the per-merge build tags (e.g. Builds 2026-09-25-v1 – v1).
+    base_body = existing_body.strip() if exists and existing_body else ""
+    ranged_base = with_build_range(base_body, args.date, build_number)
+    notes_to_write = ranged_base.rstrip() + "\n\n" + summary.strip() + "\n"
     if args.out_notes:
-        notes_to_write = summary
-        if exists and existing_body:
-            notes_to_write = f"{existing_body.strip()}\n\n{summary}"
         with open(args.out_notes, "w", encoding="utf-8") as f:
             f.write(notes_to_write.strip() + "\n")
         print(f"Saved release notes to: {args.out_notes} (merged_with_existing={exists})")

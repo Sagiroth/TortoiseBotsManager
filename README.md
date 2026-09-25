@@ -79,6 +79,23 @@ UI.lua          — compact Actions/Roster/Party tabs and contextual lifecycle b
 Minimap.lua     — draggable minimap button
 ```
 
+## Versions (per-merge builds)
+
+Every merge to `main` stamps a build version `<UTC date>-v<N>` (e.g.
+`2026-09-25-v1` is the first real merge that UTC day; the counter resets to
+v1 daily and the workflow's own `[skip ci]` commits never count). It lives in
+`Constants.lua` (`TB.C.VERSION`) and the `.toc` `## Version:` line, and the
+workflow tags each merge commit (`git tag <version>`, lightweight, no
+release). The daily `vYYYY-MM-DD` release and Discord post stay, but the tag
+moves to the day's latest version commit and the notes open with the build
+range (e.g. `Builds 2026-09-25-v1 – v7`).
+
+In game: the addon prints its version on load, and the `/tbm` window header
+shows `TBM <addon version> · server <server version>` from the server's
+`TBM:VERSION|<version>` roster trailer (`.bot version` / `.bot help` answer it
+too). `server ?` means the server predates the version reply — everything
+else keeps working.
+
 ## Development check
 
 Run the Vanilla-compatible regression harness from the addon root:
