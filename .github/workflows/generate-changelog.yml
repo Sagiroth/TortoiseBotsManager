@@ -57,9 +57,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add CHANGELOG.md Constants.lua TortoiseBotsManager.toc
           git commit -m "docs: update CHANGELOG.md for ${{ steps.version.outputs.release_tag }} [skip ci]" || echo "Nothing to commit"
+          # Commit first: pulling with the stamped files still unstaged fails.
+          git pull --rebase origin main
           git push origin main
           git tag "${{ steps.version.outputs.build_version }}"
           git push origin "${{ steps.version.outputs.build_version }}"
@@ -72,20 +73,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "${{ steps.version.outputs.release_tag }}" --repo Sagiroth/TortoiseBotsManager --json tagName >/dev/null 2>&1; then
-            echo "Release ${{ steps.version.outputs.release_tag }} already exists. Updating release notes..."
-            gh release edit "${{ steps.version.outputs.release_tag }}" \
-              --repo Sagiroth/TortoiseBotsManager \
-              --notes-file /tmp/release_notes.md
-            gh release upload "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
-              --repo Sagiroth/TortoiseBotsManager --clobber
-          else
-            echo "Creating new release ${{ steps.version.outputs.release_tag }}..."
-            gh release create "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
-              --repo Sagiroth/TortoiseBotsManager \
-              --title "TortoiseBotsManager ($(date -u +%Y-%m-%d))" \
-              --notes-file /tmp/release_notes.md \
-              --target main
+          # No new PRs (e.g. a re-run): no notes were written, only move the tag.
+          if [ -f /tmp/release_notes.md ]; then
+            if gh release view "${{ steps.version.outputs.release_tag }}" --repo Sagiroth/TortoiseBotsManager --json tagName >/dev/null 2>&1; then
+              echo "Release ${{ steps.version.outputs.release_tag }} already exists. Updating release notes..."
+              gh release edit "${{ steps.version.outputs.release_tag }}" \
+                --repo Sagiroth/TortoiseBotsManager \
+                --notes-file /tmp/release_notes.md
+              gh release upload "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
+                --repo Sagiroth/TortoiseBotsManager --clobber
+            else
+              echo "Creating new release ${{ steps.version.outputs.release_tag }}..."
+              gh release create "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
+                --repo Sagiroth/TortoiseBotsManager \
+                --title "TortoiseBotsManager ($(date -u +%Y-%m-%d))" \
+                --notes-file /tmp/release_notes.md \
+                --target main
+            fi
           fi
           # Move the daily tag to this build: re-point it locally first (the
           # checkout holds the old tag, or none on a new day), then force-push.
