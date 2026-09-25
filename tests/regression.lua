@@ -467,7 +467,7 @@ assert(TB.actionButtons.attack.enabled and TB.actionButtons.pull.enabled
     and TB.actionButtons.pullback.enabled,
     "normal targets should enable enemy-only actions")
 
--- CC Mark picker: targeting an owned bot makes the assignment bot-scoped.
+-- Marks panel: assignments go by explicit bot name, no targeting needed.
 targetNameValue = "Alpha"
 TB.Refresh()
 now = now + 1
@@ -477,17 +477,46 @@ assert(sent[table.getn(sent)] == ".bot formation Alpha far",
 now = now + 1
 this = TB.actionButtons.ccMoon
 TB.actionButtons.ccMoon.scripts.OnClick(TB.actionButtons.ccMoon)
-assert(TB.ccMenu:IsVisible(), "CC Mark button must open the mark picker")
-assert(TB.ccMenu.hint.text:find("Bot: Alpha"),
-    "CC picker must report bot-scoped targeting")
-this = TB.ccMenu.buttons.circle
-TB.ccMenu.buttons.circle.scripts.OnClick(TB.ccMenu.buttons.circle)
-assert(sent[table.getn(sent)] == ".bot action cc circle",
-    "selecting Circle must send the generalized CC action")
-assert(not TB.ccMenu:IsVisible(), "CC mark picker must close after selection")
-TB.OnSystemMessage("TBM:ACTION_ACK|cc circle|bot:Alpha|1|Alpha")
+assert(TB.ccMenu:IsVisible(), "CC Mark button must open the Marks panel")
+assert(TB.ccMenu.rows and TB.ccMenu.rows.circle and TB.ccMenu.rows.moon,
+    "Marks panel must expose one row per raid icon")
+assert(TB.ccMenu.rows.circle.ownerText.text == "Alpha",
+    "panel rows must show the current owner from the assignment cache")
+-- Owner cycler sends an explicit-name intent and the panel stays open.
+-- Candidates sort Alpha,Gamma; circle is owned by Alpha, so Next wraps to Gamma.
+now = now + 1
+this = TB.ccMenu.rows.circle.cycle
+TB.ccMenu.rows.circle.cycle.scripts.OnClick(TB.ccMenu.rows.circle.cycle)
+assert(sent[table.getn(sent)] == ".bot action cc circle Gamma",
+    "cycling Circle must send the explicit-name CC intent")
+assert(TB.ccMenu:IsVisible(), "Marks panel must stay open for batch assignment")
+-- Exclusive ownership: the ACK moves the mark and evicts the old owner.
+TB.OnSystemMessage("TBM:ACTION_ACK|cc circle Alpha|bot:Alpha|1|Alpha")
 assert(TB.GetCcAssignment("Alpha") == "circle",
     "CC ACK must update the visible bot assignment")
+TB.OnSystemMessage("TBM:ACTION_ACK|cc circle Gamma|bot:Gamma|1|Gamma")
+assert(TB.GetCcAssignment("Gamma") == "circle" and TB.GetCcAssignment("Alpha") == nil,
+    "exclusive ownership must evict the previous cached owner")
+-- Row clear button clears only that mark's owner by name.
+now = now + 1
+this = TB.ccMenu.rows.circle.clear
+TB.ccMenu.rows.circle.clear.scripts.OnClick(TB.ccMenu.rows.circle.clear)
+assert(sent[table.getn(sent)] == ".bot action cc clear Gamma",
+    "row Clear must send cc clear for the current owner")
+TB.OnSystemMessage("TBM:ACTION_ACK|cc clear Gamma|bot:Gamma|1|Gamma")
+assert(TB.GetCcAssignment("Gamma") == nil,
+    "clear ACK must drop the named owner from the cache")
+-- Clear-all button dismisses every owner at once.
+TB.OnSystemMessage("TBM:ACTION_ACK|cc moon Tester|bot:Alpha|1|Alpha")
+assert(TB.GetCcOwner("moon") == "Alpha", "panel owner lookup must find the moon owner")
+now = now + 1
+this = TB.ccMenu.clearAll
+TB.ccMenu.clearAll.scripts.OnClick(TB.ccMenu.clearAll)
+assert(sent[table.getn(sent)] == ".bot action cc clear",
+    "Clear all must send the bare cc clear intent")
+TB.OnSystemMessage("TBM:ACTION_ACK|cc clear|party|2|Alpha")
+assert(TB.GetCcOwner("moon") == nil,
+    "party-scoped clear ACK must empty the assignment cache")
 targetNameValue = "Enemy"
 TB.Refresh()
 now = now + 1

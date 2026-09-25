@@ -134,8 +134,13 @@ end
 
 local function actionLabel(intent)
     if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
-    local _, _, mark = string.find(intent or "", "^cc%s+(%a+)$")
+    local _, _, mark, bot = string.find(intent or "", "^cc%s+(%a+)%s*(%S*)$")
+    if mark == "clear" then
+        if bot and bot ~= "" then return "CC clear (" .. bot .. ")" end
+        return "CC clear"
+    end
     if mark and C.CC_MARK_LABELS and C.CC_MARK_LABELS[mark] then
+        if bot and bot ~= "" then return "CC " .. C.CC_MARK_LABELS[mark] .. " (" .. bot .. ")" end
         return "CC " .. C.CC_MARK_LABELS[mark]
     end
     return intent
@@ -178,10 +183,22 @@ function TB.ParseActionMessage(msg)
         end
         TB.lastActionAck = packet
         TB.lastActionError = nil
-        local _, _, ccMark = string.find(packet.intent or "", "^cc%s+(%a+)$")
-        if ccMark and packet.executor ~= "-" and TB.SetCcAssignment then
+        local _, _, ccMark = string.find(packet.intent or "", "^cc%s+(%a+)")
+        if ccMark and C.CC_MARK_LABELS and C.CC_MARK_LABELS[ccMark]
+            and packet.executor ~= "-" and TB.SetCcAssignment then
             TB.SetCcAssignment(packet.executor, ccMark)
         end
+        local isClear = string.find(packet.intent or "", "^cc%s+clear") ~= nil
+        if isClear and packet.executor ~= "-" then
+            if packet.scope == "party" and TB.ClearAllCcAssignments then
+                TB.ClearAllCcAssignments()
+            elseif TB.ClearCcAssignment then
+                TB.ClearCcAssignment(packet.executor)
+            end
+        end
+        -- Debounced roster refresh: RequestPollSoon only re-arms a timer, so
+        -- back-to-back CC ACKs (and the send throttle) are never disturbed.
+        if (ccMark or isClear) and TB.RequestPollSoon then TB.RequestPollSoon() end
         if packet.intent == "aoe" then
             TB.aoePending = false
             if packet.executor == "on" or packet.executor == "off" then

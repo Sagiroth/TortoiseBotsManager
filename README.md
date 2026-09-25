@@ -13,7 +13,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 
 ## Features
 
-* **Actions** — `Attack`, `Interrupt`, `Stop`, `Pull`, `Pullback`, `Come`, `Stay`, `Follow`, `Focus Skull`, configurable `CC Mark`, and `AoE`.
+* **Actions** — `Attack`, `Interrupt`, `Stop`, `Pull`, `Pullback`, `Come`, `Stay`, `Follow`, `Focus Skull`, `CC Mark` (Marks panel), and `AoE`.
 * **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available. A separate assignment snapshot supplies each live bot's current CC mark.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
@@ -49,7 +49,7 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 * **Actions** — use normal WoW target selection. With an enemy target, `Attack`, `Interrupt`, `Pull`, and `Pullback` operate on the party; `Interrupt` chooses one capable bot server-side. With an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
 * **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows.
 * **Party** — use the player row's class-role buttons to tell bots whether you are tank, healer, or DPS. The selection sends `.bot role self <role>`; bot rows retain their existing role controls.
-* **Focus / CC** — mark enemies with normal raid icons. Open `CC Mark`, then choose an icon: target a bot first to assign that bot, or target an enemy/leave party scope for automatic executor selection. The Party tab shows each bot's current CC icon; click a bot row to target it for assignment.
+* **Focus / CC** — mark enemies with normal raid icons. Open `CC Mark` for the Marks panel: 8 rows (one per raid icon) showing the current owner, a `Next` button assigning the mark to the next online bot by explicit name (`cc <mark> <Bot>`), a per-row `X` clearing that mark's owner (`cc clear <Owner>`), and `Clear all` (`cc clear`). Ownership is exclusive server-side (one mark = one bot); the Party tab shows each bot's current CC icon.
 * **Search** — filters the server snapshot by name.
 
 ## How it works (edge cases)

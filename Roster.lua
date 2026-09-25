@@ -692,6 +692,14 @@ function TB.SetCcAssignment(name, mark)
     name = normalize(name)
     mark = string.lower(TB.Trim(mark or ""))
     if not name or not (C.CC_MARK_LABELS and C.CC_MARK_LABELS[mark]) then return false end
+    -- One mark = one owner, mirroring the server: assigning a mark here
+    -- evicts it from every other cached owner.
+    for other in pairs(ccAssignments) do
+        if other ~= name and ccAssignments[other] == mark then
+            ccAssignments[other] = nil
+            if state[other] then state[other].ccMark = nil end
+        end
+    end
     ccAssignments[name] = mark
     if state[name] then state[name].ccMark = mark end
     if TB.Refresh then TB.Refresh() end
@@ -703,6 +711,49 @@ function TB.GetCcAssignment(name)
     local st = name and state[name] or nil
     if st and st.ccMark then return st.ccMark end
     return name and ccAssignments[name] or nil
+end
+
+-- Reverse lookup for the Marks panel: which bot currently owns this mark.
+function TB.GetCcOwner(mark)
+    mark = string.lower(TB.Trim(mark or ""))
+    if not (C.CC_MARK_LABELS and C.CC_MARK_LABELS[mark]) then return nil end
+    for name, owned in pairs(ccAssignments) do
+        if owned == mark then return name end
+    end
+    for name, st in pairs(state) do
+        if st and st.ccMark == mark then return name end
+    end
+    return nil
+end
+
+function TB.ClearCcAssignment(name)
+    name = normalize(name)
+    if not name then return false end
+    ccAssignments[name] = nil
+    if state[name] then state[name].ccMark = nil end
+    if TB.Refresh then TB.Refresh() end
+    return true
+end
+
+function TB.ClearAllCcAssignments()
+    clearTable(ccAssignments)
+    for _, st in pairs(state) do
+        if st then st.ccMark = nil end
+    end
+    if TB.Refresh then TB.Refresh() end
+end
+
+-- Online owned party bots, sorted, for the Marks panel owner cycler.
+function TB.GetCcCandidates()
+    local out = {}
+    local playerName = normalize(UnitName and UnitName("player"))
+    for name, st in pairs(state) do
+        if st and st.source == "snapshot" and st.online and name ~= playerName then
+            out[table.getn(out) + 1] = name
+        end
+    end
+    table.sort(out)
+    return out
 end
 
 -- ── checkbox selection and lifecycle eligibility ────────────────────────────

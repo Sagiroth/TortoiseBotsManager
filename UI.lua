@@ -473,62 +473,119 @@ CreateActions = function(parent)
     local btnY = -24
     local buttons = {}
 
-    -- The CC button opens a compact mark picker instead of forcing Moon as the
-    -- only choice.  Targeting an owned bot first makes the assignment explicit;
-    -- with a normal enemy target the server still chooses a capable executor.
+    -- Marks panel: one row per raid icon. Each row shows the current owner
+    -- (server-owned CC assignment, "-" when none), a cycler that assigns the
+    -- next online bot by explicit name ("cc <mark> <Bot>"), and a clear button
+    -- ("cc clear <Owner>"). No WoW targeting is needed: the server resolves
+    -- names directly. Opened by the Actions "CC Mark" button; stays open so
+    -- several marks can be assigned in one go.
     local ccMenu = CreateFrame("Frame", "TortoiseBotsManagerCcMenu", frame)
-    ccMenu:SetWidth(246)
-    ccMenu:SetHeight(154)
+    ccMenu:SetWidth(300)
+    ccMenu:SetHeight(280)
     ccMenu:SetFrameStrata("DIALOG")
     ccMenu:EnableMouse(true)
     TB.ApplyBackdrop(ccMenu, 0.98, 1.0)
 
     local ccTitle = ccMenu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     ccTitle:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -6)
-    ccTitle:SetText("Assign CC mark")
+    ccTitle:SetText("CC Marks")
     TB.SetTextColor(ccTitle, color("gold"))
 
     local ccHint = ccMenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ccHint:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -22)
-    ccHint:SetWidth(230)
+    ccHint:SetWidth(284)
     ccHint:SetJustifyH("LEFT")
+    ccHint:SetText("Assign each mark to one bot by name.")
     TB.SetTextColor(ccHint, color("muted"))
     ccMenu.hint = ccHint
 
     local ccButtons = {}
+    local ccRows = {}
     for i, mark in ipairs(C.CC_MARKS or {}) do
-        local markButton = CreateFrame("Button", nil, ccMenu, "UIPanelButtonTemplate")
-        local column = math.mod(i - 1, 2) -- Lua 5.0 (1.12 client) has no % operator
-        local row = math.floor((i - 1) / 2)
-        markButton:SetWidth(114)
-        markButton:SetHeight(25)
-        markButton:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 7 + column * 119, -44 - row * 27)
-        markButton:SetText(mark.label)
-        local markIcon = markButton:CreateTexture(nil, "OVERLAY")
+        local markId = mark.id
+        local row = CreateFrame("Frame", nil, ccMenu)
+        row:SetWidth(284)
+        row:SetHeight(24)
+        row:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -40 - (i - 1) * 26)
+
+        local markIcon = row:CreateTexture(nil, "OVERLAY")
         markIcon:SetWidth(16); markIcon:SetHeight(16)
-        markIcon:SetPoint("LEFT", markButton, "LEFT", 5, 0)
+        markIcon:SetPoint("LEFT", row, "LEFT", 0, 0)
         markIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. mark.icon)
         markIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        markButton.mark = mark.id
-        markButton.icon = markIcon
-        markButton:SetScript("OnClick", function()
-            TB.SendActionIntent("cc " .. mark.id)
-            ccMenu:Hide()
+
+        local markLabel = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        markLabel:SetPoint("LEFT", row, "LEFT", 20, 0)
+        markLabel:SetWidth(62)
+        markLabel:SetJustifyH("LEFT")
+        markLabel:SetText(mark.label)
+        TB.SetTextColor(markLabel, color("gold"))
+
+        local ownerText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ownerText:SetPoint("LEFT", row, "LEFT", 84, 0)
+        ownerText:SetWidth(78)
+        ownerText:SetJustifyH("LEFT")
+        ownerText:SetText("-")
+        TB.SetTextColor(ownerText, color("muted"))
+
+        local cycleButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        cycleButton:SetWidth(64)
+        cycleButton:SetHeight(20)
+        cycleButton:SetPoint("LEFT", row, "LEFT", 164, 0)
+        cycleButton:SetText("Next")
+        cycleButton.mark = markId
+        cycleButton:SetScript("OnClick", function()
+            local cands = TB.GetCcCandidates and TB.GetCcCandidates() or {}
+            if table.getn(cands) == 0 then return end
+            local current = TB.GetCcOwner and TB.GetCcOwner(markId) or nil
+            local idx = 0
+            for j, name in ipairs(cands) do
+                if name == current then idx = j break end
+            end
+            idx = math.mod(idx, table.getn(cands)) + 1
+            TB.SendActionIntent("cc " .. markId .. " " .. cands[idx])
         end)
-        setButtonTooltip(markButton, "Assign " .. mark.label .. " to the scoped CC bot")
-        ccButtons[mark.id] = markButton
+        setButtonTooltip(cycleButton, "Assign " .. mark.label .. " to the next online bot by name")
+
+        local clearButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        clearButton:SetWidth(46)
+        clearButton:SetHeight(20)
+        clearButton:SetPoint("LEFT", row, "LEFT", 230, 0)
+        clearButton:SetText("X")
+        clearButton.mark = markId
+        clearButton:SetScript("OnClick", function()
+            local owner = TB.GetCcOwner and TB.GetCcOwner(markId) or nil
+            if owner then
+                TB.SendActionIntent("cc clear " .. owner)
+            end
+        end)
+        setButtonTooltip(clearButton, "Clear " .. mark.label .. " from its current owner")
+
+        ccRows[markId] = { ownerText = ownerText, cycle = cycleButton, clear = clearButton }
+        ccButtons[markId] = cycleButton
     end
     ccMenu.buttons = ccButtons
+    ccMenu.rows = ccRows
+
+    local clearAllButton = CreateFrame("Button", nil, ccMenu, "UIPanelButtonTemplate")
+    clearAllButton:SetWidth(120)
+    clearAllButton:SetHeight(22)
+    clearAllButton:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -250)
+    clearAllButton:SetText("Clear all")
+    clearAllButton:SetScript("OnClick", function()
+        TB.SendActionIntent("cc clear")
+    end)
+    setButtonTooltip(clearAllButton, "Clear every CC mark from every bot")
+    ccMenu.clearAll = clearAllButton
     ccMenu:Hide()
 
     ccMenu.Update = function()
-        local scope, botName = targetScope()
-        if botName then
-            local current = TB.GetCcAssignment and TB.GetCcAssignment(botName) or nil
-            local label = current and C.CC_MARK_LABELS and C.CC_MARK_LABELS[current]
-            ccHint:SetText("Bot: " .. botName .. (label and (" · current " .. label) or " · choose an icon"))
-        else
-            ccHint:SetText("Party: automatic CC. Target a bot first to assign it.")
+        for _, mark in ipairs(C.CC_MARKS or {}) do
+            local row = ccRows[mark.id]
+            if row then
+                local owner = TB.GetCcOwner and TB.GetCcOwner(mark.id) or nil
+                row.ownerText:SetText(owner or "-")
+            end
         end
     end
 
@@ -556,7 +613,7 @@ CreateActions = function(parent)
     buttons.ccMoon:SetScript("OnClick", function() TB.ToggleCcMenu() end)
     buttons.ccMark     = buttons.ccMoon
     addRaidIcon(buttons.focusSkull, 8)
-    addRaidIcon(buttons.ccMoon, 5)
+    -- Plain label: the button opens the Marks panel for all 8 icons now.
     buttons.aoe        = makeActionButton(cardTactics, "aoe", 108, 236, btnY)
     buttons.aoe:SetText("AoE Off")
     buttons.ready      = makeActionButton(cardTactics, "ready", 118, 350, btnY)
@@ -609,7 +666,7 @@ CreateActions = function(parent)
     guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -290)
     guide:SetWidth(464)
     guide:SetJustifyH("LEFT")
-    guide:SetText("|cff626056Tip: target a bot in Party, then use CC Mark to assign its raid icon; target an enemy for Attack/Pull/Interrupt. Click a Formation for spacing.|r")
+    guide:SetText("|cff626056Tip: open CC Mark to assign each raid icon to a bot by name; target an enemy for Attack/Pull/Interrupt. Click a Formation for spacing.|r")
 
     TB.actionButtons = buttons
     TB.actions = buttons
@@ -1104,10 +1161,11 @@ function TB.InitUI()
     targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
     targetWatcher:RegisterEvent("PARTY_MEMBERS_CHANGED")
     targetWatcher:SetScript("OnEvent", function()
-        if TB.ccMenu and TB.ccMenu:IsVisible() then TB.ccMenu:Hide() end
+        -- The Marks panel assigns by explicit bot name, so targeting no
+        -- longer affects it: refresh owners instead of hiding it.
+        if TB.ccMenu and TB.ccMenu:IsVisible() and TB.ccMenu.Update then TB.ccMenu:Update() end
         TB.Refresh()
     end)
-
     main:Hide()
     TB.frame = main
     TB.uiReady = true
