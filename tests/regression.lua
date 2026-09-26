@@ -806,18 +806,18 @@ assert(table.getn(addonSent) == beforeNoneAddon
     "the none verdict must keep using .bot chat")
 
 -- Version line: addon version on load, server version from TBM:VERSION.
-assert(TB.versionLine and TB.versionLine.text == "TBM " .. TB.version .. " · server ?",
+assert(TB.versionLine and TB.versionLine.text == "TBM " .. TB.version .. " · server ? · by Sagiroth",
     "window must show addon version with unknown server before any reply")
 assert(TB.versionTitle and string.find(TB.versionTitle.text, "v" .. TB.version, 1, true),
     "window title must carry the addon version")
 TB.OnSystemMessage("TBM:VERSION|2026-09-25-v7")
 assert(TB.serverVersion == "2026-09-25-v7", "TBM:VERSION must record the server build")
-assert(TB.versionLine.text == "TBM " .. TB.version .. " · server 2026-09-25-v7",
+assert(TB.versionLine.text == "TBM " .. TB.version .. " · server 2026-09-25-v7 · by Sagiroth",
     "window must show both versions after the roster trailer")
 TB.OnSystemMessage("TBM:TRANSPORT|party")
 TB.serverVersion = nil
 if TB.RefreshVersionLine then TB.RefreshVersionLine() end
-assert(TB.versionLine.text == "TBM " .. TB.version .. " · server ?",
+assert(TB.versionLine.text == "TBM " .. TB.version .. " · server ? · by Sagiroth",
     "window must fall back to server ? without a version reply")
 TB.OnSystemMessage("TBM:VERSION|2026-09-25-v7")
 -- Older servers stay silent: unknown commands must not clobber the version.
