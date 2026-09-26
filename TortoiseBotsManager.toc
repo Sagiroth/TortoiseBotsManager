@@ -1,7 +1,8 @@
 ## Interface: 11200
 ## Title: |cffd8a657TortoiseBots|r |cffffffffManager|r
 ## Notes: Manager for your server-owned TortoiseBots — actions, lifecycle, and roster state.
-## Author: TortoiseBots
+## Author: Sagiroth
+## X-Website: https://github.com/Sagiroth/TortoiseBotsManager
 ## Version: 2026-09-25-v6
 ## SavedVariables: TortoiseBotsDB
 

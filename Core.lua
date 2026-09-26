@@ -22,6 +22,7 @@ function TB.RefreshVersionLine()
     local addonVersion = TB.version or "?"
     local serverVersion = TB.serverVersion or "?"
     local text = "TBM " .. tostring(addonVersion) .. " · server " .. tostring(serverVersion)
+        .. " · by " .. (TB.C.AUTHOR or "Sagiroth")
     if TB.versionLine and TB.versionLine.SetText then
         TB.versionLine:SetText(text)
     end
@@ -589,6 +590,7 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     msg = string.lower(TB.Trim(msg or ""))
     if msg == "help" or msg == "h" then
         TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
         return
     elseif msg == "party" then
         if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
@@ -625,7 +627,7 @@ ef:SetScript("OnEvent", function()
         if TB.InitComms   then TB.InitComms()   end
         if TB.InitUI      then TB.InitUI()      end
         if TB.InitMinimap then TB.InitMinimap() end
-        TB.Print("v" .. TB.version .. " loaded. /tbm to open. Requires TortoiseBots module on server.")
+        TB.Print("v" .. TB.version .. " loaded by " .. TB.C.AUTHOR .. ". /tbm to open. Requires TortoiseBots module on server.")
     elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
         installBotCommandChatFilter()
         if TB.RequestServerCapabilities then TB.RequestServerCapabilities() end

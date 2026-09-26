@@ -22,6 +22,16 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 * **Compact UI** — `Actions` is the default tab; `Roster` has checkbox rows and no per-row combat controls. The draggable panel remembers position and supports `Esc` close, minimap toggle, search, and tooltips.
 * **Compatibility** — legacy `.bot` commands and `.bot command` remain available server-side; the primary UI does not expose the advanced command console.
 
+## Credit
+
+TortoiseBots Manager and the TortoiseBots module are made by **Sagiroth**.
+Forks, repacks, bundles and videos are welcome — please credit them and keep the
+in-addon credit (window header, load message, `/tbm help`). Ready to paste:
+
+```text
+TortoiseBots + TBM addon by Sagiroth — https://github.com/Sagiroth/TortoiseBots
+```
+
 ## Companion Module
 
 This addon is the in-game half of:
@@ -92,7 +102,7 @@ moves to the day's latest version commit and the notes open with the build
 range (e.g. `Builds 2026-09-25-v1 – v7`).
 
 In game: the addon prints its version on load, and the `/tbm` window header
-shows `TBM <addon version> · server <server version>` from the server's
+shows `TBM <addon version> · server <server version> · by Sagiroth` from the server's
 `TBM:VERSION|<version>` roster trailer (`.bot version` / `.bot help` answer it
 too). `server ?` means the server predates the version reply — everything
 else keeps working.

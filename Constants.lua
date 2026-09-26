@@ -8,6 +8,11 @@ TB.C = TB.C or {}
 
 TB.C.VERSION = "2026-09-25-v6"
 
+-- Author credit shown in the window header, the load message and /tbm help.
+-- Forks and repacks must keep it (see README "Credit").
+TB.C.AUTHOR = "Sagiroth"
+TB.C.SOURCE_URL = "https://github.com/Sagiroth/TortoiseBotsManager"
+
 -- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
 TB.C.PANEL_H = 430
