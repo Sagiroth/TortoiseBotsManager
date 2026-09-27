@@ -2,6 +2,20 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-09-27
+
+### UI & Controls
+- New tabbed layout by task: `Fight` · `Camp` · `Party` · `Roster` · `Raid` (raid-only) · `Log` — no more hunting through one long panel [#29](https://github.com/Sagiroth/TortoiseBotsManager/pull/29)
+- `Fight` tab groups Engage (Attack, Stop, Interrupt, Flee), Pull & Focus (timers, Skull, CC mark), Move (Follow, Stay, Come) and switches; add `Camp` for Rest, Ready Check, Repair, Sell junk, Train, Release/Corpse run, plus six formations including the new Line [#29](https://github.com/Sagiroth/TortoiseBotsManager/pull/29)
+- AoE / Auto CC / Loot switches now reflect the server's real state (On / Off / Mixed with a status lamp) instead of guessing [#29](https://github.com/Sagiroth/TortoiseBotsManager/pull/29)
+- Mini mode and the bot gear panel are now available for tighter screen real estate and quick equipment checks [#29](https://github.com/Sagiroth/TortoiseBotsManager/pull/29)
+
+### Meta & Attribution
+- Author credit now shows in the window header (`TBM <addon> · server <server> · by Sagiroth`), the load message, and `/tbm help`, with `## Author` and repo link set in the `.toc` [#28](https://github.com/Sagiroth/TortoiseBotsManager/pull/28)
+- README gains a paste-ready credit section and updated version-line docs; regression tests assert the new header line [#28](https://github.com/Sagiroth/TortoiseBotsManager/pull/28)
+
+---
+
 ## 2026-09-25
 
 ### Tactical & Actions
