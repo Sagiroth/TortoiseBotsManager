@@ -118,6 +118,7 @@ TB.C.CLASS_ROLES = {
 TB.C.ACTIONS = {
     "attack", "stop", "pull", "pullback", "come", "stay", "follow",
     "focus skull", "cc moon", "aoe", "hold", "ready", "interrupt",
+    "flee", "auto cc", "loot", "rest", "repair", "sell", "learn", "release",
 }
 
 TB.C.ACTION_ICONS = {
@@ -134,6 +135,14 @@ TB.C.ACTION_ICONS = {
     hold            = "Interface\\Icons\\Spell_Nature_Slow",
     ready           = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude",
     interrupt       = "Interface\\Icons\\Ability_Kick",
+    flee            = "Interface\\Icons\\Ability_Rogue_Sprint",
+    ["auto cc"]     = "Interface\\Icons\\Spell_Nature_Polymorph",
+    loot            = "Interface\\Icons\\INV_Misc_Bag_10",
+    rest            = "Interface\\Icons\\INV_Drink_07",
+    repair          = "Interface\\Icons\\Trade_BlackSmithing",
+    sell            = "Interface\\Icons\\INV_Misc_Coin_02",
+    learn           = "Interface\\Icons\\INV_Misc_Book_09",
+    release         = "Interface\\Icons\\Spell_Holy_Resurrection",
 }
 
 TB.C.ACTION_LABELS = {
@@ -150,6 +159,87 @@ TB.C.ACTION_LABELS = {
     hold = "Come & Hold",
     ready = "Ready Check",
     interrupt = "Interrupt",
+    flee = "Flee",
+    ["auto cc"] = "Auto CC",
+    loot = "Loot",
+    rest = "Rest",
+    repair = "Repair",
+    sell = "Sell junk",
+    learn = "Train",
+    release = "Release",
+    ["corpse run"] = "Corpse run",
+    ["raid status"] = "Raid status",
+    ["raid tankface"] = "Tank face",
+    ["raid douse"] = "Douse runes",
+    ["raid custom status"] = "Custom tactics",
+    ["raid custom on"] = "Custom tactics on",
+    ["raid custom off"] = "Custom tactics off",
+    ["item equip"] = "Equip",
+    ["item unequip"] = "Unequip",
+    ["item give"] = "Give",
+    ["item trade"] = "Trade",
+    inv = "Bags",
+}
+
+-- Party-wide toggles on the Actions tab. `key` is the TBM:BOTSTATE field the
+-- state is read from; `intent` is the `.bot action` verb that flips it.
+TB.C.PARTY_TOGGLES = {
+    { key = "aoe",    intent = "aoe",     label = "AoE",
+      tip = "Area-of-effect spells for DPS bots. They still hold AoE next to a crowd-controlled mob." },
+    { key = "autocc", intent = "auto cc", label = "Auto CC",
+      tip = "Bots sheep/sap a loose add that hits your healer, on their own. Your CC marks always win." },
+    { key = "loot",   intent = "loot",    label = "Loot",
+      tip = "Bots loot corpses after a fight." },
+}
+
+-- Per-bot behaviour toggles in the bot panel (`.bot behavior <bot> <key>`).
+-- `mana` limits a toggle to classes that use mana.
+TB.C.BEHAVIORS = {
+    { key = "loot",     label = "Loot corpses", tip = "Loot corpses after a fight." },
+    { key = "aoe",      label = "AoE spells",   tip = "Use area-of-effect abilities (held back next to crowd-controlled mobs)." },
+    { key = "autocc",   label = "Auto CC",      tip = "Crowd-control a loose add that hits your healer, on its own. Your CC marks always win." },
+    { key = "savemana", label = "Save mana",    tip = "Wait longer between repeated casts to stretch mana on long fights.", mana = true },
+    { key = "boost",    label = "Cooldowns",    tip = "Use big offensive cooldowns during fights." },
+    { key = "threat",   label = "Watch threat", tip = "Ease off damage when close to pulling aggro from the tank." },
+    { key = "potions",  label = "Potions",      tip = "Drink healing and mana potions when low." },
+}
+TB.C.NO_MANA_CLASSES = { [1] = true, [4] = true } -- Warrior, Rogue
+
+-- Movement labels for the TBM:BOTSTATE "move" field.
+TB.C.MOVEMENT_LABELS = {
+    follow = "Following",
+    stay = "Staying",
+    guard = "Guarding",
+    free = "Free",
+    flee = "Fleeing (passive)",
+}
+
+-- Paper-doll layout for the bot panel. Numbers are server equipment slots
+-- (EQUIPMENT_SLOT_*); `empty` is the client's empty-slot texture name.
+TB.C.GEAR_LEFT = {
+    { slot = 0,  label = "Head",      empty = "Head" },
+    { slot = 1,  label = "Neck",      empty = "Neck" },
+    { slot = 2,  label = "Shoulder",  empty = "Shoulder" },
+    { slot = 14, label = "Back",      empty = "Chest" },
+    { slot = 4,  label = "Chest",     empty = "Chest" },
+    { slot = 3,  label = "Shirt",     empty = "Shirt" },
+    { slot = 18, label = "Tabard",    empty = "Tabard" },
+    { slot = 8,  label = "Wrist",     empty = "Wrists" },
+}
+TB.C.GEAR_RIGHT = {
+    { slot = 9,  label = "Hands",     empty = "Hands" },
+    { slot = 5,  label = "Waist",     empty = "Waist" },
+    { slot = 6,  label = "Legs",      empty = "Legs" },
+    { slot = 7,  label = "Feet",      empty = "Feet" },
+    { slot = 10, label = "Ring",      empty = "Finger" },
+    { slot = 11, label = "Ring",      empty = "Finger" },
+    { slot = 12, label = "Trinket",   empty = "Trinket" },
+    { slot = 13, label = "Trinket",   empty = "Trinket" },
+}
+TB.C.GEAR_BOTTOM = {
+    { slot = 15, label = "Main hand", empty = "MainHand" },
+    { slot = 16, label = "Off hand",  empty = "SecondaryHand" },
+    { slot = 17, label = "Ranged",    empty = "Ranged" },
 }
 
 -- Raid icons use the client's 1-based texture numbering. The server stores
@@ -172,11 +262,12 @@ for _, mark in ipairs(TB.C.CC_MARKS or {}) do
 end
 
 TB.C.FORMATIONS = {
-    { id = "shield", label = "Shield", tip = "Dungeon standard: tank front, melee flank, healer rear" },
-    { id = "near",   label = "Near",   tip = "Tight stack within 4y for narrow corridors & patrols" },
-    { id = "queue",  label = "Queue",  tip = "Single file column behind master (bridges & ledges)" },
-    { id = "arrow",  label = "Arrow",  tip = "V-wedge pointing forward for open terrain" },
-    { id = "circle", label = "Circle", tip = "360-degree defensive perimeter" },
+    { id = "shield", label = "Shield", tip = "Dungeon standard: tank in front, melee on the flanks, healers behind." },
+    { id = "near",   label = "Near",   tip = "Tight stack close to you, for narrow corridors and sneaking past patrols." },
+    { id = "queue",  label = "Queue",  tip = "Single file behind you, for bridges and ledges." },
+    { id = "arrow",  label = "Arrow",  tip = "V-shaped wedge pointing forward, for open ground." },
+    { id = "circle", label = "Circle", tip = "Ring around you, facing out." },
+    { id = "line",   label = "Line",   tip = "Side by side in one line with you in the middle, for open ground." },
 }
 
 -- Addon command transport (server side: host/BotAddonAdapter.cpp).

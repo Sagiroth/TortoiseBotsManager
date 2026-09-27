@@ -143,6 +143,13 @@ end
 
 local function actionLabel(intent)
     if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
+    local _, _, behaviorKey = string.find(intent or "", "^behavior%s+(%S+)$")
+    if behaviorKey then
+        for _, b in ipairs(C.BEHAVIORS or {}) do
+            if b.key == behaviorKey then return b.label end
+        end
+        return behaviorKey
+    end
     local _, _, mark, bot = string.find(intent or "", "^cc%s+(%a+)%s*(%S*)$")
     if mark == "clear" then
         if bot and bot ~= "" then return "CC clear (" .. bot .. ")" end
@@ -208,14 +215,22 @@ function TB.ParseActionMessage(msg)
         -- Debounced roster refresh: RequestPollSoon only re-arms a timer, so
         -- back-to-back CC ACKs (and the send throttle) are never disturbed.
         if (ccMark or isClear) and TB.RequestPollSoon then TB.RequestPollSoon() end
-        if packet.intent == "aoe" then
-            TB.aoePending = false
-            if packet.executor == "on" or packet.executor == "off" then
-                TB.aoeEnabled = packet.executor == "on"
-                if TB.actionButtons and TB.actionButtons.aoe then
-                    TB.actionButtons.aoe:SetText("AoE " .. (TB.aoeEnabled and "On" or "Off"))
-                end
+        -- Party toggles (aoe / auto cc / loot): the ACK detail is the
+        -- resulting state ("on", "off" or "mixed") across the scoped bots.
+        local toggleKey = TB.PartyToggleKey and TB.PartyToggleKey(packet.intent)
+        if toggleKey then
+            if TB.OnPartyToggleResult then
+                TB.OnPartyToggleResult(toggleKey, packet.scope, packet.executor)
             end
+        end
+        -- Bot panel and raid replies render their own text.
+        if TB.OnBotPanelAck and TB.OnBotPanelAck(packet) then
+            if TB.Refresh then TB.Refresh() end
+            return true, "ack", packet
+        end
+        if TB.OnRaidAck and TB.OnRaidAck(packet) then
+            if TB.Refresh then TB.Refresh() end
+            return true, "ack", packet
         end
         local scope = packet.scope == "party" and "party" or packet.scope
         local text = actionLabel(packet.intent) .. " accepted · " .. scope .. " · " .. packet.count
@@ -233,12 +248,122 @@ function TB.ParseActionMessage(msg)
         end
         TB.lastActionError = packet
         TB.lastActionAck = nil
-        if packet.intent == "aoe" then TB.aoePending = false end
+        local toggleKey = TB.PartyToggleKey and TB.PartyToggleKey(packet.intent)
+        if toggleKey and TB.OnPartyToggleResult then
+            TB.OnPartyToggleResult(toggleKey, nil, nil)
+        end
+        if TB.OnBotPanelError then TB.OnBotPanelError(packet) end
         local text = actionLabel(packet.intent) .. ": " .. packet.code
         if packet.message ~= "" then text = text .. " — " .. packet.message end
         if TB.SetStatus then TB.SetStatus(text, "warn") end
         if TB.Refresh then TB.Refresh() end
         return true, "error", packet
+    end
+    return false
+end
+
+-- ── bot panel protocol ──────────────────────────────────────────────────────
+-- Live per-bot state (roster trailer, and the reply to ".bot behavior"):
+--   TBM:BOTSTATE_BEGIN|<n>  TBM:BOTSTATE|<bot>|move=follow,loot=on,...  TBM:BOTSTATE_END
+-- A BOTSTATE line outside BEGIN/END updates that one bot.
+-- Inventory snapshot (reply to ".bot inv", ".bot item equip/unequip"):
+--   TBM:INV_BEGIN|<bot>|<copper>
+--   TBM:INV_EQ|<slot>|<itemId>|<durability>|<maxDurability>
+--   TBM:INV_ITEM|<bag>|<slot>|<itemId>|<count>|<flags>
+--   TBM:INV_END|<bot>|<free>|<total>
+local botStateReceiving = nil
+local inventoryReceiving = nil
+
+local function parseStateFields(text)
+    local state = {}
+    for pair in string.gfind(text or "", "[^,]+") do
+        local _, _, key, value = string.find(pair, "^%s*([%w_]+)=(%S*)%s*$")
+        if key then state[string.lower(key)] = string.lower(value) end
+    end
+    return state
+end
+
+local function numberFields(fields, first, last)
+    for i = first, last do
+        if not fields[i] or not string.find(fields[i], "^%d+$") then return false end
+    end
+    return true
+end
+
+function TB.ParseBotPanelMessage(msg)
+    if string.sub(msg or "", 1, 4) ~= "TBM:" then return false end
+
+    local _, _, count = string.find(msg, "^TBM:BOTSTATE_BEGIN|(%d+)$")
+    if count then
+        botStateReceiving = { expected = tonumber(count), rows = {} }
+        return true
+    end
+    if msg == "TBM:BOTSTATE_END" then
+        local batch = botStateReceiving
+        botStateReceiving = nil
+        if batch and table.getn(batch.rows) == batch.expected and TB.SetBotStates then
+            TB.SetBotStates(batch.rows)
+        end
+        return true
+    end
+    if string.sub(msg, 1, 13) == "TBM:BOTSTATE|" then
+        local fields = splitProtocol(string.sub(msg, 14))
+        local name = fields[1] and TB.NormalizeName(fields[1]) or nil
+        if table.getn(fields) == 2 and name and name ~= "" then
+            local state = parseStateFields(fields[2])
+            if botStateReceiving then
+                table.insert(botStateReceiving.rows, { name = name, state = state })
+            elseif TB.SetBotState then
+                TB.SetBotState(name, state)
+            end
+        end
+        return true
+    end
+
+    if string.sub(msg, 1, 14) == "TBM:INV_BEGIN|" then
+        local fields = splitProtocol(string.sub(msg, 15))
+        local name = fields[1] and TB.NormalizeName(fields[1]) or nil
+        if table.getn(fields) == 2 and name and name ~= "" and numberFields(fields, 2, 2) then
+            inventoryReceiving = { name = name, money = tonumber(fields[2]), equipped = {}, items = {} }
+        else
+            inventoryReceiving = nil
+        end
+        return true
+    end
+    if string.sub(msg, 1, 11) == "TBM:INV_EQ|" then
+        local fields = splitProtocol(string.sub(msg, 12))
+        if inventoryReceiving and table.getn(fields) == 4 and numberFields(fields, 1, 4) then
+            inventoryReceiving.equipped[tonumber(fields[1])] = {
+                id = tonumber(fields[2]), durability = tonumber(fields[3]), maxDurability = tonumber(fields[4]),
+            }
+        end
+        return true
+    end
+    if string.sub(msg, 1, 13) == "TBM:INV_ITEM|" then
+        local fields = splitProtocol(string.sub(msg, 14))
+        if inventoryReceiving and table.getn(fields) == 5 and numberFields(fields, 1, 4) then
+            local flags = fields[5] or "-"
+            table.insert(inventoryReceiving.items, {
+                bag = tonumber(fields[1]), slot = tonumber(fields[2]),
+                id = tonumber(fields[3]), count = tonumber(fields[4]),
+                equippable = string.find(flags, "e", 1, true) ~= nil,
+                upgrade = string.find(flags, "u", 1, true) ~= nil,
+                noTrade = string.find(flags, "b", 1, true) ~= nil,
+            })
+        end
+        return true
+    end
+    if string.sub(msg, 1, 12) == "TBM:INV_END|" then
+        local fields = splitProtocol(string.sub(msg, 13))
+        local inv = inventoryReceiving
+        inventoryReceiving = nil
+        local name = fields[1] and TB.NormalizeName(fields[1]) or nil
+        if inv and name == inv.name and table.getn(fields) == 3 and numberFields(fields, 2, 3) then
+            inv.free = tonumber(fields[2])
+            inv.total = tonumber(fields[3])
+            if TB.SetInventory then TB.SetInventory(name, inv) end
+        end
+        return true
     end
     return false
 end
@@ -379,6 +504,12 @@ function TB.BuildCommand(verb, name, extra)
     end
 end
 
+-- Bot panel requests (inventory, item orders, behaviour toggles) are answered
+-- by structured lines of their own; they are not roster lifecycle operations.
+function TB.IsPanelVerb(verb)
+    return verb == "inv" or verb == "item" or verb == "behavior"
+end
+
 local function commandTargetName(cmd)
     local rest = TB.Trim(string.gsub(cmd or "", "^%S+%s*", ""))
     local _, _, name = string.find(rest, "^(%S+)")
@@ -389,7 +520,7 @@ function TB.OnCommandQueued(cmd)
     local verb = string.lower(string.gsub(cmd or "", "%s+.*", ""))
     local name = commandTargetName(cmd)
     if name and verb ~= "list" and verb ~= "roster" and verb ~= "stats"
-        and verb ~= "help" and verb ~= "action" and TB.BeginOperation then
+        and verb ~= "help" and verb ~= "action" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
         if verb == "add" then TB.AddToRoster(name) end
         TB.BeginOperation(name, verb, true)
         if TB.Refresh then TB.Refresh() end
@@ -405,6 +536,8 @@ function TB.OnCommandSent(cmd)
         -- _lastPoll).  The structured stream commits the roster at END.
         return
     end
+
+    if TB.IsPanelVerb(verb) then return end
 
     if verb == "add" and name then TB.AddToRoster(name) end
     if name and verb ~= "action" and TB.BeginOperation then
@@ -503,6 +636,11 @@ function TB.OnSystemMessage(msg)
             TB.lastSystem = msg
             return
         end
+    end
+
+    if TB.ParseBotPanelMessage(msg) then
+        TB.lastSystem = msg
+        return
     end
 
     local rosterHandled, rosterKind, rosterData = false, nil, nil
