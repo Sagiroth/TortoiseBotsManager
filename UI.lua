@@ -49,6 +49,8 @@ local function hasValidEnemyTarget()
             return false
         end
     end
+    -- Hired companions are not roster rows, but the server reports them.
+    if name and TB.GetBotState and TB.GetBotState(name) then return false end
     return true
 end
 
@@ -59,6 +61,9 @@ local function targetScope()
         local serverState = entry and (entry.serverState or (entry.st and entry.st.serverState))
         if entry and serverState == "online" then
             return "bot:" .. (entry.name or name), entry.name or name
+        end
+        if TB.GetBotState and TB.GetBotState(name) then
+            return "bot:" .. name, name
         end
     end
     return "party", nil
@@ -81,31 +86,52 @@ function TB.GetActionScopeHint()
     return "Target: " .. name
 end
 
+-- Newer server features are advertised in the roster's TBM:CAPS trailer.
+local function serverHasCap(name)
+    return TB.HasServerCapability and TB.HasServerCapability(name) or false
+end
+
 local function serverSupports(command)
     if not TB.ServerCapabilitiesKnown or not TB.ServerCapabilitiesKnown() then return true end
     return TB.HasServerCommand and TB.HasServerCommand(command) or false
 end
 
 local ACTION_TOOLTIPS = {
-    attack   = "Order scoped bots to attack selected enemy target",
-    stop     = "Stop combat and reset target (instant heals remain active)",
-    pull     = "Tank uses the native pull action; it does not return to the pull position.",
-    pullback = "Tank uses the native pull action and returns to the pull position.",
-    follow   = "Scoped bots follow you in designated formation",
-    stay     = "Scoped bots hold their current position",
-    come     = "Scoped bots run to your position",
-    hold     = "Order scoped bots to run directly to your position and stay there (corner pull)",
-    ["focus skull"] = "Focus damage on target marked with Skull (RTI 8)",
-    ["cc moon"]     = "Choose the raid icon this scoped bot should own for crowd control",
-    aoe      = "Toggle area-of-effect spells on/off",
-    ready    = "Perform ready check: bots report HP, mana, water, and status",
-    interrupt = "Interrupt the selected enemy's active spell with the best ready bot",
+    attack   = "Bots attack your target. Healers keep healing. Needs an enemy target.",
+    stop     = "Bots stop fighting and drop their target (heals still run).",
+    pull     = "The tank pulls your target and fights it where it stands. The others wait for the timer below, then join.",
+    pullback = "The tank pulls your target and runs back to your spot. The others attack when it is back (timer below).",
+    follow   = "Bots follow you in the chosen formation.",
+    stay     = "Bots hold their current position.",
+    come     = "Bots run to where you stand and stay there (good for corner pulls).",
+    hold     = "Bots run to where you stand and stay there (good for corner pulls).",
+    ["focus skull"] = "Marks your target with Skull (or uses the existing Skull) and every DPS bot focuses it.",
+    ["cc moon"]     = "Opens the Marks panel: give each raid icon to one bot, which keeps that mob crowd-controlled.",
+    aoe      = "Area-of-effect spells for DPS bots.",
+    ready    = "Ready check: bots report health, mana and drinks.",
+    interrupt = "The best bot with a ready interrupt stops your target's cast.",
+    flee     = "Get out: bots stop fighting and run after you without attacking. Attack, Pull, Follow or Stay brings them back.",
+    rest     = "Bots sit down to eat and drink until full. Moving or a fight ends it.",
+    repair   = "Bots repair their gear at a repair vendor near you.",
+    sell     = "Bots sell their grey junk to a vendor near you.",
+    learn    = "Target a class trainer first: bots of that class learn every spell they can pay for (with their own gold).",
+    release  = "Dead bots release their spirit; once they are ghosts this button turns into Corpse run.",
 }
 
-local function setButtonTooltip(button, text)
+-- Title line (the button label) plus a wrapped description.
+local function setButtonTooltip(button, text, title)
     button:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-        GameTooltip:SetText(text)
+        if title then
+            GameTooltip:SetText(title)
+            GameTooltip:AddLine(text, 0.9, 0.9, 0.9, 1)
+        else
+            GameTooltip:SetText(text)
+        end
+        if this.tooltipExtra then
+            local extra = this.tooltipExtra()
+            if extra then GameTooltip:AddLine(extra, COL.muted[1], COL.muted[2], COL.muted[3], 1) end
+        end
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -399,13 +425,12 @@ local function makeActionButton(parent, intent, width, x, y)
         button.icon = icon
     end
 
-    setButtonTooltip(button, ACTION_TOOLTIPS[intent] or "Send .bot action " .. intent)
+    setButtonTooltip(button, ACTION_TOOLTIPS[intent] or "Send .bot action " .. intent, label)
     button:SetScript("OnClick", function()
-        if intent == "aoe" then
-            if TB.aoePending then return end
-            local enabled = not TB.aoeEnabled
-            TB.aoePending = true
-            TB.SendActionIntent("aoe " .. (enabled and "on" or "off"))
+        if TB.PartyToggleKey and TB.PartyToggleKey(intent) then
+            TB.SendPartyToggle(TB.PartyToggleKey(intent))
+        elseif intent == "release" then
+            TB.SendActionIntent(TB.DeathIntent and TB.DeathIntent() or "release")
         elseif intent == "pull" or intent == "pullback" then
             TB.SendActionIntent(TB.PullIntent and TB.PullIntent(intent) or intent)
         else
@@ -430,7 +455,7 @@ CreateActions = function(parent)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     frame:SetWidth(W - (C.PAD or 10) * 2)
-    frame:SetHeight(350)
+    frame:SetHeight(372)
 
     -- Scope Banner Card
     local scopeCard = CreateFrame("Frame", nil, frame)
@@ -453,10 +478,23 @@ CreateActions = function(parent)
 
     local hint = scopeCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMLEFT", scopeIcon, "BOTTOMRIGHT", 8, -1)
-    hint:SetWidth(420)
+    hint:SetWidth(320)
     hint:SetJustifyH("LEFT")
     TB.scopeHint = hint
     TB.SetTextColor(hint, color("muted"))
+
+    -- Shown while one of your bots is targeted: opens its gear/bags panel.
+    local gearButton = CreateFrame("Button", nil, scopeCard, "UIPanelButtonTemplate")
+    gearButton:SetWidth(104); gearButton:SetHeight(22)
+    gearButton:SetPoint("RIGHT", scopeCard, "RIGHT", -8, 0)
+    gearButton:SetText("Gear & bags")
+    setButtonTooltip(gearButton, "Open the targeted bot's gear, bags and behaviour.", "Gear & bags")
+    gearButton:SetScript("OnClick", function()
+        local _, name = targetScope()
+        if name and TB.OpenBotPanel then TB.OpenBotPanel(name) end
+    end)
+    gearButton:Hide()
+    TB.scopeGearButton = gearButton
 
     local function makeSection(titleText, yOffset, cardHeight)
         local card = CreateFrame("Frame", nil, frame)
@@ -479,8 +517,9 @@ CreateActions = function(parent)
     end
 
     local cardCombat = makeSection("COMBAT & ENGAGEMENT", -40, 88)
-    local cardTactics= makeSection("TACTICS & UTILITY", -132, 58)
-    local cardMove   = makeSection("FORMATION & MOVEMENT", -194, 88)
+    local cardTactics= makeSection("TACTICS & PARTY SWITCHES", -132, 84)
+    local cardMove   = makeSection("FORMATION & MOVEMENT", -220, 88)
+    local cardUpkeep = makeSection("OUT OF COMBAT", -312, 58)
 
     local btnY = -24
     local buttons = {}
@@ -617,7 +656,8 @@ CreateActions = function(parent)
     buttons.stop     = makeActionButton(cardCombat, "stop", 108, 122, btnY)
     buttons.pull     = makeActionButton(cardCombat, "pull", 108, 236, btnY)
     buttons.pullback = makeActionButton(cardCombat, "pullback", 118, 350, btnY)
-    buttons.interrupt = makeActionButton(cardCombat, "interrupt", 118, 8, -54)
+    buttons.interrupt = makeActionButton(cardCombat, "interrupt", 108, 8, -54)
+    buttons.flee     = makeActionButton(cardCombat, "flee", 108, 122, -54)
 
     -- Adjustable pull timers: small "- N s +" steppers under the Pull and
     -- Pull back buttons, same UIPanelButtonTemplate style as the bar.
@@ -678,16 +718,46 @@ CreateActions = function(parent)
         "Join delay before Pull back (0-60 s, shift-click = 5). Sent as 'pullback <n>' when the server advertises pull-seconds, otherwise plain Pull back.")
     TB.pullTimers = { pull = buttons.pullTimer, pullback = buttons.pullbackTimer }
 
-    buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 108, 8, btnY)
-    buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 108, 122, btnY)
+    buttons.focusSkull = makeActionButton(cardTactics, "focus skull", 148, 8, btnY)
+    buttons.ccMoon     = makeActionButton(cardTactics, "cc moon", 148, 164, btnY)
     buttons.ccMoon:SetText("CC Mark")
     buttons.ccMoon:SetScript("OnClick", function() TB.ToggleCcMenu() end)
     buttons.ccMark     = buttons.ccMoon
     addRaidIcon(buttons.focusSkull, 8)
     -- Plain label: the button opens the Marks panel for all 8 icons now.
-    buttons.aoe        = makeActionButton(cardTactics, "aoe", 108, 236, btnY)
-    buttons.aoe:SetText("AoE Off")
-    buttons.ready      = makeActionButton(cardTactics, "ready", 118, 350, btnY)
+    buttons.ready      = makeActionButton(cardTactics, "ready", 148, 320, btnY)
+
+    -- Party switches: state comes from the server (TBM:BOTSTATE), the lamp
+    -- shows it at a glance (green on, grey off, gold mixed/unknown).
+    TB.toggleButtons = {}
+    for i, toggle in ipairs(C.PARTY_TOGGLES or {}) do
+        local btn = makeActionButton(cardTactics, toggle.intent, 148, 8 + (i - 1) * 156, -54)
+        btn:SetHeight(24)
+        btn.toggle = toggle
+        btn.lamp = btn:CreateTexture(nil, "OVERLAY")
+        btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
+        btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -9, 0)
+        setButtonTooltip(btn, toggle.tip .. " Click to switch for the whole party (or only the targeted bot).",
+            toggle.label)
+        TB.toggleButtons[toggle.key] = btn
+    end
+    buttons.aoe = TB.toggleButtons.aoe
+    buttons.autoCc = TB.toggleButtons.autocc
+    buttons.loot = TB.toggleButtons.loot
+
+    -- Out of combat: camp and town chores. The last button follows the
+    -- party's death state: Release for corpses, Corpse run for ghosts.
+    buttons.rest    = makeActionButton(cardUpkeep, "rest", 88, 8, btnY)
+    buttons.repair  = makeActionButton(cardUpkeep, "repair", 88, 100, btnY)
+    buttons.sell    = makeActionButton(cardUpkeep, "sell", 88, 192, btnY)
+    buttons.learn   = makeActionButton(cardUpkeep, "learn", 88, 284, btnY)
+    buttons.release = makeActionButton(cardUpkeep, "release", 100, 376, btnY)
+    buttons.release.tooltipExtra = function()
+        if TB.DeathIntent and TB.DeathIntent() == "corpse run" then
+            return "Now: ghosts run back to their corpses."
+        end
+        return nil
+    end
 
     buttons.follow   = makeActionButton(cardMove, "follow", 148, 8, btnY)
     buttons.stay     = makeActionButton(cardMove, "stay", 148, 164, btnY)
@@ -719,6 +789,7 @@ CreateActions = function(parent)
     makeFormationPill("queue",  "Queue",  64, 214, -56, "Single file column behind master")
     makeFormationPill("arrow",  "Arrow",  64, 282, -56, "V-wedge pointing forward for open terrain")
     makeFormationPill("circle", "Circle", 64, 350, -56, "360-degree defensive perimeter")
+    makeFormationPill("line",   "Line",   56, 418, -56, "Side by side in one line with you in the middle (open ground)")
 
     TB.formationPills = pills
     TB.UpdateFormationPills = function()
@@ -732,12 +803,6 @@ CreateActions = function(parent)
         end
     end
     TB.UpdateFormationPills()
-
-    local guide = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    guide:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -290)
-    guide:SetWidth(464)
-    guide:SetJustifyH("LEFT")
-    guide:SetText("|cff626056Tip: open CC Mark to assign each raid icon to a bot by name; target an enemy for Attack/Pull/Interrupt. Click a Formation for spacing.|r")
 
     TB.actionButtons = buttons
     TB.actions = buttons
@@ -799,11 +864,12 @@ function TB.InitUI()
     local tabActions = makeTab("Actions", 0)
     local tabParty = makeTab("Party", 86)
     local tabRoster = makeTab("Roster", 172)
-    local tabLog = makeTab("Log", 258)
+    local tabRaid = makeTab("Raid", 258)
+    local tabLog = makeTab("Log", 344)
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
-    content:SetHeight(350)
+    content:SetHeight(372)
 
     local actionsFrame = CreateActions(content)
     local rosterFrame = CreateFrame("Frame", nil, content)
@@ -826,7 +892,7 @@ function TB.InitUI()
 
         local subtitle = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         subtitle:SetPoint("LEFT", title, "RIGHT", 8, 0)
-        subtitle:SetText("|cff888888(role buttons · CC icon = mark · click bot row to target)|r")
+        subtitle:SetText("|cff888888(role buttons · bag = gear & bags · click a row to target)|r")
 
         local emptyMsg = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         emptyMsg:SetPoint("CENTER", partyFrame, "CENTER", 0, -20)
@@ -858,7 +924,7 @@ function TB.InitUI()
 
             local descText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             descText:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 12, 8)
-            descText:SetWidth(130)
+            descText:SetWidth(260)
             descText:SetJustifyH("LEFT")
             TB.SetTextColor(descText, color("muted"))
             row.descText = descText
@@ -883,6 +949,32 @@ function TB.InitUI()
             playerLabel:SetPoint("LEFT", row, "LEFT", 150, 0)
             playerLabel:SetText("|cffd8a657[ Player / Master ]|r")
             row.playerLabel = playerLabel
+
+            -- Gear & bags panel for a controllable bot (shown when the server
+            -- reports the bot in TBM:BOTSTATE).
+            local bagButton = CreateFrame("Button", nil, row)
+            bagButton:SetWidth(22); bagButton:SetHeight(22)
+            bagButton:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -4)
+            bagButton:RegisterForClicks("LeftButtonUp")
+            local bagIcon = bagButton:CreateTexture(nil, "ARTWORK")
+            bagIcon:SetAllPoints(bagButton)
+            bagIcon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
+            local bagHl = bagButton:CreateTexture(nil, "HIGHLIGHT")
+            bagHl:SetAllPoints(bagButton)
+            bagHl:SetTexture(1, 1, 1, 0.2)
+            bagButton:SetScript("OnClick", function()
+                if row.partyName and TB.OpenBotPanel then TB.OpenBotPanel(row.partyName) end
+            end)
+            bagButton:SetScript("OnEnter", function()
+                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Gear & bags")
+                GameTooltip:AddLine("Open " .. (row.partyName or "this bot") .. "'s gear, bags and behaviour.",
+                    0.9, 0.9, 0.9, 1)
+                GameTooltip:Show()
+            end)
+            bagButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            bagButton:Hide()
+            row.bagButton = bagButton
 
             local roleButtons = {}
             for b = 1, 4 do
@@ -928,6 +1020,87 @@ function TB.InitUI()
     end
 
     local partyFrame = CreatePartyView(content)
+
+    local function CreateRaidView(parent)
+        local raidFrame = CreateFrame("Frame", nil, parent)
+        raidFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        raidFrame:SetWidth(W - (C.PAD or 10) * 2)
+        raidFrame:SetHeight(372)
+
+        local intro = raidFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        intro:SetPoint("TOPLEFT", raidFrame, "TOPLEFT", 6, 0)
+        intro:SetWidth(468); intro:SetJustifyH("LEFT")
+        intro:SetText("Orders go to your bots in this raid. Target one of your bots to send an order to that bot only.")
+        TB.SetTextColor(intro, color("muted"))
+
+        local function card(titleText, y, height)
+            local c = CreateFrame("Frame", nil, raidFrame)
+            c:SetPoint("TOPLEFT", raidFrame, "TOPLEFT", 0, y)
+            c:SetWidth(W - (C.PAD or 10) * 2)
+            c:SetHeight(height)
+            TB.ApplyBackdrop(c, 0.45, 0.35)
+            local t = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            t:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -6)
+            t:SetText(titleText)
+            TB.SetTextColor(t, color("gold"))
+            return c
+        end
+        local function button(parent, label, width, x, y, intent, tip)
+            local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+            b:SetWidth(width); b:SetHeight(24)
+            b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+            b:SetText(label)
+            setButtonTooltip(b, tip, label)
+            if intent then b:SetScript("OnClick", function() TB.SendActionIntent(intent) end) end
+            return b
+        end
+        local function note(parent, text, y)
+            local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y)
+            fs:SetWidth(464); fs:SetJustifyH("LEFT")
+            fs:SetText(text)
+            TB.SetTextColor(fs, color("muted"))
+            return fs
+        end
+
+        local encounters = card("ENCOUNTER HELPERS", -18, 78)
+        raidFrame.tankface = button(encounters, "Tank face away", 180, 8, -24, "raid tankface",
+            "Target the dragon (Onyxia and other dragons): tank bots turn it away so breath and cleave miss the raid.")
+        raidFrame.douse = button(encounters, "Douse runes", 180, 196, -24, "raid douse",
+            "Molten Core: bots douse the nearby runes with Aqual or Eternal Quintessence (they must carry one).")
+        note(encounters, "Bots switch to boss tactics on their own in supported raids; these are the manual extras.", -54)
+
+        local custom = card("TURTLE CUSTOM RAIDS", -100, 78)
+        raidFrame.customToggle = button(custom, "Custom tactics: ?", 180, 8, -24, nil,
+            "Scripted boss moves for Emerald Sanctum, Lower Karazhan and Karazhan Crypt. Turn off to steer the bots yourself.")
+        raidFrame.customToggle.lamp = raidFrame.customToggle:CreateTexture(nil, "OVERLAY")
+        raidFrame.customToggle.lamp:SetWidth(8); raidFrame.customToggle.lamp:SetHeight(8)
+        raidFrame.customToggle.lamp:SetPoint("RIGHT", raidFrame.customToggle, "RIGHT", -9, 0)
+        raidFrame.customToggle:SetScript("OnClick", function()
+            local state = TB.GetRaidCustomState and TB.GetRaidCustomState()
+            TB.SendActionIntent(state == "on" and "raid custom off" or "raid custom on")
+        end)
+        raidFrame.customCheck = button(custom, "Check", 90, 196, -24, "raid custom status",
+            "Ask every bot whether custom raid tactics are on.")
+        note(custom, "The server can switch these off entirely (AiPlayerbot.EnableCustomRaidTactics).", -54)
+
+        local status = card("BOT RAID TACTICS", -182, 180)
+        raidFrame.statusButton = button(status, "Check bots", 120, 8, -24, nil,
+            "List the boss tactics each bot has loaded for this raid.")
+        raidFrame.statusButton:SetScript("OnClick", function()
+            if TB.ClearRaidStatus then TB.ClearRaidStatus() end
+            TB.SendActionIntent("raid status")
+        end)
+        local list = status:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        list:SetPoint("TOPLEFT", status, "TOPLEFT", 10, -56)
+        list:SetWidth(460); list:SetJustifyH("LEFT")
+        if list.SetJustifyV then list:SetJustifyV("TOP") end
+        list:SetText("")
+        raidFrame.statusList = list
+        return raidFrame
+    end
+
+    local raidFrame = CreateRaidView(content)
 
     local function CreateLogView(parent)
         local logFrame = CreateFrame("Frame", nil, parent)
@@ -1045,7 +1218,15 @@ function TB.InitUI()
 
                 row.nameText:SetText(name)
                 row.nameText:SetTextColor(col[1], col[2], col[3])
-                row.descText:SetText(lvlText .. " " .. (className or ""))
+                local movement = unit ~= "player" and TB.MovementLabel and TB.MovementLabel(name) or nil
+                row.descText:SetText(lvlText .. " " .. (className or "")
+                    .. (movement and (" · " .. movement) or ""))
+                if unit ~= "player" and TB.GetBotState and TB.GetBotState(name)
+                    and TB.HasServerCapability and TB.HasServerCapability("inventory") then
+                    row.bagButton:Show()
+                else
+                    row.bagButton:Hide()
+                end
                 row.accent:SetTexture(col[1], col[2], col[3], 0.95)
 
                 local ccMark = unit ~= "player" and TB.GetCcAssignment and TB.GetCcAssignment(name) or nil
@@ -1150,6 +1331,7 @@ function TB.InitUI()
                 row.partyName = nil
                 row.ccMark = nil
                 row.ccIcon:Hide()
+                row.bagButton:Hide()
             end
         end
 
@@ -1160,78 +1342,107 @@ function TB.InitUI()
         end
     end
 
+    local tabs = {
+        { name = "actions", tab = tabActions, frame = actionsFrame },
+        { name = "party",   tab = tabParty,   frame = partyFrame },
+        { name = "roster",  tab = tabRoster,  frame = rosterFrame },
+        { name = "raid",    tab = tabRaid,    frame = raidFrame },
+        { name = "log",     tab = tabLog,     frame = logFrame },
+    }
+
+    local function inRaid()
+        return ((GetNumRaidMembers and GetNumRaidMembers()) or 0) > 0
+    end
+
+    -- The Raid tab only exists while you are in a raid; the others close up.
+    local function layoutTabs()
+        local x = 0
+        for _, t in ipairs(tabs) do
+            if t.name ~= "raid" or inRaid() then
+                t.tab:ClearAllPoints()
+                t.tab:SetPoint("LEFT", tabBar, "LEFT", x, 0)
+                t.tab:Show()
+                x = x + 86
+            else
+                t.tab:Hide()
+            end
+        end
+    end
+
     local function showTab(name)
+        if name == "raid" and not inRaid() then name = "actions" end
+        local known = false
+        for _, t in ipairs(tabs) do
+            if t.name == name then known = true end
+        end
+        if not known then name = "actions" end
+        layoutTabs()
+        for _, t in ipairs(tabs) do
+            if t.name == name then
+                t.frame:Show()
+                t.tab.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+                t.tab:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
+                t.tab:Disable()
+            else
+                t.frame:Hide()
+                t.tab.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+                t.tab:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
+                t.tab:Enable()
+            end
+        end
         if name == "roster" then
-            rosterFrame:Show(); actionsFrame:Hide(); partyFrame:Hide(); logFrame:Hide()
-            tabRoster.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
-            tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabParty.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
-            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabRoster:Disable(); tabActions:Enable(); tabParty:Enable(); tabLog:Enable()
             TB.Refresh()
             if not TB.HasRosterSnapshot or not TB.HasRosterSnapshot() then
                 TB.PollList(true)
             end
         elseif name == "party" then
-            partyFrame:Show(); actionsFrame:Hide(); rosterFrame:Hide(); logFrame:Hide()
-            tabParty.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
-            tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
-            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabParty:Disable(); tabActions:Enable(); tabRoster:Enable(); tabLog:Enable()
             if TB.RefreshPartyView then TB.RefreshPartyView() end
         elseif name == "log" then
-            logFrame:Show(); actionsFrame:Hide(); rosterFrame:Hide(); partyFrame:Hide()
-            tabLog.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
-            tabActions.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabParty.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
-            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabLog:Disable(); tabActions:Enable(); tabParty:Enable(); tabRoster:Enable()
             if TB.RefreshLogView then TB.RefreshLogView() end
+        elseif name == "raid" then
+            if TB.RefreshRaidView then TB.RefreshRaidView() end
         else
-            actionsFrame:Show(); partyFrame:Hide(); rosterFrame:Hide(); logFrame:Hide()
-            tabActions.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
-            tabParty.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabRoster.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabLog.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
-            tabActions:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.95)
-            tabParty:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabRoster:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabLog:SetBackdropColor(COL.bg[1], COL.bg[2], COL.bg[3], 0.62)
-            tabActions:Disable(); tabParty:Enable(); tabRoster:Enable(); tabLog:Enable()
             TB.Refresh()
         end
         TortoiseBotsDB.activeTab = name
     end
 
     local initial = (TortoiseBotsDB and TortoiseBotsDB.activeTab) or "actions"
-    if initial ~= "roster" and initial ~= "party" and initial ~= "log" then initial = "actions" end
     showTab(initial)
-    tabActions:SetScript("OnClick", function() showTab("actions") end)
-    tabParty:SetScript("OnClick", function() showTab("party") end)
-    tabRoster:SetScript("OnClick", function() showTab("roster") end)
-    tabLog:SetScript("OnClick", function() showTab("log") end)
+    for _, t in ipairs(tabs) do
+        local tabName = t.name
+        t.tab:SetScript("OnClick", function() showTab(tabName) end)
+    end
+
+    -- Joining or leaving a raid adds or removes the Raid tab.
+    TB.UpdateRaidTab = function()
+        local current = TortoiseBotsDB and TortoiseBotsDB.activeTab
+        if current == "raid" and not inRaid() then
+            showTab("actions")
+        else
+            layoutTabs()
+        end
+    end
 
     TB.ShowTab = showTab
     TB.tabActions, TB.tabParty, TB.tabRoster, TB.tabLog = tabActions, tabParty, tabRoster, tabLog
+    TB.tabRaid, TB.raidFrame = tabRaid, raidFrame
     TB.actionsFrame, TB.partyFrame, TB.rosterFrame, TB.logFrame = actionsFrame, partyFrame, rosterFrame, logFrame
 
     local targetWatcher = CreateFrame("Frame", "TortoiseBotsManagerTargetWatcher")
     targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
     targetWatcher:RegisterEvent("PARTY_MEMBERS_CHANGED")
+    targetWatcher:RegisterEvent("RAID_ROSTER_UPDATE")
+    targetWatcher:RegisterEvent("UNIT_HEALTH")
     targetWatcher:SetScript("OnEvent", function()
+        if event == "UNIT_HEALTH" then
+            -- Only party deaths/resurrections matter (Release/Corpse run).
+            if arg1 and string.find(arg1, "^party") and TB.RefreshDeathButton then TB.RefreshDeathButton() end
+            return
+        end
+        if (event == "RAID_ROSTER_UPDATE" or event == "PARTY_MEMBERS_CHANGED") and TB.UpdateRaidTab then
+            TB.UpdateRaidTab()
+        end
         -- The Marks panel assigns by explicit bot name, so targeting no
         -- longer affects it: refresh owners instead of hiding it.
         if TB.ccMenu and TB.ccMenu:IsVisible() and TB.ccMenu.Update then TB.ccMenu:Update() end
@@ -1399,7 +1610,13 @@ function TB.RefreshActionControls()
     for _, key in ipairs(targetOnly) do
         if hasEnemyTarget then TB.actionButtons[key]:Enable() else TB.actionButtons[key]:Disable() end
     end
-    if TB.aoePending then TB.actionButtons.aoe:Disable() else TB.actionButtons.aoe:Enable() end
+    TB.RefreshToggleButtons()
+    TB.RefreshDeathButton()
+    -- Flee is a newer server intent: hide it from servers that do not
+    -- advertise it rather than let the click fail.
+    if TB.actionButtons.flee then
+        if serverHasCap("flee") then TB.actionButtons.flee:Enable() else TB.actionButtons.flee:Disable() end
+    end
     if TB.UpdateFormationPills then TB.UpdateFormationPills() end
 
     local scope, botName = targetScope()
@@ -1414,6 +1631,123 @@ function TB.RefreshActionControls()
         TB.scopeHint:SetText(TB.GetActionScopeHint())
         TB.SetTextColor(TB.scopeHint, color("muted"))
     end
+    if TB.scopeGearButton then
+        if botName and serverHasCap("inventory") then TB.scopeGearButton:Show() else TB.scopeGearButton:Hide() end
+    end
+end
+
+-- Party switch buttons: "AoE On" / "AoE Off" / "AoE Mixed", lamp colour.
+function TB.RefreshToggleButtons()
+    for key, btn in pairs(TB.toggleButtons or {}) do
+        local state = TB.GetPartyToggleState and TB.GetPartyToggleState(key) or nil
+        if key == "aoe" and not state and TB.aoeEnabled then state = "on" end
+        local word = state == "on" and "On" or (state == "mixed" and "Mixed" or "Off")
+        btn:SetText(btn.toggle.label .. " " .. word)
+        if state == "on" then btn.lamp:SetTexture(0.30, 0.90, 0.45, 1)
+        elseif state == "off" then btn.lamp:SetTexture(0.45, 0.45, 0.45, 1)
+        else btn.lamp:SetTexture(0.95, 0.72, 0.28, 1) end
+        if TB.togglePending and TB.togglePending[key] then btn:Disable() else btn:Enable() end
+    end
+end
+
+-- Release while a party bot lies dead, Corpse run once they are ghosts.
+function TB.DeathIntent()
+    local dead, ghost = false, false
+    local count = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    for i = 1, count do
+        local unit = "party" .. i
+        if UnitIsGhost and UnitIsGhost(unit) then
+            ghost = true
+        elseif UnitIsDead and UnitIsDead(unit) then
+            dead = true
+        end
+    end
+    if dead then return "release" end
+    if ghost then return "corpse run" end
+    return nil
+end
+
+function TB.RefreshDeathButton()
+    local btn = TB.actionButtons and TB.actionButtons.release
+    if not btn then return end
+    local intent = TB.DeathIntent()
+    btn:SetText(intent == "corpse run" and "Corpse run" or "Release")
+    if intent then btn:Enable() else btn:Disable() end
+end
+
+-- ── raid tab model ──────────────────────────────────────────────────────────
+local raidStatus = {}     -- [bot] = "molten core,onyxia" | "outdoor"
+local raidCustom = {}     -- [bot] = "on" | "off"
+local raidCustomAll = nil -- last party-wide custom on/off ACK
+
+function TB.ClearRaidStatus()
+    for key in pairs(raidStatus) do raidStatus[key] = nil end
+    if TB.RefreshRaidView then TB.RefreshRaidView() end
+end
+
+function TB.GetRaidCustomState()
+    local on, off = false, false
+    for _, v in pairs(raidCustom) do
+        if v == "on" then on = true else off = true end
+    end
+    if not on and not off then return raidCustomAll end
+    if on and off then return "mixed" end
+    return on and "on" or "off"
+end
+
+-- ACK routing from Comms.ParseActionMessage for the raid-only intents.
+function TB.OnRaidAck(packet)
+    local intent = packet.intent or ""
+    local _, _, botName = string.find(packet.scope or "", "^bot:(.+)$")
+    if intent == "raid status" and botName then
+        raidStatus[TB.NormalizeName(botName)] = packet.executor
+        local n = 0
+        for _ in pairs(raidStatus) do n = n + 1 end
+        if TB.SetStatus then TB.SetStatus("Raid tactics reported by " .. n .. " bot(s).", "ok") end
+        if TB.RefreshRaidView then TB.RefreshRaidView() end
+        return true
+    end
+    if intent == "raid custom status" and botName then
+        raidCustom[TB.NormalizeName(botName)] = packet.executor == "off" and "off" or "on"
+        if TB.SetStatus then TB.SetStatus("Custom tactics: " .. (TB.GetRaidCustomState() or "?"), "ok") end
+        if TB.RefreshRaidView then TB.RefreshRaidView() end
+        return true
+    end
+    if intent == "raid custom on" or intent == "raid custom off" then
+        for key in pairs(raidCustom) do raidCustom[key] = nil end
+        raidCustomAll = intent == "raid custom on" and "on" or "off"
+        if TB.RefreshRaidView then TB.RefreshRaidView() end
+    end
+    return false
+end
+
+function TB.RefreshRaidView()
+    local frame = TB.raidFrame
+    if not frame then return end
+    local state = TB.GetRaidCustomState()
+    local word = state == "on" and "On" or (state == "off" and "Off" or (state == "mixed" and "Mixed" or "?"))
+    frame.customToggle:SetText("Custom tactics: " .. word)
+    if state == "on" then frame.customToggle.lamp:SetTexture(0.30, 0.90, 0.45, 1)
+    elseif state == "off" then frame.customToggle.lamp:SetTexture(0.45, 0.45, 0.45, 1)
+    else frame.customToggle.lamp:SetTexture(0.95, 0.72, 0.28, 1) end
+
+    local names = {}
+    for name in pairs(raidStatus) do table.insert(names, name) end
+    table.sort(names)
+    local lines = {}
+    for i, name in ipairs(names) do
+        if i > 9 then
+            table.insert(lines, "|cff9d9d9d… and " .. (table.getn(names) - 9) .. " more|r")
+            break
+        end
+        local tactics = raidStatus[name]
+        if tactics == "outdoor" then tactics = "|cff9d9d9dno boss tactics loaded|r" end
+        table.insert(lines, "|cffd8a657" .. name .. "|r  " .. tactics)
+    end
+    if table.getn(lines) == 0 then
+        lines = { "|cff9d9d9dClick Check bots to see which boss tactics each bot has loaded.|r" }
+    end
+    frame.statusList:SetText(table.concat(lines, "\n"))
 end
 
 function TB.Refresh()

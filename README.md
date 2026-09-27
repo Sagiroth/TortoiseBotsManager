@@ -13,7 +13,11 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 
 ## Features
 
-* **Actions** — `Attack`, `Interrupt`, `Stop`, `Pull`, `Pullback`, `Come`, `Stay`, `Follow`, `Focus Skull`, `CC Mark` (Marks panel), and `AoE`.
+* **Actions** — `Attack`, `Interrupt`, `Flee`, `Stop`, `Pull`, `Pullback`, `Come`, `Stay`, `Follow`, `Focus Skull`, `CC Mark` (Marks panel), `Ready Check`, and six formations.
+* **Party switches** — `AoE`, `Auto CC` and `Loot` show the party's real state from the server (On / Off / Mixed, with a lamp) and flip it in one click.
+* **Out of combat** — `Rest`, `Repair`, `Sell junk`, `Train` (at a targeted class trainer) and a `Release` button that turns into `Corpse run` once your dead bots are ghosts.
+* **Bot panel (gear & bags)** — opened from the bag icon on a Party row, the `Gear & bags` button while a bot is targeted, or `/tbm bags <name>`. Paper doll with the bot's 3D model and durability, a bag grid with upgrade markers, one-click `Equip` / `Unequip` / `Give to me` (the item goes straight into a trade window), `Trade`, and a `Behaviour` tab with per-bot switches (loot, AoE, auto CC, save mana, cooldowns, threat, potions).
+* **Raid tab** — appears only while you are in a raid: `Tank face away`, `Douse runes`, Turtle custom raid tactics on/off, and a per-bot list of loaded boss tactics.
 * **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available. A separate assignment snapshot supplies each live bot's current CC mark.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
@@ -55,8 +59,10 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 ## Use
 
 * `/tbm` (primary) — toggle panel. Aliases `/tb` / `/tbot` / `/tortoise` still work.
-* `/tbm list` — force a server roster refresh. `/tbm help` and `/tbm resetpos` remain available.
+* `/tbm list` — force a server roster refresh. `/tbm bags [name]` opens a bot's gear & bags (the targeted bot when no name is given). `/tbm help` and `/tbm resetpos` remain available.
 * **Actions** — use normal WoW target selection. With an enemy target, `Attack`, `Interrupt`, `Pull`, and `Pullback` operate on the party; `Interrupt` chooses one capable bot server-side. With an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
+* **Flee** — bots drop the fight and follow you without attacking; `Attack`, `Pull`, `Follow` or `Stay` calls them back.
+* **Tooltips** — every button explains what it does; hover before you click.
 * **Pull timers** — small `− N s +` steppers under the `Pull` and `Pull back` buttons set the DPS delay before Pull (default 10 s) and the join delay before Pull back (default 3 s). Range 0–60 s, step 1 (shift-click = 5), persisted in SavedVariables. When the server advertises `pull-seconds` in its `TBM:CAPS|…` roster trailer the buttons send `pull <n>` / `pullback <n>`; older servers send no `CAPS` line and the buttons send the plain intents exactly as before.
 * **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows.
 * **Party** — use the player row's class-role buttons to tell bots whether you are tank, healer, or DPS. The selection sends `.bot role self <role>`; bot rows retain their existing role controls.
@@ -86,7 +92,8 @@ Utils.lua       — Trim, NormalizeName, backdrop, Status helpers
 Core.lua        — slash commands, throttled transport (addon channel or `.bot` chat), roster polling, SavedVariables UI preferences
 Roster.lua      — authoritative snapshot, live state, group membership, CC assignments, checkbox eligibility
 Comms.lua       — addon command channel, structured `TBM:` responses plus legacy command parsing
-UI.lua          — compact Actions/Roster/Party tabs and contextual lifecycle bar
+UI.lua          — compact Actions/Party/Roster/Raid/Log tabs and contextual lifecycle bar
+BotPanel.lua    — per-bot state (TBM:BOTSTATE), party switches, gear/bags/behaviour panel
 Minimap.lua     — draggable minimap button
 ```
 
@@ -117,7 +124,7 @@ lua5.1 tests/regression.lua .
 
 ## Roadmap
 
-* Future — richer structured acknowledgements, strategy presets, and role-aware filters after dungeon playtest.
+* Future — role-aware filters after dungeon playtest.
 
 ## Project scope and affiliation
 

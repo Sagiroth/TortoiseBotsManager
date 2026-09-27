@@ -17,6 +17,7 @@ local targetExists = true
 local targetNameValue = "Training Dummy"
 local partyMembers = {}
 local partyClassName = "Priest"
+tradePartner = nil
 
 local function object(kind, parent)
     local value = {
@@ -63,6 +64,8 @@ local function object(kind, parent)
     function methods:SetText(text) self.text = text end
     function methods:GetText() return self.text end
     function methods:SetTextColor(...) end
+    function methods:SetVertexColor(...) end
+    function methods:SetJustifyV(...) end
     function methods:SetChecked(checked) self.checked = checked and true or false end
     function methods:GetChecked() return self.checked end
     function methods:ClearFocus() end
@@ -124,7 +127,15 @@ function UnitExists(unit)
     local _, _, index = string.find(unit or "", "^party(%d+)$")
     return index and tonumber(index) <= table.getn(partyMembers) or false
 end
-function UnitIsDead(unit) return false end
+local deadUnits, ghostUnits = {}, {}
+function UnitIsDead(unit) return deadUnits[unit] or false end
+function UnitIsGhost(unit) return ghostUnits[unit] or false end
+local itemCache = {}
+function GetItemInfo(id)
+    local item = itemCache[id]
+    if not item then return nil end
+    return item.name, "item:" .. id .. ":0:0:0", item.quality or 1, 1, "Armor", "Cloth", 1, "", item.texture
+end
 function UnitLevel(unit) return 60 end
 function UnitClass(unit)
     if unit == "player" then return "Warrior", "WARRIOR" end
@@ -135,6 +146,7 @@ function GetNumRaidMembers() return 0 end
 function UnitName(unit)
     if unit == "player" then return "Tester" end
     if unit == "target" then return targetExists and targetNameValue or nil end
+    if unit == "NPC" then return tradePartner end
     local _, _, index = string.find(unit or "", "^party(%d+)$")
     return index and partyMembers[tonumber(index)] or nil
 end
@@ -149,6 +161,7 @@ for _, file in ipairs({
     "Roster.lua",
     "Comms.lua",
     "UI.lua",
+    "BotPanel.lua",
     "Minimap.lua",
 }) do
     dofile(root .. "/" .. file)
@@ -838,5 +851,220 @@ TB.dragHeader.scripts["OnDragStop"]()
 assert(TortoiseBotsDB.frame and TortoiseBotsDB.frame.point == "TOPLEFT",
     "OnDragStop must persist TOPLEFT position without crashing or calling GetPoint")
 
+
+-- ── Flee, party switches, out-of-combat chores ─────────────────────────────
+local function lastAddon() return addonSent[table.getn(addonSent)].message end
+TB.OnSystemMessage("TBM:TRANSPORT|party")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+assert(TB.HasServerCapability("flee") and TB.HasServerCapability("inventory"), "new caps must parse")
+TB.Refresh()
+assert(TB.actionButtons.flee and TB.actionButtons.flee.enabled, "Flee must be enabled when advertised")
+now = now + 1
+this = TB.actionButtons.flee
+TB.actionButtons.flee.scripts.OnClick(TB.actionButtons.flee)
+assert(lastAddon() == "action flee", "Flee must send the flee intent")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+TB.Refresh()
+assert(not TB.actionButtons.flee.enabled, "Flee must be disabled on servers without the capability")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+
+-- BOTSTATE drives the switches; a mixed party shows Mixed and turns on.
+partyMembers = { "Alpha", "Gamma" }
+TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|2")
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
+TB.OnSystemMessage("TBM:BOTSTATE|Gamma|move=flee,loot=off,aoe=off,autocc=off,savemana=on,boost=on,threat=on,potions=on")
+TB.OnSystemMessage("TBM:BOTSTATE_END")
+assert(TB.GetBotState("Alpha").move == "follow" and TB.GetBotState("gamma").savemana == "on",
+    "BOTSTATE rows must be stored per bot")
+assert(TB.GetPartyToggleState("loot") == "mixed" and TB.GetPartyToggleState("aoe") == "off",
+    "party switch state must aggregate the bots")
+assert(TB.toggleButtons.loot.text == "Loot Mixed" and TB.toggleButtons.autocc.text == "Auto CC Off",
+    "switch labels must show the server state")
+assert(TB.MovementLabel("Gamma") == "Fleeing (passive)", "flee movement must be labelled")
+now = now + 1
+this = TB.toggleButtons.loot
+TB.toggleButtons.loot.scripts.OnClick(TB.toggleButtons.loot)
+assert(lastAddon() == "action loot on", "a mixed switch must turn on")
+assert(not TB.toggleButtons.loot.enabled, "a switch waits for the server while pending")
+TB.OnSystemMessage("TBM:ACTION_ACK|loot|party|2|on")
+assert(TB.GetPartyToggleState("loot") == "on" and TB.toggleButtons.loot.enabled
+    and TB.toggleButtons.loot.text == "Loot On", "the ACK must settle the switch")
+now = now + 1
+this = TB.toggleButtons.autocc
+TB.toggleButtons.autocc.scripts.OnClick(TB.toggleButtons.autocc)
+assert(lastAddon() == "action auto cc on", "Auto CC must send the auto cc intent")
+TB.OnSystemMessage("TBM:ACTION_ERR|auto cc|failed|No scoped bot accepted")
+assert(TB.GetPartyToggleState("autocc") == "off" and TB.toggleButtons.autocc.enabled,
+    "a refused switch must not drift")
+-- A single-bot ACK only changes that bot.
+TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
+assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
+    and TB.toggleButtons.aoe.text == "AoE Mixed", "a targeted switch must only update that bot")
+
+-- Release follows the party's death state.
+TB.Refresh()
+assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")
+deadUnits.party1 = true
+TB.Refresh()
+assert(TB.actionButtons.release.enabled and TB.actionButtons.release.text == "Release",
+    "a dead bot enables Release")
+deadUnits.party1 = nil
+ghostUnits.party1 = true
+TB.Refresh()
+assert(TB.actionButtons.release.text == "Corpse run", "a ghost turns the button into Corpse run")
+now = now + 1
+this = TB.actionButtons.release
+TB.actionButtons.release.scripts.OnClick(TB.actionButtons.release)
+assert(lastAddon() == "action corpse run", "Corpse run must send the corpse run intent")
+ghostUnits.party1 = nil
+for _, intent in ipairs({ "rest", "repair", "sell", "learn" }) do
+    now = now + 1
+    this = TB.actionButtons[intent]
+    TB.actionButtons[intent].scripts.OnClick(TB.actionButtons[intent])
+    assert(lastAddon() == "action " .. intent, intent .. " must send its action intent")
+end
+assert(TB.formationPills.line, "the Line formation must be offered")
+
+-- ── Party row bag button and the bot panel ─────────────────────────────────
+TB.ShowTab("party")
+local alphaRow
+for _, row in ipairs(TB.partyFrame.rows) do
+    if row.partyName == "Alpha" then alphaRow = row end
+end
+assert(alphaRow and alphaRow.bagButton.visible, "controllable bots get a bag button")
+assert(string.find(alphaRow.descText.text, "Following", 1, true), "party rows show the movement mode")
+assert(not TB.partyFrame.rows[1].bagButton.visible, "the player row has no bag button")
+now = now + 1
+alphaRow.bagButton.scripts.OnClick(alphaRow.bagButton)
+assert(TB.botPanel and TB.botPanel.visible and TB.GetBotPanelBot() == "Alpha", "the bag button opens the panel")
+assert(lastAddon() == "inv Alpha", "opening the panel requests the inventory")
+local alphaOperation = TB.GetState("Alpha") and TB.GetState("Alpha").operation
+assert(not alphaOperation or alphaOperation.verb ~= "inv",
+    "an inventory request must not start a roster operation")
+
+itemCache[2586] = { name = "Gamemaster's Robe", quality = 4, texture = "Interface\\Icons\\INV_Chest_Cloth_05" }
+TB.OnSystemMessage("TBM:INV_BEGIN|Alpha|123456")
+TB.OnSystemMessage("TBM:INV_EQ|4|2586|40|50")
+TB.OnSystemMessage("TBM:INV_ITEM|255|23|6948|1|b")
+TB.OnSystemMessage("TBM:INV_ITEM|20|3|1201|1|eu")
+TB.OnSystemMessage("TBM:INV_ITEM|20|4|159|5|-")
+TB.OnSystemMessage("TBM:INV_END|Alpha|30|46")
+local inv = TB.GetInventory("Alpha")
+assert(inv and inv.money == 123456 and inv.free == 30 and inv.total == 46
+    and table.getn(inv.items) == 3 and inv.equipped[4].id == 2586, "inventory snapshot must parse")
+assert(inv.items[2].equippable and inv.items[2].upgrade and inv.items[1].noTrade, "item flags must parse")
+local chest = TB.botPanel.gearButtons[4]
+assert(chest.entry and chest.entry.id == 2586 and chest.icon.texture[1] == "Interface\\Icons\\INV_Chest_Cloth_05",
+    "equipped items render in their paper-doll slot")
+assert(string.find(TB.botPanel.tabBags.text, "3", 1, true), "the Bags tab counts the items")
+
+-- Gear: click → Unequip.
+local menu = frames["TortoiseBotsManagerItemMenu"]
+this = chest
+chest.scripts.OnClick(chest)
+assert(menu.visible and menu.first.text == "Unequip" and not menu.second.visible, "gear items offer Unequip")
+now = now + 1
+this = menu.first
+menu.first.scripts.OnClick(menu.first)
+assert(lastAddon() == "item Alpha unequip 255 4", "Unequip must address the equipment slot")
+
+-- Bags: equip an upgrade, give a tradeable item.
+TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
+local upgrade = TB.botPanel.bagButtons[2]
+assert(upgrade.visible and upgrade.entry.id == 1201 and upgrade.badge.visible, "upgrades are marked in the bag grid")
+assert(not TB.botPanel.bagButtons[4].visible, "empty grid cells stay hidden")
+this = upgrade
+upgrade.scripts.OnClick(upgrade)
+assert(menu.first.text == "Equip" and menu.first.enabled and menu.second.enabled, "bag items offer Equip and Give")
+now = now + 1
+this = menu.first
+menu.first.scripts.OnClick(menu.first)
+assert(lastAddon() == "item Alpha equip 20 3", "Equip must address the bag slot")
+local soulbound = TB.botPanel.bagButtons[1]
+this = soulbound
+soulbound.scripts.OnClick(soulbound)
+assert(not menu.first.enabled and not menu.second.enabled, "soulbound junk cannot be equipped or given")
+menu:Hide()
+
+-- Give without a trade window: pending, then re-sent when the window opens.
+local junk = TB.botPanel.bagButtons[3]
+this = junk
+junk.scripts.OnClick(junk)
+now = now + 1
+this = menu.second
+menu.second.scripts.OnClick(menu.second)
+assert(lastAddon() == "item Alpha give 20 4", "Give must address the bag slot")
+TB.OnSystemMessage("TBM:ACTION_ACK|item give|bot:Alpha|1|159 pending")
+local beforeTrade = table.getn(addonSent)
+tradePartner = "Alpha"
+now = now + 1
+event = "TRADE_SHOW"
+frames["TortoiseBotsManagerTradeWatcher"].scripts.OnEvent()
+assert(table.getn(addonSent) == beforeTrade + 1 and lastAddon() == "item Alpha give 20 4",
+    "the give order is repeated once the trade window opens")
+event = "TRADE_SHOW"
+frames["TortoiseBotsManagerTradeWatcher"].scripts.OnEvent()
+assert(table.getn(addonSent) == beforeTrade + 1, "the give order is repeated only once")
+tradePartner = nil
+
+-- Behaviour chips toggle one bot and follow its BOTSTATE line.
+TB.botPanel.tabBehavior.scripts.OnClick(TB.botPanel.tabBehavior)
+local saveMana = TB.botPanel.behaviorChips.savemana
+assert(saveMana.visible and saveMana.text == "Save mana: Off", "behaviour chips show the bot's state")
+now = now + 1
+this = saveMana
+saveMana.scripts.OnClick(saveMana)
+assert(lastAddon() == "behavior Alpha savemana on", "a chip sends one behaviour toggle")
+assert(not saveMana.enabled, "a chip waits for the server")
+TB.OnSystemMessage("TBM:ACTION_ACK|behavior savemana|bot:Alpha|1|on")
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on")
+assert(saveMana.enabled and saveMana.text == "Save mana: On" and TB.GetBotState("Gamma"),
+    "a single BOTSTATE line updates one bot and keeps the others")
+now = now + 1
+this = TB.botPanel.tradeButton
+TB.botPanel.tradeButton.scripts.OnClick(TB.botPanel.tradeButton)
+assert(lastAddon() == "item Alpha trade", "Trade opens a trade with the bot")
+TB.CloseBotPanel()
+assert(not TB.botPanel.visible, "the panel closes")
+
+-- ── Raid tab only exists in a raid ─────────────────────────────────────────
+assert(not TB.tabRaid.visible, "no Raid tab outside a raid")
+TB.ShowTab("raid")
+assert(TB.actionsFrame.visible and not TB.raidFrame.visible, "the Raid tab cannot open outside a raid")
+local realRaidMembers = GetNumRaidMembers
+GetNumRaidMembers = function() return 10 end
+TB.UpdateRaidTab()
+assert(TB.tabRaid.visible, "the Raid tab appears in a raid")
+TB.ShowTab("raid")
+assert(TB.raidFrame.visible and not TB.actionsFrame.visible, "the Raid tab opens in a raid")
+now = now + 1
+this = TB.raidFrame.statusButton
+TB.raidFrame.statusButton.scripts.OnClick(TB.raidFrame.statusButton)
+assert(lastAddon() == "action raid status", "Check bots asks for raid status")
+TB.OnSystemMessage("TBM:ACTION_ACK|raid status|bot:Alpha|1|molten core")
+TB.OnSystemMessage("TBM:ACTION_ACK|raid status|bot:Gamma|1|outdoor")
+assert(string.find(TB.raidFrame.statusList.text, "molten core", 1, true)
+    and string.find(TB.raidFrame.statusList.text, "Gamma", 1, true), "raid status lists every bot")
+now = now + 1
+this = TB.raidFrame.customToggle
+TB.raidFrame.customToggle.scripts.OnClick(TB.raidFrame.customToggle)
+assert(lastAddon() == "action raid custom on", "custom tactics start from on")
+TB.OnSystemMessage("TBM:ACTION_ACK|raid custom on|party|2|-")
+assert(TB.raidFrame.customToggle.text == "Custom tactics: On", "custom tactics show the ACK state")
+GetNumRaidMembers = realRaidMembers
+TB.UpdateRaidTab()
+assert(TB.actionsFrame.visible and not TB.tabRaid.visible, "leaving the raid closes the Raid tab")
+
+-- Hired companions are no roster rows: BOTSTATE still makes them bot targets.
+TB.OnSystemMessage("TBM:BOTSTATE|Hireling|move=follow,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
+local savedTarget, savedExists = targetNameValue, targetExists
+targetExists, targetNameValue = true, "Hireling"
+TB.Refresh()
+assert(TB.GetActionScope() == "bot:Hireling" and TB.scopeGearButton.visible
+    and not TB.actionButtons.attack.enabled, "a targeted hired companion is a bot scope with Gear & bags")
+targetExists, targetNameValue = savedExists, savedTarget
+TB.Refresh()
+
+partyMembers = {}
 
 print("PASS: TortoiseBotsManager regression checks")

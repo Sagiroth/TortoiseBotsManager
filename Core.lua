@@ -63,7 +63,8 @@ local function initDB()
     db.pullDelay = TB.ClampPullSeconds(db.pullDelay)
     db.pullbackDelay = TB.ClampPullSeconds(db.pullbackDelay)
     if type(db.botRoles) ~= "table" then db.botRoles = {} end
-    if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster" and db.activeTab ~= "log" then
+    if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster"
+        and db.activeTab ~= "raid" and db.activeTab ~= "log" then
         db.activeTab = "actions"
     end
 end
@@ -588,8 +589,15 @@ SLASH_TORTOISEBOTSMANAGER3 = "/tbot"
 SLASH_TORTOISEBOTSMANAGER4 = "/tortoise"
 SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     msg = string.lower(TB.Trim(msg or ""))
+    local _, _, bagsName = string.find(msg, "^bags%s*(%S*)$")
+    if bagsName then
+        -- "/tbm bags <name>", or the targeted bot when no name is given.
+        local name = bagsName ~= "" and bagsName or (UnitName and UnitName("target")) or nil
+        if name and TB.OpenBotPanel then TB.OpenBotPanel(name) else TB.Print("Usage: /tbm bags <bot name> (or target the bot)") end
+        return
+    end
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
         return
     elseif msg == "party" then
