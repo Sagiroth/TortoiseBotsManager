@@ -64,7 +64,7 @@ local function initDB()
     db.pullbackDelay = TB.ClampPullSeconds(db.pullbackDelay)
     if type(db.botRoles) ~= "table" then db.botRoles = {} end
     if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster"
-        and db.activeTab ~= "raid" and db.activeTab ~= "log" then
+        and db.activeTab ~= "raid" and db.activeTab ~= "camp" and db.activeTab ~= "log" then
         db.activeTab = "actions"
     end
 end
@@ -597,15 +597,18 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
         return
     end
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
         return
+    elseif msg == "mini" or msg == "full" then
+        if TB.SetMode then TB.SetMode(msg) end
+        return
     elseif msg == "party" then
-        if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
+        if TB.SetMode then TB.SetMode("full") end
         if TB.ShowTab then TB.ShowTab("party") end
         return
     elseif msg == "log" then
-        if TB.frame and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
+        if TB.SetMode then TB.SetMode("full") end
         if TB.ShowTab then TB.ShowTab("log") end
         return
     elseif msg == "list" then

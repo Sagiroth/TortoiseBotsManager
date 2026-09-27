@@ -15,7 +15,7 @@ TB.C.SOURCE_URL = "https://github.com/Sagiroth/TortoiseBotsManager"
 
 -- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
-TB.C.PANEL_H = 470
+TB.C.PANEL_H = 430
 TB.C.ROW_H   = 28
 TB.C.ROW_N   = 7
 TB.C.PAD     = 10  -- outer margin
@@ -262,12 +262,12 @@ for _, mark in ipairs(TB.C.CC_MARKS or {}) do
 end
 
 TB.C.FORMATIONS = {
-    { id = "shield", label = "Shield", tip = "Dungeon standard: tank front, melee flank, healer rear" },
-    { id = "near",   label = "Near",   tip = "Tight stack within 4y for narrow corridors & patrols" },
-    { id = "queue",  label = "Queue",  tip = "Single file column behind master (bridges & ledges)" },
-    { id = "arrow",  label = "Arrow",  tip = "V-wedge pointing forward for open terrain" },
-    { id = "circle", label = "Circle", tip = "360-degree defensive perimeter" },
-    { id = "line",   label = "Line",   tip = "Side by side in one line with you in the middle (open ground)" },
+    { id = "shield", label = "Shield", tip = "Dungeon standard: tank in front, melee on the flanks, healers behind." },
+    { id = "near",   label = "Near",   tip = "Tight stack close to you, for narrow corridors and sneaking past patrols." },
+    { id = "queue",  label = "Queue",  tip = "Single file behind you, for bridges and ledges." },
+    { id = "arrow",  label = "Arrow",  tip = "V-shaped wedge pointing forward, for open ground." },
+    { id = "circle", label = "Circle", tip = "Ring around you, facing out." },
+    { id = "line",   label = "Line",   tip = "Side by side in one line with you in the middle, for open ground." },
 }
 
 -- Addon command transport (server side: host/BotAddonAdapter.cpp).

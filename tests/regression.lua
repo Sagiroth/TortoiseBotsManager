@@ -162,6 +162,7 @@ for _, file in ipairs({
     "Comms.lua",
     "UI.lua",
     "BotPanel.lua",
+    "MiniBar.lua",
     "Minimap.lua",
 }) do
     dofile(root .. "/" .. file)
@@ -1063,6 +1064,38 @@ TB.Refresh()
 assert(TB.GetActionScope() == "bot:Hireling" and TB.scopeGearButton.visible
     and not TB.actionButtons.attack.enabled, "a targeted hired companion is a bot scope with Gear & bags")
 targetExists, targetNameValue = savedExists, savedTarget
+TB.Refresh()
+
+
+-- ── Tabs by kind of work, and mini mode ────────────────────────────────────
+TB.ShowTab("camp")
+assert(TB.campFrame.visible and not TB.actionsFrame.visible and TortoiseBotsDB.activeTab == "camp",
+    "the Camp tab opens its own view")
+assert(TB.tabActions.text.text == "Fight" and TB.tabCamp.visible, "Fight and Camp tabs exist")
+assert(TB.actionButtons.rest.parent.parent == TB.campFrame and TB.actionButtons.attack.parent.parent == TB.actionsFrame,
+    "chores live on Camp, fight buttons on Fight")
+TB.ShowTab("actions")
+assert(TB.actionsFrame.visible and not TB.campFrame.visible, "Fight hides Camp")
+
+TB.frame:Show()
+TB.miniButton.scripts.OnClick(TB.miniButton)
+local bar = frames["TortoiseBotsManagerMiniBar"]
+assert(TB.GetMode() == "mini" and bar.visible and not TB.frame.visible, "Mini swaps the window for the bar")
+targetExists, targetNameValue = false, nil
+TB.Refresh()
+assert(not bar.icons.attack.enabled and bar.icons.stop.enabled and bar.icons.flee.enabled,
+    "mini icons follow the target rules")
+now = now + 1
+this = bar.icons.stop
+bar.icons.stop.scripts.OnClick(bar.icons.stop)
+assert(lastAddon() == "action stop", "mini icons send the same intents")
+TB.Toggle()
+assert(not bar.visible and not TB.frame.visible, "/tbm hides the bar in mini mode")
+TB.Toggle()
+assert(bar.visible, "/tbm shows the bar again in mini mode")
+bar.expand.scripts.OnClick(bar.expand)
+assert(TB.GetMode() == "full" and TB.frame.visible and not bar.visible, "+ restores the full window")
+targetExists, targetNameValue = true, "Enemy"
 TB.Refresh()
 
 partyMembers = {}

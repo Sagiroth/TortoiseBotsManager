@@ -25,6 +25,7 @@ INCLUDED_FILES = {
     "Roster.lua",
     "UI.lua",
     "BotPanel.lua",
+    "MiniBar.lua",
     "Minimap.lua",
     "README.md",
     "LICENSE",

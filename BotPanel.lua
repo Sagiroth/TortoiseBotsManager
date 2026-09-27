@@ -14,7 +14,7 @@ local C = TB.C or {}
 local COL = C.COLOR or {}
 
 local PW = 330
-local PH = C.PANEL_H or 470
+local PH = 470 -- taller than the main window: paper doll + footer
 local SLOT = 34
 local STEP = 38
 local BAG_COLS, BAG_ROWS = 8, 7
@@ -801,7 +801,7 @@ function TB.OpenBotPanel(name, view)
     name = norm(name)
     if not name then return false end
     if not panel then createPanel() end
-    if TB.frame and TB.frame.IsVisible and not TB.frame:IsVisible() and TB.Toggle then TB.Toggle() end
+    if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then bagPage = 1 end
     currentBot = name
     if view then currentView = view end
