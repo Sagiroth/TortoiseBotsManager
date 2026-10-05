@@ -222,7 +222,7 @@ CreateHeader = function(parent)
     mini:SetPoint("RIGHT", close, "LEFT", -2, 0)
     mini:SetText("Mini")
     setButtonTooltip(mini, "Swap this window for a small bar with the fight buttons. Its + button brings the window back. Also /tbm mini.", "Mini mode")
-    mini:SetScript("OnClick", function() if TB.SetMode then TB.SetMode("mini") end end)
+    mini:SetScript("OnClick", function() TB.RequestMode("mini") end)
     TB.miniButton = mini
 
     local divider = parent:CreateTexture(nil, "ARTWORK")

@@ -1098,6 +1098,16 @@ assert(TB.GetMode() == "full" and TB.frame.visible and not bar.visible, "+ resto
 targetExists, targetNameValue = true, "Enemy"
 TB.Refresh()
 
+-- A client that has not restarted since the update has no MiniBar.lua: the
+-- Mini button must say so instead of doing nothing.
+local realSetMode = TB.SetMode
+TB.SetMode = nil
+local chatBefore = table.getn(defaultChatMessages)
+TB.miniButton.scripts.OnClick(TB.miniButton)
+assert(table.getn(defaultChatMessages) == chatBefore + 1 and string.find(defaultChatMessages[table.getn(defaultChatMessages)], "restart the game client", 1, true),
+    "Mini without MiniBar.lua tells the player to restart the client")
+TB.SetMode = realSetMode
+
 partyMembers = {}
 
 print("PASS: TortoiseBotsManager regression checks")
