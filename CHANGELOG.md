@@ -2,6 +2,14 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-10-05
+
+### UI & Controls
+- The Mini button and `/tbm mini` no longer fail silently after an addon update — if the mini bar isn't loaded yet, you now get a chat message telling you to fully restart the game client (a `/reload` won't cut it on 1.12) [#30](https://github.com/Sagiroth/TortoiseBotsManager/pull/30)
+- Regression test added to keep this from sneaking back in [#30](https://github.com/Sagiroth/TortoiseBotsManager/pull/30)
+
+---
+
 ## 2026-09-27
 
 ### UI & Controls
