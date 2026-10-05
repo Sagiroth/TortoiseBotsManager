@@ -601,7 +601,7 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
         TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
         return
     elseif msg == "mini" or msg == "full" then
-        if TB.SetMode then TB.SetMode(msg) end
+        TB.RequestMode(msg)
         return
     elseif msg == "party" then
         if TB.SetMode then TB.SetMode("full") end
@@ -623,6 +623,18 @@ end
 
 function TB.Print(msg)
     if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cffd8a657TortoiseBots Manager:|r " .. tostring(msg)) end
+end
+
+-- Mini mode lives in MiniBar.lua. The 1.12 client loads a file that is new
+-- to the .toc only after a full restart (/reload is not enough), so after an
+-- update the Mini button can exist without its bar. Say so instead of
+-- silently doing nothing.
+function TB.RequestMode(mode)
+    if TB.SetMode then
+        TB.SetMode(mode)
+        return
+    end
+    TB.Print("Mini mode is not loaded yet. Exit and restart the game client: WoW only loads new addon files on a full restart, not on /reload.")
 end
 
 -- ── Lifecycle ────────────────────────────────────────────────────────────────
