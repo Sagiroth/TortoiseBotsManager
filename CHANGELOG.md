@@ -19,6 +19,15 @@ All notable changes to TortoiseBotsManager are documented here.
 
 ---
 
+### Guild Roster
+- New Guild tab lists your claimed bots, with gear inspection built in so you can audit loadouts without leaving the panel. [#31](https://github.com/Sagiroth/TortoiseBotsManager/pull/31)
+- Cycle roles directly from the Guild tab and use assembly to gather the group in one click. [#31](https://github.com/Sagiroth/TortoiseBotsManager/pull/31)
+- Release prompt added for claimed bots, so handing a companion back is an explicit action. [#31](https://github.com/Sagiroth/TortoiseBotsManager/pull/31)
+
+### UI & Controls
+- MiniBar strata corrected — it no longer sinks behind other frames. [#31](https://github.com/Sagiroth/TortoiseBotsManager/pull/31)
+- MiniBar drag support works as expected, and its position is restored correctly after a UI reload. [#31](https://github.com/Sagiroth/TortoiseBotsManager/pull/31)
+
 ## 2026-10-05
 
 ### UI & Controls

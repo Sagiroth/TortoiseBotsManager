@@ -6,7 +6,7 @@ TortoiseBots = TortoiseBots or {}
 local TB = TortoiseBots
 TB.C = TB.C or {}
 
-TB.C.VERSION = "2026-10-05-v1"
+TB.C.VERSION = "2026-10-07-v1"
 
 -- Author credit shown in the window header, the load message and /tbm help.
 -- Forks and repacks must keep it (see README "Credit").
