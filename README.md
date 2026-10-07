@@ -13,12 +13,13 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 
 ## Features
 
-* **Tabs by kind of work** — `Fight` (during a pull), `Camp` (between pulls), `Party`, `Roster`, `Raid` (only in a raid) and `Log`.
+* **Tabs by kind of work** — `Fight` (during a pull), `Camp` (between pulls), `Party`, `Roster`, `Guild` (claimed guild bots), `Raid` (only in a raid) and `Log`.
 * **Fight** — `Attack`, `Stop`, `Interrupt`, `Flee`; `Pull` / `Pullback` with timers, `Focus Skull`, `CC Mark` (Marks panel); `Follow`, `Stay`, `Come`; party switches `AoE`, `Auto CC` and `Loot` that show the party's real state from the server (On / Off / Mixed, with a lamp).
 * **Camp** — `Rest`, `Ready Check`, `Repair`, `Sell junk`, `Train` (at a targeted class trainer), a `Release` button that turns into `Corpse run` once your dead bots are ghosts, and six formations with a one-line description of the active one.
 * **Mini mode** — the `Mini` button (or `/tbm mini`) swaps the window for a small draggable bar of fight icons; its `+` brings the window back. The mode survives a reload.
 * **Bot panel (gear & bags)** — opened from the bag icon on a Party row, the `Gear & bags` button while a bot is targeted, or `/tbm bags <name>`. Paper doll with the bot's 3D model and durability, a bag grid with upgrade markers, one-click `Equip` / `Unequip` / `Give to me` (the item goes straight into a trade window), `Trade`, and a `Behaviour` tab with per-bot switches (loot, AoE, auto CC, save mana, cooldowns, threat, potions).
 * **Raid tab** — appears only while you are in a raid: `Tank face away`, `Douse runes`, Turtle custom raid tactics on/off, and a per-bot list of loaded boss tactics.
+* **Guild tab** — wandering bots you claimed into your guild via `/ginvite` as personal raid alt-bots. Level 60 bots show a `[Locked]` gear badge (they never self-equip or auto-vendor — you gear them), leveling bots show `[Leveling]` (they equip upgrades but keep blues/epics). Checkbox multi-select with `Invite to Raid` / `Summon to Raid`, per-row role cycler (`.bot role`), backpack button opening that bot's gear & bags paperdoll, and a `Release` button that unclaims the bot back to the wandering pool via `/gkick`.
 * **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available. A separate assignment snapshot supplies each live bot's current CC mark.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
@@ -67,6 +68,7 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 * **Tooltips** — every button explains what it does; hover before you click.
 * **Pull timers** — small `− N s +` steppers under the `Pull` and `Pull back` buttons set the DPS delay before Pull (default 10 s) and the join delay before Pull back (default 3 s). Range 0–60 s, step 1 (shift-click = 5), persisted in SavedVariables. When the server advertises `pull-seconds` in its `TBM:CAPS|…` roster trailer the buttons send `pull <n>` / `pullback <n>`; older servers send no `CAPS` line and the buttons send the plain intents exactly as before.
 * **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows.
+* **Guild** — invite any unguilded wandering bot with `/ginvite <BotName>` to claim it as your raid alt-bot. Manage claimed bots from the `Guild` tab: search, select, `Invite to Raid`, `Summon to Raid`, cycle combat roles, inspect gear & bags, or `Release` (confirmation popup, then `/gkick`) to return the bot to the wandering pool.
 * **Party** — use the player row's class-role buttons to tell bots whether you are tank, healer, or DPS. The selection sends `.bot role self <role>`; bot rows retain their existing role controls.
 * **Focus / CC** — mark enemies with normal raid icons. Open `CC Mark` for the Marks panel: 8 rows (one per raid icon) showing the current owner, a `Next` button assigning the mark to the next online bot by explicit name (`cc <mark> <Bot>`), a per-row `X` clearing that mark's owner (`cc clear <Owner>`), and `Clear all` (`cc clear`). Ownership is exclusive server-side (one mark = one bot); the Party tab shows each bot's current CC icon.
 * **Search** — filters the server snapshot by name.
@@ -92,9 +94,9 @@ TortoiseBotsManager.toc
 Constants.lua   — geometry, colors, delays, status
 Utils.lua       — Trim, NormalizeName, backdrop, Status helpers
 Core.lua        — slash commands, throttled transport (addon channel or `.bot` chat), roster polling, SavedVariables UI preferences
-Roster.lua      — authoritative snapshot, live state, group membership, CC assignments, checkbox eligibility
+Roster.lua      — authoritative snapshot, live state, group membership, CC assignments, claimed guild bots, checkbox eligibility
 Comms.lua       — addon command channel, structured `TBM:` responses plus legacy command parsing
-UI.lua          — Fight/Camp/Party/Roster/Raid/Log tabs and contextual lifecycle bar
+UI.lua          — Fight/Camp/Party/Roster/Guild/Raid/Log tabs and contextual lifecycle bar
 BotPanel.lua    — per-bot state (TBM:BOTSTATE), party switches, gear/bags/behaviour panel
 MiniBar.lua     — mini mode: small draggable bar of fight icons
 Minimap.lua     — draggable minimap button

@@ -652,6 +652,10 @@ function TB.OnSystemMessage(msg)
             if TB.SetStatus then TB.SetStatus("Syncing roster…", "pending") end
         elseif rosterKind == "end" then
             if TB.SetStatus then TB.SetStatus("Roster updated · " .. tostring(rosterData), "ok") end
+        elseif rosterKind == "claimed_begin" then
+            if TB.SetStatus then TB.SetStatus("Syncing guild bots…", "pending") end
+        elseif rosterKind == "claimed_end" then
+            if TB.SetStatus then TB.SetStatus("Guild bots updated · " .. tostring(rosterData), "ok") end
         elseif rosterKind == "error" then
             local message = rosterData and rosterData.message or "Roster request failed."
             if TB.SetStatus then TB.SetStatus("Roster: " .. message, "warn") end

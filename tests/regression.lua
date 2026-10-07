@@ -37,6 +37,7 @@ local function object(kind, parent)
     function methods:ClearAllPoints() self.point = nil end
     function methods:SetFrameStrata(strata) self.strata = strata end
     function methods:SetMovable(movable) self.movable = movable end
+    function methods:SetClampedToScreen(clamped) self.clamped = clamped end
     function methods:EnableMouse(enabled) self.mouseEnabled = enabled end
     function methods:RegisterForDrag(...) self.dragButtons = {...} end
     function methods:RegisterEvent(eventName)
@@ -214,21 +215,24 @@ TB.OnSystemMessage("TortoiseBots: Enabled")
 assert(TortoiseBotsDB.roster == nil and TortoiseBotsDB.rosterList == nil,
     "old local roster data must be ignored and removed")
 assert(TortoiseBotsDB.activeTab == "actions", "Actions must be the default tab")
-assert(TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
+assert(TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.guildFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Actions tab must be visible by default")
 assert(TB.rosterFrame.point and TB.rosterFrame.point[1] == "TOPLEFT",
     "rosterFrame must have anchor point set")
 TB.ShowTab("party")
-assert(TB.partyFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
+assert(TB.partyFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.guildFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Party tab must become visible after ShowTab('party')")
 TB.ShowTab("roster")
-assert(TB.rosterFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.logFrame:IsVisible(),
+assert(TB.rosterFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.guildFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Roster tab must become visible after ShowTab('roster')")
+TB.ShowTab("guild")
+assert(TB.guildFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
+    "Guild tab must become visible after ShowTab('guild')")
 TB.ShowTab("log")
-assert(TB.logFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible(),
+assert(TB.logFrame:IsVisible() and not TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.guildFrame:IsVisible(),
     "Log tab must become visible after ShowTab('log')")
 TB.ShowTab("actions")
-assert(TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.logFrame:IsVisible(),
+assert(TB.actionsFrame:IsVisible() and not TB.partyFrame:IsVisible() and not TB.rosterFrame:IsVisible() and not TB.guildFrame:IsVisible() and not TB.logFrame:IsVisible(),
     "Actions tab must be restored after ShowTab('actions')")
 assert(TB.rows and table.getn(TB.rows) == TB.C.ROW_N, "all roster rows must be created")
 assert(TB.rows[1].kind == "Frame", "roster rows must be passive containers")
@@ -1093,6 +1097,27 @@ TB.Toggle()
 assert(not bar.visible and not TB.frame.visible, "/tbm hides the bar in mini mode")
 TB.Toggle()
 assert(bar.visible, "/tbm shows the bar again in mini mode")
+assert(bar.strata == "DIALOG", "mini bar must sit on DIALOG strata above action bars")
+assert(bar.clamped == true, "mini bar must clamp to screen")
+assert(bar.dragButtons and bar.dragButtons[1] == "LeftButton" and bar.scripts.OnDragStart and bar.scripts.OnDragStop,
+    "mini bar background must be draggable")
+local watcher = frames["TortoiseBotsManagerMiniBarWatcher"]
+assert(watcher.events.PLAYER_ENTERING_WORLD and watcher.events.PLAYER_LOGIN,
+    "mini bar watcher must restore on entering world and login")
+event = "PLAYER_LOGIN"
+bar:Hide()
+watcher.scripts.OnEvent(watcher)
+assert(bar.visible, "mini bar must restore on PLAYER_LOGIN without uiReady")
+event = "PLAYER_ENTERING_WORLD"
+bar:Hide()
+TB.uiReady = false
+watcher.scripts.OnEvent(watcher)
+assert(bar.visible, "mini bar must restore on PLAYER_ENTERING_WORLD even when uiReady is false")
+TB.uiReady = true
+TortoiseBotsDB.miniBar = { x = 9999, y = 9999 }
+SlashCmdList["TORTOISEBOTSMANAGER"]("resetpos")
+assert(TortoiseBotsDB.miniBar == nil, "resetpos must clear the mini bar position")
+assert(TB.miniBar.point[1] == "BOTTOM", "resetpos must re-anchor the mini bar")
 bar.expand.scripts.OnClick(bar.expand)
 assert(TB.GetMode() == "full" and TB.frame.visible and not bar.visible, "+ restores the full window")
 targetExists, targetNameValue = true, "Enemy"
@@ -1107,6 +1132,149 @@ TB.miniButton.scripts.OnClick(TB.miniButton)
 assert(table.getn(defaultChatMessages) == chatBefore + 1 and string.find(defaultChatMessages[table.getn(defaultChatMessages)], "restart the game client", 1, true),
     "Mini without MiniBar.lua tells the player to restart the client")
 TB.SetMode = realSetMode
+
+-- ── Claimed Guild Bots (Issue #489) ────────────────────────────────────────
+local uninvitedGuildMembers = {}
+function GuildUninvite(name) table.insert(uninvitedGuildMembers, name) end
+StaticPopupDialogs = StaticPopupDialogs or {}
+local lastPopupShown = nil
+function StaticPopup_Show(which) lastPopupShown = which end
+
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+assert(TB.HasServerCapability("claimed-roster"), "server CAPS must advertise claimed-roster")
+
+-- Initial empty state: no claimed bots yet
+TB.ShowTab("guild")
+TB.RefreshGuildView()
+assert(TB.guildFrame:IsVisible(), "Guild frame must be visible")
+assert(TB.guildFrame.emptyMsg:IsVisible(), "Empty message must show when no bots are claimed")
+assert(table.getn(TB.GetClaimedBots()) == 0, "Initial claimed bots list must be empty")
+
+-- Streaming snapshot: 3 claimed bots with mixed levels and states
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|3")
+TB.OnSystemMessage("TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1")
+TB.OnSystemMessage("TBM:CLAIMED|202|Silver|5|45|online|1|Duskwood|0")
+TB.OnSystemMessage("TBM:CLAIMED|203|Bronze|8|20|offline|0|-|0")
+TB.OnSystemMessage("TBM:CLAIMED_END")
+
+assert(TB.claimedSnapshotReady, "claimedSnapshotReady must be true after stream")
+local allClaimed = TB.GetClaimedBots()
+assert(table.getn(allClaimed) == 3, "snapshot must retain all 3 claimed bots")
+-- Sorting: level descending (60, 45, 20)
+assert(allClaimed[1].name == "Goldie" and allClaimed[1].level == 60, "highest level bot must sort first")
+assert(allClaimed[2].name == "Silver" and allClaimed[2].level == 45, "mid level bot must sort second")
+assert(allClaimed[3].name == "Bronze" and allClaimed[3].level == 20, "lower level bot must sort third")
+
+-- Gear locking policy state
+assert(allClaimed[1].gearLocked == true, "Level 60 bot must have gearLocked = true")
+assert(allClaimed[2].gearLocked == false, "Level 45 bot must have gearLocked = false")
+assert(allClaimed[3].gearLocked == false, "Level 20 bot must have gearLocked = false")
+
+-- Search filter
+assert(table.getn(TB.GetClaimedBots("silver")) == 1 and TB.GetClaimedBots("silver")[1].name == "Silver",
+    "search filter must find bot by name")
+assert(table.getn(TB.GetClaimedBots("mage")) == 1 and TB.GetClaimedBots("mage")[1].name == "Bronze",
+    "search filter must find bot by class name")
+
+-- UI rendering on Guild tab
+TB.ShowTab("guild")
+assert(not TB.guildFrame.emptyMsg:IsVisible(), "empty message must be hidden when bots exist")
+assert(TB.guildFrame.scroll:IsVisible(), "scroll frame must be visible when bots exist")
+
+local row1, row2, row3 = TB.guildFrame.rows[1], TB.guildFrame.rows[2], TB.guildFrame.rows[3]
+assert(row1:IsVisible() and row1.name:GetText() == "Goldie", "row 1 must render Goldie")
+assert(row1.lvlClass:GetText() == "60 Warrior", "row 1 must render level and class")
+assert(string.find(row1.gearBadge:GetText(), "Locked", 1, true) ~= nil, "row 1 must show Locked badge")
+assert(row2:IsVisible() and row2.name:GetText() == "Silver", "row 2 must render Silver")
+assert(string.find(row2.gearBadge:GetText(), "Leveling", 1, true) ~= nil, "row 2 must show Leveling badge")
+assert(row3:IsVisible() and row3.name:GetText() == "Bronze", "row 3 must render Bronze")
+
+-- Checkbox selection & multi-select
+this = row1.check; row1.check:SetChecked(true); row1.check.scripts.OnClick(row1.check)
+this = row3.check; row3.check:SetChecked(true); row3.check.scripts.OnClick(row3.check)
+assert(TB.IsClaimedSelected("Goldie") and TB.IsClaimedSelected("Bronze"), "multi-select checkboxes must work")
+assert(not TB.IsClaimedSelected("Silver"), "unchecked bot must not be selected")
+assert(TB.GetClaimedSelectionCount() == 2, "selection count must be 2")
+
+-- Eligibility checks:
+-- Goldie is online and not in group (eligible for invite and summon)
+-- Bronze is offline (not eligible for invite or summon)
+local eligibleInv = TB.GetEligibleClaimedNames("invite")
+assert(table.getn(eligibleInv) == 1 and eligibleInv[1] == "Goldie", "offline bot must be excluded from invite")
+local eligibleSum = TB.GetEligibleClaimedNames("summon")
+assert(table.getn(eligibleSum) == 1 and eligibleSum[1] == "Goldie", "offline bot must be excluded from summon")
+
+-- Invite to Raid button
+now = now + 1
+local beforeGuildInvite = table.getn(addonSent)
+this = TB.guildFrame.inviteBtn
+TB.guildFrame.inviteBtn.scripts.OnClick(TB.guildFrame.inviteBtn)
+assert(table.getn(addonSent) == beforeGuildInvite + 1 and lastAddon() == "invite Goldie",
+    "Invite to Raid must send invite for eligible selected bots")
+
+-- Summon to Raid button
+now = now + 1
+local beforeGuildSummon = table.getn(addonSent)
+this = TB.guildFrame.summonBtn
+TB.guildFrame.summonBtn.scripts.OnClick(TB.guildFrame.summonBtn)
+assert(table.getn(addonSent) == beforeGuildSummon + 1 and lastAddon() == "summon Goldie",
+    "Summon to Raid must send summon for eligible selected bots")
+
+-- CheckAll master checkbox
+this = TB.guildFrame.checkAll; TB.guildFrame.checkAll:SetChecked(true); TB.guildFrame.checkAll.scripts.OnClick(TB.guildFrame.checkAll)
+assert(TB.GetClaimedSelectionCount() == 3, "checkAll must select all 3 claimed bots")
+this = TB.guildFrame.checkAll; TB.guildFrame.checkAll:SetChecked(false); TB.guildFrame.checkAll.scripts.OnClick(TB.guildFrame.checkAll)
+assert(TB.GetClaimedSelectionCount() == 0, "unchecking checkAll must clear selection")
+
+-- Role button cycling
+now = now + 1
+this = row1.roleBtn
+row1.roleBtn.scripts.OnClick(row1.roleBtn)
+assert(TortoiseBotsDB.botRoles["Goldie"] ~= nil, "clicking role button must set botRoles in DB")
+
+-- Gear & Bags button (opens BotPanel with Gear Locked badge)
+this = row1.bagBtn
+row1.bagBtn.scripts.OnClick(row1.bagBtn)
+assert(TB.botPanel:IsVisible(), "Bot panel must open when bag button is clicked")
+assert(string.find(TB.botPanel.subText:GetText(), "Gear Locked", 1, true) ~= nil,
+    "Bot panel header must show Gear Locked badge for claimed 60 bot")
+
+-- Release button with confirmation popup
+now = now + 1
+this = row1.relBtn
+row1.relBtn.scripts.OnClick(row1.relBtn)
+assert(lastPopupShown == "TORTOISE_RELEASE_CLAIMED_BOT", "Release must prompt confirmation dialog")
+assert(StaticPopupDialogs["TORTOISE_RELEASE_CLAIMED_BOT"] ~= nil, "Release dialog specification must exist")
+StaticPopupDialogs["TORTOISE_RELEASE_CLAIMED_BOT"].OnAccept()
+assert(table.getn(uninvitedGuildMembers) == 1 and uninvitedGuildMembers[1] == "Goldie",
+    "confirming Release must call GuildUninvite for the bot")
+
+-- Direct release helper
+TB.ReleaseClaimedBot("Silver")
+assert(table.getn(uninvitedGuildMembers) == 2 and uninvitedGuildMembers[2] == "Silver",
+    "ReleaseClaimedBot must call GuildUninvite directly")
+
+-- Chat transport fallback for Guild actions when addon transport is unavailable
+TB.SetAddonTransport("none")
+now = now + 1
+TB.ToggleClaimedSelection("Bronze", true)
+local beforeChatSummon = table.getn(sent)
+this = TB.guildFrame.summonBtn
+-- Bronze is offline, so no summons
+assert(table.getn(sent) == beforeChatSummon, "offline bot must not trigger summon")
+TB.ToggleClaimedSelection("Goldie", true)
+TB.guildFrame.summonBtn.scripts.OnClick(TB.guildFrame.summonBtn)
+assert(table.getn(sent) == beforeChatSummon + 1 and sent[table.getn(sent)] == ".bot summon Goldie",
+    "Summon to Raid must fall back to chat .bot summon when addon transport is none")
+
+-- Sync button requests fresh snapshot
+local pollCalled = false
+local origPollList = TB.PollList
+TB.PollList = function(forced) pollCalled = forced end
+this = TB.guildFrame.syncBtn
+TB.guildFrame.syncBtn.scripts.OnClick(TB.guildFrame.syncBtn)
+assert(pollCalled == true, "Sync button must trigger forced PollList")
+TB.PollList = origPollList
 
 partyMembers = {}
 

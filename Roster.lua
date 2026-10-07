@@ -29,8 +29,12 @@ local rosterSnapshotCount = 0
 local rosterSnapshotError = nil
 local receiving = nil
 local ccReceiving = nil
+local claimedReceiving = nil
 local legacyState = {}
 local ccAssignments = {}
+local claimedState = {}
+local claimedBots = {}
+local claimedSnapshotReady = false
 
 -- Legacy list reconciliation remains useful when talking to an older module,
 -- but is deliberately not used once a structured snapshot is available.
@@ -40,10 +44,13 @@ local pollGotAny = false
 local pollNoReplyCount = 0
 
 TB.rosterSelection = TB.rosterSelection or {}
+TB.claimedSelection = TB.claimedSelection or {}
 TB._debugState = state
 TB._debugGroup = groupMembers
 TB._debugCcAssignments = ccAssignments
+TB._debugClaimedState = claimedState
 TB.rosterSnapshotReady = false
+TB.claimedSnapshotReady = false
 
 local function normalize(name)
     return TB.NormalizeName and TB.NormalizeName(name or "") or name
@@ -226,6 +233,53 @@ local function commitCcAssignments(rows)
     if TB.Refresh then TB.Refresh() end
 end
 
+local function commitClaimedSnapshot(rows)
+    local previousSelection = {}
+    for name in pairs(TB.claimedSelection) do previousSelection[name] = true end
+    clearTable(claimedState)
+    clearTable(claimedBots)
+    clearTable(TB.claimedSelection)
+    for _, row in ipairs(rows) do
+        local name = normalize(row.name)
+        if name then
+            local status, online, enteredWorld = serverStatus(row.serverState)
+            local classId = tonumber(row.classId) or 0
+            local location = TB.Trim(row.location or "")
+            if location == "" or location == "-" then location = nil end
+            if location then location = string.gsub(location, "|", "/") end
+            local entry = {
+                guid = tostring(row.guid or ""),
+                name = name,
+                classId = classId,
+                className = (C.CLASS_NAMES and C.CLASS_NAMES[classId]) or tostring(row.classId or "?"),
+                level = tonumber(row.level) or 1,
+                serverState = string.lower(TB.Trim(row.serverState or "")),
+                group = row.group == true,
+                location = location,
+                gearLocked = row.gearLocked == true,
+                status = status,
+                online = online,
+                enteredWorld = enteredWorld,
+            }
+            claimedState[name] = entry
+            table.insert(claimedBots, entry)
+            if previousSelection[name] then
+                TB.claimedSelection[name] = true
+            end
+        end
+    end
+    table.sort(claimedBots, function(a, b)
+        if a.level ~= b.level then
+            return a.level > b.level
+        end
+        return a.name < b.name
+    end)
+    claimedSnapshotReady = true
+    TB.claimedSnapshotReady = true
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
+    if TB.Refresh then TB.Refresh() end
+end
+
 -- Called by Comms.lua for each structured line.  Return true for every
 -- TBM-prefixed line, including malformed lines, so legacy text handlers do not
 -- reinterpret a protocol error as a bot name.
@@ -329,6 +383,61 @@ function TB.ParseRosterMessage(msg)
         end
         commitSnapshot(batch.rows)
         return true, "end", batch.expected
+    end
+
+    fields = protocolFields(msg, "TBM:CLAIMED_BEGIN|")
+    if fields then
+        if table.getn(fields) ~= 1 or not string.find(fields[1], "^%d+$") then
+            claimedReceiving = nil
+            return true, "error", { code = "malformed_claimed_begin", message = "Malformed claimed bots snapshot." }
+        end
+        claimedReceiving = { expected = tonumber(fields[1]), rows = {}, names = {} }
+        return true, "claimed_begin", claimedReceiving.expected
+    end
+
+    fields = protocolFields(msg, "TBM:CLAIMED|")
+    if fields then
+        if not claimedReceiving or table.getn(fields) ~= 8 then
+            claimedReceiving = nil
+            return true, "error", { code = "malformed_claimed_row", message = "Malformed claimed bot row." }
+        end
+        local guid, name, classId, level, serverState, group, location, gearLocked = unpack(fields)
+        if TB.Trim(guid) == "" or TB.Trim(name) == "" or not string.find(classId, "^%d+$")
+            or not string.find(level, "^%d+$") or TB.Trim(serverState) == ""
+            or (group ~= "0" and group ~= "1") or (gearLocked ~= "0" and gearLocked ~= "1") then
+            claimedReceiving = nil
+            return true, "error", { code = "malformed_claimed_row", message = "Malformed claimed bot row." }
+        end
+        local normalized = normalize(name)
+        if not normalized or claimedReceiving.names[normalized] then
+            claimedReceiving = nil
+            return true, "error", { code = "malformed_claimed_row", message = "Duplicate claimed bot row." }
+        end
+        claimedReceiving.names[normalized] = true
+        table.insert(claimedReceiving.rows, {
+            guid = guid,
+            name = name,
+            classId = tonumber(classId) or 0,
+            level = tonumber(level) or 1,
+            serverState = serverState,
+            group = (group == "1"),
+            location = location,
+            gearLocked = (gearLocked == "1"),
+        })
+        return true, "claimed_row", normalized
+    end
+
+    if msg == "TBM:CLAIMED_END" then
+        if not claimedReceiving then
+            return true, "error", { code = "unexpected_claimed_end", message = "Unexpected claimed bot snapshot end." }
+        end
+        local batch = claimedReceiving
+        claimedReceiving = nil
+        if table.getn(batch.rows) ~= batch.expected then
+            return true, "error", { code = "claimed_count_mismatch", message = "Incomplete claimed bot snapshot." }
+        end
+        commitClaimedSnapshot(batch.rows)
+        return true, "claimed_end", batch.expected
     end
 
     fields = protocolFields(msg, "TBM:ROSTER_ERROR|")
@@ -896,5 +1005,133 @@ gf:SetScript("OnEvent", function()
             TB.CompleteOperation(name, "uninvite", true, "Bot left your group.")
         end
     end
+    for name, st in pairs(claimedState) do
+        st.group = members[name] and true or false
+    end
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
     if TB.Refresh then TB.Refresh() end
 end)
+
+-- ── Claimed guild bots model & helpers ───────────────────────────────────────
+function TB.GetClaimedBots(filter)
+    local out = {}
+    filter = filter and string.lower(TB.Trim(filter)) or ""
+    for _, bot in ipairs(claimedBots) do
+        if filter == "" or string.find(string.lower(bot.name), filter, 1, true)
+            or string.find(string.lower(bot.className or ""), filter, 1, true) then
+            table.insert(out, bot)
+        end
+    end
+    return out
+end
+
+function TB.GetClaimedEntry(name)
+    name = normalize(name)
+    return name and claimedState[name] or nil
+end
+
+function TB.IsClaimedSelected(name)
+    name = normalize(name)
+    return name and TB.claimedSelection[name] and true or false
+end
+
+function TB.ToggleClaimedSelection(name, selected)
+    name = normalize(name)
+    if not name or not claimedState[name] then return end
+    if selected then
+        TB.claimedSelection[name] = true
+    else
+        TB.claimedSelection[name] = nil
+    end
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
+end
+
+function TB.SelectAllClaimed(selected)
+    clearTable(TB.claimedSelection)
+    if selected then
+        local filter = TB.guildFilterText or ""
+        for _, bot in ipairs(TB.GetClaimedBots(filter)) do
+            TB.claimedSelection[bot.name] = true
+        end
+    end
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
+end
+
+function TB.ClearClaimedSelection()
+    clearTable(TB.claimedSelection)
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
+end
+
+function TB.GetClaimedSelectionCount()
+    local count = 0
+    for name in pairs(TB.claimedSelection) do
+        if claimedState[name] then count = count + 1 end
+    end
+    return count
+end
+
+function TB.GetSelectedClaimedNames()
+    local names = {}
+    for _, bot in ipairs(claimedBots) do
+        if TB.claimedSelection[bot.name] then
+            table.insert(names, bot.name)
+        end
+    end
+    return names
+end
+
+function TB.GetEligibleClaimedNames(action)
+    local out = {}
+    for _, bot in ipairs(claimedBots) do
+        if TB.claimedSelection[bot.name] then
+            if action == "invite" then
+                if bot.online and not bot.group then
+                    table.insert(out, bot.name)
+                end
+            elseif action == "summon" then
+                if bot.online and bot.enteredWorld then
+                    table.insert(out, bot.name)
+                end
+            else
+                table.insert(out, bot.name)
+            end
+        end
+    end
+    return out
+end
+
+function TB.ConfirmReleaseClaimedBot(name)
+    name = normalize(name)
+    if not name then return end
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISE_RELEASE_CLAIMED_BOT"] = {
+            text = "Release " .. name .. " back to the wandering bot pool?\n\nThis will remove them from your guild and clear gear protection.",
+            button1 = "Release",
+            button2 = "Cancel",
+            OnAccept = function()
+                TB.ReleaseClaimedBot(name)
+            end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISE_RELEASE_CLAIMED_BOT")
+    else
+        TB.ReleaseClaimedBot(name)
+    end
+end
+
+function TB.ReleaseClaimedBot(name)
+    name = normalize(name)
+    if not name then return end
+    if GuildUninvite then
+        GuildUninvite(name)
+    elseif SlashCmdList and SlashCmdList["GUILD_UNINVITE"] then
+        SlashCmdList["GUILD_UNINVITE"](name)
+    else
+        SendChatMessage("/gkick " .. name)
+    end
+    if TB.SetStatus then TB.SetStatus("Released " .. name .. " from guild.", "ok") end
+    if TB.RequestPollSoon then TB.RequestPollSoon(1.0) end
+end
+

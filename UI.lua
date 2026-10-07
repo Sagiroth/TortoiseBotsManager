@@ -896,13 +896,14 @@ function TB.InitUI()
     end
 
     -- Tabs by kind of work: Fight (in a pull), Camp (between pulls), Party
-    -- (who does what), Roster (who is logged in), Raid (raid only), Log.
+    -- (who does what), Roster (who is logged in), Guild (claimed bots), Raid (raid only), Log.
     local tabActions = makeTab("Fight", 0)
     local tabCamp = makeTab("Camp", 80)
     local tabParty = makeTab("Party", 160)
     local tabRoster = makeTab("Roster", 240)
-    local tabRaid = makeTab("Raid", 320)
-    local tabLog = makeTab("Log", 400)
+    local tabGuild = makeTab("Guild", 320)
+    local tabRaid = makeTab("Raid", 400)
+    local tabLog = makeTab("Log", 480)
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
@@ -1139,6 +1140,314 @@ function TB.InitUI()
     end
 
     local raidFrame = CreateRaidView(content)
+
+    local function CreateGuildView(parent)
+        local guildFrame = CreateFrame("Frame", nil, parent)
+        guildFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        guildFrame:SetWidth(W - (C.PAD or 10) * 2)
+        guildFrame:SetHeight(325)
+
+        -- Top search / count row
+        local search = CreateFrame("EditBox", "TortoiseBotsManagerGuildSearch", guildFrame, "InputBoxTemplate")
+        search:SetWidth(150); search:SetHeight(20)
+        search:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 6, 0)
+        search:SetAutoFocus(false)
+        search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+        search:SetScript("OnEnterPressed", function() this:ClearFocus() end)
+        search:SetScript("OnTextChanged", function()
+            TB.guildFilterText = this:GetText() or ""
+            if TB.RefreshGuildView then TB.RefreshGuildView() end
+        end)
+        guildFrame.searchBox = search
+
+        local clear = CreateFrame("Button", nil, guildFrame, "UIPanelButtonTemplate")
+        clear:SetWidth(42); clear:SetHeight(18)
+        clear:SetPoint("LEFT", search, "RIGHT", 4, 0)
+        clear:SetText("Clear")
+        clear:SetScript("OnClick", function()
+            search:SetText("")
+            search:ClearFocus()
+            TB.guildFilterText = ""
+            if TB.RefreshGuildView then TB.RefreshGuildView() end
+        end)
+
+        local count = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        count:SetPoint("TOPRIGHT", guildFrame, "TOPRIGHT", -6, -2)
+        count:SetWidth(240)
+        count:SetJustifyH("RIGHT")
+        TB.SetTextColor(count, color("muted"))
+        guildFrame.countLabel = count
+
+        -- Column headers
+        local checkAll = CreateFrame("CheckButton", "TortoiseBotsManagerGuildCheckAll", guildFrame, "UICheckButtonTemplate")
+        checkAll:SetWidth(20); checkAll:SetHeight(20)
+        checkAll:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 4, -20)
+        setButtonTooltip(checkAll, "Select or deselect all claimed bots")
+        checkAll:SetScript("OnClick", function()
+            local isChecked = this:GetChecked() and true or false
+            TB.SelectAllClaimed(isChecked)
+        end)
+        guildFrame.checkAll = checkAll
+
+        local headers = {
+            { text = "Name", width = 96, x = 28 },
+            { text = "Level / Class", width = 84, x = 126 },
+            { text = "Gear", width = 64, x = 212 },
+            { text = "Status", width = 64, x = 278 },
+            { text = "Bag", width = 24, x = 344 },
+            { text = "Role", width = 52, x = 372 },
+            { text = "Kick", width = 30, x = 428 },
+        }
+        for _, h in ipairs(headers) do
+            local fs = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            fs:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", h.x, -24)
+            fs:SetWidth(h.width)
+            fs:SetText(h.text)
+            TB.SetTextColor(fs, color("muted"))
+        end
+
+        local GUILD_ROW_H = 32
+        local GUILD_ROW_N = 7
+        local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerGuildScroll", guildFrame, "FauxScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -42)
+        scroll:SetWidth(W - (C.PAD or 10) * 2)
+        scroll:SetHeight(GUILD_ROW_N * GUILD_ROW_H + 4)
+        scroll:SetScript("OnVerticalScroll", function()
+            FauxScrollFrame_OnVerticalScroll(GUILD_ROW_H, TB.RefreshGuildView)
+        end)
+        guildFrame.scroll = scroll
+
+        local rows = {}
+        for i = 1, GUILD_ROW_N do
+            local row = CreateFrame("Frame", nil, guildFrame)
+            row:SetWidth(W - (C.PAD or 10) * 2 - 18)
+            row:SetHeight(GUILD_ROW_H - 2)
+            row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(i - 1) * GUILD_ROW_H)
+            TB.ApplyBackdrop(row, 0.62, 0.45)
+            row:EnableMouse(true)
+
+            row.accent = row:CreateTexture(nil, "ARTWORK")
+            row.accent:SetWidth(3)
+            row.accent:SetPoint("TOPLEFT", row, "TOPLEFT", 2, -2)
+            row.accent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 2, 2)
+            row.accent:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.95)
+
+            row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+            row.check:SetWidth(20); row.check:SetHeight(20)
+            row.check:SetPoint("LEFT", row, "LEFT", 4, 0)
+            row.check:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry then TB.ToggleClaimedSelection(entry.name, this:GetChecked() and true or false) end
+            end)
+
+            row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            row.name:SetPoint("LEFT", row, "LEFT", 28, 0)
+            row.name:SetWidth(96)
+            row.name:SetJustifyH("LEFT")
+
+            row.lvlClass = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.lvlClass:SetPoint("LEFT", row, "LEFT", 126, 0)
+            row.lvlClass:SetWidth(84)
+            row.lvlClass:SetJustifyH("LEFT")
+
+            row.gearBadge = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            row.gearBadge:SetPoint("LEFT", row, "LEFT", 212, 0)
+            row.gearBadge:SetWidth(64)
+            row.gearBadge:SetJustifyH("LEFT")
+
+            row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.status:SetPoint("LEFT", row, "LEFT", 278, 0)
+            row.status:SetWidth(64)
+            row.status:SetJustifyH("LEFT")
+
+            local bagBtn = CreateFrame("Button", nil, row)
+            bagBtn:SetWidth(20); bagBtn:SetHeight(20)
+            bagBtn:SetPoint("LEFT", row, "LEFT", 346, 0)
+            bagBtn:RegisterForClicks("LeftButtonUp")
+            local bagIcon = bagBtn:CreateTexture(nil, "ARTWORK")
+            bagIcon:SetAllPoints(bagBtn)
+            bagIcon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
+            local bagHl = bagBtn:CreateTexture(nil, "HIGHLIGHT")
+            bagHl:SetAllPoints(bagBtn)
+            bagHl:SetTexture(1, 1, 1, 0.2)
+            bagBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.OpenBotPanel then TB.OpenBotPanel(entry.name, "inv") end
+            end)
+            bagBtn:SetScript("OnEnter", function()
+                local entry = this:GetParent().entry
+                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Gear & Bags")
+                GameTooltip:AddLine("Open " .. (entry and entry.name or "this bot") .. "'s gear, bags and paperdoll.", 0.9, 0.9, 0.9, 1)
+                GameTooltip:Show()
+            end)
+            bagBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            row.bagBtn = bagBtn
+
+            local roleBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            roleBtn:SetWidth(52); roleBtn:SetHeight(20)
+            roleBtn:SetPoint("LEFT", row, "LEFT", 372, 0)
+            roleBtn:SetText("Role")
+            roleBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if not entry then return end
+                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
+                if table.getn(roles) == 0 then return end
+                local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
+                local currentId = dbRoles[entry.name]
+                local nextIndex = 1
+                for idx, r in ipairs(roles) do
+                    if r.id == currentId then
+                        nextIndex = math.mod(idx, table.getn(roles)) + 1
+                        break
+                    end
+                end
+                local newRole = roles[nextIndex]
+                TortoiseBotsDB = TortoiseBotsDB or {}
+                TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
+                local previousRole = TortoiseBotsDB.botRoles[entry.name]
+                TortoiseBotsDB.botRoles[entry.name] = newRole.id
+
+                if newRole.id == "tank" then
+                    TB.SendBotCommand("role " .. entry.name .. " tank")
+                else
+                    if previousRole == "tank" then
+                        TB.SendBotCommand("role " .. entry.name .. " clear")
+                    end
+                    if newRole.strat and newRole.strat ~= "" then
+                        TB.SendBotCommand("command " .. entry.name .. " " .. newRole.strat)
+                    end
+                end
+                if TB.Print then TB.Print(entry.name .. " role set to " .. newRole.label) end
+                if TB.RefreshGuildView then TB.RefreshGuildView() end
+            end)
+            roleBtn:SetScript("OnEnter", function()
+                local entry = this:GetParent().entry
+                if not entry then return end
+                local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
+                local currentId = dbRoles[entry.name]
+                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
+                local curLabel = "Default"
+                for _, r in ipairs(roles) do
+                    if r.id == currentId then curLabel = r.label break end
+                end
+                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Combat Role: " .. curLabel)
+                GameTooltip:AddLine("Click to cycle to the next combat role.", 0.9, 0.9, 0.9, 1)
+                GameTooltip:Show()
+            end)
+            roleBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            row.roleBtn = roleBtn
+
+            local relBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            relBtn:SetWidth(30); relBtn:SetHeight(20)
+            relBtn:SetPoint("LEFT", row, "LEFT", 428, 0)
+            relBtn:SetText("Rel")
+            relBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.ConfirmReleaseClaimedBot then
+                    TB.ConfirmReleaseClaimedBot(entry.name)
+                end
+            end)
+            setButtonTooltip(relBtn, "Release this bot back to the wandering bot pool (/gkick)")
+            row.relBtn = relBtn
+
+            local hl = row:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints(row)
+            hl:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.08)
+
+            row:SetScript("OnEnter", function()
+                local entry = this.entry
+                if not entry then return end
+                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                GameTooltip:SetText(entry.name)
+                GameTooltip:AddLine("Level " .. entry.level .. " " .. (entry.className or "") .. " · " .. (entry.status or "Unknown"), 1, 1, 1)
+                if entry.location then
+                    GameTooltip:AddLine("Location: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3])
+                end
+                if entry.gearLocked then
+                    GameTooltip:AddLine("|cffffd200Gear Hard-Locked (Lvl 60)|r\nBot will never self-equip or auto-vendor gear. 100% player managed.", 1, 0.82, 0)
+                else
+                    GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
+                end
+                GameTooltip:Show()
+            end)
+            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+            table.insert(rows, row)
+        end
+        guildFrame.rows = rows
+
+        -- Empty state message
+        local emptyMsg = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        emptyMsg:SetPoint("CENTER", guildFrame, "CENTER", 0, -10)
+        emptyMsg:SetWidth(420)
+        emptyMsg:SetJustifyH("CENTER")
+        emptyMsg:SetText("|cffd8a657No Claimed Guild Bots|r\n\n|cffffffffYou can claim autonomous wandering bots in the world as your personal raid roster alt-bots!|r\n\n|cff888888Invite any unguilded bot to your guild using:|r\n|cff4ecb5a/ginvite <BotName>|r\n\n|cff888888Claimed bots preserve the gear you give them, never auto-vendor at 60, and can be inspected, geared, and summoned here.|r")
+        guildFrame.emptyMsg = emptyMsg
+
+        -- Bottom Guild Action Bar
+        local bar = CreateFrame("Frame", nil, guildFrame)
+        bar:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -(42 + GUILD_ROW_N * GUILD_ROW_H + 4))
+        bar:SetWidth(W - (C.PAD or 10) * 2)
+        bar:SetHeight(34)
+
+        local selection = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        selection:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 8)
+        selection:SetWidth(85)
+        selection:SetJustifyH("LEFT")
+        TB.SetTextColor(selection, color("muted"))
+        guildFrame.selectionLabel = selection
+
+        local inviteBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        inviteBtn:SetWidth(110); inviteBtn:SetHeight(22)
+        inviteBtn:SetPoint("LEFT", selection, "RIGHT", 4, 0)
+        inviteBtn:SetText("Invite to Raid")
+        setButtonTooltip(inviteBtn, "Invite selected online claimed bots to your raid or party")
+        inviteBtn:SetScript("OnClick", function()
+            local names = TB.GetEligibleClaimedNames and TB.GetEligibleClaimedNames("invite") or {}
+            if table.getn(names) > 0 then
+                if TB.QueueRosterBatch then
+                    TB.QueueRosterBatch("invite", names)
+                else
+                    for _, n in ipairs(names) do TB.SendBotCommand("invite " .. n) end
+                end
+            elseif TB.SetStatus then
+                TB.SetStatus("No eligible selected bots to invite.", "muted")
+            end
+        end)
+        guildFrame.inviteBtn = inviteBtn
+
+        local summonBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        summonBtn:SetWidth(110); summonBtn:SetHeight(22)
+        summonBtn:SetPoint("LEFT", inviteBtn, "RIGHT", 4, 0)
+        summonBtn:SetText("Summon to Raid")
+        setButtonTooltip(summonBtn, "Summon selected online claimed bots to your position")
+        summonBtn:SetScript("OnClick", function()
+            local names = TB.GetEligibleClaimedNames and TB.GetEligibleClaimedNames("summon") or {}
+            if table.getn(names) > 0 then
+                for _, n in ipairs(names) do TB.SendBotCommand("summon " .. n) end
+            elseif TB.SetStatus then
+                TB.SetStatus("No eligible selected bots to summon.", "muted")
+            end
+        end)
+        guildFrame.summonBtn = summonBtn
+
+        local syncBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        syncBtn:SetWidth(56); syncBtn:SetHeight(22)
+        syncBtn:SetPoint("LEFT", summonBtn, "RIGHT", 4, 0)
+        syncBtn:SetText("Sync")
+        setButtonTooltip(syncBtn, "Sync claimed guild bots and roster from server")
+        syncBtn:SetScript("OnClick", function()
+            if TB.PollList then TB.PollList(true) end
+        end)
+        guildFrame.syncBtn = syncBtn
+
+        guildFrame.guildBar = bar
+        return guildFrame
+    end
+
+    local guildFrame = CreateGuildView(content)
 
     local function CreateLogView(parent)
         local logFrame = CreateFrame("Frame", nil, parent)
@@ -1380,11 +1689,107 @@ function TB.InitUI()
         end
     end
 
+    function TB.RefreshGuildView()
+        if not TB.guildFrame or not TB.guildFrame.rows then return end
+        local frame = TB.guildFrame
+        local allBots = TB.GetClaimedBots and TB.GetClaimedBots(TB.guildFilterText) or {}
+        local total = table.getn(allBots)
+        local onlineCount = 0
+        local lockedCount = 0
+        for _, b in ipairs(allBots) do
+            if b.online then onlineCount = onlineCount + 1 end
+            if b.gearLocked then lockedCount = lockedCount + 1 end
+        end
+
+        if frame.countLabel then
+            frame.countLabel:SetText("Claimed: " .. total .. "  (|cff4ecb5a" .. onlineCount
+                .. " online|r, |cffffd200" .. lockedCount .. " locked|r)")
+        end
+
+        if total == 0 then
+            if frame.emptyMsg then frame.emptyMsg:Show() end
+            if frame.scroll then frame.scroll:Hide() end
+            if frame.guildBar then frame.guildBar:Hide() end
+            for _, row in ipairs(frame.rows) do row:Hide() end
+            return
+        end
+
+        if frame.emptyMsg then frame.emptyMsg:Hide() end
+        if frame.scroll then frame.scroll:Show() end
+        if frame.guildBar then frame.guildBar:Show() end
+
+        FauxScrollFrame_Update(frame.scroll, total, 7, 32)
+        local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(frame.scroll)) or 0
+        local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
+
+        local allSelected = total > 0
+        for i = 1, 7 do
+            local row = frame.rows[i]
+            local idx = offset + i
+            if idx <= total then
+                local entry = allBots[idx]
+                row.entry = entry
+                row.claimedName = entry.name
+                local isSelected = TB.IsClaimedSelected and TB.IsClaimedSelected(entry.name) or false
+                if not isSelected then allSelected = false end
+                row.check:SetChecked(isSelected)
+
+                local classColor = C.CLASS_COLORS and C.CLASS_COLORS[entry.classId] or COL.gold
+                row.name:SetText(entry.name)
+                row.name:SetTextColor(classColor[1], classColor[2], classColor[3])
+
+                row.lvlClass:SetText(entry.level .. " " .. (entry.className or ""))
+                if entry.gearLocked then
+                    row.gearBadge:SetText("|cffffd200[Locked]|r")
+                else
+                    row.gearBadge:SetText("|cff4ecb5a[Leveling]|r")
+                end
+
+                local statusColor = entry.online and "|cff4ecb5a" or "|cff888888"
+                local statusStr = entry.status or (entry.online and "Online" or "Offline")
+                if entry.group then statusStr = statusStr .. " (P)" end
+                row.status:SetText(statusColor .. statusStr .. "|r")
+
+                -- Role button label
+                local currentRoleId = dbRoles[entry.name]
+                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
+                local roleLabel = "Role"
+                for _, r in ipairs(roles) do
+                    if r.id == currentRoleId then roleLabel = r.label break end
+                end
+                if roleLabel == "Role" and table.getn(roles) > 0 then
+                    roleLabel = roles[1].label
+                end
+                row.roleBtn:SetText(roleLabel)
+
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+
+        if frame.checkAll then
+            frame.checkAll:SetChecked(allSelected)
+        end
+
+        local selCount = TB.GetClaimedSelectionCount and TB.GetClaimedSelectionCount() or 0
+        if frame.selectionLabel then
+            frame.selectionLabel:SetText(selCount .. " selected")
+        end
+        if frame.inviteBtn then
+            if selCount > 0 then frame.inviteBtn:Enable() else frame.inviteBtn:Disable() end
+        end
+        if frame.summonBtn then
+            if selCount > 0 then frame.summonBtn:Enable() else frame.summonBtn:Disable() end
+        end
+    end
+
     local tabs = {
         { name = "actions", tab = tabActions, frame = actionsFrame },
         { name = "camp",    tab = tabCamp,    frame = campFrame },
         { name = "party",   tab = tabParty,   frame = partyFrame },
         { name = "roster",  tab = tabRoster,  frame = rosterFrame },
+        { name = "guild",   tab = tabGuild,   frame = guildFrame },
         { name = "raid",    tab = tabRaid,    frame = raidFrame },
         { name = "log",     tab = tabLog,     frame = logFrame },
     }
@@ -1393,15 +1798,24 @@ function TB.InitUI()
         return ((GetNumRaidMembers and GetNumRaidMembers()) or 0) > 0
     end
 
-    -- The Raid tab only exists while you are in a raid; the others close up.
+    -- Responsive tab bar layout: adjusts width and stride to fit 6 or 7 tabs.
     local function layoutTabs()
+        local visibleCount = 0
+        for _, t in ipairs(tabs) do
+            if t.name ~= "raid" or inRaid() then
+                visibleCount = visibleCount + 1
+            end
+        end
+        local tabW = (visibleCount > 6) and 66 or 76
+        local step = (visibleCount > 6) and 68 or 80
         local x = 0
         for _, t in ipairs(tabs) do
             if t.name ~= "raid" or inRaid() then
                 t.tab:ClearAllPoints()
                 t.tab:SetPoint("LEFT", tabBar, "LEFT", x, 0)
+                t.tab:SetWidth(tabW)
                 t.tab:Show()
-                x = x + 80
+                x = x + step
             else
                 t.tab:Hide()
             end
@@ -1432,6 +1846,11 @@ function TB.InitUI()
         if name == "roster" then
             TB.Refresh()
             if not TB.HasRosterSnapshot or not TB.HasRosterSnapshot() then
+                TB.PollList(true)
+            end
+        elseif name == "guild" then
+            if TB.RefreshGuildView then TB.RefreshGuildView() end
+            if not TB.claimedSnapshotReady then
                 TB.PollList(true)
             end
         elseif name == "party" then
@@ -1465,6 +1884,7 @@ function TB.InitUI()
 
     TB.ShowTab = showTab
     TB.tabActions, TB.tabParty, TB.tabRoster, TB.tabLog = tabActions, tabParty, tabRoster, tabLog
+    TB.tabGuild, TB.guildFrame = tabGuild, guildFrame
     TB.tabRaid, TB.raidFrame = tabRaid, raidFrame
     TB.tabCamp = tabCamp
     TB.actionsFrame, TB.partyFrame, TB.rosterFrame, TB.logFrame = actionsFrame, partyFrame, rosterFrame, logFrame
@@ -1492,6 +1912,11 @@ function TB.InitUI()
     TB.frame = main
     TB.uiReady = true
     TB.Refresh()
+    -- Mini mode survives a reload: the login events fire before InitUI on
+    -- first load, so restore the bar view here as well.
+    if TB.GetMode and TB.GetMode() == "mini" and TB.SetMode then
+        TB.SetMode("mini")
+    end
 end
 
 function TB.SetStatus(msg, kind)
@@ -1804,6 +2229,9 @@ function TB.Refresh()
     TB.RefreshActionControls()
     if TB.partyFrame and TB.partyFrame:IsVisible() and TB.RefreshPartyView then
         TB.RefreshPartyView()
+    end
+    if TB.guildFrame and TB.guildFrame:IsVisible() and TB.RefreshGuildView then
+        TB.RefreshGuildView()
     end
 end
 
