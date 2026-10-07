@@ -678,8 +678,20 @@ local function renderHeader(inv)
     panel.nameText:SetTextColor(col[1], col[2], col[3])
     local parts = {}
     local unit = botUnit(currentBot)
-    if unit and UnitLevel then table.insert(parts, "Lvl " .. (UnitLevel(unit) or "?")) end
+    local claimed = TB.GetClaimedEntry and TB.GetClaimedEntry(currentBot)
+    if unit and UnitLevel then
+        table.insert(parts, "Lvl " .. (UnitLevel(unit) or "?"))
+    elseif claimed and claimed.level then
+        table.insert(parts, "Lvl " .. claimed.level)
+    end
     if classId and C.CLASS_NAMES then table.insert(parts, C.CLASS_NAMES[classId]) end
+    if claimed then
+        if claimed.gearLocked then
+            table.insert(parts, "|cffffd200Gear Locked|r")
+        else
+            table.insert(parts, "|cff4ecb5aLeveling|r")
+        end
+    end
     local move = TB.MovementLabel(currentBot)
     if move then table.insert(parts, move) end
     panel.subText:SetText(table.concat(parts, " · "))

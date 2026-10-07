@@ -2,6 +2,23 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-10-07
+
+### Guild Tab & Claimed Guild Bots (Issue #489)
+- New dedicated **Guild** tab for managing autonomous wandering bots claimed into your guild as personal raid alt-bots.
+- **Raid Assembly:** Checkbox multi-select with one-click **Invite to Raid** and **Summon to Raid** buttons.
+- **Gear Protection Transparency:** Clear visual badges distinguishing Level 60 `[Locked]` gear (hard-locked: bots never self-equip or auto-vendor) from Level 1–59 `[Leveling]` gear (self-equips world upgrades, preserves blues & epics).
+- **One-Click Gear & Bags Paperdoll:** Backpack button on each row opens `BotPanel` showing equipped items, durabilities, bags, and gear lock status.
+- **Combat Role Cycling:** One-click role button on each row cycles combat roles (Tank, Healer, DPS, spec strategies) and sends `.bot role` updates.
+- **Release Confirmation:** Release button with confirmation popup unclaims bots back to the wandering pool via `/gkick`.
+- **Responsive Tab Bar:** Dynamic width and stride adjustments so all 6 or 7 tabs fit cleanly across the standard panel width.
+
+### MiniBar Fixes
+- Mini mode now restores the bar on reload/login even when the login events fire before the UI initializes, and also re-applies on `InitUI`.
+- Mini bar sits on `DIALOG` strata, clamps to screen, drags from the background as well as the turtle handle, and `/tbm resetpos` re-centers it.
+
+---
+
 ## 2026-10-05
 
 ### UI & Controls

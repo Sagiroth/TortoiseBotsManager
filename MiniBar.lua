@@ -100,8 +100,9 @@ local function createBar()
     bar = CreateFrame("Frame", "TortoiseBotsManagerMiniBar", UIParent)
     bar:SetWidth(34 + table.getn(ITEMS) * STEP + 32)
     bar:SetHeight(ICON + 10)
-    bar:SetFrameStrata("MEDIUM")
+    bar:SetFrameStrata("DIALOG")
     bar:SetMovable(true)
+    bar:SetClampedToScreen(true)
     bar:EnableMouse(true)
     TB.ApplyBackdrop(bar, 0.9, 0.9)
     local pos = TortoiseBotsDB and TortoiseBotsDB.miniBar
@@ -110,8 +111,13 @@ local function createBar()
     else
         bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 160)
     end
-
-    -- The turtle is the drag handle (the whole bar is full of buttons).
+    -- The turtle is the drag handle; the bar background drags too.
+    bar:RegisterForDrag("LeftButton")
+    bar:SetScript("OnDragStart", function() bar:StartMoving() end)
+    bar:SetScript("OnDragStop", function()
+        bar:StopMovingOrSizing()
+        savePosition()
+    end)
     local handle = CreateFrame("Button", nil, bar)
     handle:SetWidth(22); handle:SetHeight(22)
     handle:SetPoint("LEFT", bar, "LEFT", 7, 0)
@@ -219,10 +225,12 @@ end
 local watcher = CreateFrame("Frame", "TortoiseBotsManagerMiniBarWatcher")
 watcher:RegisterEvent("PLAYER_TARGET_CHANGED")
 watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+watcher:RegisterEvent("PLAYER_LOGIN")
 watcher:SetScript("OnEvent", function()
-    if event == "PLAYER_ENTERING_WORLD" then
-        -- Mini mode survives a reload: bring the bar back.
-        if TB.GetMode() == "mini" and TB.uiReady then
+    if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
+        -- Mini mode survives a reload: bring the bar back. No TB.uiReady
+        -- guard: this event fires before InitUI runs on login.
+        if TB.GetMode() == "mini" then
             if not bar then createBar() end
             bar:Show()
         end

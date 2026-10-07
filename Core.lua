@@ -616,6 +616,11 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     elseif msg == "resetpos" then
         TortoiseBotsDB.frame = { point = "CENTER", rpoint = "CENTER", x = 0, y = 15 }
         if TB.frame then TB.frame:ClearAllPoints(); TB.frame:SetPoint("CENTER", UIParent, "CENTER", 0, 15) end
+        TortoiseBotsDB.miniBar = nil
+        if TB.miniBar then
+            TB.miniBar:ClearAllPoints()
+            TB.miniBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 160)
+        end
         TB.Print("Position reset."); return
     end
     if TB.Toggle then TB.Toggle() else TB.Print("UI not loaded yet.") end
