@@ -45,16 +45,18 @@ def split_text(text, max_len=3900):
     return chunks
 
 
-def send_discord_message(url, payload):
-    data = json.dumps(payload).encode("utf-8")
+def send_discord_message(url, payload, method="POST"):
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    headers = {
+        "User-Agent": "TortoiseBotsManager-Changelog-Notifier/1.0"
+    }
+    if data:
+        headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
         url,
         data=data,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "TortoiseBotsManager-Changelog-Notifier/1.0"
-        },
-        method="POST"
+        headers=headers,
+        method=method
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -78,6 +80,8 @@ def main():
     parser.add_argument("--username", default="TortoiseBotsManager Releases", help="Webhook bot display name.")
     parser.add_argument("--avatar-url", default="", help="Optional bot avatar image URL.")
     parser.add_argument("--short", action="store_true", help="Post a concise release announcement with download link instead of full changelog dump.")
+    parser.add_argument("--edit-message-id", default="", help="Optional Discord message ID to edit in place.")
+    parser.add_argument("--delete-message-id", default="", help="Optional Discord message ID to delete.")
     args = parser.parse_args()
 
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
@@ -94,6 +98,20 @@ def main():
     post_url = f"{base_webhook}?{'&'.join(query_params)}"
     fallback_url = f"{base_webhook}?wait=true"
 
+    if args.delete_message_id:
+        del_url = f"{base_webhook}/messages/{args.delete_message_id}"
+        if thread_id:
+            del_url += f"?thread_id={thread_id}"
+        print(f"Deleting Discord message {args.delete_message_id}...")
+        success, code = send_discord_message(del_url, payload=None, method="DELETE")
+        if not success and thread_id and code in (400, 404):
+            print("Retrying delete without thread_id...", file=sys.stderr)
+            success, _ = send_discord_message(f"{base_webhook}/messages/{args.delete_message_id}", payload=None, method="DELETE")
+        if not success:
+            sys.exit(1)
+        print(f"Successfully deleted Discord message {args.delete_message_id}.")
+        return
+
     release_url = f"https://github.com/{args.repo}/releases/tag/{args.tag}" if args.tag else f"https://github.com/{args.repo}"
     download_url = f"https://github.com/{args.repo}/releases/download/{args.tag}/TortoiseBotsManager.zip" if args.tag else ""
 
@@ -108,7 +126,7 @@ def main():
             embed_title += f" • {args.tag}"
 
         desc_parts = [
-            f"Nowe wydanie dodatku **TortoiseBotsManager** ({args.tag or 'latest'}) jest już dostępne!",
+            f"A new release of **TortoiseBotsManager Addon** ({args.tag or 'latest'}) is now available!",
             ""
         ]
         if notes_text:
@@ -121,7 +139,7 @@ def main():
             desc_parts.append(preview)
             desc_parts.append("")
 
-        desc_parts.append(f"📦 **[Pobierz dodatek i zobacz changelog na GitHubie]({release_url})**")
+        desc_parts.append(f"📦 **[Download Addon & View Changelog on GitHub]({release_url})**")
 
         embed = {
             "title": embed_title,
@@ -135,8 +153,8 @@ def main():
         if download_url:
             embed["fields"] = [
                 {
-                    "name": "⬇️ Bezpośrednie pobranie (.zip)",
-                    "value": f"[Pobierz TortoiseBotsManager.zip]({download_url})",
+                    "name": "⬇️ Direct Download (.zip)",
+                    "value": f"[Download TortoiseBotsManager.zip]({download_url})",
                     "inline": False,
                 }
             ]
@@ -148,14 +166,19 @@ def main():
         if args.avatar_url:
             payload["avatar_url"] = args.avatar_url
 
-        success, code = send_discord_message(post_url, payload)
+        target_url = f"{base_webhook}/messages/{args.edit_message_id}?{'&'.join(query_params)}" if args.edit_message_id else post_url
+        method = "PATCH" if args.edit_message_id else "POST"
+
+        success, code = send_discord_message(target_url, payload, method=method)
         if not success and thread_id and code in (400, 404):
             print(f"Warning: Discord thread {thread_id} failed with HTTP {code}. Retrying directly to root webhook...", file=sys.stderr)
-            success, _ = send_discord_message(fallback_url, payload)
+            fallback_target = f"{base_webhook}/messages/{args.edit_message_id}?wait=true" if args.edit_message_id else fallback_url
+            success, _ = send_discord_message(fallback_target, payload, method=method)
         if not success:
             sys.exit(1)
 
-        print(f"Successfully posted short release announcement to Discord thread {thread_id or 'channel'}.")
+        action_word = "edited" if args.edit_message_id else "posted"
+        print(f"Successfully {action_word} release announcement in Discord thread {thread_id or 'channel'}.")
         return
 
     # Full changelog mode

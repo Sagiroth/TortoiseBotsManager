@@ -9,6 +9,16 @@ on:
       - 'Constants.lua'
       - 'TortoiseBotsManager.toc'
       - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      edit_message_id:
+        description: 'Discord Message ID to edit with new announcement'
+        required: false
+        default: ''
+      delete_message_id:
+        description: 'Discord Message ID to delete'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -108,4 +118,6 @@ jobs:
             --repo "Sagiroth/TortoiseBotsManager" \
             --thread-id "${{ vars.DISCORD_RELEASE_THREAD_ID || vars.DISCORD_CHANGELOG_THREAD_ID || secrets.DISCORD_RELEASE_THREAD_ID || secrets.DISCORD_CHANGELOG_THREAD_ID || '1560007927828586586' }}" \
             --username "TortoiseBotsManager Releases" \
+            --edit-message-id "${{ inputs.edit_message_id || '' }}" \
+            --delete-message-id "${{ inputs.delete_message_id || '' }}" \
             --short
