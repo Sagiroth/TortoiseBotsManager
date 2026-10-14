@@ -121,12 +121,12 @@ def main():
             notes_text = f.read().strip()
 
     if args.short:
-        embed_title = f"🎮 {args.title}"
+        embed_title = f"{args.title}"
         if args.tag and args.tag not in args.title:
             embed_title += f" • {args.tag}"
 
         desc_parts = [
-            f"A new release of **TortoiseBotsManager Addon** ({args.tag or 'latest'}) is now available!",
+            f"A new release of **TortoiseBotsManager Addon** ({args.tag or 'latest'}) is now available.",
             ""
         ]
         if notes_text:
@@ -139,7 +139,7 @@ def main():
             desc_parts.append(preview)
             desc_parts.append("")
 
-        desc_parts.append(f"📦 **[Download Addon & View Changelog on GitHub]({release_url})**")
+        desc_parts.append(f"**[Download Addon & View Changelog on GitHub]({release_url})**")
 
         embed = {
             "title": embed_title,
