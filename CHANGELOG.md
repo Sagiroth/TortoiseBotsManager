@@ -2,6 +2,14 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## 2026-10-14
+
+### Comms & Protocol
+- Changelog posts (auto-post, re-post, and edits) now land in the dedicated Discord changelog thread using its own `DISCORD_CHANGELOG_WEBHOOK_URL` secret, keeping release chatter out of the issue feed. [#32](https://github.com/Sagiroth/TortoiseBotsManager/pull/32)
+- Issue notifications are untouched — they still use the original webhook and thread, so nothing changes for bug reports and PR pings. [#32](https://github.com/Sagiroth/TortoiseBotsManager/pull/32)
+
+---
+
 ## 2026-10-07
 
 ### Guild Tab & Claimed Guild Bots (Issue #489)
