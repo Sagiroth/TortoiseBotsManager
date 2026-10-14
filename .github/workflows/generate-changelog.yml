@@ -72,8 +72,8 @@ jobs:
           # Commit first: pulling with the stamped files still unstaged fails.
           git pull --rebase origin main
           git push origin main
-          git tag "${{ steps.version.outputs.build_version }}"
-          git push origin "${{ steps.version.outputs.build_version }}"
+          git tag -f "${{ steps.version.outputs.build_version }}"
+          git push -f origin "${{ steps.version.outputs.build_version }}"
 
       - name: Package Addon Zip
         run: |
