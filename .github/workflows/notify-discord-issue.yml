@@ -26,8 +26,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
           INPUT_DELETE_MESSAGE_ID: ${{ inputs.delete_message_id }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DISCORD_ISSUE_THREAD_ID: ${{ secrets.DISCORD_ISSUE_THREAD_ID || '1542647578548772954' }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_CHANGELOG_WEBHOOK_URL }}
+          DISCORD_ISSUE_THREAD_ID: ${{ vars.DISCORD_ISSUE_THREAD_ID || secrets.DISCORD_ISSUE_THREAD_ID || secrets.DISCORD_THREAD_ID || '1560007315858395237' }}
           EVENT_ACTION: ${{ github.event.action }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
@@ -53,7 +53,7 @@ jobs:
               sys.exit(0)
 
           base_webhook = webhook.split('?')[0].rstrip('/')
-          thread_id = os.environ.get("DISCORD_ISSUE_THREAD_ID", "").strip() or "1542647578548772954"
+          thread_id = os.environ.get("DISCORD_ISSUE_THREAD_ID", "").strip()
 
           delete_id = os.environ.get("INPUT_DELETE_MESSAGE_ID", "").strip()
           if delete_id:
@@ -66,6 +66,10 @@ jobs:
                   with urllib.request.urlopen(req, timeout=15) as resp:
                       print(f"Successfully deleted Discord message {delete_id} (status {resp.status}).")
                       sys.exit(0)
+              except urllib.error.HTTPError as e:
+                  err_body = e.read().decode("utf-8", errors="replace")
+                  print(f"Error deleting message {delete_id} (HTTP {e.code}): {err_body}", file=sys.stderr)
+                  sys.exit(1)
               except Exception as e:
                   print(f"Error deleting message {delete_id}: {e}", file=sys.stderr)
                   sys.exit(1)
@@ -152,21 +156,40 @@ jobs:
                           sys.exit(0)
                       print(f"Discord edit returned status {resp.status}")
               except urllib.error.HTTPError as e:
-                  print(f"Failed to edit Discord message {msg_id} (HTTP {e.code}): {e.read().decode('utf-8', errors='replace')}")
+                  err_body = e.read().decode('utf-8', errors='replace')
+                  print(f"Failed to edit Discord message {msg_id} (HTTP {e.code}): {err_body}")
                   print("Falling back to creating a new message.")
 
           # Otherwise, post a new message and save its message ID to the issue
-          endpoint = f"{base_webhook}?wait=true"
-          if thread_id:
-              endpoint += f"&thread_id={thread_id}"
+          def send_post(use_thread=True):
+              ep = f"{base_webhook}?wait=true"
+              if use_thread and thread_id:
+                  ep += f"&thread_id={thread_id}"
+              r = urllib.request.Request(ep, data=payload_bytes, headers=headers, method="POST")
+              with urllib.request.urlopen(r, timeout=15) as response:
+                  return json.loads(response.read().decode("utf-8"))
 
-          print(f"Posting new Discord message for Issue #{number}...")
-          req = urllib.request.Request(endpoint, data=payload_bytes, headers=headers, method="POST")
+          new_msg_id = None
           try:
-              with urllib.request.urlopen(req, timeout=15) as resp:
-                  resp_data = json.loads(resp.read().decode("utf-8"))
-                  new_msg_id = resp_data.get("id")
-                  print(f"Posted alert for #{number} to Discord thread {thread_id} (msg_id={new_msg_id}).")
+              print(f"Posting new Discord message for Issue #{number} (thread={thread_id or 'none'})...")
+              resp_data = send_post(use_thread=bool(thread_id))
+              new_msg_id = resp_data.get("id")
+              print(f"Posted alert for #{number} to Discord (msg_id={new_msg_id}).")
+          except urllib.error.HTTPError as e:
+              err_body = e.read().decode("utf-8", errors="replace")
+              print(f"Discord API error HTTP {e.code}: {err_body}", file=sys.stderr)
+              # If thread failed, retry to main channel without thread
+              if thread_id and e.code in (400, 404):
+                  print(f"Retrying message post directly to webhook channel without thread_id...", file=sys.stderr)
+                  try:
+                      resp_data = send_post(use_thread=False)
+                      new_msg_id = resp_data.get("id")
+                      print(f"Posted alert for #{number} to fallback Discord channel (msg_id={new_msg_id}).")
+                  except Exception as retry_err:
+                      print(f"Fallback post also failed: {retry_err}", file=sys.stderr)
+                      sys.exit(1)
+              else:
+                  sys.exit(1)
           except Exception as e:
               print(f"Error posting to Discord: {e}", file=sys.stderr)
               sys.exit(1)

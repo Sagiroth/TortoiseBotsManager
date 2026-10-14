@@ -58,25 +58,26 @@ def send_discord_message(url, payload):
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status in (200, 204)
+            return resp.status in (200, 204), resp.status
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         print(f"Discord API error HTTP {e.code}: {body}", file=sys.stderr)
-        return False
+        return False, e.code
     except Exception as e:
         print(f"Network error sending to Discord: {e}", file=sys.stderr)
-        return False
+        return False, 0
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Post changelog to Discord webhook thread.")
-    parser.add_argument("--notes", required=True, help="Path to markdown release notes file.")
+    parser = argparse.ArgumentParser(description="Post changelog or release announcement to Discord webhook thread.")
+    parser.add_argument("--notes", default="", help="Path to markdown release notes file (optional if --short).")
     parser.add_argument("--title", default="TortoiseBotsManager Update", help="Title for the announcement.")
     parser.add_argument("--tag", default="", help="Release tag or version identifier.")
     parser.add_argument("--repo", default="Sagiroth/TortoiseBotsManager", help="GitHub repository name.")
     parser.add_argument("--thread-id", default="", help="Target Discord thread ID.")
-    parser.add_argument("--username", default="TortoiseBotsManager Changelog", help="Webhook bot display name.")
+    parser.add_argument("--username", default="TortoiseBotsManager Releases", help="Webhook bot display name.")
     parser.add_argument("--avatar-url", default="", help="Optional bot avatar image URL.")
+    parser.add_argument("--short", action="store_true", help="Post a concise release announcement with download link instead of full changelog dump.")
     args = parser.parse_args()
 
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
@@ -86,23 +87,85 @@ def main():
         print("Warning: DISCORD_WEBHOOK_URL is not set. Skipping Discord notification.")
         sys.exit(0)
 
-    if not os.path.exists(args.notes):
-        print(f"Error: Notes file not found at {args.notes}", file=sys.stderr)
-        sys.exit(1)
-
-    with open(args.notes, "r", encoding="utf-8") as f:
-        notes_text = f.read().strip()
-
-    if not notes_text:
-        print("Notes file is empty. Nothing to post to Discord.")
-        sys.exit(0)
-
-    # Append thread_id if provided
     base_webhook = webhook_url.split("?")[0]
     query_params = ["wait=true"]
     if thread_id:
         query_params.append(f"thread_id={thread_id}")
     post_url = f"{base_webhook}?{'&'.join(query_params)}"
+    fallback_url = f"{base_webhook}?wait=true"
+
+    release_url = f"https://github.com/{args.repo}/releases/tag/{args.tag}" if args.tag else f"https://github.com/{args.repo}"
+    download_url = f"https://github.com/{args.repo}/releases/download/{args.tag}/TortoiseBotsManager.zip" if args.tag else ""
+
+    notes_text = ""
+    if args.notes and os.path.exists(args.notes):
+        with open(args.notes, "r", encoding="utf-8") as f:
+            notes_text = f.read().strip()
+
+    if args.short:
+        embed_title = f"🎮 {args.title}"
+        if args.tag and args.tag not in args.title:
+            embed_title += f" • {args.tag}"
+
+        desc_parts = [
+            f"Nowe wydanie dodatku **TortoiseBotsManager** ({args.tag or 'latest'}) jest już dostępne!",
+            ""
+        ]
+        if notes_text:
+            preview = notes_text[:600]
+            if len(notes_text) > 600:
+                last_nl = preview.rfind("\n")
+                if last_nl > 200:
+                    preview = preview[:last_nl]
+                preview += "\n..."
+            desc_parts.append(preview)
+            desc_parts.append("")
+
+        desc_parts.append(f"📦 **[Pobierz dodatek i zobacz changelog na GitHubie]({release_url})**")
+
+        embed = {
+            "title": embed_title,
+            "url": release_url,
+            "description": "\n".join(desc_parts),
+            "color": 0x3498DB,  # Nice Addon Blue
+            "footer": {
+                "text": f"{args.repo} • Released via GitHub Actions",
+            }
+        }
+        if download_url:
+            embed["fields"] = [
+                {
+                    "name": "⬇️ Bezpośrednie pobranie (.zip)",
+                    "value": f"[Pobierz TortoiseBotsManager.zip]({download_url})",
+                    "inline": False,
+                }
+            ]
+
+        payload = {
+            "username": args.username,
+            "embeds": [embed]
+        }
+        if args.avatar_url:
+            payload["avatar_url"] = args.avatar_url
+
+        success, code = send_discord_message(post_url, payload)
+        if not success and thread_id and code in (400, 404):
+            print(f"Warning: Discord thread {thread_id} failed with HTTP {code}. Retrying directly to root webhook...", file=sys.stderr)
+            success, _ = send_discord_message(fallback_url, payload)
+        if not success:
+            sys.exit(1)
+
+        print(f"Successfully posted short release announcement to Discord thread {thread_id or 'channel'}.")
+        return
+
+    # Full changelog mode
+    if not args.notes or not os.path.exists(args.notes):
+        print(f"Error: Notes file not found at {args.notes}", file=sys.stderr)
+        sys.exit(1)
+
+    if not notes_text:
+        print("Notes file is empty. Nothing to post to Discord.")
+        sys.exit(0)
 
     chunks = split_text(notes_text, max_len=3900)
     total_parts = len(chunks)
@@ -121,15 +184,15 @@ def main():
         }
 
         if args.tag and i == 1:
-            embed["url"] = f"https://github.com/{args.repo}/releases/tag/{args.tag}"
-            download_url = f"https://github.com/{args.repo}/releases/download/{args.tag}/TortoiseBotsManager.zip"
-            embed["fields"] = [
-                {
-                    "name": "📦 Direct Addon Download",
-                    "value": f"[Download TortoiseBotsManager.zip]({download_url})",
-                    "inline": False,
-                }
-            ]
+            embed["url"] = release_url
+            if download_url:
+                embed["fields"] = [
+                    {
+                        "name": "📦 Direct Addon Download",
+                        "value": f"[Download TortoiseBotsManager.zip]({download_url})",
+                        "inline": False,
+                    }
+                ]
 
         if i == total_parts:
             embed["footer"] = {
@@ -143,7 +206,12 @@ def main():
         if args.avatar_url:
             payload["avatar_url"] = args.avatar_url
 
-        success = send_discord_message(post_url, payload)
+        success, code = send_discord_message(post_url, payload)
+        if not success and thread_id and code in (400, 404):
+            print(f"Warning: Discord thread {thread_id} failed with HTTP {code}. Retrying directly to root webhook...", file=sys.stderr)
+            success, _ = send_discord_message(fallback_url, payload)
+            if success:
+                post_url = fallback_url
         if not success:
             print(f"Failed to post part {i}/{total_parts} to Discord.", file=sys.stderr)
             sys.exit(1)
