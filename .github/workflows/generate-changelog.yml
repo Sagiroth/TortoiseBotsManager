@@ -5,15 +5,15 @@ on:
     inputs:
       bump:
         type: choice
-        description: 'Typ wydania (increment)'
+        description: 'Release increment type'
         options:
-          - 'patch (poprawki błędów, tidy up, małe zmiany: 1.0.X)'
-          - 'minor (nowe funkcje, nowe komendy, ficzery: 1.X.0)'
-          - 'major (duże przełomowe zmiany: X.0.0)'
-          - 'custom (wpisz własną wersję poniżej)'
-        default: 'patch (poprawki błędów, tidy up, małe zmiany: 1.0.X)'
+          - 'patch (bug fixes, tidy up, small tweaks: 1.0.X)'
+          - 'minor (new features, new commands, gameplay updates: 1.X.0)'
+          - 'major (breaking architectural or schema changes: X.0.0)'
+          - 'custom (specify custom version below)'
+        default: 'patch (bug fixes, tidy up, small tweaks: 1.0.X)'
       custom_version:
-        description: 'Własna wersja (używana jeśli wybrano custom, np. 1.0.0)'
+        description: 'Custom version (used if custom selected, e.g. 1.0.0)'
         required: false
         default: '1.0.0'
       edit_message_id:
