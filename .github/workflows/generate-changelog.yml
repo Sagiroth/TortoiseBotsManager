@@ -170,11 +170,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          NOTES_ARG=""
+          NOTES_ARGS=()
           if [ -f /tmp/release_notes.md ]; then
-            NOTES_ARG="--notes-file /tmp/release_notes.md"
+            NOTES_ARGS=(--notes-file /tmp/release_notes.md)
           else
-            NOTES_ARG="--notes 'Release ${{ steps.version.outputs.release_tag }}'"
+            NOTES_ARGS=(--notes "Release ${{ steps.version.outputs.release_tag }}")
           fi
 
           if gh release view "${{ steps.version.outputs.release_tag }}" --repo Sagiroth/TortoiseBotsManager --json tagName >/dev/null 2>&1; then
@@ -182,7 +182,7 @@ jobs:
             gh release edit "${{ steps.version.outputs.release_tag }}" \
               --title "TortoiseBotsManager ${{ steps.version.outputs.release_tag }}" \
               --repo Sagiroth/TortoiseBotsManager \
-              $NOTES_ARG \
+              "${NOTES_ARGS[@]}" \
               --latest
             gh release upload "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
               --repo Sagiroth/TortoiseBotsManager --clobber
@@ -191,7 +191,7 @@ jobs:
             gh release create "${{ steps.version.outputs.release_tag }}" /tmp/TortoiseBotsManager.zip \
               --repo Sagiroth/TortoiseBotsManager \
               --title "TortoiseBotsManager ${{ steps.version.outputs.release_tag }}" \
-              $NOTES_ARG \
+              "${NOTES_ARGS[@]}" \
               --target main \
               --latest
           fi
