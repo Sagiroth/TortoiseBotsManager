@@ -1,22 +1,18 @@
 name: Generate Changelog & Release
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'CHANGELOG.md'
-      - 'Constants.lua'
-      - 'TortoiseBotsManager.toc'
-      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Release version (e.g. 0.1.2 or 1.0.0, leave empty for daily date)'
+        required: false
+        default: ''
       edit_message_id:
-        description: 'Discord Message ID to edit with new announcement'
+        description: 'Discord Message ID to edit with new announcement (optional)'
         required: false
         default: ''
       delete_message_id:
-        description: 'Discord Message ID to delete'
+        description: 'Discord Message ID to delete (optional)'
         required: false
         default: ''
 
@@ -31,11 +27,17 @@ concurrency:
 jobs:
   changelog:
     runs-on: ubuntu-latest
+    if: github.actor == 'Sagiroth' || github.actor == 'sagiroth'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Run Lua regression tests
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y lua5.1
+          lua5.1 tests/regression.lua .
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,9 +51,21 @@ jobs:
             --out-version version \
             --out-build-number /tmp/build_number.txt \
             --dry-run
-          echo "build_version=$(grep -o 'TB.C.VERSION = "[^"]*"' Constants.lua | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-          echo "build_number=$(cat /tmp/build_number.txt)" >> "$GITHUB_OUTPUT"
-          echo "release_tag=v$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          AUTO_VER=$(grep -o 'TB.C.VERSION = "[^"]*"' Constants.lua | cut -d'"' -f2)
+          INPUT_VER="${{ inputs.version }}"
+          BUILD_NUM=$(cat /tmp/build_number.txt)
+
+          if [ -n "$INPUT_VER" ]; then
+            TAG="v$INPUT_VER"
+            VER="$INPUT_VER"
+          else
+            TAG="v$(date -u +%Y-%m-%d)"
+            VER="$AUTO_VER"
+          fi
+
+          echo "build_version=$VER" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Generate Changelog & Notes
         id: generate
