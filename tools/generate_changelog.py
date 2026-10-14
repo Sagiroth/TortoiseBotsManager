@@ -306,6 +306,7 @@ def main():
     parser.add_argument("--date", default=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"), help="Release date string (default: today)")
     parser.add_argument("--out-build-number", help="Write the day's build number N to the given file")
     parser.add_argument("--version-date", help="UTC date for the build version (default: --date)")
+    parser.add_argument("--tag", help="Release tag name (e.g. v1.0.0)")
     args = parser.parse_args()
 
     version_day = args.version_date or args.date
@@ -376,14 +377,17 @@ def main():
     print(summary)
     print("\n" + "=" * 40)
 
-    release_tag = f"v{args.date}"
+    release_tag = args.tag or f"v{args.date}"
     exists, existing_body = release_exists_on_github(release_tag)
 
-    # The daily release notes always open with the day's build range so players
-    # can map the release to the per-merge build tags (e.g. Builds 2026-09-25-v1 – v1).
-    base_body = existing_body.strip() if exists and existing_body else ""
-    ranged_base = with_build_range(base_body, args.date, build_number)
-    notes_to_write = ranged_base.rstrip() + "\n\n" + summary.strip() + "\n"
+    if args.tag:
+        notes_to_write = summary.strip() + "\n"
+    else:
+        # The daily release notes always open with the day's build range so players
+        # can map the release to the per-merge build tags (e.g. Builds 2026-09-25-v1 – v1).
+        base_body = existing_body.strip() if exists and existing_body else ""
+        ranged_base = with_build_range(base_body, args.date, build_number)
+        notes_to_write = ranged_base.rstrip() + "\n\n" + summary.strip() + "\n"
     if args.out_notes:
         with open(args.out_notes, "w", encoding="utf-8") as f:
             f.write(notes_to_write.strip() + "\n")
