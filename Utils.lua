@@ -67,6 +67,7 @@ function TB.StatusText(st, inGroup)
         return "Offline"
     end
     if st.enteredWorld == false then return "Starting" end
+    if st.altBot then return "Alt-bot · Playing alone" end
     if st.movement and st.movement ~= "" and st.movement ~= "custom" then
         local movement = string.gsub(st.movement, "^%l", string.upper)
         if inGroup then return "Online · Group · " .. movement end
@@ -102,6 +103,7 @@ function TB.StatusBadge(st, inGroup)
         return "|cff757575○ Offline|r"
     end
     if st.enteredWorld == false then return "|cffffb300● Starting|r" end
+    if st.altBot then return "|cffb388ff● Alt-bot|r · Playing alone" end
     if inGroup then
         if st.movement and st.movement ~= "" and st.movement ~= "custom" then
             local mv = string.gsub(st.movement, "^%l", string.upper)

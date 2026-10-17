@@ -287,6 +287,27 @@ assert(TB.GetRosterCount() == 3, "roster count must come from snapshot")
 assert(table.getn(TB.GetDisplayRows("")) == 3, "roster must constantly show all bots")
 assert(table.getn(TB.GetDisplayRows("alpha")) == 1, "text search must filter by bot name")
 
+-- Alt-bots (TortoiseBots #872): the line after the snapshot marks owned
+-- characters playing on their own; Login on one takes it back.
+assert(not TB.GetState("Alpha").altBot, "no alt-bot flag before the alt-bot line")
+assert(not TB.IsRosterActionEligible("Alpha", "login"), "an online companion is not a Login target")
+TB.OnSystemMessage("TBM:ALTBOTS|Alpha")
+assert(TB.GetState("Alpha").altBot and not TB.GetState("Gamma").altBot, "alt-bot line must flag only the named row")
+assert(string.find(TB.StatusBadge(TB.GetState("Alpha"), false), "Alt%-bot"), "alt-bot badge must say Alt-bot")
+assert(string.find(TB.StatusText(TB.GetState("Alpha"), false), "Playing alone"), "alt-bot status text")
+assert(TB.IsRosterActionEligible("Alpha", "login"), "Login must take an alt-bot back")
+assert(TB.IsRosterActionEligible("Alpha", "logout"), "Logout must log an alt-bot out")
+assert(TB.IsRosterActionEligible("Bravo", "login"), "offline rows stay Login targets")
+TB.OnSystemMessage("TBM:ALTBOTS|")
+assert(not TB.GetState("Alpha").altBot, "an empty alt-bot line clears the flag")
+TB.OnSystemMessage("TBM:ALTBOTS|Alpha")
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+assert(not TB.GetState("Alpha").altBot, "a new snapshot clears flags (older servers send no alt-bot line)")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+
 -- Class colors and status badge
 local warriorColor = TB.GetClassColor(1)
 assert(warriorColor and warriorColor.hex == "ffc79c6e", "Warrior class color must match Tortoise palette")

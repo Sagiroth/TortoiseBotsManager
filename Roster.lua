@@ -334,6 +334,8 @@ function TB.ParseRosterMessage(msg)
             return true, "error"
         end
         receiving = { expected = tonumber(fields[1]), rows = {}, names = {} }
+        -- The alt-bot line follows each snapshot; an older server sends none.
+        for _, st in pairs(state) do st.altBot = nil end
         rosterSnapshotError = nil
         TB.rosterSnapshotError = nil
         return true, "begin", receiving.expected
@@ -383,6 +385,20 @@ function TB.ParseRosterMessage(msg)
         end
         commitSnapshot(batch.rows)
         return true, "end", batch.expected
+    end
+
+    -- "TBM:ALTBOTS|Name1,Name2" (TortoiseBots #872): owned characters that
+    -- currently play on their own. Sent after the roster rows; may be empty.
+    if string.sub(msg, 1, 12) == "TBM:ALTBOTS|" then
+        local list = string.sub(msg, 13)
+        local names = {}
+        for raw in string.gfind(list, "[^,]+") do
+            local n = normalize(raw)
+            if n then names[n] = true end
+        end
+        for name, st in pairs(state) do st.altBot = names[name] or nil end
+        if TB.Refresh then TB.Refresh() end
+        return true, "altbots"
     end
 
     fields = protocolFields(msg, "TBM:CLAIMED_BEGIN|")
@@ -936,7 +952,10 @@ local function lifecycleEligible(name, action)
     local live = isControllable(st)
     local grouped = TB.IsInGroup(name)
     action = string.lower(TB.Trim(action or ""))
-    if action == "login" or action == "add" then return not live and st.serverState == "offline" end
+    -- On an alt-bot, Login (".bot add") takes it back as a companion.
+    if action == "login" or action == "add" then
+        return (not live and st.serverState == "offline") or (live and st.altBot and true or false)
+    end
     if action == "logout" or action == "remove" then return live end
     if action == "invite" then return live and not grouped end
     if action == "kick" or action == "uninvite" then return live and grouped end
