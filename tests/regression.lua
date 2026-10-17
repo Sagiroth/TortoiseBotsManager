@@ -30,11 +30,19 @@ local function object(kind, parent)
         checked = false,
     }
     local methods = {}
-
     function methods:SetWidth(width) self.width = width end
     function methods:SetHeight(height) self.height = height end
-    function methods:SetPoint(...) self.point = {...} end
-    function methods:ClearAllPoints() self.point = nil end
+    function methods:SetFrameLevel(level) self.frameLevel = level end
+    function methods:GetFrameLevel() return self.frameLevel or 0 end
+    function methods:SetPoint(...) self.points = self.points or {} table.insert(self.points, {...}) self.point = {...} end
+    function methods:ClearAllPoints() self.points = {} self.point = nil end
+    function methods:GetNumPoints() return self.points and table.getn(self.points) or 0 end
+    function methods:GetPoint(index)
+        self.points = self.points or {}
+        if index then return unpack(self.points[index] or {}) end
+        local last = self.points[table.getn(self.points)]
+        if last then return unpack(last) end
+    end
     function methods:SetFrameStrata(strata) self.strata = strata end
     function methods:SetMovable(movable) self.movable = movable end
     function methods:SetClampedToScreen(clamped) self.clamped = clamped end
@@ -79,7 +87,6 @@ local function object(kind, parent)
     function methods:StopMovingOrSizing() end
     function methods:GetLeft() return self.x or 100 end
     function methods:GetTop() return (self.y or 100) + (self.height or 50) end
-    function methods:GetPoint() return "CENTER", UIParent, "CENTER", 0, 15 end
     function methods:GetCenter() return 0, 0 end
     function methods:GetEffectiveScale() return 1 end
     function methods:Enable() self.enabled = true end
@@ -855,6 +862,14 @@ TB.dragHeader.scripts["OnDragStart"]()
 TB.dragHeader.scripts["OnDragStop"]()
 assert(TortoiseBotsDB.frame and TortoiseBotsDB.frame.point == "TOPLEFT",
     "OnDragStop must persist TOPLEFT position without crashing or calling GetPoint")
+-- Issue #33: the mouse-enabled drag bar must end left of the Mini button and
+-- both header buttons must sit above it, or the bar eats Mini clicks in 1.12.
+assert(TB.dragHeader:GetNumPoints() == 2, "drag bar must keep two anchors after the Mini fix")
+local barRight, barAnchor = TB.dragHeader:GetPoint(2)
+assert(barRight == "BOTTOMRIGHT" and barAnchor == TB.miniButton,
+    "drag bar must end at the Mini button instead of spanning the header corner")
+assert(TB.miniButton:GetFrameLevel() > TB.dragHeader:GetFrameLevel(),
+    "Mini must sit above the drag bar to receive clicks")
 
 
 -- ── Flee, party switches, out-of-combat chores ─────────────────────────────
