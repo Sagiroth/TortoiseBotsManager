@@ -224,6 +224,14 @@ CreateHeader = function(parent)
     setButtonTooltip(mini, "Swap this window for a small bar with the fight buttons. Its + button brings the window back. Also /tbm mini.", "Mini mode")
     mini:SetScript("OnClick", function() TB.RequestMode("mini") end)
     TB.miniButton = mini
+    -- Issue #33: the mouse-enabled drag bar spans the header corner over these
+    -- buttons and eats their clicks in the 1.12 client. End the bar left of
+    -- Mini and raise both buttons above it; the rest of the header still drags.
+    dragBar:ClearAllPoints()
+    dragBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    dragBar:SetPoint("BOTTOMRIGHT", mini, "BOTTOMLEFT", -6, 0)
+    close:SetFrameLevel(dragBar:GetFrameLevel() + 2)
+    mini:SetFrameLevel(dragBar:GetFrameLevel() + 2)
 
     local divider = parent:CreateTexture(nil, "ARTWORK")
     divider:SetTexture(0.48, 0.36, 0.15, 0.70)
