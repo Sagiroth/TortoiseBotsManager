@@ -371,6 +371,9 @@ CreateRow = function(parent, scroll, index)
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
         GameTooltip:SetText(entry.name)
         GameTooltip:AddLine(TB.StatusText(entry.st, entry.inGroup), 1, 1, 1)
+        if entry.st and entry.st.altBot then
+            GameTooltip:AddLine("Login takes it back as your companion, Logout logs it out.", COL.muted[1], COL.muted[2], COL.muted[3], true)
+        end
         if entry.location then GameTooltip:AddLine("Last: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3]) end
         GameTooltip:Show()
     end)
@@ -414,7 +417,7 @@ CreateRosterBar = function(parent)
         return btn
     end
 
-    local login  = button("Login", 56, "login", "add", "Log in selected offline owned bots")
+    local login  = button("Login", 56, "login", "add", "Log in selected offline owned bots; on an alt-bot playing alone, take it back as your companion")
     login:SetPoint("LEFT", selection, "RIGHT", 4, 0)
     local logout = button("Logout", 62, "logout", "logout", "Log out selected online owned bots")
     logout:SetPoint("LEFT", login, "RIGHT", C.GAP_BTN or 4, 0)
