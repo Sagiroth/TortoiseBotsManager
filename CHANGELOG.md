@@ -2,6 +2,16 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.0.0 (2026-10-17)
+
+### UI & Controls
+
+- The header drag bar no longer swallows clicks on the **Mini** button — clicking it now toggles the compact window exactly like `/tbm mini` does, including the hover/press highlight. [#34](https://github.com/Sagiroth/TortoiseBotsManager/pull/34)
+- You can still drag the window by the header; the drag area just stops short of the Mini button, and the Mini/close buttons are raised above the drag layer so they always win the click. [#34](https://github.com/Sagiroth/TortoiseBotsManager/pull/34)
+- Added a regression test covering the header/button click priority, so this overlap doesn't sneak back in. [#34](https://github.com/Sagiroth/TortoiseBotsManager/pull/34)
+
+---
+
 ## 2026-10-14
 
 ### Comms & Protocol
