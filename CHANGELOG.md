@@ -2,6 +2,19 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.0.1 (2026-10-17)
+
+### Roster & Lifecycle
+- Alt-bots seen playing alone are now flagged directly in the roster with an "Alt-bot · Playing alone" label and tooltip, so you can spot them at a glance [#35](https://github.com/Sagiroth/TortoiseBotsManager/pull/35)
+- Login on an alt-bot row recruits it back as your companion (`.bot add`); Logout sends it on its way, reusing the controls you already know [#35](https://github.com/Sagiroth/TortoiseBotsManager/pull/35)
+- Flags reset on every new roster snapshot, so the feature stays silent on older servers and never lingers stale [#35](https://github.com/Sagiroth/TortoiseBotsManager/pull/35)
+- Regression tests cover the new parsing and flag lifecycle (`lua5.1 tests/regression.lua` passes) [#35](https://github.com/Sagiroth/TortoiseBotsManager/pull/35)
+
+### Comms & Protocol
+- Parses the new `TBM:ALTBOTS|<names>` line sent after roster rows; the existing roster row protocol is untouched [#35](https://github.com/Sagiroth/TortoiseBotsManager/pull/35)
+
+---
+
 ## v1.0.0 (2026-10-17)
 
 ### UI & Controls
