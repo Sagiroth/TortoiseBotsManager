@@ -2,6 +2,21 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.1.0 (2026-10-19)
+
+### UI & Controls
+- Introduced shared UI building blocks (card, button, toggle, stepper, row, icon button) and a single spacing grid, so future visual changes land in one place instead of every tab [#36](https://github.com/Sagiroth/TortoiseBotsManager/pull/36)
+- Fight and Camp tabs now build one card at a time, cutting down the giant single builder that used to handle both [#36](https://github.com/Sagiroth/TortoiseBotsManager/pull/36)
+- Fight/Camp buttons and the mini bar now read from a single shared action table — no more two hand-maintained copies drifting apart [#36](https://github.com/Sagiroth/TortoiseBotsManager/pull/36)
+
+### Tactical & Actions
+- Role handling (tank, healer, DPS) consolidated into one code path instead of three separate implementations [#36](https://github.com/Sagiroth/TortoiseBotsManager/pull/36)
+
+### Compatibility
+- Pure groundwork: no visible UI changes and no changes to what's sent over the wire — existing tabs behave exactly as before [#36](https://github.com/Sagiroth/TortoiseBotsManager/pull/36)
+
+---
+
 ## v1.0.1 (2026-10-17)
 
 ### Roster & Lifecycle
