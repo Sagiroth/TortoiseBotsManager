@@ -127,13 +127,36 @@ end
 TB.Roles = {}
 
 function TB.Roles.GetClassRoles(classId)
+    if type(classId) == "string" and TB.C and TB.C.CLASS_NAME_TO_ID then
+        classId = TB.C.CLASS_NAME_TO_ID[classId] or classId
+    end
     return (TB.C and TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
 end
 
 function TB.Roles.FindRole(classId, roleId)
-    local roles = TB.Roles.GetClassRoles(classId)
-    for _, r in ipairs(roles) do
-        if r.id == roleId then return r end
+    if not roleId and type(classId) == "string" then
+        roleId = classId
+        classId = nil
+    end
+    if not roleId then return nil end
+    local lowerRole = type(roleId) == "string" and string.lower(roleId) or nil
+    if classId then
+        local roles = TB.Roles.GetClassRoles(classId)
+        for _, r in ipairs(roles) do
+            if r.id == roleId or (lowerRole and r.label and string.lower(r.label) == lowerRole) then
+                return r
+            end
+        end
+        return nil
+    end
+    if TB.C and TB.C.CLASS_ROLES then
+        for _, roles in pairs(TB.C.CLASS_ROLES) do
+            for _, r in ipairs(roles) do
+                if r.id == roleId or (lowerRole and r.label and string.lower(r.label) == lowerRole) then
+                    return r
+                end
+            end
+        end
     end
     return nil
 end
@@ -158,9 +181,13 @@ function TB.Roles.GetPlayerRole(classId)
 end
 
 function TB.Roles.GetRoleLabel(classId, roleId, fallback)
+    if not roleId and type(classId) == "string" then
+        roleId = classId
+        classId = nil
+    end
     local role = TB.Roles.FindRole(classId, roleId)
     if role then return role.label end
-    return fallback or "Default"
+    return fallback or roleId or "Default"
 end
 
 function TB.Roles.GetPlayerRoleToken(roleId)

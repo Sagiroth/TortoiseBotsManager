@@ -1327,5 +1327,7 @@ dofile(root .. "/tests/wire_cases.lua")({
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
 })
 
+dofile(root .. "/tests/phase0_tests.lua")()
+
 print("PASS: TortoiseBotsManager regression checks")
 
