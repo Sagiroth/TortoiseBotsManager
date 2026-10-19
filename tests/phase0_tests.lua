@@ -175,11 +175,11 @@ return function()
     assert(testPill:GetText() == "Pill", "CreateTogglePill label")
     assert(testPill.enabled == true, "Pill starts enabled")
     testPill:SetActive(true)
-    assert(testPill.isActive == true and testPill.enabled == false,
-        "SetActive(true) must mark active and disable button")
+    assert(testPill.isActive == true and testPill.enabled == true,
+        "SetActive(true) must mark active and keep button enabled")
     testPill:SetActive(false)
     assert(testPill.isActive == false and testPill.enabled == true,
-        "SetActive(false) must mark inactive and re-enable button")
+        "SetActive(false) must mark inactive and keep button enabled")
 
     -- CreateStepper
     local stepVal = 10

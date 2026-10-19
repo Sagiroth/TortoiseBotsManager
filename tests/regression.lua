@@ -325,14 +325,17 @@ assert(TB.actionButtons.ready and TB.actionButtons.ready.icon, "Ready check butt
 -- Formation pills
 assert(TB.formationPills and TB.formationPills.shield and TB.formationPills.near,
     "Formation pills must exist")
-assert(not TB.formationPills.shield.enabled, "Shield should start disabled (active)")
-assert(TB.formationPills.near.enabled, "Near should start enabled")
+assert(TB.formationPills.shield:IsActive() and TB.formationPills.shield.enabled,
+    "Shield should start active and enabled")
+assert(not TB.formationPills.near:IsActive() and TB.formationPills.near.enabled,
+    "Near should start inactive and enabled")
 now = now + 1
 this = TB.formationPills.near
 TB.formationPills.near.scripts.OnClick(TB.formationPills.near)
 assert(TB.currentFormation == "near", "Clicking near pill must set current formation to near")
-assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
-    "Active formation pill must become disabled")
+assert(TB.formationPills.near:IsActive() and not TB.formationPills.shield:IsActive()
+    and TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
+    "Active formation pill must become active, inactive one inactive, and both remain enabled")
 
 -- Constants: structured formation metadata must survive (no raw-list clobber),
 -- and Hunter/Rogue must expose all three backend-supported specs.
@@ -1108,14 +1111,12 @@ TB.Refresh()
 
 
 -- ── Tabs by kind of work, and mini mode ────────────────────────────────────
-TB.ShowTab("camp")
-assert(TB.campFrame.visible and not TB.actionsFrame.visible and TortoiseBotsDB.activeTab == "camp",
-    "the Camp tab opens its own view")
-assert(TB.tabActions.text.text == "Fight" and TB.tabCamp.visible, "Fight and Camp tabs exist")
-assert(TB.actionButtons.rest.parent.parent == TB.campFrame and TB.actionButtons.attack.parent.parent == TB.actionsFrame,
-    "chores live on Camp, fight buttons on Fight")
 TB.ShowTab("actions")
-assert(TB.actionsFrame.visible and not TB.campFrame.visible, "Fight hides Camp")
+assert(TB.tabActions.text.text == "Actions", "Actions tab has label Actions")
+assert(TB.actionsFrame.visible, "Actions frame is visible")
+assert(TB.actionButtons.rest and TB.actionButtons.attack, "chores and fight buttons both live on Actions")
+assert(TB.actionButtons.rest.parent.parent == TB.actionsFrame and TB.actionButtons.attack.parent.parent == TB.actionsFrame,
+    "chores and fight buttons both live under Actions frame")
 
 TB.frame:Show()
 TB.miniButton.scripts.OnClick(TB.miniButton)
@@ -1328,6 +1329,7 @@ dofile(root .. "/tests/wire_cases.lua")({
 })
 
 dofile(root .. "/tests/phase0_tests.lua")()
+dofile(root .. "/tests/phase1_tests.lua")()
 
 print("PASS: TortoiseBotsManager regression checks")
 

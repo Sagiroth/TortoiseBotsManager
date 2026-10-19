@@ -174,11 +174,19 @@ TB.C.ACTION_DEFINITIONS = {
     {
         id = "come",
         intent = "come",
-        label = "Come & Hold",
+        label = "Come",
         section = "move",
         icon = "Interface\\Icons\\Spell_Arcane_PortalIronForge",
-        tip = "Bots rush to your position and hold there.",
+        tip = "Bots come to you and hold there.",
         mini = 10,
+    },
+    {
+        id = "hold",
+        intent = "hold",
+        label = "Hold",
+        section = "move",
+        icon = "Interface\\Icons\\Spell_Nature_Slow",
+        tip = "Bots stop where they are and hold position.",
     },
 
     -- Party Switches
@@ -301,7 +309,7 @@ TB.C.ACTION_LABELS = {
     ["item give"]          = "Give",
     ["item trade"]         = "Trade",
     inv                    = "Bags",
-    hold                   = "Come & Hold",
+    hold                   = "Hold",
 }
 for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
     TB.C.ACTION_LABELS[def.intent] = def.label
@@ -440,6 +448,7 @@ TB.C.COLOR = {
     yellow = { 1.00, 0.82, 0.10 },
     blue   = { 0.42, 0.76, 1.00 },
     bg     = { 0.025, 0.032, 0.045 },
+    border = { 0.22, 0.25, 0.28 },
     accent = { 0.78, 0.53, 0.14 },
     accentHi = { 0.95, 0.72, 0.28 },
 }

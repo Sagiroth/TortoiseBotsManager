@@ -184,7 +184,7 @@ local cases = {
     },
     {
         id = "fight.hold",
-        expected = { ".bot action come" },
+        expected = { ".bot action hold" },
         trigger = function()
             this = TB.actionButtons.hold
             TB.actionButtons.hold.scripts.OnClick(TB.actionButtons.hold)
