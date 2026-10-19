@@ -33,7 +33,7 @@ local ITEMS = getMiniBarItems()
 local bar
 
 local function tooltipFor(item)
-    local title = item.label or (C.ACTION_LABELS and C.ACTION_LABELS[item.intent]) or item.intent
+    local title = item.label or item.intent
     local text = item.tip or (TB.ActionTooltip and TB.ActionTooltip(item.intent)) or ""
     if item.pull then
         local db = TortoiseBotsDB or {}
@@ -53,7 +53,7 @@ local function makeIcon(parent, item, index)
     if item.raidIcon then
         b.icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. item.raidIcon)
     else
-        b.icon:SetTexture(item.icon or (C.ACTION_ICONS or {})[item.intent])
+        b.icon:SetTexture(item.icon)
         b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
 

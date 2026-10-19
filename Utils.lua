@@ -126,11 +126,62 @@ end
 -- ── Unified Role Policy ─────────────────────────────────────────────────────
 TB.Roles = {}
 
+TB.Roles.CLASS_ROLES = {
+    [1] = { -- Warrior
+        { id = "tank", label = "Tank", strat = "+protection,-arms,-fury" },
+        { id = "dps", label = "DPS", strat = "+arms,-protection" },
+    },
+    [2] = { -- Paladin
+        { id = "tank", label = "Tank", strat = "+protection,-holy,-retribution" },
+        { id = "heal", label = "Healer", strat = "+holy,-protection,-retribution,-offdps" },
+        { id = "dps", label = "DPS", strat = "+retribution,-protection,-holy" },
+    },
+    [3] = { -- Hunter
+        { id = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
+        { id = "mm", label = "Marksman", strat = "+marksmanship,-beast mastery,-survival" },
+        { id = "survival", label = "Survival", strat = "+survival,-beast mastery,-marksmanship" },
+    },
+    [4] = { -- Rogue
+        { id = "combat", label = "Combat", strat = "+combat,-assassination,-subtlety" },
+        { id = "assa", label = "Assassination", strat = "+assassination,-combat,-subtlety" },
+        { id = "subtlety", label = "Subtlety", strat = "+subtlety,-combat,-assassination" },
+    },
+    [5] = { -- Priest
+        { id = "heal", label = "Healer", strat = "+holy,-shadow,-offdps" },
+        { id = "hybrid", label = "Hybrid", strat = "+holy,+offdps,-shadow" },
+        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
+    },
+    [7] = { -- Shaman
+        { id = "heal", label = "Healer", strat = "+restoration,-elemental,-enhancement,-offdps" },
+        { id = "ele", label = "Ele DPS", strat = "+elemental,-restoration,-enhancement" },
+        { id = "enh", label = "Enh DPS", strat = "+enhancement,-restoration,-elemental" },
+    },
+    [8] = { -- Mage
+        { id = "frost", label = "Frost", strat = "+frost,-fire,-arcane" },
+        { id = "fire", label = "Fire", strat = "+fire,-frost,-arcane" },
+        { id = "arcane", label = "Arcane", strat = "+arcane,-frost,-fire" },
+    },
+    [9] = { -- Warlock
+        { id = "affliction", label = "Affliction", strat = "+affliction,-demonology,-destruction" },
+        { id = "demonology", label = "Demonology", strat = "+demonology,-affliction,-destruction" },
+        { id = "destruction", label = "Destruction", strat = "+destruction,-affliction,-demonology" },
+    },
+    [11] = { -- Druid
+        { id = "tank", label = "Bear Tank", strat = "+tank feral,-dps feral,-restoration,-balance" },
+        { id = "cat", label = "Cat DPS", strat = "+dps feral,-tank feral,-restoration,-balance" },
+        { id = "heal", label = "Resto Heal", strat = "+restoration,-tank feral,-dps feral,-balance,-offdps" },
+        { id = "boomkin", label = "Boomkin", strat = "+balance,-tank feral,-dps feral,-restoration" },
+    },
+}
+
+TB.C = TB.C or {}
+TB.C.CLASS_ROLES = TB.Roles.CLASS_ROLES
+
 function TB.Roles.GetClassRoles(classId)
     if type(classId) == "string" and TB.C and TB.C.CLASS_NAME_TO_ID then
         classId = TB.C.CLASS_NAME_TO_ID[classId] or classId
     end
-    return (TB.C and TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
+    return (TB.Roles.CLASS_ROLES and TB.Roles.CLASS_ROLES[classId]) or {}
 end
 
 function TB.Roles.FindRole(classId, roleId)
@@ -149,8 +200,8 @@ function TB.Roles.FindRole(classId, roleId)
         end
         return nil
     end
-    if TB.C and TB.C.CLASS_ROLES then
-        for _, roles in pairs(TB.C.CLASS_ROLES) do
+    if TB.Roles.CLASS_ROLES then
+        for _, roles in pairs(TB.Roles.CLASS_ROLES) do
             for _, r in ipairs(roles) do
                 if r.id == roleId or (lowerRole and r.label and string.lower(r.label) == lowerRole) then
                     return r

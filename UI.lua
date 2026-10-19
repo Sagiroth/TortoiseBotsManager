@@ -995,15 +995,19 @@ local function BuildSwitchesCard(parent, buttons)
     local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, 58, { y = -244, line = true })
     local btnY = -24
     TB.toggleButtons = {}
-    for i, toggle in ipairs(C.PARTY_TOGGLES or {}) do
-        local btn = makeActionButton(card, toggle.intent, 148, 8 + (i - 1) * 156, btnY)
-        btn.toggle = toggle
-        btn.lamp = btn:CreateTexture(nil, "OVERLAY")
-        btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
-        btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -9, 0)
-        setButtonTooltip(btn, toggle.tip .. " Click to switch for the whole party (or only the targeted bot).",
-            toggle.label)
-        TB.toggleButtons[toggle.key] = btn
+    local switchIdx = 1
+    for _, def in ipairs(C.ACTION_DEFINITIONS or {}) do
+        if def.section == "switch" then
+            local btn = makeActionButton(card, def.intent, 148, 8 + (switchIdx - 1) * 156, btnY)
+            btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
+            btn.lamp = btn:CreateTexture(nil, "OVERLAY")
+            btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
+            btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -9, 0)
+            setButtonTooltip(btn, def.tip .. " Click to switch for the whole party (or only the targeted bot).",
+                def.label)
+            TB.toggleButtons[def.toggle] = btn
+            switchIdx = switchIdx + 1
+        end
     end
     buttons.aoe = TB.toggleButtons.aoe
     buttons.autoCc = TB.toggleButtons.autocc

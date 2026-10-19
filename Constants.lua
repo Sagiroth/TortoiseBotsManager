@@ -67,120 +67,6 @@ TB.C.CLASS_NAME_TO_ID = {
     Druid = 11, DRUID = 11,
 }
 
-TB.C.CLASS_ROLES = {
-    [1] = { -- Warrior
-        { id = "tank", label = "Tank", strat = "+protection,-arms,-fury" },
-        { id = "dps", label = "DPS", strat = "+arms,-protection" },
-    },
-    [2] = { -- Paladin
-        { id = "tank", label = "Tank", strat = "+protection,-holy,-retribution" },
-        { id = "heal", label = "Healer", strat = "+holy,-protection,-retribution,-offdps" },
-        { id = "dps", label = "DPS", strat = "+retribution,-protection,-holy" },
-    },
-    [3] = { -- Hunter
-        { id = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
-        { id = "mm", label = "Marksman", strat = "+marksmanship,-beast mastery,-survival" },
-        { id = "survival", label = "Survival", strat = "+survival,-beast mastery,-marksmanship" },
-    },
-    [4] = { -- Rogue
-        { id = "combat", label = "Combat", strat = "+combat,-assassination,-subtlety" },
-        { id = "assa", label = "Assassination", strat = "+assassination,-combat,-subtlety" },
-        { id = "subtlety", label = "Subtlety", strat = "+subtlety,-combat,-assassination" },
-    },
-    [5] = { -- Priest
-        { id = "heal", label = "Healer", strat = "+holy,-shadow,-offdps" },
-        { id = "hybrid", label = "Hybrid", strat = "+holy,+offdps,-shadow" },
-        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
-    },
-    [7] = { -- Shaman
-        { id = "heal", label = "Healer", strat = "+restoration,-elemental,-enhancement,-offdps" },
-        { id = "ele", label = "Ele DPS", strat = "+elemental,-restoration,-enhancement" },
-        { id = "enh", label = "Enh DPS", strat = "+enhancement,-restoration,-elemental" },
-    },
-    [8] = { -- Mage
-        { id = "frost", label = "Frost", strat = "+frost,-fire,-arcane" },
-        { id = "fire", label = "Fire", strat = "+fire,-frost,-arcane" },
-        { id = "arcane", label = "Arcane", strat = "+arcane,-frost,-fire" },
-    },
-    [9] = { -- Warlock
-        { id = "affliction", label = "Affliction", strat = "+affliction,-demonology,-destruction" },
-        { id = "demonology", label = "Demonology", strat = "+demonology,-affliction,-destruction" },
-        { id = "destruction", label = "Destruction", strat = "+destruction,-affliction,-demonology" },
-    },
-    [11] = { -- Druid
-        { id = "tank", label = "Bear Tank", strat = "+tank feral,-dps feral,-restoration,-balance" },
-        { id = "cat", label = "Cat DPS", strat = "+dps feral,-tank feral,-restoration,-balance" },
-        { id = "heal", label = "Resto Heal", strat = "+restoration,-tank feral,-dps feral,-balance,-offdps" },
-        { id = "boomkin", label = "Boomkin", strat = "+balance,-tank feral,-dps feral,-restoration" },
-    },
-}
-
-TB.C.ACTIONS = {
-    "attack", "stop", "pull", "pullback", "come", "stay", "follow",
-    "focus skull", "cc moon", "aoe", "hold", "ready", "interrupt",
-    "flee", "auto cc", "loot", "rest", "repair", "sell", "learn", "release",
-}
-
-TB.C.ACTION_ICONS = {
-    attack          = "Interface\\Icons\\Ability_SteelMelee",
-    stop            = "Interface\\Icons\\Ability_Defend",
-    pull            = "Interface\\Icons\\Ability_TrueShot",
-    pullback        = "Interface\\Icons\\Ability_Hunter_AimedShot",
-    come            = "Interface\\Icons\\Spell_Arcane_PortalIronForge",
-    stay            = "Interface\\Icons\\Spell_Nature_TimeStop",
-    follow          = "Interface\\Icons\\Ability_Tracking",
-    ["focus skull"] = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8",
-    ["cc moon"]     = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5",
-    aoe             = "Interface\\Icons\\Spell_Fire_FlameBlades",
-    hold            = "Interface\\Icons\\Spell_Nature_Slow",
-    ready           = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude",
-    interrupt       = "Interface\\Icons\\Ability_Kick",
-    flee            = "Interface\\Icons\\Ability_Rogue_Sprint",
-    ["auto cc"]     = "Interface\\Icons\\Spell_Nature_Polymorph",
-    loot            = "Interface\\Icons\\INV_Misc_Bag_10",
-    rest            = "Interface\\Icons\\INV_Drink_07",
-    repair          = "Interface\\Icons\\Trade_BlackSmithing",
-    sell            = "Interface\\Icons\\INV_Misc_Coin_02",
-    learn           = "Interface\\Icons\\INV_Misc_Book_09",
-    release         = "Interface\\Icons\\Spell_Holy_Resurrection",
-}
-
-TB.C.ACTION_LABELS = {
-    attack = "Attack",
-    stop = "Stop",
-    pullback = "Pullback",
-    pull = "Pull",
-    come = "Come & Hold",
-    stay = "Stay",
-    follow = "Follow",
-    ["focus skull"] = "Focus Skull",
-    ["cc moon"] = "CC Moon",
-    aoe = "AoE",
-    hold = "Come & Hold",
-    ready = "Ready Check",
-    interrupt = "Interrupt",
-    flee = "Flee",
-    ["auto cc"] = "Auto CC",
-    loot = "Loot",
-    rest = "Rest",
-    repair = "Repair",
-    sell = "Sell junk",
-    learn = "Train",
-    release = "Release",
-    ["corpse run"] = "Corpse run",
-    ["raid status"] = "Raid status",
-    ["raid tankface"] = "Tank face",
-    ["raid douse"] = "Douse runes",
-    ["raid custom status"] = "Custom tactics",
-    ["raid custom on"] = "Custom tactics on",
-    ["raid custom off"] = "Custom tactics off",
-    ["item equip"] = "Equip",
-    ["item unequip"] = "Unequip",
-    ["item give"] = "Give",
-    ["item trade"] = "Trade",
-    inv = "Bags",
-}
-
 -- Single authoritative action definition table driving Actions tab and MiniBar.
 TB.C.ACTION_DEFINITIONS = {
     -- Engage
@@ -390,16 +276,48 @@ function TB.GetActionDefinition(idOrIntent)
 end
 
 
--- Party-wide toggles on the Actions tab. `key` is the TBM:BOTSTATE field the
--- state is read from; `intent` is the `.bot action` verb that flips it.
-TB.C.PARTY_TOGGLES = {
-    { key = "aoe",    intent = "aoe",     label = "AoE",
-      tip = "Area-of-effect spells for DPS bots. They still hold AoE next to a crowd-controlled mob." },
-    { key = "autocc", intent = "auto cc", label = "Auto CC",
-      tip = "Bots sheep/sap a loose add that hits your healer, on their own. Your CC marks always win." },
-    { key = "loot",   intent = "loot",    label = "Loot",
-      tip = "Bots loot corpses after a fight." },
+-- Derived tables for backwards compatibility with tests and external callers.
+-- All data is driven directly by TB.C.ACTION_DEFINITIONS above.
+TB.C.ACTION_ICONS = {}
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    if def.icon then
+        TB.C.ACTION_ICONS[def.intent] = def.icon
+    elseif def.raidIcon then
+        TB.C.ACTION_ICONS[def.intent] = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. def.raidIcon
+    end
+end
+TB.C.ACTION_ICONS.hold = "Interface\\Icons\\Spell_Nature_Slow"
+
+TB.C.ACTION_LABELS = {
+    ["corpse run"]         = "Corpse run",
+    ["raid status"]        = "Raid status",
+    ["raid tankface"]      = "Tank face",
+    ["raid douse"]         = "Douse runes",
+    ["raid custom status"] = "Custom tactics",
+    ["raid custom on"]     = "Custom tactics on",
+    ["raid custom off"]    = "Custom tactics off",
+    ["item equip"]         = "Equip",
+    ["item unequip"]       = "Unequip",
+    ["item give"]          = "Give",
+    ["item trade"]         = "Trade",
+    inv                    = "Bags",
+    hold                   = "Come & Hold",
 }
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    TB.C.ACTION_LABELS[def.intent] = def.label
+end
+
+TB.C.PARTY_TOGGLES = {}
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    if def.toggle then
+        table.insert(TB.C.PARTY_TOGGLES, {
+            key    = def.toggle,
+            intent = def.intent,
+            label  = def.label,
+            tip    = def.tip,
+        })
+    end
+end
 
 -- Per-bot behaviour toggles in the bot panel (`.bot behavior <bot> <key>`).
 -- `mana` limits a toggle to classes that use mana.

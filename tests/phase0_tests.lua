@@ -111,6 +111,17 @@ return function()
             "ACTIONS_BY_INTENT must index " .. def.intent)
     end
 
+    -- Verify table cleanups and derivations
+    assert(TB.C.ACTIONS == nil, "C.ACTIONS must be deleted")
+    assert(TB.Roles.CLASS_ROLES and TB.C.CLASS_ROLES == TB.Roles.CLASS_ROLES,
+        "TB.Roles must be the single source of truth for CLASS_ROLES")
+    assert(TB.C.PARTY_TOGGLES and table.getn(TB.C.PARTY_TOGGLES) == 3,
+        "PARTY_TOGGLES must be derived from ACTION_DEFINITIONS")
+    assert(TB.C.ACTION_ICONS and TB.C.ACTION_ICONS.attack,
+        "ACTION_ICONS must be derived from ACTION_DEFINITIONS")
+    assert(TB.C.ACTION_LABELS and TB.C.ACTION_LABELS.attack == "Attack",
+        "ACTION_LABELS must be derived from ACTION_DEFINITIONS")
+
     -- ──────────────────────────────────────────────────────────────────────────
     -- 3. TB.UI.Grid
     -- ──────────────────────────────────────────────────────────────────────────

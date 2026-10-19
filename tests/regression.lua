@@ -252,7 +252,7 @@ assert(TB.commandBox == nil and TB.commandButton == nil,
 assert(TB.statsButton == nil and TB.helpButton == nil,
     "server tools must not displace the compact surfaces")
 assert(TB.actionButtons and TB.lifecycleButtons, "Actions and lifecycle bars must exist")
-assert(TB.actionButtons.pull and TB.C.ACTIONS[3] == "pull",
+assert(TB.actionButtons.pull and TB.GetActionDefinition("pull") ~= nil,
     "distinct mature Pull behavior must remain exposed")
 assert(TB.C.CC_MARKS and TB.C.CC_MARK_LABELS.circle == "Circle"
     and TB.C.CC_MARK_ICONS.moon == 5, "all CC raid marks must have stable labels/icons")
