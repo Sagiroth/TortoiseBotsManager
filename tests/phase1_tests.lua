@@ -135,8 +135,16 @@ return function()
     assert(TB.actionButtons.attack ~= nil, "attack button must exist on Actions")
     assert(TB.actionButtons.stop ~= nil, "stop button must exist on Actions")
     assert(TB.actionButtons.flee ~= nil, "flee button must exist on Actions")
-    assert(TB.actionButtons.hold ~= nil, "hold button must exist on Actions")
-    assert(TB.actionButtons.come ~= nil, "come button must exist on Actions")
+    assert(TB.actionButtons.hold ~= nil and TB.actionButtons.hold.text == "Hold", "hold button must have label 'Hold'")
+    assert(TB.actionButtons.come ~= nil and TB.actionButtons.come.text == "Come", "come button must have label 'Come'")
+    local holdDef = TB.GetActionDefinition("hold")
+    local comeDef = TB.GetActionDefinition("come")
+    assert(holdDef and holdDef.label == "Hold", "hold definition must have label 'Hold'")
+    assert(comeDef and comeDef.label == "Come", "come definition must have label 'Come'")
+    assert(holdDef and string.find(holdDef.tip, "stop where they are and hold position", 1, true),
+        "hold tooltip must describe stopping and holding position")
+    assert(comeDef and string.find(comeDef.tip, "come to you and hold there", 1, true),
+        "come tooltip must describe coming to you and holding there")
     -- Camp chores on Actions
     assert(TB.actionButtons.rest ~= nil, "rest button must exist on Actions")
     assert(TB.actionButtons.ready ~= nil, "ready button must exist on Actions")
