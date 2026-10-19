@@ -818,7 +818,7 @@ function TB.OpenBotPanel(name, view)
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then bagPage = 1 end
     currentBot = name
-    if view then currentView = view end
+    if view and view ~= "inv" then currentView = view else currentView = "gear" end
     hideMenu()
     panel:ClearAllPoints()
     if TB.frame then
@@ -853,7 +853,7 @@ tradeFrame:RegisterEvent("TRADE_SHOW")
 tradeFrame:RegisterEvent("TRADE_CLOSED")
 tradeFrame:SetScript("OnEvent", function()
     if event == "TRADE_SHOW" then
-        local partner = UnitName and norm(UnitName("NPC")) or nil
+        local partner = UnitName and (norm(UnitName("NPC")) or norm(UnitName("target"))) or nil
         local give = pendingGive
         if give and partner == give.bot then
             pendingGive = nil

@@ -979,13 +979,13 @@ local function BuildPullCard(parent, buttons)
 end
 
 local function BuildMoveCard(parent, buttons)
-    -- Move: follow, stay, come
+    -- Move: follow, stay, come, hold
     local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, 58, { y = -182, line = true })
     local btnY = -24
-    buttons.follow   = makeActionButton(card, "follow", 148, 8, btnY)
-    buttons.stay     = makeActionButton(card, "stay", 148, 164, btnY)
-    buttons.come     = makeActionButton(card, "come", 148, 320, btnY)
-    buttons.hold     = buttons.come
+    buttons.follow   = makeActionButton(card, "follow", 112, 8, btnY)
+    buttons.stay     = makeActionButton(card, "stay", 112, 126, btnY)
+    buttons.come     = makeActionButton(card, "come", 112, 244, btnY)
+    buttons.hold     = makeActionButton(card, "hold", 112, 362, btnY)
     return card
 end
 
@@ -1460,7 +1460,7 @@ function TB.InitUI()
             { text = "Status", width = 64, x = 278 },
             { text = "Bag", width = 24, x = 344 },
             { text = "Role", width = 52, x = 372 },
-            { text = "Kick", width = 30, x = 428 },
+            { text = "Rel", width = 30, x = 428 },
         }
         for _, h in ipairs(headers) do
             local fs = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1533,7 +1533,7 @@ function TB.InitUI()
                 icon = "Interface\\Buttons\\Button-Backpack-Up",
                 onClick = function()
                     local entry = this:GetParent().entry
-                    if entry and TB.OpenBotPanel then TB.OpenBotPanel(entry.name, "inv") end
+                    if entry and TB.OpenBotPanel then TB.OpenBotPanel(entry.name, "gear") end
                 end,
                 onEnter = function()
                     local entry = this:GetParent().entry
