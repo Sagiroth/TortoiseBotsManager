@@ -252,7 +252,7 @@ assert(TB.commandBox == nil and TB.commandButton == nil,
 assert(TB.statsButton == nil and TB.helpButton == nil,
     "server tools must not displace the compact surfaces")
 assert(TB.actionButtons and TB.lifecycleButtons, "Actions and lifecycle bars must exist")
-assert(TB.actionButtons.pull and TB.C.ACTIONS[3] == "pull",
+assert(TB.actionButtons.pull and TB.GetActionDefinition("pull") ~= nil,
     "distinct mature Pull behavior must remain exposed")
 assert(TB.C.CC_MARKS and TB.C.CC_MARK_LABELS.circle == "Circle"
     and TB.C.CC_MARK_ICONS.moon == 5, "all CC raid marks must have stable labels/icons")
@@ -1314,4 +1314,20 @@ TB.PollList = origPollList
 
 partyMembers = {}
 
+dofile(root .. "/tests/wire_cases.lua")({
+    sent = sent,
+    addonSent = addonSent,
+    frames = frames,
+    getNow = function() return now end,
+    setNow = function(v) now = v end,
+    advanceTime = function(dt) now = now + (dt or 1) end,
+    setTarget = function(exists, name) targetExists = exists; targetNameValue = name end,
+    setParty = function(members, className) partyMembers = members or {}; partyClassName = className or "Priest" end,
+    setDead = function(unit, dead) deadUnits[unit] = dead end,
+    setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
+})
+
+dofile(root .. "/tests/phase0_tests.lua")()
+
 print("PASS: TortoiseBotsManager regression checks")
+

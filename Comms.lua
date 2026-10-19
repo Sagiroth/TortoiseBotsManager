@@ -142,6 +142,8 @@ local function splitProtocol(text)
 end
 
 local function actionLabel(intent)
+    local def = TB.GetActionDefinition and TB.GetActionDefinition(intent)
+    if def and def.label then return def.label end
     if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
     local _, _, behaviorKey = string.find(intent or "", "^behavior%s+(%S+)$")
     if behaviorKey then

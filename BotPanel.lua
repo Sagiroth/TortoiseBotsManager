@@ -70,7 +70,9 @@ TB.togglePending = TB.togglePending or {}
 TB.toggleFallback = TB.toggleFallback or {}
 
 local toggleByIntent = {}
-for _, toggle in ipairs(C.PARTY_TOGGLES or {}) do toggleByIntent[toggle.intent] = toggle.key end
+for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
+    if def.toggle then toggleByIntent[def.intent] = def.toggle end
+end
 
 function TB.PartyToggleKey(intent)
     return intent and toggleByIntent[intent] or nil
@@ -89,8 +91,8 @@ end
 
 function TB.SendPartyToggle(key)
     local toggle
-    for _, t in ipairs(C.PARTY_TOGGLES or {}) do
-        if t.key == key then toggle = t end
+    for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
+        if def.toggle == key then toggle = def break end
     end
     if not toggle or TB.togglePending[key] then return false end
     local nextState = TB.GetPartyToggleState(key) == "on" and "off" or "on"

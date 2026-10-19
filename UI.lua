@@ -145,6 +145,268 @@ local function setButtonTooltip(button, text, title)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+local function addRaidIcon(button, iconIndex)
+    if button and not button.raidIcon then
+        local icon = button:CreateTexture(nil, "ARTWORK")
+        icon:SetWidth(16); icon:SetHeight(16)
+        icon:SetPoint("LEFT", button, "LEFT", 5, 0)
+        icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. iconIndex)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        button.raidIcon = icon
+    end
+end
+
+-- ── Component kit and layout grid ──────────────────────────────────────────
+TB.UI = TB.UI or {}
+
+TB.UI.Grid = {
+    CONTENT_W     = W - (C.PAD or 10) * 2,
+    PAD           = C.PAD or 10,
+    GAP_BTN       = C.GAP_BTN or 4,
+    BTN_H         = 26,
+    BTN_H_SM      = 22,
+    ROW_H         = ROW_H,
+    CARD_ENGAGE_H = 58,
+    CARD_PULL_H   = 76,
+    CARD_MOVE_H   = 58,
+    CARD_SWITCH_H = 58,
+    CARD_REST_H   = 88,
+    CARD_FORM_H   = 76,
+}
+
+TB.UI.SetTooltip  = setButtonTooltip
+TB.UI.AddRaidIcon = addRaidIcon
+
+function TB.UI.CreateCard(parent, titleText, width, height, opts)
+    opts = opts or {}
+    width = width or TB.UI.Grid.CONTENT_W
+    local card = CreateFrame("Frame", nil, parent)
+    card:SetPoint(opts.point or "TOPLEFT", opts.relTo or parent, opts.relPoint or "TOPLEFT", opts.x or 0, opts.y or 0)
+    card:SetWidth(width)
+    card:SetHeight(height or 58)
+    TB.ApplyBackdrop(card, opts.bgAlpha or 0.45, opts.edgeAlpha or 0.35)
+
+    if titleText then
+        local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        title:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -6)
+        title:SetText(titleText)
+        TB.SetTextColor(title, opts.titleColor or color("gold"))
+        card.title = title
+    end
+
+    if opts.line then
+        local line = card:CreateTexture(nil, "ARTWORK")
+        line:SetTexture(0.48, 0.36, 0.15, 0.30)
+        line:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -19)
+        line:SetPoint("TOPRIGHT", card, "TOPRIGHT", -6, -19)
+        line:SetHeight(1)
+        card.line = line
+    end
+
+    return card
+end
+
+function TB.UI.CreateButton(parent, label, width, height, opts)
+    opts = opts or {}
+    local button = CreateFrame("Button", nil, parent, opts.template or "UIPanelButtonTemplate")
+    button:SetWidth(width or 110)
+    button:SetHeight(height or 26)
+    if opts.x or opts.y or opts.point or opts.relTo then
+        button:SetPoint(opts.point or "TOPLEFT", opts.relTo or parent, opts.relPoint or "TOPLEFT", opts.x or 0, opts.y or 0)
+    end
+    if label then
+        button:SetText(label)
+    end
+
+    if opts.icon then
+        local icon = button:CreateTexture(nil, "OVERLAY")
+        icon:SetWidth(16); icon:SetHeight(16)
+        icon:SetPoint("LEFT", button, "LEFT", 5, 0)
+        icon:SetTexture(opts.icon)
+        if opts.texCoord then
+            icon:SetTexCoord(opts.texCoord[1], opts.texCoord[2], opts.texCoord[3], opts.texCoord[4])
+        elseif opts.intent ~= "focus skull" and opts.intent ~= "cc moon" then
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+        button.icon = icon
+    end
+
+    if opts.raidIcon then
+        addRaidIcon(button, opts.raidIcon)
+    end
+
+    if opts.lamp then
+        local lamp = button:CreateTexture(nil, "OVERLAY")
+        lamp:SetWidth(8); lamp:SetHeight(8)
+        lamp:SetPoint("RIGHT", button, "RIGHT", -9, 0)
+        button.lamp = lamp
+    end
+
+    if opts.tip then
+        setButtonTooltip(button, opts.tip, opts.tipTitle or label)
+    end
+
+    if opts.onClick then
+        button:SetScript("OnClick", opts.onClick)
+    elseif opts.intent then
+        button:SetScript("OnClick", function()
+            TB.SendActionIntent(opts.intent)
+        end)
+    end
+
+    return button
+end
+
+function TB.UI.CreateTogglePill(parent, label, width, height, opts)
+    opts = opts or {}
+    local pill = TB.UI.CreateButton(parent, label, width or 74, height or 20, opts)
+    function pill:SetActive(active)
+        self.isActive = active and true or false
+        if active then
+            self:Disable()
+        else
+            self:Enable()
+        end
+    end
+    return pill
+end
+
+function TB.UI.CreateStepper(parent, opts)
+    opts = opts or {}
+    local row = CreateFrame("Frame", nil, parent)
+    if opts.relTo or opts.x or opts.y or opts.point then
+        row:SetPoint(opts.point or "TOPLEFT", opts.relTo or parent, opts.relPoint or "TOPLEFT", opts.x or 0, opts.y or 0)
+    end
+    row:SetWidth(opts.width or 108)
+    row:SetHeight(opts.height or 18)
+
+    local minus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    minus:SetWidth(22); minus:SetHeight(opts.height or 18)
+    minus:SetPoint("LEFT", row, "LEFT", 0, 0)
+    minus:SetText("-")
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+    label:SetWidth(opts.labelWidth or 38)
+    label:SetJustifyH("CENTER")
+
+    local plus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    plus:SetWidth(22); plus:SetHeight(opts.height or 18)
+    plus:SetPoint("LEFT", label, "RIGHT", 2, 0)
+    plus:SetText("+")
+
+    local function getVal()
+        if opts.get then return opts.get() end
+        return 0
+    end
+
+    local function paint()
+        local v = getVal()
+        if opts.format then
+            label:SetText(opts.format(v))
+        else
+            label:SetText(tostring(v))
+        end
+    end
+
+    local function bump(delta)
+        if opts.set then
+            opts.set(getVal() + delta)
+        end
+        paint()
+    end
+
+    local step = opts.step or 1
+    local shiftStep = opts.shiftStep or 5
+    minus:SetScript("OnClick", function()
+        if IsShiftKeyDown and IsShiftKeyDown() then bump(-shiftStep) else bump(-step) end
+    end)
+    plus:SetScript("OnClick", function()
+        if IsShiftKeyDown and IsShiftKeyDown() then bump(shiftStep) else bump(step) end
+    end)
+
+    if opts.tip then
+        setButtonTooltip(minus, opts.tip, opts.tipTitle)
+        setButtonTooltip(plus, opts.tip, opts.tipTitle)
+    end
+
+    paint()
+    row.label = label
+    row.repaint = paint
+    row.minus = minus
+    row.plus = plus
+    row.bump = bump
+    return row
+end
+
+function TB.UI.CreateRow(parent, width, height, opts)
+    opts = opts or {}
+    local row = CreateFrame("Frame", nil, parent)
+    if opts.relTo or opts.x or opts.y or opts.point then
+        row:SetPoint(opts.point or "TOPLEFT", opts.relTo or parent, opts.relPoint or "TOPLEFT", opts.x or 0, opts.y or 0)
+    end
+    row:SetWidth(width or TB.UI.Grid.CONTENT_W)
+    row:SetHeight(height or TB.UI.Grid.ROW_H)
+    return row
+end
+
+function TB.UI.CreateIconButton(parent, size, opts)
+    opts = opts or {}
+    size = size or 20
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetWidth(opts.width or size)
+    btn:SetHeight(opts.height or size)
+    if opts.relTo or opts.x or opts.y or opts.point then
+        btn:SetPoint(opts.point or "TOPLEFT", opts.relTo or parent, opts.relPoint or "TOPLEFT", opts.x or 0, opts.y or 0)
+    end
+    btn:RegisterForClicks("LeftButtonUp")
+
+    if opts.icon then
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints(btn)
+        icon:SetTexture(opts.icon)
+        if opts.texCoord then
+            icon:SetTexCoord(opts.texCoord[1], opts.texCoord[2], opts.texCoord[3], opts.texCoord[4])
+        end
+        btn.icon = icon
+    end
+
+    if opts.highlight ~= false then
+        local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints(btn)
+        hl:SetTexture(1, 1, 1, 0.2)
+        btn.highlight = hl
+    end
+
+    if opts.onClick then
+        btn:SetScript("OnClick", opts.onClick)
+    end
+
+    if opts.onEnter then
+        btn:SetScript("OnEnter", opts.onEnter)
+    elseif opts.tip then
+        btn:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+            if opts.tipTitle then
+                GameTooltip:SetText(opts.tipTitle)
+                local tipText = type(opts.tip) == "function" and opts.tip() or opts.tip
+                GameTooltip:AddLine(tipText, 0.9, 0.9, 0.9, 1)
+            else
+                local tipText = type(opts.tip) == "function" and opts.tip() or opts.tip
+                GameTooltip:SetText(tipText, 1, 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end)
+    end
+    if opts.onLeave then
+        btn:SetScript("OnLeave", opts.onLeave)
+    elseif opts.tip then
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
+    return btn
+end
+
 -- ── section factories ───────────────────────────────────────────────────────
 CreateHeader = function(parent)
     local db = TortoiseBotsDB or {}
@@ -409,12 +671,10 @@ CreateRosterBar = function(parent)
     TB.SetTextColor(selection, color("muted"))
 
     local function button(label, width, action, verb, tip)
-        local btn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-        btn:SetWidth(width); btn:SetHeight(22)
-        btn:SetText(label)
-        btn:SetScript("OnClick", function() lifecycleCommand(action, verb) end)
-        setButtonTooltip(btn, tip)
-        return btn
+        return TB.UI.CreateButton(bar, label, width, 22, {
+            onClick = function() lifecycleCommand(action, verb) end,
+            tip = tip,
+        })
     end
 
     local login  = button("Login", 56, "login", "add", "Log in selected offline owned bots; on an alt-bot playing alone, take it back as your companion")
@@ -434,60 +694,43 @@ CreateRosterBar = function(parent)
 end
 
 local function makeActionButton(parent, intent, width, x, y)
+    local def = TB.GetActionDefinition and (TB.GetActionDefinition(intent) or (TB.C and TB.C.ACTIONS_BY_INTENT and TB.C.ACTIONS_BY_INTENT[intent]))
     local labels = C.ACTION_LABELS or {}
-    local label = labels[intent] or intent
-    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    button:SetWidth(width); button:SetHeight(26)
-    button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
-    button:SetText(label)
-
+    local label = (def and def.label) or labels[intent] or intent
     local icons = (C and C.ACTION_ICONS) or {}
-    if icons[intent] then
-        local icon = button:CreateTexture(nil, "OVERLAY")
-        icon:SetWidth(16); icon:SetHeight(16)
-        icon:SetPoint("LEFT", button, "LEFT", 5, 0)
-        icon:SetTexture(icons[intent])
-        if intent ~= "focus skull" and intent ~= "cc moon" then
-            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
-        button.icon = icon
-    end
+    local icon = (def and def.icon) or icons[intent]
+    local raidIcon = def and def.raidIcon
 
-    setButtonTooltip(button, ACTION_TOOLTIPS[intent] or "Send .bot action " .. intent, label)
-    button:SetScript("OnClick", function()
-        if TB.PartyToggleKey and TB.PartyToggleKey(intent) then
-            TB.SendPartyToggle(TB.PartyToggleKey(intent))
-        elseif intent == "release" then
-            TB.SendActionIntent(TB.DeathIntent and TB.DeathIntent() or "release")
-        elseif intent == "pull" or intent == "pullback" then
-            TB.SendActionIntent(TB.PullIntent and TB.PullIntent(intent) or intent)
-        else
-            TB.SendActionIntent(intent)
-        end
-    end)
+    local button = TB.UI.CreateButton(parent, label, width, 26, {
+        x = x,
+        y = y,
+        intent = intent,
+        icon = icon,
+        raidIcon = raidIcon,
+        tip = (def and def.tip) or ACTION_TOOLTIPS[intent] or ("Send .bot action " .. intent),
+        tipTitle = label,
+        onClick = function()
+            if TB.PartyToggleKey and TB.PartyToggleKey(intent) then
+                TB.SendPartyToggle(TB.PartyToggleKey(intent))
+            elseif intent == "release" then
+                TB.SendActionIntent(TB.DeathIntent and TB.DeathIntent() or "release")
+            elseif intent == "pull" or intent == "pullback" then
+                TB.SendActionIntent(TB.PullIntent and TB.PullIntent(intent) or intent)
+            else
+                TB.SendActionIntent(intent)
+            end
+        end,
+    })
     return button
 end
 
-local function addRaidIcon(button, iconIndex)
-    if button and not button.raidIcon then
-        local icon = button:CreateTexture(nil, "ARTWORK")
-        icon:SetWidth(16); icon:SetHeight(16)
-        icon:SetPoint("LEFT", button, "LEFT", 5, 0)
-        icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. iconIndex)
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        button.raidIcon = icon
-    end
-end
+TB.UI.CreateActionButton = makeActionButton
 
-CreateActions = function(parent)
-    local frame = CreateFrame("Frame", nil, parent)
-    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    frame:SetWidth(W - (C.PAD or 10) * 2)
-    frame:SetHeight(300)
+-- ── Per-card builders for Actions (Fight & Camp) ───────────────────────────
 
-    -- Scope Banner Card
-    local scopeCard = CreateFrame("Frame", nil, frame)
-    scopeCard:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+local function BuildScopeCard(parent)
+    local scopeCard = CreateFrame("Frame", nil, parent)
+    scopeCard:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     scopeCard:SetWidth(W - (C.PAD or 10) * 2)
     scopeCard:SetHeight(36)
     TB.ApplyBackdrop(scopeCard, 0.65, 0.50)
@@ -512,70 +755,33 @@ CreateActions = function(parent)
     TB.SetTextColor(hint, color("muted"))
 
     -- Shown while one of your bots is targeted: opens its gear/bags panel.
-    local gearButton = CreateFrame("Button", nil, scopeCard, "UIPanelButtonTemplate")
-    gearButton:SetWidth(104); gearButton:SetHeight(22)
-    gearButton:SetPoint("RIGHT", scopeCard, "RIGHT", -8, 0)
-    gearButton:SetText("Gear & bags")
-    setButtonTooltip(gearButton, "Open the targeted bot's gear, bags and behaviour.", "Gear & bags")
-    gearButton:SetScript("OnClick", function()
-        local _, name = targetScope()
-        if name and TB.OpenBotPanel then TB.OpenBotPanel(name) end
-    end)
+    local gearButton = TB.UI.CreateButton(scopeCard, "Gear & bags", 104, 22, {
+        point = "RIGHT",
+        relTo = scopeCard,
+        relPoint = "RIGHT",
+        x = -8,
+        y = 0,
+        tip = "Open the targeted bot's gear, bags and behaviour.",
+        tipTitle = "Gear & bags",
+        onClick = function()
+            local _, name = targetScope()
+            if name and TB.OpenBotPanel then TB.OpenBotPanel(name) end
+        end,
+    })
     gearButton:Hide()
     TB.scopeGearButton = gearButton
 
-    -- Camp: the between-fights view, a sibling of the Fight view.
-    local campFrame = CreateFrame("Frame", nil, parent)
-    campFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    campFrame:SetWidth(W - (C.PAD or 10) * 2)
-    campFrame:SetHeight(300)
-    local campHint = campFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    campHint:SetPoint("TOPLEFT", campFrame, "TOPLEFT", 6, 0)
-    campHint:SetWidth(468); campHint:SetJustifyH("LEFT")
-    TB.SetTextColor(campHint, color("muted"))
-    TB.campScopeHint = campHint
+    return scopeCard
+end
 
-    local function makeSection(titleText, yOffset, cardHeight, owner)
-        owner = owner or frame
-        local card = CreateFrame("Frame", nil, owner)
-        card:SetPoint("TOPLEFT", owner, "TOPLEFT", 0, yOffset)
-        card:SetWidth(W - (C.PAD or 10) * 2)
-        card:SetHeight(cardHeight)
-        TB.ApplyBackdrop(card, 0.45, 0.35)
-
-        local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        title:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -6)
-        title:SetText(titleText)
-        TB.SetTextColor(title, color("gold"))
-
-        local line = card:CreateTexture(nil, "ARTWORK")
-        line:SetTexture(0.48, 0.36, 0.15, 0.30)
-        line:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -19)
-        line:SetPoint("TOPRIGHT", card, "TOPRIGHT", -6, -19)
-        line:SetHeight(1)
-        return card
-    end
-
-    -- Fight: everything used while a pull is on, top to bottom in the
-    -- order a fight happens (engage, pull/focus, move, switches).
-    local cardEngage = makeSection("ENGAGE", -40, 58)
-    local cardPull   = makeSection("PULL & FOCUS", -102, 76)
-    local cardMove   = makeSection("MOVE", -182, 58)
-    local cardSwitch = makeSection("PARTY SWITCHES", -244, 58)
-    -- Camp: between fights.
-    local cardRest   = makeSection("REST, REPAIR & TRAIN", -18, 88, campFrame)
-    local cardForm   = makeSection("FORMATION", -110, 76, campFrame)
-
-    local btnY = -24
-    local buttons = {}
-
+local function BuildCcMenu(parent, buttons)
     -- Marks panel: one row per raid icon. Each row shows the current owner
     -- (server-owned CC assignment, "-" when none), a cycler that assigns the
     -- next online bot by explicit name ("cc <mark> <Bot>"), and a clear button
     -- ("cc clear <Owner>"). No WoW targeting is needed: the server resolves
     -- names directly. Opened by the Actions "CC Mark" button; stays open so
     -- several marks can be assigned in one go.
-    local ccMenu = CreateFrame("Frame", "TortoiseBotsManagerCcMenu", frame)
+    local ccMenu = CreateFrame("Frame", "TortoiseBotsManagerCcMenu", parent)
     ccMenu:SetWidth(300)
     ccMenu:SetHeight(280)
     ccMenu:SetFrameStrata("DIALOG")
@@ -599,10 +805,7 @@ CreateActions = function(parent)
     local ccRows = {}
     for i, mark in ipairs(C.CC_MARKS or {}) do
         local markId = mark.id
-        local row = CreateFrame("Frame", nil, ccMenu)
-        row:SetWidth(284)
-        row:SetHeight(24)
-        row:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -40 - (i - 1) * 26)
+        local row = TB.UI.CreateRow(ccMenu, 284, 24, { x = 8, y = -40 - (i - 1) * 26 })
 
         local markIcon = row:CreateTexture(nil, "OVERLAY")
         markIcon:SetWidth(16); markIcon:SetHeight(16)
@@ -624,38 +827,42 @@ CreateActions = function(parent)
         ownerText:SetText("-")
         TB.SetTextColor(ownerText, color("muted"))
 
-        local cycleButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        cycleButton:SetWidth(64)
-        cycleButton:SetHeight(20)
-        cycleButton:SetPoint("LEFT", row, "LEFT", 164, 0)
-        cycleButton:SetText("Next")
+        local cycleButton = TB.UI.CreateButton(row, "Next", 64, 20, {
+            point = "LEFT",
+            relTo = row,
+            relPoint = "LEFT",
+            x = 164,
+            y = 0,
+            tip = "Assign " .. mark.label .. " to the next online bot by name",
+            onClick = function()
+                local cands = TB.GetCcCandidates and TB.GetCcCandidates() or {}
+                if table.getn(cands) == 0 then return end
+                local current = TB.GetCcOwner and TB.GetCcOwner(markId) or nil
+                local idx = 0
+                for j, name in ipairs(cands) do
+                    if name == current then idx = j break end
+                end
+                idx = math.mod(idx, table.getn(cands)) + 1
+                TB.SendActionIntent("cc " .. markId .. " " .. cands[idx])
+            end,
+        })
         cycleButton.mark = markId
-        cycleButton:SetScript("OnClick", function()
-            local cands = TB.GetCcCandidates and TB.GetCcCandidates() or {}
-            if table.getn(cands) == 0 then return end
-            local current = TB.GetCcOwner and TB.GetCcOwner(markId) or nil
-            local idx = 0
-            for j, name in ipairs(cands) do
-                if name == current then idx = j break end
-            end
-            idx = math.mod(idx, table.getn(cands)) + 1
-            TB.SendActionIntent("cc " .. markId .. " " .. cands[idx])
-        end)
-        setButtonTooltip(cycleButton, "Assign " .. mark.label .. " to the next online bot by name")
 
-        local clearButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        clearButton:SetWidth(46)
-        clearButton:SetHeight(20)
-        clearButton:SetPoint("LEFT", row, "LEFT", 230, 0)
-        clearButton:SetText("X")
+        local clearButton = TB.UI.CreateButton(row, "X", 46, 20, {
+            point = "LEFT",
+            relTo = row,
+            relPoint = "LEFT",
+            x = 230,
+            y = 0,
+            tip = "Clear " .. mark.label .. " from its current owner",
+            onClick = function()
+                local owner = TB.GetCcOwner and TB.GetCcOwner(markId) or nil
+                if owner then
+                    TB.SendActionIntent("cc clear " .. owner)
+                end
+            end,
+        })
         clearButton.mark = markId
-        clearButton:SetScript("OnClick", function()
-            local owner = TB.GetCcOwner and TB.GetCcOwner(markId) or nil
-            if owner then
-                TB.SendActionIntent("cc clear " .. owner)
-            end
-        end)
-        setButtonTooltip(clearButton, "Clear " .. mark.label .. " from its current owner")
 
         ccRows[markId] = { ownerText = ownerText, cycle = cycleButton, clear = clearButton }
         ccButtons[markId] = cycleButton
@@ -663,15 +870,14 @@ CreateActions = function(parent)
     ccMenu.buttons = ccButtons
     ccMenu.rows = ccRows
 
-    local clearAllButton = CreateFrame("Button", nil, ccMenu, "UIPanelButtonTemplate")
-    clearAllButton:SetWidth(120)
-    clearAllButton:SetHeight(22)
-    clearAllButton:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -250)
-    clearAllButton:SetText("Clear all")
-    clearAllButton:SetScript("OnClick", function()
-        TB.SendActionIntent("cc clear")
-    end)
-    setButtonTooltip(clearAllButton, "Clear every CC mark from every bot")
+    local clearAllButton = TB.UI.CreateButton(ccMenu, "Clear all", 120, 22, {
+        x = 8,
+        y = -250,
+        tip = "Clear every CC mark from every bot",
+        onClick = function()
+            TB.SendActionIntent("cc clear")
+        end,
+    })
     ccMenu.clearAll = clearAllButton
     ccMenu:Hide()
 
@@ -691,140 +897,164 @@ CreateActions = function(parent)
         else
             ccMenu:Show()
             ccMenu:ClearAllPoints()
-            ccMenu:SetPoint("TOPLEFT", buttons.ccMoon, "BOTTOMLEFT", 0, -4)
+            if buttons and buttons.ccMoon then
+                ccMenu:SetPoint("TOPLEFT", buttons.ccMoon, "BOTTOMLEFT", 0, -4)
+            end
             ccMenu:Update()
         end
     end
     TB.ccMenu = ccMenu
+    return ccMenu
+end
 
-    buttons.attack    = makeActionButton(cardEngage, "attack", 110, 8, btnY)
-    buttons.stop      = makeActionButton(cardEngage, "stop", 110, 126, btnY)
-    buttons.interrupt = makeActionButton(cardEngage, "interrupt", 110, 244, btnY)
-    buttons.flee      = makeActionButton(cardEngage, "flee", 110, 362, btnY)
-    buttons.pull      = makeActionButton(cardPull, "pull", 110, 8, btnY)
-    buttons.pullback  = makeActionButton(cardPull, "pullback", 110, 126, btnY)
+local function BuildEngageCard(parent, buttons)
+    -- Fight: Engage (attack, stop, interrupt, flee)
+    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 58, { y = -40, line = true })
+    local btnY = -24
+    buttons.attack    = makeActionButton(card, "attack", 110, 8, btnY)
+    buttons.stop      = makeActionButton(card, "stop", 110, 126, btnY)
+    buttons.interrupt = makeActionButton(card, "interrupt", 110, 244, btnY)
+    buttons.flee      = makeActionButton(card, "flee", 110, 362, btnY)
+    return card
+end
 
-    -- Adjustable pull timers: small "- N s +" steppers under the Pull and
-    -- Pull back buttons, same UIPanelButtonTemplate style as the bar.
-    local function makePullStepper(kind, anchorButton, dx, tip)
-        local row = CreateFrame("Frame", nil, cardPull)
-        row:SetPoint("TOPLEFT", anchorButton, "BOTTOMLEFT", dx, -2)
-        row:SetWidth(108); row:SetHeight(18)
+local function BuildPullCard(parent, buttons)
+    -- Pull & Focus: pull, pullback with timers, focus skull, cc mark
+    local card = TB.UI.CreateCard(parent, "PULL & FOCUS", W - (C.PAD or 10) * 2, 76, { y = -102, line = true })
+    local btnY = -24
+    buttons.pull      = makeActionButton(card, "pull", 110, 8, btnY)
+    buttons.pullback  = makeActionButton(card, "pullback", 110, 126, btnY)
 
-        local minus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        minus:SetWidth(22); minus:SetHeight(18)
-        minus:SetPoint("LEFT", row, "LEFT", 0, 0)
-        minus:SetText("-")
-
-        local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        label:SetPoint("LEFT", minus, "RIGHT", 2, 0)
-        label:SetWidth(38)
-        label:SetJustifyH("CENTER")
-
-        local plus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        plus:SetWidth(22); plus:SetHeight(18)
-        plus:SetPoint("LEFT", label, "RIGHT", 2, 0)
-        plus:SetText("+")
-
-        local function current()
+    buttons.pullTimer = TB.UI.CreateStepper(card, {
+        relTo = buttons.pull,
+        point = "TOPLEFT",
+        relPoint = "BOTTOMLEFT",
+        x = 1,
+        y = -2,
+        tip = "Seconds the other bots wait before joining a Pull (0-60, shift-click = 5).",
+        tipTitle = "Pull timer",
+        get = function()
             local dbNow = TortoiseBotsDB or {}
-            if kind == "pullback" then return TB.ClampPullSeconds(dbNow.pullbackDelay)
-            else return TB.ClampPullSeconds(dbNow.pullDelay) end
-        end
-        local function paint()
-            label:SetText(current() .. " s")
-        end
-        local function bump(step)
+            return TB.ClampPullSeconds(dbNow.pullDelay)
+        end,
+        set = function(val)
             TortoiseBotsDB = TortoiseBotsDB or {}
-            if kind == "pullback" then
-                TortoiseBotsDB.pullbackDelay = TB.ClampPullSeconds(current() + step)
-            else
-                TortoiseBotsDB.pullDelay = TB.ClampPullSeconds(current() + step)
-            end
-            paint()
-        end
-        minus:SetScript("OnClick", function()
-            if IsShiftKeyDown and IsShiftKeyDown() then bump(-5) else bump(-1) end
-        end)
-        plus:SetScript("OnClick", function()
-            if IsShiftKeyDown and IsShiftKeyDown() then bump(5) else bump(1) end
-        end)
-        setButtonTooltip(minus, tip, "Pull timer")
-        setButtonTooltip(plus, tip, "Pull timer")
-        paint()
-        row.label = label
-        row.repaint = paint
-        return row
-    end
+            TortoiseBotsDB.pullDelay = TB.ClampPullSeconds(val)
+        end,
+        format = function(val)
+            return val .. " s"
+        end,
+    })
 
-    buttons.pullTimer = makePullStepper("pull", buttons.pull, 1,
-        "Seconds the other bots wait before joining a Pull (0-60, shift-click = 5).")
-    buttons.pullbackTimer = makePullStepper("pullback", buttons.pullback, 1,
-        "Seconds the other bots wait after the tank is back from a Pull back (0-60, shift-click = 5).")
+    buttons.pullbackTimer = TB.UI.CreateStepper(card, {
+        relTo = buttons.pullback,
+        point = "TOPLEFT",
+        relPoint = "BOTTOMLEFT",
+        x = 1,
+        y = -2,
+        tip = "Seconds the other bots wait after the tank is back from a Pull back (0-60, shift-click = 5).",
+        tipTitle = "Pull timer",
+        get = function()
+            local dbNow = TortoiseBotsDB or {}
+            return TB.ClampPullSeconds(dbNow.pullbackDelay)
+        end,
+        set = function(val)
+            TortoiseBotsDB = TortoiseBotsDB or {}
+            TortoiseBotsDB.pullbackDelay = TB.ClampPullSeconds(val)
+        end,
+        format = function(val)
+            return val .. " s"
+        end,
+    })
+
     TB.pullTimers = { pull = buttons.pullTimer, pullback = buttons.pullbackTimer }
 
-    buttons.focusSkull = makeActionButton(cardPull, "focus skull", 110, 244, btnY)
-    buttons.ccMoon     = makeActionButton(cardPull, "cc moon", 110, 362, btnY)
+    buttons.focusSkull = makeActionButton(card, "focus skull", 110, 244, btnY)
+    buttons.ccMoon     = makeActionButton(card, "cc moon", 110, 362, btnY)
     buttons.ccMoon:SetText("CC Mark")
     buttons.ccMoon:SetScript("OnClick", function() TB.ToggleCcMenu() end)
     buttons.ccMark     = buttons.ccMoon
     addRaidIcon(buttons.focusSkull, 8)
+    return card
+end
 
-    buttons.follow   = makeActionButton(cardMove, "follow", 148, 8, btnY)
-    buttons.stay     = makeActionButton(cardMove, "stay", 148, 164, btnY)
-    buttons.come     = makeActionButton(cardMove, "come", 148, 320, btnY)
+local function BuildMoveCard(parent, buttons)
+    -- Move: follow, stay, come
+    local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, 58, { y = -182, line = true })
+    local btnY = -24
+    buttons.follow   = makeActionButton(card, "follow", 148, 8, btnY)
+    buttons.stay     = makeActionButton(card, "stay", 148, 164, btnY)
+    buttons.come     = makeActionButton(card, "come", 148, 320, btnY)
     buttons.hold     = buttons.come
+    return card
+end
 
+local function BuildSwitchesCard(parent, buttons)
     -- Party switches: state comes from the server (TBM:BOTSTATE), the lamp
     -- shows it at a glance (green on, grey off, gold mixed/unknown).
+    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, 58, { y = -244, line = true })
+    local btnY = -24
     TB.toggleButtons = {}
-    for i, toggle in ipairs(C.PARTY_TOGGLES or {}) do
-        local btn = makeActionButton(cardSwitch, toggle.intent, 148, 8 + (i - 1) * 156, btnY)
-        btn.toggle = toggle
-        btn.lamp = btn:CreateTexture(nil, "OVERLAY")
-        btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
-        btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -9, 0)
-        setButtonTooltip(btn, toggle.tip .. " Click to switch for the whole party (or only the targeted bot).",
-            toggle.label)
-        TB.toggleButtons[toggle.key] = btn
+    local switchIdx = 1
+    for _, def in ipairs(C.ACTION_DEFINITIONS or {}) do
+        if def.section == "switch" then
+            local btn = makeActionButton(card, def.intent, 148, 8 + (switchIdx - 1) * 156, btnY)
+            btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
+            btn.lamp = btn:CreateTexture(nil, "OVERLAY")
+            btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
+            btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -9, 0)
+            setButtonTooltip(btn, def.tip .. " Click to switch for the whole party (or only the targeted bot).",
+                def.label)
+            TB.toggleButtons[def.toggle] = btn
+            switchIdx = switchIdx + 1
+        end
     end
     buttons.aoe = TB.toggleButtons.aoe
     buttons.autoCc = TB.toggleButtons.autocc
     buttons.loot = TB.toggleButtons.loot
+    return card
+end
 
-    -- Camp chores. The last button follows the party's death state:
-    -- Release for corpses, Corpse run for ghosts.
-    buttons.rest    = makeActionButton(cardRest, "rest", 148, 8, btnY)
-    buttons.ready   = makeActionButton(cardRest, "ready", 148, 164, btnY)
-    buttons.repair  = makeActionButton(cardRest, "repair", 148, 320, btnY)
-    buttons.sell    = makeActionButton(cardRest, "sell", 148, 8, -54)
-    buttons.learn   = makeActionButton(cardRest, "learn", 148, 164, -54)
-    buttons.release = makeActionButton(cardRest, "release", 148, 320, -54)
+local function BuildRestCard(campFrame, buttons)
+    -- Camp chores: Rest, ready, repair, sell, train, release
+    local card = TB.UI.CreateCard(campFrame, "REST, REPAIR & TRAIN", W - (C.PAD or 10) * 2, 88, { y = -18, line = true })
+    local btnY = -24
+    buttons.rest    = makeActionButton(card, "rest", 148, 8, btnY)
+    buttons.ready   = makeActionButton(card, "ready", 148, 164, btnY)
+    buttons.repair  = makeActionButton(card, "repair", 148, 320, btnY)
+    buttons.sell    = makeActionButton(card, "sell", 148, 8, -54)
+    buttons.learn   = makeActionButton(card, "learn", 148, 164, -54)
+    buttons.release = makeActionButton(card, "release", 148, 320, -54)
     buttons.release.tooltipExtra = function()
         if TB.DeathIntent and TB.DeathIntent() == "corpse run" then
             return "Now: ghosts run back to their corpses."
         end
         return nil
     end
+    return card
+end
 
+local function BuildFormationCard(campFrame)
     -- Formation pills with a line describing the active one.
+    local card = TB.UI.CreateCard(campFrame, "FORMATION", W - (C.PAD or 10) * 2, 76, { y = -110, line = true })
     local pills = {}
     local formationTips = {}
     for i, def in ipairs(C.FORMATIONS or {}) do
         local id = def.id
         formationTips[id] = def.label .. ": " .. def.tip
-        local btn = CreateFrame("Button", nil, cardForm, "UIPanelButtonTemplate")
-        btn:SetWidth(74); btn:SetHeight(20)
-        btn:SetPoint("TOPLEFT", cardForm, "TOPLEFT", 8 + (i - 1) * 78, -26)
-        btn:SetText(def.label)
-        setButtonTooltip(btn, def.tip .. " Applies to the whole party, or only the targeted bot.", def.label)
-        btn:SetScript("OnClick", function()
-            TB.SetFormation(id)
-        end)
+        local btn = TB.UI.CreateTogglePill(card, def.label, 74, 20, {
+            x = 8 + (i - 1) * 78,
+            y = -26,
+            tip = def.tip .. " Applies to the whole party, or only the targeted bot.",
+            tipTitle = def.label,
+            onClick = function()
+                TB.SetFormation(id)
+            end,
+        })
         pills[id] = btn
     end
-    local formDesc = cardForm:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    formDesc:SetPoint("TOPLEFT", cardForm, "TOPLEFT", 10, -54)
+    local formDesc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    formDesc:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -54)
     formDesc:SetWidth(460); formDesc:SetJustifyH("LEFT")
     TB.SetTextColor(formDesc, color("muted"))
 
@@ -832,15 +1062,55 @@ CreateActions = function(parent)
     TB.UpdateFormationPills = function()
         local active = TB.currentFormation or "shield"
         for id, btn in pairs(pills) do
-            if id == active then
-                btn:Disable()
-            else
-                btn:Enable()
-            end
+            btn:SetActive(id == active)
         end
         formDesc:SetText(formationTips[active] or "")
     end
     TB.UpdateFormationPills()
+    return card
+end
+
+TB.UI.BuildScopeCard     = BuildScopeCard
+TB.UI.BuildCcMenu        = BuildCcMenu
+TB.UI.BuildEngageCard    = BuildEngageCard
+TB.UI.BuildPullCard      = BuildPullCard
+TB.UI.BuildMoveCard      = BuildMoveCard
+TB.UI.BuildSwitchesCard  = BuildSwitchesCard
+TB.UI.BuildRestCard      = BuildRestCard
+TB.UI.BuildFormationCard = BuildFormationCard
+
+CreateActions = function(parent)
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    frame:SetWidth(W - (C.PAD or 10) * 2)
+    frame:SetHeight(300)
+
+    -- Scope Banner Card
+    BuildScopeCard(frame)
+
+    -- Camp: the between-fights view, a sibling of the Fight view.
+    local campFrame = CreateFrame("Frame", nil, parent)
+    campFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    campFrame:SetWidth(W - (C.PAD or 10) * 2)
+    campFrame:SetHeight(300)
+    local campHint = campFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    campHint:SetPoint("TOPLEFT", campFrame, "TOPLEFT", 6, 0)
+    campHint:SetWidth(468); campHint:SetJustifyH("LEFT")
+    TB.SetTextColor(campHint, color("muted"))
+    TB.campScopeHint = campHint
+
+    local buttons = {}
+
+    -- Build cards for Fight view
+    BuildCcMenu(frame, buttons)
+    BuildEngageCard(frame, buttons)
+    BuildPullCard(frame, buttons)
+    BuildMoveCard(frame, buttons)
+    BuildSwitchesCard(frame, buttons)
+
+    -- Build cards for Camp view
+    BuildRestCard(campFrame, buttons)
+    BuildFormationCard(campFrame)
 
     local campTip = campFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     campTip:SetPoint("TOPLEFT", campFrame, "TOPLEFT", 6, -196)
@@ -1002,27 +1272,25 @@ function TB.InitUI()
 
             -- Gear & bags panel for a controllable bot (shown when the server
             -- reports the bot in TBM:BOTSTATE).
-            local bagButton = CreateFrame("Button", nil, row)
-            bagButton:SetWidth(22); bagButton:SetHeight(22)
-            bagButton:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -4)
-            bagButton:RegisterForClicks("LeftButtonUp")
-            local bagIcon = bagButton:CreateTexture(nil, "ARTWORK")
-            bagIcon:SetAllPoints(bagButton)
-            bagIcon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
-            local bagHl = bagButton:CreateTexture(nil, "HIGHLIGHT")
-            bagHl:SetAllPoints(bagButton)
-            bagHl:SetTexture(1, 1, 1, 0.2)
-            bagButton:SetScript("OnClick", function()
-                if row.partyName and TB.OpenBotPanel then TB.OpenBotPanel(row.partyName) end
-            end)
-            bagButton:SetScript("OnEnter", function()
-                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Gear & bags")
-                GameTooltip:AddLine("Open " .. (row.partyName or "this bot") .. "'s gear, bags and behaviour.",
-                    0.9, 0.9, 0.9, 1)
-                GameTooltip:Show()
-            end)
-            bagButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            local bagButton = TB.UI.CreateIconButton(row, 22, {
+                point = "TOPRIGHT",
+                relTo = row,
+                relPoint = "TOPRIGHT",
+                x = -8,
+                y = -4,
+                icon = "Interface\\Buttons\\Button-Backpack-Up",
+                onClick = function()
+                    if row.partyName and TB.OpenBotPanel then TB.OpenBotPanel(row.partyName) end
+                end,
+                onEnter = function()
+                    GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Gear & bags")
+                    GameTooltip:AddLine("Open " .. (row.partyName or "this bot") .. "'s gear, bags and behaviour.",
+                        0.9, 0.9, 0.9, 1)
+                    GameTooltip:Show()
+                end,
+                onLeave = function() GameTooltip:Hide() end,
+            })
             bagButton:Hide()
             row.bagButton = bagButton
 
@@ -1084,25 +1352,10 @@ function TB.InitUI()
         TB.SetTextColor(intro, color("muted"))
 
         local function card(titleText, y, height)
-            local c = CreateFrame("Frame", nil, raidFrame)
-            c:SetPoint("TOPLEFT", raidFrame, "TOPLEFT", 0, y)
-            c:SetWidth(W - (C.PAD or 10) * 2)
-            c:SetHeight(height)
-            TB.ApplyBackdrop(c, 0.45, 0.35)
-            local t = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            t:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -6)
-            t:SetText(titleText)
-            TB.SetTextColor(t, color("gold"))
-            return c
+            return TB.UI.CreateCard(raidFrame, titleText, W - (C.PAD or 10) * 2, height, { y = y, line = false })
         end
         local function button(parent, label, width, x, y, intent, tip)
-            local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-            b:SetWidth(width); b:SetHeight(24)
-            b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
-            b:SetText(label)
-            setButtonTooltip(b, tip, label)
-            if intent then b:SetScript("OnClick", function() TB.SendActionIntent(intent) end) end
-            return b
+            return TB.UI.CreateButton(parent, label, width, 24, { x = x, y = y, intent = intent, tip = tip })
         end
         local function note(parent, text, y)
             local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1271,28 +1524,26 @@ function TB.InitUI()
             row.status:SetWidth(64)
             row.status:SetJustifyH("LEFT")
 
-            local bagBtn = CreateFrame("Button", nil, row)
-            bagBtn:SetWidth(20); bagBtn:SetHeight(20)
-            bagBtn:SetPoint("LEFT", row, "LEFT", 346, 0)
-            bagBtn:RegisterForClicks("LeftButtonUp")
-            local bagIcon = bagBtn:CreateTexture(nil, "ARTWORK")
-            bagIcon:SetAllPoints(bagBtn)
-            bagIcon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
-            local bagHl = bagBtn:CreateTexture(nil, "HIGHLIGHT")
-            bagHl:SetAllPoints(bagBtn)
-            bagHl:SetTexture(1, 1, 1, 0.2)
-            bagBtn:SetScript("OnClick", function()
-                local entry = this:GetParent().entry
-                if entry and TB.OpenBotPanel then TB.OpenBotPanel(entry.name, "inv") end
-            end)
-            bagBtn:SetScript("OnEnter", function()
-                local entry = this:GetParent().entry
-                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Gear & Bags")
-                GameTooltip:AddLine("Open " .. (entry and entry.name or "this bot") .. "'s gear, bags and paperdoll.", 0.9, 0.9, 0.9, 1)
-                GameTooltip:Show()
-            end)
-            bagBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            local bagBtn = TB.UI.CreateIconButton(row, 20, {
+                point = "LEFT",
+                relTo = row,
+                relPoint = "LEFT",
+                x = 346,
+                y = 0,
+                icon = "Interface\\Buttons\\Button-Backpack-Up",
+                onClick = function()
+                    local entry = this:GetParent().entry
+                    if entry and TB.OpenBotPanel then TB.OpenBotPanel(entry.name, "inv") end
+                end,
+                onEnter = function()
+                    local entry = this:GetParent().entry
+                    GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Gear & Bags")
+                    GameTooltip:AddLine("Open " .. (entry and entry.name or "this bot") .. "'s gear, bags and paperdoll.", 0.9, 0.9, 0.9, 1)
+                    GameTooltip:Show()
+                end,
+                onLeave = function() GameTooltip:Hide() end,
+            })
             row.bagBtn = bagBtn
 
             local roleBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
@@ -1302,34 +1553,7 @@ function TB.InitUI()
             roleBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
                 if not entry then return end
-                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
-                if table.getn(roles) == 0 then return end
-                local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
-                local currentId = dbRoles[entry.name]
-                local nextIndex = 1
-                for idx, r in ipairs(roles) do
-                    if r.id == currentId then
-                        nextIndex = math.mod(idx, table.getn(roles)) + 1
-                        break
-                    end
-                end
-                local newRole = roles[nextIndex]
-                TortoiseBotsDB = TortoiseBotsDB or {}
-                TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
-                local previousRole = TortoiseBotsDB.botRoles[entry.name]
-                TortoiseBotsDB.botRoles[entry.name] = newRole.id
-
-                if newRole.id == "tank" then
-                    TB.SendBotCommand("role " .. entry.name .. " tank")
-                else
-                    if previousRole == "tank" then
-                        TB.SendBotCommand("role " .. entry.name .. " clear")
-                    end
-                    if newRole.strat and newRole.strat ~= "" then
-                        TB.SendBotCommand("command " .. entry.name .. " " .. newRole.strat)
-                    end
-                end
-                if TB.Print then TB.Print(entry.name .. " role set to " .. newRole.label) end
+                TB.Roles.CycleBotRole(entry.name, entry.classId)
                 if TB.RefreshGuildView then TB.RefreshGuildView() end
             end)
             roleBtn:SetScript("OnEnter", function()
@@ -1337,11 +1561,7 @@ function TB.InitUI()
                 if not entry then return end
                 local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
                 local currentId = dbRoles[entry.name]
-                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
-                local curLabel = "Default"
-                for _, r in ipairs(roles) do
-                    if r.id == currentId then curLabel = r.label break end
-                end
+                local curLabel = TB.Roles.GetRoleLabel(entry.classId, currentId, "Default")
                 GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Combat Role: " .. curLabel)
                 GameTooltip:AddLine("Click to cycle to the next combat role.", 0.9, 0.9, 0.9, 1)
@@ -1349,6 +1569,7 @@ function TB.InitUI()
             end)
             roleBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.roleBtn = roleBtn
+
 
             local relBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             relBtn:SetWidth(30); relBtn:SetHeight(20)
@@ -1606,12 +1827,12 @@ function TB.InitUI()
                     row.playerLabel:Hide()
                 end
 
-                local roles = (TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
+                local roles = TB.Roles.GetClassRoles(classId)
                 local currentRole
                 if isPlayer then
-                    currentRole = TortoiseBotsDB and TortoiseBotsDB.playerRole
+                    currentRole = TB.Roles.GetPlayerRole(classId)
                 else
-                    currentRole = dbRoles[name] or (roles[1] and roles[1].id)
+                    currentRole = TB.Roles.GetBotRole(name, classId)
                 end
                 -- Four-role rows need a reserved CC column on the right.
                 -- Keep the normal button width for other classes so their
@@ -1636,36 +1857,12 @@ function TB.InitUI()
 
                         local capturedRole = role
                         local capturedName = name
-                        local playerRoleToken = capturedRole.id == "tank" and "tank"
-                            or (capturedRole.id == "heal" and "healer" or "dps")
+                        local playerRoleToken = TB.Roles.GetPlayerRoleToken(capturedRole.id)
                         btn:SetScript("OnClick", function()
                             if isPlayer then
-                                TortoiseBotsDB = TortoiseBotsDB or {}
-                                TortoiseBotsDB.playerRole = capturedRole.id
-                                TB.SendBotCommand("role self " .. playerRoleToken)
-                                TB.Print("Your role set to " .. capturedRole.label)
+                                TB.Roles.SetPlayerRole(capturedRole, classId)
                             else
-                                TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
-                                local previousRole = TortoiseBotsDB.botRoles[capturedName]
-                                TortoiseBotsDB.botRoles[capturedName] = capturedRole.id
-                                -- Explicit tank designation drives the server-side
-                                -- forced role (pull qualification), so it uses
-                                -- the dedicated role command. Other roles keep
-                                -- the mature Playerbot strategy command.
-                                if capturedRole.id == "tank" then
-                                    TB.SendBotCommand("role " .. capturedName .. " tank")
-                                else
-                                    -- Demotion: a stale forced tank would still
-                                    -- qualify for pulls, so clear it before the
-                                    -- spec strategy is applied.
-                                    if previousRole == "tank" then
-                                        TB.SendBotCommand("role " .. capturedName .. " clear")
-                                    end
-                                    if capturedRole.strat and capturedRole.strat ~= "" then
-                                        TB.SendBotCommand("command " .. capturedName .. " " .. capturedRole.strat)
-                                    end
-                                end
-                                TB.Print(capturedName .. " role set to " .. capturedRole.label)
+                                TB.Roles.SetBotRole(capturedName, capturedRole, classId)
                             end
                             TB.RefreshPartyView()
                         end)
@@ -1682,6 +1879,7 @@ function TB.InitUI()
                         btn:Hide()
                     end
                 end
+
                 row:Show()
             else
                 row:Hide()
@@ -1763,15 +1961,12 @@ function TB.InitUI()
 
                 -- Role button label
                 local currentRoleId = dbRoles[entry.name]
-                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
-                local roleLabel = "Role"
-                for _, r in ipairs(roles) do
-                    if r.id == currentRoleId then roleLabel = r.label break end
-                end
-                if roleLabel == "Role" and table.getn(roles) > 0 then
-                    roleLabel = roles[1].label
+                local roleLabel = TB.Roles.GetRoleLabel(entry.classId, currentRoleId, "Role")
+                if roleLabel == "Role" and table.getn(TB.Roles.GetClassRoles(entry.classId)) > 0 then
+                    roleLabel = TB.Roles.GetClassRoles(entry.classId)[1].label
                 end
                 row.roleBtn:SetText(roleLabel)
+
 
                 row:Show()
             else

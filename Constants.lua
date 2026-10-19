@@ -67,130 +67,257 @@ TB.C.CLASS_NAME_TO_ID = {
     Druid = 11, DRUID = 11,
 }
 
-TB.C.CLASS_ROLES = {
-    [1] = { -- Warrior
-        { id = "tank", label = "Tank", strat = "+protection,-arms,-fury" },
-        { id = "dps", label = "DPS", strat = "+arms,-protection" },
+-- Single authoritative action definition table driving Actions tab and MiniBar.
+TB.C.ACTION_DEFINITIONS = {
+    -- Engage
+    {
+        id = "attack",
+        intent = "attack",
+        label = "Attack",
+        section = "engage",
+        needsEnemy = true,
+        icon = "Interface\\Icons\\Ability_SteelMelee",
+        tip = "Send your bots to attack your target (or you, if none selected).",
+        mini = 1,
     },
-    [2] = { -- Paladin
-        { id = "tank", label = "Tank", strat = "+protection,-holy,-retribution" },
-        { id = "heal", label = "Healer", strat = "+holy,-protection,-retribution,-offdps" },
-        { id = "dps", label = "DPS", strat = "+retribution,-protection,-holy" },
+    {
+        id = "stop",
+        intent = "stop",
+        label = "Stop",
+        section = "engage",
+        icon = "Interface\\Icons\\Ability_Defend",
+        tip = "Stop attacking, clear targets and return to formation.",
+        mini = 2,
     },
-    [3] = { -- Hunter
-        { id = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
-        { id = "mm", label = "Marksman", strat = "+marksmanship,-beast mastery,-survival" },
-        { id = "survival", label = "Survival", strat = "+survival,-beast mastery,-marksmanship" },
+    {
+        id = "interrupt",
+        intent = "interrupt",
+        label = "Interrupt",
+        section = "engage",
+        needsEnemy = true,
+        icon = "Interface\\Icons\\Ability_Kick",
+        tip = "Order capable bots (Rogue Kick, Warrior Pummel, Mage Counterspell, etc.) to interrupt the target's current cast.",
+        mini = 3,
     },
-    [4] = { -- Rogue
-        { id = "combat", label = "Combat", strat = "+combat,-assassination,-subtlety" },
-        { id = "assa", label = "Assassination", strat = "+assassination,-combat,-subtlety" },
-        { id = "subtlety", label = "Subtlety", strat = "+subtlety,-combat,-assassination" },
+    {
+        id = "flee",
+        intent = "flee",
+        label = "Flee",
+        section = "engage",
+        cap = "flee",
+        icon = "Interface\\Icons\\Ability_Rogue_Sprint",
+        tip = "Disengage immediately and run behind you, dropping combat priorities until commanded again.",
+        mini = 4,
     },
-    [5] = { -- Priest
-        { id = "heal", label = "Healer", strat = "+holy,-shadow,-offdps" },
-        { id = "hybrid", label = "Hybrid", strat = "+holy,+offdps,-shadow" },
-        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
+
+    -- Pull & Focus
+    {
+        id = "pull",
+        intent = "pull",
+        label = "Pull",
+        section = "pull",
+        needsEnemy = true,
+        pull = true,
+        icon = "Interface\\Icons\\Ability_TrueShot",
+        tip = "Tank body-pulls your target while other bots hold back.",
+        mini = 5,
     },
-    [7] = { -- Shaman
-        { id = "heal", label = "Healer", strat = "+restoration,-elemental,-enhancement,-offdps" },
-        { id = "ele", label = "Ele DPS", strat = "+elemental,-restoration,-enhancement" },
-        { id = "enh", label = "Enh DPS", strat = "+enhancement,-restoration,-elemental" },
+    {
+        id = "pullback",
+        intent = "pullback",
+        label = "Pullback",
+        section = "pull",
+        needsEnemy = true,
+        pull = true,
+        icon = "Interface\\Icons\\Ability_Hunter_AimedShot",
+        tip = "Tank pulls your target and runs back to you before the party engages.",
+        mini = 6,
     },
-    [8] = { -- Mage
-        { id = "frost", label = "Frost", strat = "+frost,-fire,-arcane" },
-        { id = "fire", label = "Fire", strat = "+fire,-frost,-arcane" },
-        { id = "arcane", label = "Arcane", strat = "+arcane,-frost,-fire" },
+    {
+        id = "focusSkull",
+        intent = "focus skull",
+        label = "Focus Skull",
+        section = "pull",
+        raidIcon = 8,
+        tip = "All bots switch to and burn down the target marked with Skull.",
+        mini = 7,
     },
-    [9] = { -- Warlock
-        { id = "affliction", label = "Affliction", strat = "+affliction,-demonology,-destruction" },
-        { id = "demonology", label = "Demonology", strat = "+demonology,-affliction,-destruction" },
-        { id = "destruction", label = "Destruction", strat = "+destruction,-affliction,-demonology" },
+    {
+        id = "ccMoon",
+        intent = "cc moon",
+        label = "CC Mark",
+        section = "pull",
+        raidIcon = 5,
+        custom = true,
+        tip = "Assign crowd-control raid marks (Moon, Circle, Square, etc.) to specific bots by name.",
     },
-    [11] = { -- Druid
-        { id = "tank", label = "Bear Tank", strat = "+tank feral,-dps feral,-restoration,-balance" },
-        { id = "cat", label = "Cat DPS", strat = "+dps feral,-tank feral,-restoration,-balance" },
-        { id = "heal", label = "Resto Heal", strat = "+restoration,-tank feral,-dps feral,-balance,-offdps" },
-        { id = "boomkin", label = "Boomkin", strat = "+balance,-tank feral,-dps feral,-restoration" },
+
+    -- Move
+    {
+        id = "follow",
+        intent = "follow",
+        label = "Follow",
+        section = "move",
+        icon = "Interface\\Icons\\Ability_Tracking",
+        tip = "Bots follow you in formation.",
+        mini = 8,
+    },
+    {
+        id = "stay",
+        intent = "stay",
+        label = "Stay",
+        section = "move",
+        icon = "Interface\\Icons\\Spell_Nature_TimeStop",
+        tip = "Bots hold their current positions until ordered to move.",
+        mini = 9,
+    },
+    {
+        id = "come",
+        intent = "come",
+        label = "Come & Hold",
+        section = "move",
+        icon = "Interface\\Icons\\Spell_Arcane_PortalIronForge",
+        tip = "Bots rush to your position and hold there.",
+        mini = 10,
+    },
+
+    -- Party Switches
+    {
+        id = "aoe",
+        intent = "aoe",
+        label = "AoE",
+        section = "switch",
+        toggle = "aoe",
+        icon = "Interface\\Icons\\Spell_Fire_FlameBlades",
+        tip = "Area-of-effect spells for DPS bots. They still hold AoE next to a crowd-controlled mob.",
+        mini = 11,
+    },
+    {
+        id = "autocc",
+        intent = "auto cc",
+        label = "Auto CC",
+        section = "switch",
+        toggle = "autocc",
+        icon = "Interface\\Icons\\Spell_Nature_Polymorph",
+        tip = "Bots sheep/sap a loose add that hits your healer, on their own. Your CC marks always win.",
+    },
+    {
+        id = "loot",
+        intent = "loot",
+        label = "Loot",
+        section = "switch",
+        toggle = "loot",
+        icon = "Interface\\Icons\\INV_Misc_Bag_10",
+        tip = "Bots loot corpses after a fight.",
+    },
+
+    -- Rest, Repair & Train (Camp)
+    {
+        id = "rest",
+        intent = "rest",
+        label = "Rest",
+        section = "rest",
+        icon = "Interface\\Icons\\INV_Drink_07",
+        tip = "Order bots to eat and drink until full.",
+    },
+    {
+        id = "ready",
+        intent = "ready",
+        label = "Ready Check",
+        section = "rest",
+        icon = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude",
+        tip = "Check if bots have sufficient health, mana, and no critical debuffs.",
+    },
+    {
+        id = "repair",
+        intent = "repair",
+        label = "Repair",
+        section = "rest",
+        icon = "Interface\\Icons\\Trade_BlackSmithing",
+        tip = "Bots repair their gear at a nearby vendor.",
+    },
+    {
+        id = "sell",
+        intent = "sell",
+        label = "Sell junk",
+        section = "rest",
+        icon = "Interface\\Icons\\INV_Misc_Coin_02",
+        tip = "Bots vendor grey quality items and junk in their bags.",
+    },
+    {
+        id = "learn",
+        intent = "learn",
+        label = "Train",
+        section = "rest",
+        icon = "Interface\\Icons\\INV_Misc_Book_09",
+        tip = "Bots learn available class spells and skills from your targeted trainer.",
+    },
+    {
+        id = "release",
+        intent = "release",
+        label = "Release",
+        section = "rest",
+        death = true,
+        icon = "Interface\\Icons\\Spell_Holy_Resurrection",
+        tip = "Order dead bots to release spirit, or ghosts to run back to their corpses.",
     },
 }
 
-TB.C.ACTIONS = {
-    "attack", "stop", "pull", "pullback", "come", "stay", "follow",
-    "focus skull", "cc moon", "aoe", "hold", "ready", "interrupt",
-    "flee", "auto cc", "loot", "rest", "repair", "sell", "learn", "release",
-}
+TB.C.ACTIONS_BY_ID = {}
+TB.C.ACTIONS_BY_INTENT = {}
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    TB.C.ACTIONS_BY_ID[def.id] = def
+    TB.C.ACTIONS_BY_INTENT[def.intent] = def
+end
 
-TB.C.ACTION_ICONS = {
-    attack          = "Interface\\Icons\\Ability_SteelMelee",
-    stop            = "Interface\\Icons\\Ability_Defend",
-    pull            = "Interface\\Icons\\Ability_TrueShot",
-    pullback        = "Interface\\Icons\\Ability_Hunter_AimedShot",
-    come            = "Interface\\Icons\\Spell_Arcane_PortalIronForge",
-    stay            = "Interface\\Icons\\Spell_Nature_TimeStop",
-    follow          = "Interface\\Icons\\Ability_Tracking",
-    ["focus skull"] = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8",
-    ["cc moon"]     = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5",
-    aoe             = "Interface\\Icons\\Spell_Fire_FlameBlades",
-    hold            = "Interface\\Icons\\Spell_Nature_Slow",
-    ready           = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude",
-    interrupt       = "Interface\\Icons\\Ability_Kick",
-    flee            = "Interface\\Icons\\Ability_Rogue_Sprint",
-    ["auto cc"]     = "Interface\\Icons\\Spell_Nature_Polymorph",
-    loot            = "Interface\\Icons\\INV_Misc_Bag_10",
-    rest            = "Interface\\Icons\\INV_Drink_07",
-    repair          = "Interface\\Icons\\Trade_BlackSmithing",
-    sell            = "Interface\\Icons\\INV_Misc_Coin_02",
-    learn           = "Interface\\Icons\\INV_Misc_Book_09",
-    release         = "Interface\\Icons\\Spell_Holy_Resurrection",
-}
+function TB.GetActionDefinition(idOrIntent)
+    return (TB.C and TB.C.ACTIONS_BY_ID and TB.C.ACTIONS_BY_ID[idOrIntent])
+        or (TB.C and TB.C.ACTIONS_BY_INTENT and TB.C.ACTIONS_BY_INTENT[idOrIntent])
+end
+
+
+-- Derived tables for backwards compatibility with tests and external callers.
+-- All data is driven directly by TB.C.ACTION_DEFINITIONS above.
+TB.C.ACTION_ICONS = {}
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    if def.icon then
+        TB.C.ACTION_ICONS[def.intent] = def.icon
+    elseif def.raidIcon then
+        TB.C.ACTION_ICONS[def.intent] = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. def.raidIcon
+    end
+end
+TB.C.ACTION_ICONS.hold = "Interface\\Icons\\Spell_Nature_Slow"
 
 TB.C.ACTION_LABELS = {
-    attack = "Attack",
-    stop = "Stop",
-    pullback = "Pullback",
-    pull = "Pull",
-    come = "Come & Hold",
-    stay = "Stay",
-    follow = "Follow",
-    ["focus skull"] = "Focus Skull",
-    ["cc moon"] = "CC Moon",
-    aoe = "AoE",
-    hold = "Come & Hold",
-    ready = "Ready Check",
-    interrupt = "Interrupt",
-    flee = "Flee",
-    ["auto cc"] = "Auto CC",
-    loot = "Loot",
-    rest = "Rest",
-    repair = "Repair",
-    sell = "Sell junk",
-    learn = "Train",
-    release = "Release",
-    ["corpse run"] = "Corpse run",
-    ["raid status"] = "Raid status",
-    ["raid tankface"] = "Tank face",
-    ["raid douse"] = "Douse runes",
+    ["corpse run"]         = "Corpse run",
+    ["raid status"]        = "Raid status",
+    ["raid tankface"]      = "Tank face",
+    ["raid douse"]         = "Douse runes",
     ["raid custom status"] = "Custom tactics",
-    ["raid custom on"] = "Custom tactics on",
-    ["raid custom off"] = "Custom tactics off",
-    ["item equip"] = "Equip",
-    ["item unequip"] = "Unequip",
-    ["item give"] = "Give",
-    ["item trade"] = "Trade",
-    inv = "Bags",
+    ["raid custom on"]     = "Custom tactics on",
+    ["raid custom off"]    = "Custom tactics off",
+    ["item equip"]         = "Equip",
+    ["item unequip"]       = "Unequip",
+    ["item give"]          = "Give",
+    ["item trade"]         = "Trade",
+    inv                    = "Bags",
+    hold                   = "Come & Hold",
 }
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    TB.C.ACTION_LABELS[def.intent] = def.label
+end
 
--- Party-wide toggles on the Actions tab. `key` is the TBM:BOTSTATE field the
--- state is read from; `intent` is the `.bot action` verb that flips it.
-TB.C.PARTY_TOGGLES = {
-    { key = "aoe",    intent = "aoe",     label = "AoE",
-      tip = "Area-of-effect spells for DPS bots. They still hold AoE next to a crowd-controlled mob." },
-    { key = "autocc", intent = "auto cc", label = "Auto CC",
-      tip = "Bots sheep/sap a loose add that hits your healer, on their own. Your CC marks always win." },
-    { key = "loot",   intent = "loot",    label = "Loot",
-      tip = "Bots loot corpses after a fight." },
-}
+TB.C.PARTY_TOGGLES = {}
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    if def.toggle then
+        table.insert(TB.C.PARTY_TOGGLES, {
+            key    = def.toggle,
+            intent = def.intent,
+            label  = def.label,
+            tip    = def.tip,
+        })
+    end
+end
 
 -- Per-bot behaviour toggles in the bot panel (`.bot behavior <bot> <key>`).
 -- `mana` limits a toggle to classes that use mana.

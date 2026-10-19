@@ -12,27 +12,29 @@ local C = TB.C or {}
 local ICON = 28
 local STEP = 30
 
--- Order follows a fight: engage, pull, focus, move, then the AoE switch.
-local ITEMS = {
-    { intent = "attack",      needsEnemy = true },
-    { intent = "stop" },
-    { intent = "interrupt",   needsEnemy = true },
-    { intent = "flee",        cap = "flee" },
-    { intent = "pull",        needsEnemy = true, pull = true },
-    { intent = "pullback",    needsEnemy = true, pull = true },
-    { intent = "focus skull", raidIcon = 8 },
-    { intent = "follow" },
-    { intent = "stay" },
-    { intent = "come" },
-    { intent = "aoe",         toggle = "aoe" },
-}
+-- Drive MiniBar from the unified action definitions table.
+local function getMiniBarItems()
+    local items = {}
+    for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
+        if def.mini then
+            table.insert(items, def)
+        end
+    end
+    table.sort(items, function(a, b)
+        local orderA = type(a.mini) == "number" and a.mini or 999
+        local orderB = type(b.mini) == "number" and b.mini or 999
+        return orderA < orderB
+    end)
+    return items
+end
+
+local ITEMS = getMiniBarItems()
 
 local bar
 
 local function tooltipFor(item)
-    local labels = C.ACTION_LABELS or {}
-    local title = labels[item.intent] or item.intent
-    local text = TB.ActionTooltip and TB.ActionTooltip(item.intent) or ""
+    local title = item.label or item.intent
+    local text = item.tip or (TB.ActionTooltip and TB.ActionTooltip(item.intent)) or ""
     if item.pull then
         local db = TortoiseBotsDB or {}
         local seconds = item.intent == "pullback" and db.pullbackDelay or db.pullDelay
@@ -51,9 +53,10 @@ local function makeIcon(parent, item, index)
     if item.raidIcon then
         b.icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. item.raidIcon)
     else
-        b.icon:SetTexture((C.ACTION_ICONS or {})[item.intent])
+        b.icon:SetTexture(item.icon)
         b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
+
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints(b)
     hl:SetTexture(1, 1, 1, 0.18)
