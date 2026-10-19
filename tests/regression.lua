@@ -1328,6 +1328,7 @@ dofile(root .. "/tests/wire_cases.lua")({
 })
 
 dofile(root .. "/tests/phase0_tests.lua")()
+dofile(root .. "/tests/phase1_tests.lua")()
 
 print("PASS: TortoiseBotsManager regression checks")
 

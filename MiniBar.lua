@@ -12,25 +12,110 @@ local C = TB.C or {}
 local ICON = 28
 local STEP = 30
 
--- Drive MiniBar from the unified action definitions table.
-local function getMiniBarItems()
-    local items = {}
+-- Drive MiniBar from the unified action definitions table and player config.
+function TB.GetDefaultMiniBarIcons()
+    local defs = {}
     for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
         if def.mini then
-            table.insert(items, def)
+            table.insert(defs, def)
         end
     end
-    table.sort(items, function(a, b)
+    table.sort(defs, function(a, b)
         local orderA = type(a.mini) == "number" and a.mini or 999
         local orderB = type(b.mini) == "number" and b.mini or 999
         return orderA < orderB
     end)
-    return items
+    local ids = {}
+    for _, def in ipairs(defs) do
+        table.insert(ids, def.id)
+    end
+    return ids
+end
+
+function TB.IsMiniBarIconActive(id)
+    local cfg = TortoiseBotsDB and TortoiseBotsDB.miniBarIcons
+    if cfg == nil then
+        local def = TB.GetActionDefinition and TB.GetActionDefinition(id)
+        return (def and def.mini) and true or false
+    end
+    if type(cfg) == "table" then
+        if cfg[id] ~= nil then
+            return cfg[id] and true or false
+        end
+        for _, v in ipairs(cfg) do
+            if v == id then return true end
+        end
+        return false
+    end
+    return false
+end
+
+function TB.SetMiniBarIconActive(id, enabled)
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    local cfg = TortoiseBotsDB.miniBarIcons
+    if cfg == nil then
+        cfg = TB.GetDefaultMiniBarIcons()
+        TortoiseBotsDB.miniBarIcons = cfg
+    end
+    if type(cfg) == "table" then
+        if cfg[1] == nil and next(cfg) ~= nil then
+            cfg[id] = enabled and true or false
+        else
+            local found = false
+            for i = table.getn(cfg), 1, -1 do
+                if cfg[i] == id then
+                    found = true
+                    if not enabled then
+                        table.remove(cfg, i)
+                    end
+                end
+            end
+            if enabled and not found then
+                table.insert(cfg, id)
+            end
+        end
+    end
+    if TB.RebuildMiniBar then TB.RebuildMiniBar() end
+    if TB.RefreshMiniBarOptions then TB.RefreshMiniBarOptions() end
+end
+
+function TB.ResetMiniBarIcons()
+    if TortoiseBotsDB then
+        TortoiseBotsDB.miniBarIcons = nil
+    end
+    if TB.RebuildMiniBar then TB.RebuildMiniBar() end
+    if TB.RefreshMiniBarOptions then TB.RefreshMiniBarOptions() end
+end
+
+local function getMiniBarItems()
+    local active = {}
+    local cfg = TortoiseBotsDB and TortoiseBotsDB.miniBarIcons
+    if cfg and type(cfg) == "table" and cfg[1] ~= nil then
+        for _, id in ipairs(cfg) do
+            local def = TB.GetActionDefinition and TB.GetActionDefinition(id)
+            if def then
+                table.insert(active, def)
+            end
+        end
+    else
+        for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
+            if TB.IsMiniBarIconActive(def.id) then
+                table.insert(active, def)
+            end
+        end
+        table.sort(active, function(a, b)
+            local orderA = type(a.mini) == "number" and a.mini or 999
+            local orderB = type(b.mini) == "number" and b.mini or 999
+            return orderA < orderB
+        end)
+    end
+    return active
 end
 
 local ITEMS = getMiniBarItems()
 
 local bar
+local optionsFrame
 
 local function tooltipFor(item)
     local title = item.label or item.intent
@@ -99,9 +184,190 @@ local function savePosition()
     TortoiseBotsDB.miniBar = { x = left, y = top }
 end
 
+function TB.ToggleMiniBarOptions()
+    if not optionsFrame then
+        optionsFrame = CreateFrame("Frame", "TortoiseBotsManagerMiniBarOptions", UIParent)
+        optionsFrame:SetWidth(280); optionsFrame:SetHeight(380)
+        optionsFrame:SetFrameStrata("DIALOG")
+        optionsFrame:SetMovable(true); optionsFrame:EnableMouse(true)
+        optionsFrame:RegisterForDrag("LeftButton")
+        optionsFrame:SetScript("OnDragStart", function() optionsFrame:StartMoving() end)
+        optionsFrame:SetScript("OnDragStop", function() optionsFrame:StopMovingOrSizing() end)
+        TB.ApplyBackdrop(optionsFrame, 0.96, 1.0)
+
+        local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 12, -10)
+        title:SetText("Mini Bar Icons")
+        TB.SetTextColor(title, C.COLOR and C.COLOR.gold or { 0.95, 0.75, 0.25 })
+
+        local sub = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
+        sub:SetText("Select actions to show on the mini bar:")
+        TB.SetTextColor(sub, C.COLOR and C.COLOR.muted or { 0.65, 0.65, 0.65 })
+
+        local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerMiniBarOptionsScroll", optionsFrame, "FauxScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 0, -48)
+        scroll:SetWidth(270); scroll:SetHeight(280)
+
+        optionsFrame.rows = {}
+        local optRowH = 24
+        local numRows = 11
+        for i = 1, numRows do
+            local row = CreateFrame("Frame", nil, optionsFrame)
+            row:SetWidth(240); row:SetHeight(optRowH)
+            row:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 12, -48 - (i - 1) * optRowH)
+
+            local check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+            check:SetWidth(20); check:SetHeight(20)
+            check:SetPoint("LEFT", row, "LEFT", 0, 0)
+
+            local icon = row:CreateTexture(nil, "ARTWORK")
+            icon:SetWidth(18); icon:SetHeight(18)
+            icon:SetPoint("LEFT", check, "RIGHT", 4, 0)
+
+            local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            label:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+            label:SetWidth(170); label:SetJustifyH("LEFT")
+
+            check:SetScript("OnClick", function()
+                local def = this:GetParent().def
+                if def then
+                    TB.SetMiniBarIconActive(def.id, this:GetChecked() and true or false)
+                end
+            end)
+
+            row.check = check
+            row.icon = icon
+            row.label = label
+            table.insert(optionsFrame.rows, row)
+        end
+
+        local function refreshOptions()
+            local allDefs = (C and C.ACTION_DEFINITIONS) or {}
+            local total = table.getn(allDefs)
+            local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(scroll)) or 0
+            if FauxScrollFrame_Update then
+                FauxScrollFrame_Update(scroll, total, numRows, optRowH)
+            end
+            for i = 1, numRows do
+                local idx = offset + i
+                local row = optionsFrame.rows[i]
+                if idx <= total then
+                    local def = allDefs[idx]
+                    row.def = def
+                    row.check:SetChecked(TB.IsMiniBarIconActive(def.id))
+                    if def.raidIcon then
+                        row.icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. def.raidIcon)
+                    else
+                        row.icon:SetTexture(def.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    end
+                    row.label:SetText(def.label or def.id)
+                    row:Show()
+                else
+                    row.def = nil
+                    row:Hide()
+                end
+            end
+        end
+        scroll:SetScript("OnVerticalScroll", function()
+            if FauxScrollFrame_OnVerticalScroll then
+                FauxScrollFrame_OnVerticalScroll(optRowH, refreshOptions)
+            end
+        end)
+        optionsFrame.refresh = refreshOptions
+        TB.RefreshMiniBarOptions = refreshOptions
+
+        local resetBtn = TB.UI.CreateButton(optionsFrame, "Reset", 80, 22, {
+            point = "BOTTOMLEFT", relTo = optionsFrame, relPoint = "BOTTOMLEFT", x = 12, y = 10,
+            tip = "Reset to default set of icons.",
+            onClick = function()
+                TB.ResetMiniBarIcons()
+            end
+        })
+        local closeBtn = TB.UI.CreateButton(optionsFrame, "Close", 80, 22, {
+            point = "BOTTOMRIGHT", relTo = optionsFrame, relPoint = "BOTTOMRIGHT", x = -12, y = 10,
+            onClick = function()
+                optionsFrame:Hide()
+            end
+        })
+        optionsFrame.resetBtn = resetBtn
+        optionsFrame.closeBtn = closeBtn
+        optionsFrame:Hide()
+        TB.miniBarOptions = optionsFrame
+    end
+
+    if optionsFrame:IsVisible() then
+        optionsFrame:Hide()
+    else
+        optionsFrame:ClearAllPoints()
+        if bar and bar:IsVisible() then
+            optionsFrame:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, 8)
+        else
+            optionsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+        optionsFrame:Show()
+        if optionsFrame.refresh then optionsFrame.refresh() end
+    end
+end
+
+function TB.RebuildMiniBar()
+    if not bar then return end
+    ITEMS = getMiniBarItems()
+    bar.icons = bar.icons or {}
+    bar.iconPool = bar.iconPool or {}
+    for _, btn in pairs(bar.iconPool) do
+        btn:Hide()
+    end
+    bar.icons = {}
+    bar.iconButtons = {}
+    for i, item in ipairs(ITEMS) do
+        local btn = bar.iconPool[i]
+        if not btn then
+            btn = makeIcon(bar, item, i)
+            bar.iconPool[i] = btn
+        else
+            btn.item = item
+            btn:ClearAllPoints()
+            btn:SetPoint("LEFT", bar, "LEFT", 34 + (i - 1) * STEP, 0)
+            if item.raidIcon then
+                btn.icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. item.raidIcon)
+            else
+                btn.icon:SetTexture(item.icon)
+                btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+            if item.toggle then
+                if not btn.lamp then
+                    btn.lamp = btn:CreateTexture(nil, "OVERLAY")
+                    btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
+                    btn.lamp:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+                end
+                btn.lamp:Show()
+            elseif btn.lamp then
+                btn.lamp:Hide()
+            end
+            btn:Show()
+        end
+        bar.icons[item.intent] = btn
+        bar.icons[item.id] = btn
+        table.insert(bar.iconButtons, btn)
+    end
+    local numItems = table.getn(ITEMS)
+    bar:SetWidth(34 + numItems * STEP + 54)
+    if bar.expand then
+        bar.expand:ClearAllPoints()
+        bar.expand:SetPoint("RIGHT", bar, "RIGHT", -6, 0)
+    end
+    if bar.optBtn then
+        bar.optBtn:ClearAllPoints()
+        bar.optBtn:SetPoint("RIGHT", bar.expand, "LEFT", -4, 0)
+    end
+    TB.RefreshMiniBar()
+end
+
 local function createBar()
     bar = CreateFrame("Frame", "TortoiseBotsManagerMiniBar", UIParent)
-    bar:SetWidth(34 + table.getn(ITEMS) * STEP + 32)
+    bar:SetWidth(34 + table.getn(ITEMS) * STEP + 54)
     bar:SetHeight(ICON + 10)
     bar:SetFrameStrata("DIALOG")
     bar:SetMovable(true)
@@ -125,6 +391,7 @@ local function createBar()
     handle:SetWidth(22); handle:SetHeight(22)
     handle:SetPoint("LEFT", bar, "LEFT", 7, 0)
     handle:RegisterForDrag("LeftButton")
+    handle:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local turtle = handle:CreateTexture(nil, "ARTWORK")
     turtle:SetAllPoints(handle)
     turtle:SetTexture("Interface\\Icons\\Ability_Hunter_Pet_Turtle")
@@ -134,18 +401,16 @@ local function createBar()
         bar:StopMovingOrSizing()
         savePosition()
     end)
+    handle:SetScript("OnClick", function()
+        if arg1 == "RightButton" then TB.ToggleMiniBarOptions() end
+    end)
     handle:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_TOP")
         GameTooltip:SetText("TortoiseBots - mini mode")
-        GameTooltip:AddLine("Drag to move. The + button opens the full window.", 0.9, 0.9, 0.9, 1)
+        GameTooltip:AddLine("Drag to move. Right-click for options. + opens full window.", 0.9, 0.9, 0.9, 1)
         GameTooltip:Show()
     end)
     handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    bar.icons = {}
-    for i, item in ipairs(ITEMS) do
-        bar.icons[item.intent] = makeIcon(bar, item, i)
-    end
 
     local expand = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
     expand:SetWidth(22); expand:SetHeight(22)
@@ -160,8 +425,24 @@ local function createBar()
     end)
     expand:SetScript("OnLeave", function() GameTooltip:Hide() end)
     bar.expand = expand
+
+    local optBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+    optBtn:SetWidth(20); optBtn:SetHeight(22)
+    optBtn:SetPoint("RIGHT", expand, "LEFT", -4, 0)
+    optBtn:SetText("*")
+    optBtn:SetScript("OnClick", function() TB.ToggleMiniBarOptions() end)
+    optBtn:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(this, "ANCHOR_TOP")
+        GameTooltip:SetText("Mini Bar Options")
+        GameTooltip:AddLine("Configure which action icons appear on the mini bar.", 0.9, 0.9, 0.9, 1)
+        GameTooltip:Show()
+    end)
+    optBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    bar.optBtn = optBtn
+
     bar:Hide()
     TB.miniBar = bar
+    TB.RebuildMiniBar()
 end
 
 local function setUsable(b, usable)
