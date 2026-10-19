@@ -412,32 +412,20 @@ local function createBar()
     end)
     handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local expand = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-    expand:SetWidth(22); expand:SetHeight(22)
-    expand:SetPoint("RIGHT", bar, "RIGHT", -6, 0)
-    expand:SetText("+")
-    expand:SetScript("OnClick", function() TB.SetMode("full") end)
-    expand:SetScript("OnEnter", function()
-        GameTooltip:SetOwner(this, "ANCHOR_TOP")
-        GameTooltip:SetText("Full window")
-        GameTooltip:AddLine("Switch back to the full TortoiseBots window.", 0.9, 0.9, 0.9, 1)
-        GameTooltip:Show()
-    end)
-    expand:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    local expand = TB.UI.CreateButton(bar, "+", 22, 22, {
+        point = "RIGHT", relTo = bar, relPoint = "RIGHT", x = -6, y = 0,
+        tip = "Switch back to the full TortoiseBots window.",
+        tipTitle = "Full window",
+        onClick = function() TB.SetMode("full") end,
+    })
     bar.expand = expand
 
-    local optBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-    optBtn:SetWidth(20); optBtn:SetHeight(22)
-    optBtn:SetPoint("RIGHT", expand, "LEFT", -4, 0)
-    optBtn:SetText("*")
-    optBtn:SetScript("OnClick", function() TB.ToggleMiniBarOptions() end)
-    optBtn:SetScript("OnEnter", function()
-        GameTooltip:SetOwner(this, "ANCHOR_TOP")
-        GameTooltip:SetText("Mini Bar Options")
-        GameTooltip:AddLine("Configure which action icons appear on the mini bar.", 0.9, 0.9, 0.9, 1)
-        GameTooltip:Show()
-    end)
-    optBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    local optBtn = TB.UI.CreateButton(bar, "*", 20, 22, {
+        point = "RIGHT", relTo = expand, relPoint = "LEFT", x = -4, y = 0,
+        tip = "Configure which action icons appear on the mini bar.",
+        tipTitle = "Mini Bar Options",
+        onClick = function() TB.ToggleMiniBarOptions() end,
+    })
     bar.optBtn = optBtn
 
     bar:Hide()

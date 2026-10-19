@@ -325,14 +325,17 @@ assert(TB.actionButtons.ready and TB.actionButtons.ready.icon, "Ready check butt
 -- Formation pills
 assert(TB.formationPills and TB.formationPills.shield and TB.formationPills.near,
     "Formation pills must exist")
-assert(not TB.formationPills.shield.enabled, "Shield should start disabled (active)")
-assert(TB.formationPills.near.enabled, "Near should start enabled")
+assert(TB.formationPills.shield:IsActive() and TB.formationPills.shield.enabled,
+    "Shield should start active and enabled")
+assert(not TB.formationPills.near:IsActive() and TB.formationPills.near.enabled,
+    "Near should start inactive and enabled")
 now = now + 1
 this = TB.formationPills.near
 TB.formationPills.near.scripts.OnClick(TB.formationPills.near)
 assert(TB.currentFormation == "near", "Clicking near pill must set current formation to near")
-assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
-    "Active formation pill must become disabled")
+assert(TB.formationPills.near:IsActive() and not TB.formationPills.shield:IsActive()
+    and TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
+    "Active formation pill must become active, inactive one inactive, and both remain enabled")
 
 -- Constants: structured formation metadata must survive (no raw-list clobber),
 -- and Hunter/Rogue must expose all three backend-supported specs.

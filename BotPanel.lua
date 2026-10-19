@@ -437,11 +437,10 @@ local function createMenu(parent)
     menu:EnableMouse(true)
     TB.ApplyBackdrop(menu, 0.98, 1.0)
     local function button(label, y, tip)
-        local btn = CreateFrame("Button", nil, menu, "UIPanelButtonTemplate")
-        btn:SetWidth(106); btn:SetHeight(22)
-        btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, y)
-        btn:SetText(label)
-        setTooltip(btn, label, { tip })
+        local btn = TB.UI.CreateButton(menu, label, 106, 22, {
+            point = "TOPLEFT", relTo = menu, relPoint = "TOPLEFT", x = 6, y = y,
+            tip = tip, tipTitle = label,
+        })
         return btn
     end
     menu.first = button("Equip", -6, "The bot equips this item.")
@@ -482,15 +481,15 @@ local function createMenu(parent)
 end
 
 local function makeTab(parent, label, x, width, view)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetWidth(width); b:SetHeight(20)
-    b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -46)
-    b:SetText(label)
-    b:SetScript("OnClick", function()
-        currentView = view
-        hideMenu()
-        TB.RefreshBotPanel()
-    end)
+    local b = TB.UI.CreateButton(parent, label, width, 20, {
+        point = "TOPLEFT", relTo = parent, relPoint = "TOPLEFT", x = x, y = -46,
+        onClick = function()
+            currentView = view
+            hideMenu()
+            TB.RefreshBotPanel()
+        end,
+    })
+    b.text = b.label
     return b
 end
 
@@ -581,16 +580,14 @@ local function createPanel()
             table.insert(panel.bagButtons, b)
         end
     end
-    local prev = CreateFrame("Button", nil, bags, "UIPanelButtonTemplate")
-    prev:SetWidth(26); prev:SetHeight(20)
-    prev:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
-    prev:SetText("<")
-    prev:SetScript("OnClick", function() bagPage = bagPage - 1; hideMenu(); TB.RefreshBotPanel() end)
-    local nextBtn = CreateFrame("Button", nil, bags, "UIPanelButtonTemplate")
-    nextBtn:SetWidth(26); nextBtn:SetHeight(20)
-    nextBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 100, -366)
-    nextBtn:SetText(">")
-    nextBtn:SetScript("OnClick", function() bagPage = bagPage + 1; hideMenu(); TB.RefreshBotPanel() end)
+    local prev = TB.UI.CreateButton(bags, "<", 26, 20, {
+        point = "TOPLEFT", relTo = panel, relPoint = "TOPLEFT", x = 12, y = -366,
+        onClick = function() bagPage = bagPage - 1; hideMenu(); TB.RefreshBotPanel() end,
+    })
+    local nextBtn = TB.UI.CreateButton(bags, ">", 26, 20, {
+        point = "TOPLEFT", relTo = panel, relPoint = "TOPLEFT", x = 100, y = -366,
+        onClick = function() bagPage = bagPage + 1; hideMenu(); TB.RefreshBotPanel() end,
+    })
     local pageText = bags:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     pageText:SetPoint("TOPLEFT", panel, "TOPLEFT", 40, -370)
     pageText:SetWidth(58); pageText:SetJustifyH("CENTER")
@@ -611,16 +608,17 @@ local function createPanel()
     TB.SetTextColor(bhTitle, color("gold"))
     panel.behaviorChips = {}
     for i, def in ipairs(C.BEHAVIORS or {}) do
-        local chip = CreateFrame("Button", nil, behavior, "UIPanelButtonTemplate")
-        chip:SetWidth(150); chip:SetHeight(24)
+        local chip = TB.UI.CreateButton(behavior, nil, 150, 24, {
+            tip = def.tip,
+            tipTitle = def.label,
+            onClick = function()
+                if currentBot then TB.SendBehavior(currentBot, this.def.key) end
+            end,
+        })
         chip.def = def
         chip.lamp = chip:CreateTexture(nil, "OVERLAY")
         chip.lamp:SetWidth(8); chip.lamp:SetHeight(8)
         chip.lamp:SetPoint("RIGHT", chip, "RIGHT", -8, 0)
-        setTooltip(chip, def.label, { def.tip, "Click to switch on/off." })
-        chip:SetScript("OnClick", function()
-            if currentBot then TB.SendBehavior(currentBot, this.def.key) end
-        end)
         panel.behaviorChips[def.key] = chip
     end
     local bhHint = behavior:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -630,27 +628,23 @@ local function createPanel()
     TB.SetTextColor(bhHint, color("muted"))
 
     -- Footer: trade + refresh for every view.
-    local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    trade:SetWidth(100); trade:SetHeight(22)
-    trade:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 28)
-    trade:SetText("Trade")
-    setTooltip(trade, "Trade", {
-        "Opens a trade window with this bot.",
-        "Put your items or gold in and accept - the bot accepts on its own.",
-        "To take an item from the bot, click it in Bags → Give to me.",
+    local trade = TB.UI.CreateButton(panel, "Trade", 100, 22, {
+        point = "BOTTOMLEFT", relTo = panel, relPoint = "BOTTOMLEFT", x = 10, y = 28,
+        tip = "Opens a trade window with this bot.\nPut your items or gold in and accept - the bot accepts on its own.\nTo take an item from the bot, click it in Bags -> Give to me.",
+        tipTitle = "Trade",
+        onClick = function() TB.SendItemOrder("trade") end,
     })
-    trade:SetScript("OnClick", function() TB.SendItemOrder("trade") end)
     panel.tradeButton = trade
 
-    local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    refresh:SetWidth(80); refresh:SetHeight(22)
-    refresh:SetPoint("LEFT", trade, "RIGHT", 6, 0)
-    refresh:SetText("Refresh")
-    setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
-    refresh:SetScript("OnClick", function()
-        if currentBot then TB.RequestInventory(currentBot) end
-        if TB.PollList then TB.PollList(true) end
-    end)
+    local refresh = TB.UI.CreateButton(panel, "Refresh", 80, 22, {
+        point = "LEFT", relTo = trade, relPoint = "RIGHT", x = 6, y = 0,
+        tip = "Reload gear, bags and behaviour from the server.",
+        tipTitle = "Refresh",
+        onClick = function()
+            if currentBot then TB.RequestInventory(currentBot) end
+            if TB.PollList then TB.PollList(true) end
+        end,
+    })
     panel.refreshButton = refresh
 
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -796,15 +790,31 @@ function TB.RefreshBotPanel()
     local inv = TB.GetInventory(currentBot)
     renderHeader(inv)
     panel.gear:Hide(); panel.bags:Hide(); panel.behavior:Hide()
-    panel.tabGear:Enable(); panel.tabBags:Enable(); panel.tabBehavior:Enable()
+    local function setTabActive(tab, active)
+        tab.isActive = active and true or false
+        tab:Enable()
+        if tab.UpdateVisual then tab:UpdateVisual() end
+        if active then
+            if tab.text and type(tab.text) == "table" and tab.text.SetTextColor then
+                tab.text:SetTextColor(COL.gold[1], COL.gold[2], COL.gold[3])
+            end
+        else
+            if tab.text and type(tab.text) == "table" and tab.text.SetTextColor then
+                tab.text:SetTextColor(COL.muted[1], COL.muted[2], COL.muted[3])
+            end
+        end
+    end
+    setTabActive(panel.tabGear, currentView == "gear")
+    setTabActive(panel.tabBags, currentView == "bags")
+    setTabActive(panel.tabBehavior, currentView == "behavior")
     if currentView == "bags" then
-        panel.bags:Show(); panel.tabBags:Disable()
+        panel.bags:Show()
         renderBags(inv)
     elseif currentView == "behavior" then
-        panel.behavior:Show(); panel.tabBehavior:Disable()
+        panel.behavior:Show()
         renderBehavior()
     else
-        panel.gear:Show(); panel.tabGear:Disable()
+        panel.gear:Show()
         renderGear(inv)
     end
     local online = TB.GetBotState(currentBot) ~= nil or botUnit(currentBot) ~= nil

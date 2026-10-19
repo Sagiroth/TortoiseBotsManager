@@ -164,5 +164,65 @@ return function()
     assert(TB.C.COLOR.border ~= nil, "Flat border color must be defined in TB.C.COLOR")
     assert(TB.C.COLOR.accent ~= nil, "Accent color must be defined in TB.C.COLOR")
 
+    -- ──────────────────────────────────────────────────────────────────────────
+    -- 5. Phase 1 Polish checks
+    -- ──────────────────────────────────────────────────────────────────────────
+    -- Flat button kit methods and state handling
+    local dummyParent = CreateFrame("Frame", nil, UIParent)
+    local flatBtn = TB.UI.CreateButton(dummyParent, "TestFlat", 90, 22)
+    assert(type(flatBtn.UpdateVisual) == "function", "CreateButton must expose UpdateVisual")
+    assert(flatBtn.enabled == true, "Flat button starts enabled")
+    flatBtn:Disable()
+    assert(flatBtn.enabled == false, "Disable() must set enabled false")
+    flatBtn:Enable()
+    assert(flatBtn.enabled == true, "Enable() must set enabled true")
+
+    -- Toggle pills and tabs remain enabled when active
+    assert(TB.formationPills.shield.enabled == true, "Shield formation pill must remain enabled when active")
+    assert(TB.formationPills.shield:IsActive() == true, "Shield formation pill must be active")
+    assert(TB.formationPills.near.enabled == true, "Near formation pill must be enabled when inactive")
+    assert(TB.formationPills.near:IsActive() == false, "Near formation pill must be inactive")
+
+    TB.ShowTab("actions")
+    assert(TB.tabActions.isActive == true and TB.tabActions.enabled == true,
+        "tabActions must be active and enabled when selected")
+    TB.ShowTab("party")
+    assert(TB.tabParty.isActive == true and TB.tabParty.enabled == true,
+        "tabParty must be active and enabled when selected")
+    assert(TB.tabActions.isActive == false and TB.tabActions.enabled == true,
+        "tabActions must remain enabled when deselected")
+    TB.ShowTab("actions")
+
+    -- MiniBar flat + and * buttons
+    assert(TB.miniBar and TB.miniBar.expand and TB.miniBar.optBtn,
+        "Mini bar expand and optBtn must exist")
+    assert(TB.miniBar.expand.width == 22 and TB.miniBar.expand.height == 22,
+        "expand (+) button must have size 22x22")
+    assert(TB.miniBar.optBtn.width == 20 and TB.miniBar.optBtn.height == 22,
+        "optBtn (*) button must have size 20x22")
+    assert(TB.miniBar.expand:GetText() == "+", "expand button label must be '+'")
+    assert(TB.miniBar.optBtn:GetText() == "*", "optBtn button label must be '*'")
+
+    -- Roster empty / offline hint
+    assert(TB.rosterEmptyMsg ~= nil, "TB.rosterEmptyMsg must exist")
+    assert(string.find(TB.rosterEmptyMsg:GetText(), "No bots online", 1, true) ~= nil,
+        "rosterEmptyMsg must contain 'No bots online'")
+    assert(string.find(TB.rosterEmptyMsg:GetText(), "Login", 1, true) ~= nil,
+        "rosterEmptyMsg must mention Login")
+
+    -- Verify rosterEmptyMsg show/hide logic
+    TB.RefreshRows({})
+    assert(TB.rosterEmptyMsg:IsVisible() == true,
+        "rosterEmptyMsg must be visible when rows list is empty")
+    TB.RefreshRows({ { name = "OfflineBot", st = { online = false, serverState = "offline" } } })
+    assert(TB.rosterEmptyMsg:IsVisible() == true,
+        "rosterEmptyMsg must be visible when all bots in rows are offline")
+    TB.RefreshRows({ { name = "OnlineBot", st = { online = true, serverState = "online" } } })
+    assert(TB.rosterEmptyMsg:IsVisible() == false,
+        "rosterEmptyMsg must be hidden when an online bot is displayed")
+
+    -- Restore roster view
+    TB.Refresh()
+
     print("PASS: Phase 1 roster filter, 5-tab structure, and flat styling checks")
 end
