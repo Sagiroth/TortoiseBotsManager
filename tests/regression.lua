@@ -1314,4 +1314,18 @@ TB.PollList = origPollList
 
 partyMembers = {}
 
+dofile(root .. "/tests/wire_cases.lua")({
+    sent = sent,
+    addonSent = addonSent,
+    frames = frames,
+    getNow = function() return now end,
+    setNow = function(v) now = v end,
+    advanceTime = function(dt) now = now + (dt or 1) end,
+    setTarget = function(exists, name) targetExists = exists; targetNameValue = name end,
+    setParty = function(members, className) partyMembers = members or {}; partyClassName = className or "Priest" end,
+    setDead = function(unit, dead) deadUnits[unit] = dead end,
+    setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
+})
+
 print("PASS: TortoiseBotsManager regression checks")
+
