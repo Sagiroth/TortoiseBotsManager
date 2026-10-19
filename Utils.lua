@@ -122,3 +122,100 @@ end
 function TB.CountKeys(t)
     local n = 0; for _ in pairs(t or {}) do n = n + 1 end; return n
 end
+
+-- ── Unified Role Policy ─────────────────────────────────────────────────────
+TB.Roles = {}
+
+function TB.Roles.GetClassRoles(classId)
+    return (TB.C and TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
+end
+
+function TB.Roles.FindRole(classId, roleId)
+    local roles = TB.Roles.GetClassRoles(classId)
+    for _, r in ipairs(roles) do
+        if r.id == roleId then return r end
+    end
+    return nil
+end
+
+function TB.Roles.GetBotRole(botName, classId)
+    local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
+    local currentId = dbRoles[botName]
+    local roles = TB.Roles.GetClassRoles(classId)
+    if not currentId and roles[1] then
+        currentId = roles[1].id
+    end
+    return currentId, TB.Roles.FindRole(classId, currentId)
+end
+
+function TB.Roles.GetPlayerRole(classId)
+    local roleId = TortoiseBotsDB and TortoiseBotsDB.playerRole
+    local roles = TB.Roles.GetClassRoles(classId)
+    if not roleId and roles[1] then
+        roleId = roles[1].id
+    end
+    return roleId, TB.Roles.FindRole(classId, roleId)
+end
+
+function TB.Roles.GetRoleLabel(classId, roleId, fallback)
+    local role = TB.Roles.FindRole(classId, roleId)
+    if role then return role.label end
+    return fallback or "Default"
+end
+
+function TB.Roles.GetPlayerRoleToken(roleId)
+    if roleId == "tank" then return "tank" end
+    if roleId == "heal" then return "healer" end
+    return "dps"
+end
+
+function TB.Roles.SetPlayerRole(role, classId)
+    local roleDef = type(role) == "table" and role or TB.Roles.FindRole(classId, role)
+    if not roleDef then return false end
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.playerRole = roleDef.id
+    local token = TB.Roles.GetPlayerRoleToken(roleDef.id)
+    TB.SendBotCommand("role self " .. token)
+    if TB.Print then TB.Print("Your role set to " .. roleDef.label) end
+    return true
+end
+
+function TB.Roles.SetBotRole(botName, role, classId)
+    local roleDef = type(role) == "table" and role or TB.Roles.FindRole(classId, role)
+    if not roleDef or not botName then return false end
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
+    local previousRole = TortoiseBotsDB.botRoles[botName]
+    TortoiseBotsDB.botRoles[botName] = roleDef.id
+
+    if roleDef.id == "tank" then
+        TB.SendBotCommand("role " .. botName .. " tank")
+    else
+        if previousRole == "tank" then
+            TB.SendBotCommand("role " .. botName .. " clear")
+        end
+        if roleDef.strat and roleDef.strat ~= "" then
+            TB.SendBotCommand("command " .. botName .. " " .. roleDef.strat)
+        end
+    end
+    if TB.Print then TB.Print(botName .. " role set to " .. roleDef.label) end
+    return true
+end
+
+function TB.Roles.CycleBotRole(botName, classId)
+    local roles = TB.Roles.GetClassRoles(classId)
+    local roleCount = table.getn(roles)
+    if roleCount == 0 then return nil end
+    local currentId = (TortoiseBotsDB and TortoiseBotsDB.botRoles and TortoiseBotsDB.botRoles[botName])
+    local nextIndex = 1
+    for idx, r in ipairs(roles) do
+        if r.id == currentId then
+            nextIndex = math.mod(idx, roleCount) + 1
+            break
+        end
+    end
+    local newRole = roles[nextIndex]
+    TB.Roles.SetBotRole(botName, newRole, classId)
+    return newRole
+end
+

@@ -1302,34 +1302,7 @@ function TB.InitUI()
             roleBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
                 if not entry then return end
-                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
-                if table.getn(roles) == 0 then return end
-                local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
-                local currentId = dbRoles[entry.name]
-                local nextIndex = 1
-                for idx, r in ipairs(roles) do
-                    if r.id == currentId then
-                        nextIndex = math.mod(idx, table.getn(roles)) + 1
-                        break
-                    end
-                end
-                local newRole = roles[nextIndex]
-                TortoiseBotsDB = TortoiseBotsDB or {}
-                TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
-                local previousRole = TortoiseBotsDB.botRoles[entry.name]
-                TortoiseBotsDB.botRoles[entry.name] = newRole.id
-
-                if newRole.id == "tank" then
-                    TB.SendBotCommand("role " .. entry.name .. " tank")
-                else
-                    if previousRole == "tank" then
-                        TB.SendBotCommand("role " .. entry.name .. " clear")
-                    end
-                    if newRole.strat and newRole.strat ~= "" then
-                        TB.SendBotCommand("command " .. entry.name .. " " .. newRole.strat)
-                    end
-                end
-                if TB.Print then TB.Print(entry.name .. " role set to " .. newRole.label) end
+                TB.Roles.CycleBotRole(entry.name, entry.classId)
                 if TB.RefreshGuildView then TB.RefreshGuildView() end
             end)
             roleBtn:SetScript("OnEnter", function()
@@ -1337,11 +1310,7 @@ function TB.InitUI()
                 if not entry then return end
                 local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
                 local currentId = dbRoles[entry.name]
-                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
-                local curLabel = "Default"
-                for _, r in ipairs(roles) do
-                    if r.id == currentId then curLabel = r.label break end
-                end
+                local curLabel = TB.Roles.GetRoleLabel(entry.classId, currentId, "Default")
                 GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Combat Role: " .. curLabel)
                 GameTooltip:AddLine("Click to cycle to the next combat role.", 0.9, 0.9, 0.9, 1)
@@ -1349,6 +1318,7 @@ function TB.InitUI()
             end)
             roleBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.roleBtn = roleBtn
+
 
             local relBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             relBtn:SetWidth(30); relBtn:SetHeight(20)
@@ -1606,12 +1576,12 @@ function TB.InitUI()
                     row.playerLabel:Hide()
                 end
 
-                local roles = (TB.C.CLASS_ROLES and TB.C.CLASS_ROLES[classId]) or {}
+                local roles = TB.Roles.GetClassRoles(classId)
                 local currentRole
                 if isPlayer then
-                    currentRole = TortoiseBotsDB and TortoiseBotsDB.playerRole
+                    currentRole = TB.Roles.GetPlayerRole(classId)
                 else
-                    currentRole = dbRoles[name] or (roles[1] and roles[1].id)
+                    currentRole = TB.Roles.GetBotRole(name, classId)
                 end
                 -- Four-role rows need a reserved CC column on the right.
                 -- Keep the normal button width for other classes so their
@@ -1636,36 +1606,12 @@ function TB.InitUI()
 
                         local capturedRole = role
                         local capturedName = name
-                        local playerRoleToken = capturedRole.id == "tank" and "tank"
-                            or (capturedRole.id == "heal" and "healer" or "dps")
+                        local playerRoleToken = TB.Roles.GetPlayerRoleToken(capturedRole.id)
                         btn:SetScript("OnClick", function()
                             if isPlayer then
-                                TortoiseBotsDB = TortoiseBotsDB or {}
-                                TortoiseBotsDB.playerRole = capturedRole.id
-                                TB.SendBotCommand("role self " .. playerRoleToken)
-                                TB.Print("Your role set to " .. capturedRole.label)
+                                TB.Roles.SetPlayerRole(capturedRole, classId)
                             else
-                                TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
-                                local previousRole = TortoiseBotsDB.botRoles[capturedName]
-                                TortoiseBotsDB.botRoles[capturedName] = capturedRole.id
-                                -- Explicit tank designation drives the server-side
-                                -- forced role (pull qualification), so it uses
-                                -- the dedicated role command. Other roles keep
-                                -- the mature Playerbot strategy command.
-                                if capturedRole.id == "tank" then
-                                    TB.SendBotCommand("role " .. capturedName .. " tank")
-                                else
-                                    -- Demotion: a stale forced tank would still
-                                    -- qualify for pulls, so clear it before the
-                                    -- spec strategy is applied.
-                                    if previousRole == "tank" then
-                                        TB.SendBotCommand("role " .. capturedName .. " clear")
-                                    end
-                                    if capturedRole.strat and capturedRole.strat ~= "" then
-                                        TB.SendBotCommand("command " .. capturedName .. " " .. capturedRole.strat)
-                                    end
-                                end
-                                TB.Print(capturedName .. " role set to " .. capturedRole.label)
+                                TB.Roles.SetBotRole(capturedName, capturedRole, classId)
                             end
                             TB.RefreshPartyView()
                         end)
@@ -1682,6 +1628,7 @@ function TB.InitUI()
                         btn:Hide()
                     end
                 end
+
                 row:Show()
             else
                 row:Hide()
@@ -1763,15 +1710,12 @@ function TB.InitUI()
 
                 -- Role button label
                 local currentRoleId = dbRoles[entry.name]
-                local roles = (C.CLASS_ROLES and C.CLASS_ROLES[entry.classId]) or {}
-                local roleLabel = "Role"
-                for _, r in ipairs(roles) do
-                    if r.id == currentRoleId then roleLabel = r.label break end
-                end
-                if roleLabel == "Role" and table.getn(roles) > 0 then
-                    roleLabel = roles[1].label
+                local roleLabel = TB.Roles.GetRoleLabel(entry.classId, currentRoleId, "Role")
+                if roleLabel == "Role" and table.getn(TB.Roles.GetClassRoles(entry.classId)) > 0 then
+                    roleLabel = TB.Roles.GetClassRoles(entry.classId)[1].label
                 end
                 row.roleBtn:SetText(roleLabel)
+
 
                 row:Show()
             else
