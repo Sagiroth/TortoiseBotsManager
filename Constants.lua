@@ -181,6 +181,215 @@ TB.C.ACTION_LABELS = {
     inv = "Bags",
 }
 
+-- Single authoritative action definition table driving Actions tab and MiniBar.
+TB.C.ACTION_DEFINITIONS = {
+    -- Engage
+    {
+        id = "attack",
+        intent = "attack",
+        label = "Attack",
+        section = "engage",
+        needsEnemy = true,
+        icon = "Interface\\Icons\\Ability_SteelMelee",
+        tip = "Send your bots to attack your target (or you, if none selected).",
+        mini = 1,
+    },
+    {
+        id = "stop",
+        intent = "stop",
+        label = "Stop",
+        section = "engage",
+        icon = "Interface\\Icons\\Ability_Defend",
+        tip = "Stop attacking, clear targets and return to formation.",
+        mini = 2,
+    },
+    {
+        id = "interrupt",
+        intent = "interrupt",
+        label = "Interrupt",
+        section = "engage",
+        needsEnemy = true,
+        icon = "Interface\\Icons\\Ability_Kick",
+        tip = "Order capable bots (Rogue Kick, Warrior Pummel, Mage Counterspell, etc.) to interrupt the target's current cast.",
+        mini = 3,
+    },
+    {
+        id = "flee",
+        intent = "flee",
+        label = "Flee",
+        section = "engage",
+        cap = "flee",
+        icon = "Interface\\Icons\\Ability_Rogue_Sprint",
+        tip = "Disengage immediately and run behind you, dropping combat priorities until commanded again.",
+        mini = 4,
+    },
+
+    -- Pull & Focus
+    {
+        id = "pull",
+        intent = "pull",
+        label = "Pull",
+        section = "pull",
+        needsEnemy = true,
+        pull = true,
+        icon = "Interface\\Icons\\Ability_TrueShot",
+        tip = "Tank body-pulls your target while other bots hold back.",
+        mini = 5,
+    },
+    {
+        id = "pullback",
+        intent = "pullback",
+        label = "Pullback",
+        section = "pull",
+        needsEnemy = true,
+        pull = true,
+        icon = "Interface\\Icons\\Ability_Hunter_AimedShot",
+        tip = "Tank pulls your target and runs back to you before the party engages.",
+        mini = 6,
+    },
+    {
+        id = "focusSkull",
+        intent = "focus skull",
+        label = "Focus Skull",
+        section = "pull",
+        raidIcon = 8,
+        tip = "All bots switch to and burn down the target marked with Skull.",
+        mini = 7,
+    },
+    {
+        id = "ccMoon",
+        intent = "cc moon",
+        label = "CC Mark",
+        section = "pull",
+        raidIcon = 5,
+        custom = true,
+        tip = "Assign crowd-control raid marks (Moon, Circle, Square, etc.) to specific bots by name.",
+    },
+
+    -- Move
+    {
+        id = "follow",
+        intent = "follow",
+        label = "Follow",
+        section = "move",
+        icon = "Interface\\Icons\\Ability_Tracking",
+        tip = "Bots follow you in formation.",
+        mini = 8,
+    },
+    {
+        id = "stay",
+        intent = "stay",
+        label = "Stay",
+        section = "move",
+        icon = "Interface\\Icons\\Spell_Nature_TimeStop",
+        tip = "Bots hold their current positions until ordered to move.",
+        mini = 9,
+    },
+    {
+        id = "come",
+        intent = "come",
+        label = "Come & Hold",
+        section = "move",
+        icon = "Interface\\Icons\\Spell_Arcane_PortalIronForge",
+        tip = "Bots rush to your position and hold there.",
+        mini = 10,
+    },
+
+    -- Party Switches
+    {
+        id = "aoe",
+        intent = "aoe",
+        label = "AoE",
+        section = "switch",
+        toggle = "aoe",
+        icon = "Interface\\Icons\\Spell_Fire_FlameBlades",
+        tip = "Area-of-effect spells for DPS bots. They still hold AoE next to a crowd-controlled mob.",
+        mini = 11,
+    },
+    {
+        id = "autocc",
+        intent = "auto cc",
+        label = "Auto CC",
+        section = "switch",
+        toggle = "autocc",
+        icon = "Interface\\Icons\\Spell_Nature_Polymorph",
+        tip = "Bots sheep/sap a loose add that hits your healer, on their own. Your CC marks always win.",
+    },
+    {
+        id = "loot",
+        intent = "loot",
+        label = "Loot",
+        section = "switch",
+        toggle = "loot",
+        icon = "Interface\\Icons\\INV_Misc_Bag_10",
+        tip = "Bots loot corpses after a fight.",
+    },
+
+    -- Rest, Repair & Train (Camp)
+    {
+        id = "rest",
+        intent = "rest",
+        label = "Rest",
+        section = "rest",
+        icon = "Interface\\Icons\\INV_Drink_07",
+        tip = "Order bots to eat and drink until full.",
+    },
+    {
+        id = "ready",
+        intent = "ready",
+        label = "Ready Check",
+        section = "rest",
+        icon = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude",
+        tip = "Check if bots have sufficient health, mana, and no critical debuffs.",
+    },
+    {
+        id = "repair",
+        intent = "repair",
+        label = "Repair",
+        section = "rest",
+        icon = "Interface\\Icons\\Trade_BlackSmithing",
+        tip = "Bots repair their gear at a nearby vendor.",
+    },
+    {
+        id = "sell",
+        intent = "sell",
+        label = "Sell junk",
+        section = "rest",
+        icon = "Interface\\Icons\\INV_Misc_Coin_02",
+        tip = "Bots vendor grey quality items and junk in their bags.",
+    },
+    {
+        id = "learn",
+        intent = "learn",
+        label = "Train",
+        section = "rest",
+        icon = "Interface\\Icons\\INV_Misc_Book_09",
+        tip = "Bots learn available class spells and skills from your targeted trainer.",
+    },
+    {
+        id = "release",
+        intent = "release",
+        label = "Release",
+        section = "rest",
+        death = true,
+        icon = "Interface\\Icons\\Spell_Holy_Resurrection",
+        tip = "Order dead bots to release spirit, or ghosts to run back to their corpses.",
+    },
+}
+
+TB.C.ACTIONS_BY_ID = {}
+TB.C.ACTIONS_BY_INTENT = {}
+for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
+    TB.C.ACTIONS_BY_ID[def.id] = def
+    TB.C.ACTIONS_BY_INTENT[def.intent] = def
+end
+
+function TB.GetActionDefinition(idOrIntent)
+    return (TB.C and TB.C.ACTIONS_BY_ID and TB.C.ACTIONS_BY_ID[idOrIntent])
+        or (TB.C and TB.C.ACTIONS_BY_INTENT and TB.C.ACTIONS_BY_INTENT[idOrIntent])
+end
+
+
 -- Party-wide toggles on the Actions tab. `key` is the TBM:BOTSTATE field the
 -- state is read from; `intent` is the `.bot action` verb that flips it.
 TB.C.PARTY_TOGGLES = {
