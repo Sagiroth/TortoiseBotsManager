@@ -23,15 +23,17 @@ function TB.SetTextColor(fs, rgb)
 end
 
 function TB.ApplyBackdrop(frame, alpha, borderA)
-    local c = C.COLOR
+    local c = (TB.C and TB.C.COLOR) or {}
+    local bg = c.bg or { 0.025, 0.032, 0.045 }
+    local border = c.border or { 0.22, 0.25, 0.28 }
     frame:SetBackdrop({
-        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 11,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        bgFile   = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, tileSize = 0, edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
-    frame:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], alpha or 0.96)
-    frame:SetBackdropBorderColor(0.48, 0.36, 0.15, borderA or 0.90)
+    frame:SetBackdropColor(bg[1], bg[2], bg[3], alpha or 0.94)
+    frame:SetBackdropBorderColor(border[1], border[2], border[3], borderA or 0.80)
 end
 
 function TB.StatusColor(st)

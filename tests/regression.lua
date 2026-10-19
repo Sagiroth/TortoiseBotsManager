@@ -1108,14 +1108,12 @@ TB.Refresh()
 
 
 -- ── Tabs by kind of work, and mini mode ────────────────────────────────────
-TB.ShowTab("camp")
-assert(TB.campFrame.visible and not TB.actionsFrame.visible and TortoiseBotsDB.activeTab == "camp",
-    "the Camp tab opens its own view")
-assert(TB.tabActions.text.text == "Fight" and TB.tabCamp.visible, "Fight and Camp tabs exist")
-assert(TB.actionButtons.rest.parent.parent == TB.campFrame and TB.actionButtons.attack.parent.parent == TB.actionsFrame,
-    "chores live on Camp, fight buttons on Fight")
 TB.ShowTab("actions")
-assert(TB.actionsFrame.visible and not TB.campFrame.visible, "Fight hides Camp")
+assert(TB.tabActions.text.text == "Actions", "Actions tab has label Actions")
+assert(TB.actionsFrame.visible, "Actions frame is visible")
+assert(TB.actionButtons.rest and TB.actionButtons.attack, "chores and fight buttons both live on Actions")
+assert(TB.actionButtons.rest.parent.parent == TB.actionsFrame and TB.actionButtons.attack.parent.parent == TB.actionsFrame,
+    "chores and fight buttons both live under Actions frame")
 
 TB.frame:Show()
 TB.miniButton.scripts.OnClick(TB.miniButton)
