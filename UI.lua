@@ -2171,22 +2171,6 @@ function TB.SetStatus(msg, kind)
     TB.statusText:SetText(msg)
     TB.SetTextColor(TB.statusText, c)
 end
-
--- Raw command callers retain the old safety helper even though the advanced
--- command box is intentionally no longer part of the UI.
-function TB.IsDangerousCommand(command)
-    command = string.lower(TB.Trim(command or ""))
-    local dangerous = {
-        "destroy", "cheat", "debug", "cdebug", "set value", "give leader",
-        "guild promote", "guild demote", "guild remove", "guild leader",
-        "sendmail", "mail", "ah bid", "faction", "cast", "logout",
-    }
-    for _, prefix in ipairs(dangerous) do
-        if command == prefix or string.find(command, "^" .. prefix .. "%s") then return true end
-    end
-    return false
-end
-
 RefreshCounts = function()
     local allState = (TB.GetAllState and TB.GetAllState()) or {}
     local total = 0
