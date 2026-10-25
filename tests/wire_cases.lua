@@ -988,6 +988,56 @@ local cases = {
         end,
     },
 
+    -- ── P3: guard/free + combat stances (R17/R19) ──────────────────────────
+    {
+        id = "fight.guard",
+        expected = { ".bot action guard" },
+        trigger = function()
+            this = TB.actionButtons.guard
+            TB.actionButtons.guard.scripts.OnClick(TB.actionButtons.guard)
+        end,
+    },
+    {
+        id = "fight.free",
+        expected = { ".bot action free" },
+        trigger = function()
+            this = TB.actionButtons.free
+            TB.actionButtons.free.scripts.OnClick(TB.actionButtons.free)
+        end,
+    },
+    {
+        id = "fight.stance.near",
+        expected = { ".bot action stance near" },
+        trigger = function()
+            this = TB.stancePills.near
+            TB.stancePills.near.scripts.OnClick(TB.stancePills.near)
+        end,
+    },
+    {
+        id = "fight.stance.tank",
+        expected = { ".bot action stance tank" },
+        trigger = function()
+            this = TB.stancePills.tank
+            TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
+        end,
+    },
+    {
+        id = "fight.stance.turnback",
+        expected = { ".bot action stance turnback" },
+        trigger = function()
+            this = TB.stancePills.turnback
+            TB.stancePills.turnback.scripts.OnClick(TB.stancePills.turnback)
+        end,
+    },
+    {
+        id = "fight.stance.behind",
+        expected = { ".bot action stance behind" },
+        trigger = function()
+            this = TB.stancePills.behind
+            TB.stancePills.behind.scripts.OnClick(TB.stancePills.behind)
+        end,
+    },
+
 
     -- ── P1: role-wire correctness ────────────────────────────────────
     {

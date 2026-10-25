@@ -180,6 +180,52 @@ TB.C.ACTION_DEFINITIONS = {
         tip = "Bots rush to your position and hold there.",
         mini = 10,
     },
+    {
+        id = "guard",
+        intent = "guard",
+        label = "Guard",
+        section = "move",
+        icon = "Interface\\Icons\\Ability_Warrior_DefensiveStance",
+        tip = "Bots plant themselves where they stand and fight anything close.",
+    },
+    {
+        id = "free",
+        intent = "free",
+        label = "Free",
+        section = "move",
+        icon = "Interface\\Icons\\Spell_Nature_Swiftness",
+        tip = "Bots leave their guard posts and move freely again.",
+    },
+
+    -- Combat stances (Fight MOVE card pills)
+    {
+        id = "stanceNear",
+        intent = "stance near",
+        label = "Near",
+        section = "stance",
+        tip = "Default scrum: melee crowds close around the target.",
+    },
+    {
+        id = "stanceTank",
+        intent = "stance tank",
+        label = "Tank",
+        section = "stance",
+        tip = "Tank goes toe-to-toe, turning the target away from the party.",
+    },
+    {
+        id = "stanceTurnback",
+        intent = "stance turnback",
+        label = "Turnback",
+        section = "stance",
+        tip = "Melee holds the far side of the target, away from your casters.",
+    },
+    {
+        id = "stanceBehind",
+        intent = "stance behind",
+        label = "Behind",
+        section = "stance",
+        tip = "Melee works the target's rear, clear of frontal cleaves.",
+    },
 
     -- Party Switches
     {
@@ -301,7 +347,7 @@ TB.C.ACTION_LABELS = {
     ["item give"]          = "Give",
     ["item trade"]         = "Trade",
     inv                    = "Bags",
-    hold                   = "Come & Hold",
+    stance                 = "Stance",
 }
 for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
     TB.C.ACTION_LABELS[def.intent] = def.label

@@ -225,6 +225,12 @@ function TB.ParseActionMessage(msg)
                 TB.OnPartyToggleResult(toggleKey, packet.scope, packet.executor)
             end
         end
+        -- Combat stances: ACK detail carries the chosen stance
+        -- ("TBM:ACTION_ACK|stance|party|N|<option>"); the server confirms
+        -- the intent, the pill click already set the active stance.
+        if packet.intent == "stance" and TB.currentStance and TB.UpdateStancePills then
+            TB.UpdateStancePills()
+        end
         -- Bot panel and raid replies render their own text.
         if TB.OnBotPanelAck and TB.OnBotPanelAck(packet) then
             if TB.Refresh then TB.Refresh() end

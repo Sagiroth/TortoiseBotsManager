@@ -14,7 +14,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 ## Features
 
 * **Tabs by kind of work** — `Fight` (during a pull), `Camp` (between pulls), `Party`, `Roster`, `Guild` (claimed guild bots), `Raid` (only in a raid) and `Log`.
-* **Fight** — `Attack`, `Stop`, `Interrupt`, `Flee`; `Pull` / `Pullback` with timers, `Focus Skull`, `CC Mark` (Marks panel); `Follow`, `Stay`, `Come`; party switches `AoE`, `Auto CC` and `Loot` that show the party's real state from the server (On / Off / Mixed, with a lamp).
+* **Fight** — `Attack`, `Stop`, `Interrupt`, `Flee`; `Pull` / `Pullback` with timers, `Focus Skull`, `CC Mark` (Marks panel); `Follow`, `Stay`, `Come & Hold`, `Guard`, `Free` plus combat-stance pills (`Near`, `Tank`, `Turnback`, `Behind`); party switches `AoE`, `Auto CC` and `Loot` that show the party's real state from the server (On / Off / Mixed, with a lamp).
 * **Camp** — `Rest`, `Ready Check`, `Repair`, `Sell junk`, `Train` (at a targeted class trainer), a `Release` button that turns into `Corpse run` once your dead bots are ghosts, and six formations with a one-line description of the active one.
 * **Mini mode** — the `Mini` button (or `/tbm mini`) swaps the window for a small draggable bar of fight icons; its `+` brings the window back. The mode survives a reload.
 * **Bot panel (gear & bags)** — opened from the bag icon on a Party row, the `Gear & bags` button while a bot is targeted, or `/tbm bags <name>`. Paper doll with the bot's 3D model and durability, a bag grid with upgrade markers, one-click `Equip` / `Unequip` / `Give to me` (the item goes straight into a trade window), `Trade`, and a `Behaviour` tab with per-bot switches (loot, AoE, auto CC, save mana, cooldowns, threat, potions).
