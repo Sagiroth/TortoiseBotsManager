@@ -1226,6 +1226,8 @@ function TB.RefreshBotPanel()
     if online then panel.tradeButton:Enable() else panel.tradeButton:Disable() end
     if online then panel.upkeepButton:Enable() else panel.upkeepButton:Disable() end
     if online then panel.gearUpButton:Enable() else panel.gearUpButton:Disable() end
+    if panel.npcButton then if online then panel.npcButton:Enable() else panel.npcButton:Disable() end end
+    if panel.vaultButton then if online then panel.vaultButton:Enable() else panel.vaultButton:Disable() end end
     if panel.sweepButton then
         if inv then panel.sweepButton:Enable() else panel.sweepButton:Disable() end
     end
