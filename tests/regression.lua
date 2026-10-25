@@ -722,7 +722,7 @@ now = now + 1
 local beforeRoleCmd = table.getn(sent)
 TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be stored as dps")
-assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot command Priestbot +shadow,-holy,-discipline,-offdps",
+assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot strategy +shadow,-holy,-discipline Priestbot",
     "Clicking Shadow role must send Playerbot strategy command")
 assert(TB.partyFrame.rows[2].roleButtons[3].text:find("|cffffd200Shadow|r"), "Selected Shadow button must be highlighted gold")
 
@@ -754,7 +754,7 @@ assert(queueFrame, "demotion spec strategy must queue behind the throttle")
 this, arg1 = queueFrame, 0.1
 queueFrame.scripts.OnUpdate(queueFrame)
 assert(table.getn(sent) == beforeDemoteCmd + 2
-    and sent[table.getn(sent)] == ".bot command Tankbot +arms,-protection",
+    and sent[table.getn(sent)] == ".bot strategy +arms,-protection Tankbot",
     "Demotion spec strategy must follow after the throttle clears")
 partyClassName = "Priest"
 partyMembers = { "Priestbot" }

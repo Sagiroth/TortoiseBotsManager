@@ -133,7 +133,7 @@ TB.Roles.CLASS_ROLES = {
     },
     [2] = { -- Paladin
         { id = "tank", label = "Tank", strat = "+protection,-holy,-retribution" },
-        { id = "heal", label = "Healer", strat = "+holy,-protection,-retribution,-offdps" },
+        { id = "heal", label = "Healer", strat = "+holy,-protection,-retribution" },
         { id = "dps", label = "DPS", strat = "+retribution,-protection,-holy" },
     },
     [3] = { -- Hunter
@@ -149,7 +149,7 @@ TB.Roles.CLASS_ROLES = {
     [5] = { -- Priest
         { id = "heal", label = "Healer", strat = "+holy,-shadow,-offdps" },
         { id = "hybrid", label = "Hybrid", strat = "+holy,+offdps,-shadow" },
-        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
+        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline" },
     },
     [7] = { -- Shaman
         { id = "heal", label = "Healer", strat = "+restoration,-elemental,-enhancement,-offdps" },
@@ -273,7 +273,7 @@ function TB.Roles.SetBotRole(botName, role, classId)
             TB.SendBotCommand("role " .. botName .. " clear")
         end
         if roleDef.strat and roleDef.strat ~= "" then
-            TB.SendBotCommand("command " .. botName .. " " .. roleDef.strat)
+            TB.SendBotCommand("strategy " .. roleDef.strat .. " " .. botName)
         end
     end
     if TB.Print then TB.Print(botName .. " role set to " .. roleDef.label) end
