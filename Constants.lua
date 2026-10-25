@@ -261,6 +261,41 @@ TB.C.ACTION_DEFINITIONS = {
         icon = "Interface\\Icons\\Spell_Holy_Resurrection",
         tip = "Order dead bots to release spirit, or ghosts to run back to their corpses.",
     },
+    {
+        id = "rebuff",
+        intent = "rebuff",
+        label = "Rebuff",
+        section = "rest",
+        icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofKings",
+        tip = "Bots re-cast missing group buffs out of combat.",
+    },
+    {
+        id = "resetTactics",
+        intent = "strategy reset",
+        label = "Reset tactics",
+        section = "rest",
+        strategy = true,
+        icon = "Interface\\Icons\\INV_Misc_Note_01",
+        tip = "Clear custom combat and non-combat strategy changes back to defaults.",
+    },
+    {
+        id = "totem",
+        intent = "totem party drop",
+        label = "Drop totems",
+        section = "rest",
+        totem = true,
+        icon = "Interface\\Icons\\Spell_Nature_StoneClawTotem",
+        tip = "Shaman bots drop their configured totems now.",
+    },
+    {
+        id = "grind",
+        intent = "strategy +grind",
+        label = "Grind",
+        section = "quests",
+        strategy = true,
+        icon = "Interface\\Icons\\Ability_MeleeDamage",
+        tip = "Bots roam and grind mobs on their own. Click again to stop.",
+    },
 }
 
 TB.C.ACTIONS_BY_ID = {}
@@ -302,6 +337,9 @@ TB.C.ACTION_LABELS = {
     ["item trade"]         = "Trade",
     inv                    = "Bags",
     hold                   = "Come & Hold",
+    ["strategy +grind"]    = "Grind",
+    ["strategy -grind"]    = "Grind",
+    ["strategy reset"]     = "Reset tactics",
 }
 for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
     TB.C.ACTION_LABELS[def.intent] = def.label
@@ -394,7 +432,11 @@ TB.C.FORMATIONS = {
     { id = "queue",  label = "Queue",  tip = "Single file behind you, for bridges and ledges." },
     { id = "arrow",  label = "Arrow",  tip = "V-shaped wedge pointing forward, for open ground." },
     { id = "circle", label = "Circle", tip = "Ring around you, facing out." },
-    { id = "line",   label = "Line",   tip = "Side by side in one line with you in the middle, for open ground." },
+    { id = "line",    label = "Line",    tip = "Side by side in one line with you in the middle, for open ground." },
+    { id = "far",     label = "Far",     tip = "Loose spread at maximum leash range, for open-world pulling." },
+    { id = "melee",   label = "Melee",   tip = "Melee stack on the tank's target, ranged hang back." },
+    { id = "chaos",   label = "Chaos",   tip = "Scattered skirmish spread with no fixed shape." },
+    { id = "default", label = "Default", tip = "Server default spacing, before any formation order." },
 }
 
 -- Addon command transport (server side: host/BotAddonAdapter.cpp).

@@ -144,6 +144,11 @@ end
 local function actionLabel(intent)
     local def = TB.GetActionDefinition and TB.GetActionDefinition(intent)
     if def and def.label then return def.label end
+    if intent == "strategy +grind" or intent == "strategy -grind" then return "Grind" end
+    if intent == "strategy reset" or intent == "totem party drop" then
+        if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
+        return intent
+    end
     if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
     local _, _, behaviorKey = string.find(intent or "", "^behavior%s+(%S+)$")
     if behaviorKey then
@@ -670,6 +675,16 @@ function TB.OnSystemMessage(msg)
     if actionHandled then
         TB.lastSystem = msg
         return
+    end
+    do
+        local _, _, change = string.find(msg, "^Strategy change '([^']+)' applied")
+        if change then
+            if TB.NoteStrategyChange then TB.NoteStrategyChange(change) end
+            if TB.SetStatus then TB.SetStatus(msg, "ok") end
+            if TB.Refresh then TB.Refresh() end
+            TB.lastSystem = msg
+            return
+        end
     end
     if updateServerCommands(msg) then
         if TB.SetStatus then TB.SetStatus(msg, "muted") end

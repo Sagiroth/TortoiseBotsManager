@@ -353,6 +353,148 @@ local cases = {
             setParty({}, "Warrior")
         end,
     },
+    -- -- P4 ---------------------------------------------------------------
+    {
+        id = "camp.rebuff",
+        expected = { ".bot action rebuff" },
+        trigger = function()
+            this = TB.actionButtons.rebuff
+            TB.actionButtons.rebuff.scripts.OnClick(TB.actionButtons.rebuff)
+        end,
+    },
+    {
+        id = "camp.resetTactics",
+        expected = { ".bot strategy reset" },
+        trigger = function()
+            this = TB.actionButtons.resetTactics
+            TB.actionButtons.resetTactics.scripts.OnClick(TB.actionButtons.resetTactics)
+        end,
+    },
+    {
+        id = "camp.totem",
+        expected = { ".bot totem party drop" },
+        trigger = function()
+            this = TB.actionButtons.totem
+            TB.actionButtons.totem.scripts.OnClick(TB.actionButtons.totem)
+        end,
+    },
+    {
+        id = "camp.grind.on",
+        expected = { ".bot strategy +grind" },
+        trigger = function()
+            TB.grindState = nil
+            if TB.RefreshCampControls then TB.RefreshCampControls() end
+            this = TB.actionButtons.grind
+            TB.actionButtons.grind.scripts.OnClick(TB.actionButtons.grind)
+        end,
+    },
+    {
+        id = "camp.grind.off",
+        expected = { ".bot strategy -grind" },
+        trigger = function()
+            TB.NoteStrategyChange("+grind")
+            this = TB.actionButtons.grind
+            TB.actionButtons.grind.scripts.OnClick(TB.actionButtons.grind)
+            TB.grindState = nil
+            if TB.RefreshCampControls then TB.RefreshCampControls() end
+        end,
+    },
+    {
+        id = "camp.grind.parse",
+        expected = { ".bot strategy +grind" },
+        trigger = function()
+            TB.grindState = nil
+            TB.OnSystemMessage("Strategy change '+grind' applied to 2 bot(s).")
+            assert(TB.GetGrindState() == "on", "grind reply must set grind state")
+            assert(TB.actionButtons.grind.text == "Grind On", "grind button must show On")
+            TB.OnSystemMessage("Strategy change '-grind' applied to 2 bot(s).")
+            assert(TB.GetGrindState() == "off", "grind off reply must clear grind state")
+            TB.grindState = nil
+            if TB.RefreshCampControls then TB.RefreshCampControls() end
+            this = TB.actionButtons.grind
+            TB.actionButtons.grind.scripts.OnClick(TB.actionButtons.grind)
+        end,
+    },
+    {
+        id = "camp.quest.accept",
+        expected = { ".bot command Alpha accept", ".bot command Gamma accept" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:ROSTER_BEGIN|2")
+            TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+            TB.OnSystemMessage("TBM:ROSTER|102|Gamma|11|online|0|map:4,zone:5,area:6")
+            TB.OnSystemMessage("TBM:ROSTER_END")
+            updateGroup({ "Alpha", "Gamma" }, "Warrior")
+            this = TB.actionButtons.acceptQuest
+            TB.actionButtons.acceptQuest.scripts.OnClick(TB.actionButtons.acceptQuest)
+        end,
+    },
+    {
+        id = "camp.quest.share",
+        expected = { ".bot command Alpha share", ".bot command Gamma share" },
+        trigger = function()
+            this = TB.actionButtons.shareQuest
+            TB.actionButtons.shareQuest.scripts.OnClick(TB.actionButtons.shareQuest)
+            updateGroup({}, "Warrior")
+            TB.OnSystemMessage("TBM:ROSTER_BEGIN|2")
+            TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|offline|0|-")
+            TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+            TB.OnSystemMessage("TBM:ROSTER_END")
+        end,
+    },
+    {
+        id = "camp.quest.empty",
+        expected = { },
+        trigger = function()
+            updateGroup({}, "Warrior")
+            TB.OnSystemMessage("TBM:ROSTER_BEGIN|2")
+            TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|offline|0|-")
+            TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+            TB.OnSystemMessage("TBM:ROSTER_END")
+            this = TB.actionButtons.acceptQuest
+            TB.actionButtons.acceptQuest.scripts.OnClick(TB.actionButtons.acceptQuest)
+            updateGroup({ "Alpha" }, "Priest")
+            TB.OnSystemMessage("TBM:ROSTER_BEGIN|2")
+            TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+            TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+            TB.OnSystemMessage("TBM:ROSTER_END")
+        end,
+    },
+    {
+        id = "camp.formation.far.party",
+        expected = { ".bot formation far" },
+        trigger = function()
+            setTarget(false, nil)
+            this = TB.formationPills.far
+            TB.formationPills.far.scripts.OnClick(TB.formationPills.far)
+        end,
+    },
+    {
+        id = "camp.formation.melee.party",
+        expected = { ".bot formation melee" },
+        trigger = function()
+            setTarget(false, nil)
+            this = TB.formationPills.melee
+            TB.formationPills.melee.scripts.OnClick(TB.formationPills.melee)
+        end,
+    },
+    {
+        id = "camp.formation.chaos.party",
+        expected = { ".bot formation chaos" },
+        trigger = function()
+            setTarget(false, nil)
+            this = TB.formationPills.chaos
+            TB.formationPills.chaos.scripts.OnClick(TB.formationPills.chaos)
+        end,
+    },
+    {
+        id = "camp.formation.default.party",
+        expected = { ".bot formation default" },
+        trigger = function()
+            setTarget(false, nil)
+            this = TB.formationPills.default
+            TB.formationPills.default.scripts.OnClick(TB.formationPills.default)
+        end,
+    },
     {
         id = "camp.formation.shield.party",
         expected = { ".bot formation shield" },
@@ -665,11 +807,16 @@ local cases = {
         expected = { ".bot uninvite Gamma" },
         trigger = function()
             TB.ShowTab("roster")
+            TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+            TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+            TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+            TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
+            TB.OnSystemMessage("TBM:ROSTER_END")
             if TB.GetState("Gamma") then TB.GetState("Gamma").operation = nil end
             TB.ClearRosterSelection()
             updateGroup({ "Gamma" }, "Druid")
-            TB.SetState("Gamma", { group = true })
             TB.ToggleRosterSelection("Gamma", true)
+            TB.Refresh()
             this = TB.lifecycleButtons.kick
             TB.lifecycleButtons.kick.scripts.OnClick(TB.lifecycleButtons.kick)
             if TB.GetState("Gamma") then TB.GetState("Gamma").operation = nil end
