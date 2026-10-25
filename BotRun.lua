@@ -32,7 +32,7 @@ local TB = TortoiseBots
 local C = TB.C or {}
 local COL = C.COLOR or {}
 local RW = 300
-local RWINDOW = 420
+local RWINDOW = 456
 local PROW = 3
 
 local CAP = "dungeon-run"
@@ -486,7 +486,7 @@ local function createWindow()
     TB.SetTextColor(win.planPageText, color("muted"))
 
     -- Controls: Start / Pause-Resume / Skip / Stop + reason.
-    local ctlY = -144 - PROW * 22 - 24
+    local ctlY = -144 - PROW * 22 - 28
     local ctl = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     ctl:SetPoint("TOPLEFT", win, "TOPLEFT", 12, ctlY)
     ctl:SetText("CONTROLS")
@@ -507,8 +507,8 @@ local function createWindow()
         "Stop", "End the run; the bots stay where they are, still bound.",
         function() TB.SendRunStop(stopReason) end)
     win.stopBox = CreateFrame("EditBox", "TortoiseBotsManagerRunStopBox", win, "InputBoxTemplate")
-    win.stopBox:SetWidth(172); win.stopBox:SetHeight(20)
-    win.stopBox:SetPoint("TOPLEFT", win, "TOPLEFT", 104, ctlY - 44)
+    win.stopBox:SetWidth(168); win.stopBox:SetHeight(20)
+    win.stopBox:SetPoint("TOPLEFT", win, "TOPLEFT", 108, ctlY - 44)
     win.stopBox:SetAutoFocus(false)
     win.stopBox:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     win.stopBox:SetScript("OnEnterPressed", function() this:ClearFocus() end)
@@ -517,10 +517,11 @@ local function createWindow()
     end)
     setTooltip(win.stopBox, "Stop reason", { "Optional: why the run ends (shown in the note)." })
     local stopHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    stopHint:SetPoint("TOPLEFT", win, "TOPLEFT", 104, ctlY - 66)
-    stopHint:SetWidth(172); stopHint:SetJustifyH("LEFT")
+    stopHint:SetPoint("TOPLEFT", win, "TOPLEFT", 108, ctlY - 66)
+    stopHint:SetWidth(168); stopHint:SetJustifyH("LEFT")
     stopHint:SetText("Stop reason (optional).")
     TB.SetTextColor(stopHint, color("muted"))
+    win.stopHint = stopHint
 
     -- Status: plan, state lamp, step x/y progress, leg, phase, note.
     local stY = ctlY - 88
@@ -533,14 +534,17 @@ local function createWindow()
     win.runLamp:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 22)
     win.runState = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.runState:SetPoint("LEFT", win.runLamp, "RIGHT", 4, 0)
-    win.runState:SetWidth(120); win.runState:SetJustifyH("LEFT")
+    win.runState:SetWidth(112); win.runState:SetJustifyH("LEFT")
     win.runStep = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.runStep:SetPoint("TOPLEFT", win, "TOPLEFT", 140, stY - 21)
     win.runStep:SetWidth(RW - 152); win.runStep:SetJustifyH("RIGHT")
     win.runBar = CreateFrame("Frame", nil, win)
     win.runBar:SetWidth(RW - 24); win.runBar:SetHeight(10)
     win.runBar:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 38)
-    TB.ApplyBackdrop(win.runBar, 0.62, 0.45)
+    -- A 10px bar is thinner than the 11px tooltip border edgeSize, so a
+    -- plain dark backing replaces the tooltip backdrop here.
+    local barBg = win.runBar:CreateTexture(nil, "BACKGROUND")
+    barBg:SetAllPoints(win.runBar)
     win.runFill = win.runBar:CreateTexture(nil, "ARTWORK")
     win.runFill:SetHeight(6)
     win.runLeg = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -661,7 +665,35 @@ function TB.OpenRunWindow()
     if TB.CloseNpc then TB.CloseNpc() end
     if TB.SetMode then TB.SetMode("full") end
     win:ClearAllPoints()
-    if TB.frame then
+    local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame
+    if anchor and anchor ~= TB.frame then
+        local aRight = anchor.GetRight and anchor:GetRight()
+        local fLeft = TB.frame and TB.frame.GetLeft and TB.frame:GetLeft()
+        local aLeft = anchor.GetLeft and anchor:GetLeft()
+        if aRight and fLeft and aRight <= fLeft then
+            -- The panel sits LEFT of main: anchor right of the panel would
+            -- land on main, so dock left of the panel (or right of main
+            -- when the panel hugs the left screen edge).
+            if aLeft and aLeft - RW - 4 >= 0 then
+                win:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+            elseif TB.frame then
+                win:SetPoint("TOPLEFT", TB.frame, "TOPRIGHT", 4, 0)
+            else
+                win:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            end
+        else
+            local right = anchor.GetRight and anchor:GetRight()
+            local screen = GetScreenWidth and GetScreenWidth()
+            local scale = (anchor.GetScale and anchor:GetScale()) or 1
+            if right and screen and (right + RW + 4) * scale > screen then
+                -- The panel sits right of main: anchoring left of the panel
+                -- would land on top of main, so dock left of main instead.
+                win:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
+            else
+                win:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            end
+        end
+    elseif TB.frame then
         local right = TB.frame.GetRight and TB.frame:GetRight()
         local screen = GetScreenWidth and GetScreenWidth()
         local scale = (TB.frame.GetScale and TB.frame:GetScale()) or 1

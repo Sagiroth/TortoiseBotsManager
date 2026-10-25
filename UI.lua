@@ -1395,7 +1395,9 @@ function TB.InitUI()
 
         local subtitle = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         subtitle:SetPoint("LEFT", title, "RIGHT", 8, 0)
-        subtitle:SetText("|cff888888(role buttons · bag = gear & bags · click a row to target)|r")
+        subtitle:SetText("|cff888888(role buttons · bag = gear · click to target)|r")
+        partyFrame.title = title
+        partyFrame.subtitle = subtitle
 
         -- Dungeon run (Preview): opens the run leader window. The server
         -- only advertises the feature while it is enabled, so the button

@@ -454,6 +454,9 @@ return function()
         if not frame or not frame.rows then
             bad("Party: rows missing")
         else
+            -- The run button only shows while the server advertises
+            -- dungeon-run: enable it so the subtitle-vs-button check runs.
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run")
             TB.RefreshPartyView()
             local fr = frameRect(frame, cache)
             local rowItems = {}
@@ -518,8 +521,22 @@ return function()
                 if row1 and overlaps(br, row1) then
                     bad("Party: run button overlaps row 1")
                 end
+                -- With the button shown, the header subtitle must clear it:
+                -- subtitle starts at title.LEFT + rendered title + 8.
+                do
+                    local titleR = frameRect(frame.title, cache)
+                    local titleW = textWidth("Active Party Roles", 6)
+                    local subW = textWidth("(role buttons · bag = gear · click to target)", 6)
+                    local subRight = titleR.left + titleW + 8 + subW
+                    if subRight > br.left then
+                        bad(string.format("Party: subtitle ends at x=%d but run button starts at x=%d",
+                            subRight, br.left))
+                    end
+                end
                 labelFits("Party run", btn, "Dungeon run", 6)
                 if not wasVisible then btn:Hide() end
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+                TB.RefreshPartyView()
             else
                 bad("Party: run button missing")
             end
@@ -1345,13 +1362,40 @@ return function()
                 end
                 -- Status shown: a running line paints state, step, bar and
                 -- the leg/phase/note lines, all inside the window.
+                -- An 80-char note wraps to 2 lines: measure the wrapped box.
+                if win.runNote then win.runNote:SetText(string.rep("n", 80)) end
+                -- Wrapped hints: bindHint/planHint/stopHint and the pause
+                -- warning all render (stopHint via the new window field).
                 TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851|left 2")
                 local status = {}
                 for _, key in ipairs({ "runBar", "runLeg", "runPhase",
-                    "runNote", "runStep", "runState" }) do
+                    "runNote", "runStep", "runState", "bindHint", "planHint",
+                    "stopHint", "warn" }) do
                     if win[key] then table.insert(status, { key, win[key] }) end
                 end
                 childrenInside("RunWindow status", win, wr, status, cache, 2)
+                -- InputBoxTemplate's left border reaches 5px past the box:
+                -- stopBox must clear Stop even with the border.
+                do
+                    local sb = frameRect(win.stopBox, cache)
+                    sb = { left = sb.left - 5, top = sb.top,
+                        right = sb.right, bottom = sb.bottom }
+                    local st = frameRect(win.stop, cache)
+                    if overlaps(sb, st) then
+                        bad(string.format("RunWindow: 'stopBox' %s (with border) touches 'stop' %s",
+                            fmt(sb), fmt(st)))
+                    end
+                end
+                -- runState (lamp-relative) must clear runStep: compare boxes,
+                -- not glyphs, so a later SetText can fill the control.
+                do
+                    local rs = boxRect(win.runState, cache)
+                    local rp = boxRect(win.runStep, cache)
+                    if overlaps(rs, rp) then
+                        bad(string.format("RunWindow status: 'runState' %s overlaps 'runStep' %s",
+                            fmt(rs), fmt(rp)))
+                    end
+                end
                 local boxes = {}
                 for _, key in ipairs({ "runLeg", "runPhase", "runNote" }) do
                     if win[key] and win[key].kind == "FontString" then
@@ -1372,18 +1416,21 @@ return function()
                 if TB.OpenBotPanel and TB.frame then
                     local savedX = TB.frame.x
                     for _, edge in ipairs({ "right", "left" }) do
+                        -- Fresh rects: OpenBotPanel/OpenRunWindow re-anchor
+                        -- the frames, and frameRect caches by frame.
+                        local edgeCache = {}
                         TB.frame.x = (edge == "right") and 700 or 60
                         TB.OpenBotPanel("Alpha")
                         TB.OpenRunWindow()
-                        local rw = frameRect(win, cache)
-                        local main = frameRect(TB.frame, cache)
+                        local rw = frameRect(win, edgeCache)
+                        local main = frameRect(TB.frame, edgeCache)
                         if overlaps(rw, main) then
                             bad(string.format("RunWindow (%s): %s covers the main window %s",
                                 edge, fmt(rw), fmt(main)))
                         end
                         local panel = TB.botPanel
                         if panel and panel:IsVisible() then
-                            local pr = frameRect(panel, cache)
+                            local pr = frameRect(panel, edgeCache)
                             if overlaps(rw, pr) then
                                 bad(string.format("RunWindow (%s): %s covers the panel %s",
                                     edge, fmt(rw), fmt(pr)))

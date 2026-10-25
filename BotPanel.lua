@@ -778,7 +778,7 @@ local function createPanel()
 
     local sub = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     sub:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -28)
-    sub:SetWidth(PW - 24); sub:SetJustifyH("LEFT")
+    sub:SetWidth(PW - 44); sub:SetJustifyH("LEFT")
     TB.SetTextColor(sub, color("muted"))
     panel.subText = sub
 
@@ -1251,6 +1251,7 @@ function TB.OpenBotPanel(name, view)
     if not name then return false end
     if not panel then createPanel() end
     if currentBot and currentBot ~= name then TB.SetSpellPending(currentBot, false) end
+    if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then bagPage = 1; spellPage = 1 end
     currentBot = name

@@ -1878,7 +1878,7 @@ for _ = 1, 30 do
     runQueue.scripts.OnUpdate(runQueue)
 end
 assert(lastAddon() == "run status", "opening asks for the run status")
-assert(TB.runWindow.point and TB.runWindow.point[2] == TB.frame, "the run window sits beside main")
+assert(TB.runWindow.point and (TB.runWindow.point[2] == TB.frame or TB.runWindow.point[2] == TB.botPanel), "the run window sits beside main")
 TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet)")
 assert(table.getn(TB.GetRunPlans()) == 2, "the plan list parses")
 assert(TB.runWindow.planRows[1].visible and TB.runWindow.planRows[1].planName == "uldaman",
