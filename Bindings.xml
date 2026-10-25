@@ -1,5 +1,5 @@
 <Bindings>
-  <Binding runOnUp="false" name="TBM_ATTACK">
+  <Binding runOnUp="false" name="TBM_ATTACK" header="TBM">
     if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("attack") end
   </Binding>
   <Binding runOnUp="false" name="TBM_STOP">

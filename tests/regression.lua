@@ -1320,6 +1320,26 @@ TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
 TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|0|map:4,zone:5,area:6")
 TB.OnSystemMessage("TBM:ROSTER_END")
 assert(table.getn(TB.classChips) == 10, "roster must show All plus 9 class filter chips")
+local function frameEdges(f)
+    local _, _, _, x, y = f:GetPoint(1)
+    return x, x + f.width, y, y - f.height
+end
+for _, chip in ipairs(TB.classChips) do
+    local left, right, top, bottom = frameEdges(chip)
+    assert(left >= 0 and right <= 480,
+        "class chip must stay inside the 480px roster frame")
+    assert(top <= -22 and bottom >= -62,
+        "class chips must sit on their own rows below the search box")
+end
+local searchLeft, searchRight, searchTop, searchBottom = frameEdges(TB.searchBox)
+local clearLeft, clearRight, clearTop, clearBottom = frameEdges(TB.searchClear)
+for _, chip in ipairs(TB.classChips) do
+    local left, right, top, bottom = frameEdges(chip)
+    local overlapsSearch = not (right <= searchLeft or left >= searchRight or top <= searchBottom or bottom >= searchTop)
+    local overlapsClear = not (right <= clearLeft or left >= clearRight or top <= clearBottom or bottom >= clearTop)
+    assert(not overlapsSearch and not overlapsClear,
+        "class chips must not intersect the search box or Clear button")
+end
 assert(TB.classFilter == nil, "class filter must start on All")
 TB.classFilter = 1
 TB.PaintClassChips()
@@ -1348,6 +1368,12 @@ assert(TB.classFilter == nil and table.getn(TB.GetDisplayRows("")) == 3,
     "clicking All must clear the class filter")
 assert(TB.lifecycleButtons.fill and TB.guildFrame.fillBtn,
     "Fill party and Fill raid buttons must exist")
+local rosterSpan = 95 + 56 + 62 + 56 + 50 + 66 + 44 + 6 * 4
+assert(rosterSpan <= 480, "roster bar (selection + 6 buttons) must fit the 480px frame")
+local guildSpan = 85 + 110 + 110 + 56 + 56 + 4 * 4
+assert(guildSpan <= 480, "guild bar (selection + 4 buttons) must fit the 480px frame")
+local fillLeft, fillRight = frameEdges(TB.lifecycleButtons.fill)
+assert(fillLeft >= 0 and fillRight <= 480, "Fill button must stay inside the roster frame")
 partyMembers = { "Alpha", "Gamma", "Delta", "Epsilon" }
 assert(table.getn(TB.GetFillPartyNames()) == 0,
     "Fill party must stay empty when the party is already full")
