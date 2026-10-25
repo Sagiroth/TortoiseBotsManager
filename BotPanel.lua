@@ -266,6 +266,17 @@ function TB.SendItemOrder(op, bag, slot)
     return TB.SendBotCommand(cmd)
 end
 
+-- The `u` order takes a full item hyperlink (`command <bot> u <link>`),
+-- unlike SendItemOrder which addresses bag/slot. Returns false when the
+-- item is not cached yet (and queues a tooltip lookup instead).
+function TB.SendItemUse(id)
+    if not currentBot or not id then return false end
+    local name, link = GetItemInfo(id)
+    if not name or not link then requestItem(id) return false end
+    if TB.SetStatus then TB.SetStatus(("Use → " .. currentBot .. "…"), "pending") end
+    return TB.SendBotCommand("command " .. currentBot .. " u |H" .. link .. "|h[" .. name .. "]|h")
+end
+
 function TB.SendBehavior(name, key)
     name = norm(name)
     if not name or not key then return false end
@@ -432,7 +443,7 @@ end
 
 local function createMenu(parent)
     local menu = CreateFrame("Frame", "TortoiseBotsManagerItemMenu", parent)
-    menu:SetWidth(118); menu:SetHeight(58)
+    menu:SetWidth(118); menu:SetHeight(82)
     menu:SetFrameStrata("TOOLTIP")
     menu:EnableMouse(true)
     TB.ApplyBackdrop(menu, 0.98, 1.0)
@@ -446,6 +457,7 @@ local function createMenu(parent)
     end
     menu.first = button("Equip", -6, "The bot equips this item.")
     menu.second = button("Give to me", -30, "Opens a trade with the bot and puts this item in. Accept the trade to take it.")
+    menu.third = button("Use", -54, "The bot uses this item (food, drink, potion).")
     function menu:Open(owner, entry)
         self.owner = owner
         self.entry = entry
@@ -456,6 +468,7 @@ local function createMenu(parent)
             self.first:Enable()
             self.first.op = "unequip"
             self.second:Hide()
+            self.third:Hide()
             self:SetHeight(34)
         else
             self.first:SetText("Equip")
@@ -463,7 +476,8 @@ local function createMenu(parent)
             if entry.equippable then self.first:Enable() else self.first:Disable() end
             self.second:Show()
             if entry.noTrade then self.second:Disable() else self.second:Enable() end
-            self:SetHeight(58)
+            self.third:Show()
+            self:SetHeight(82)
         end
         self:Show()
     end
@@ -476,6 +490,11 @@ local function createMenu(parent)
         local entry = menu.entry
         hideMenu()
         if entry then TB.SendItemOrder("give", entry.bag, entry.slot) end
+    end)
+    menu.third:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then TB.SendItemUse(entry.id) end
     end)
     menu:Hide()
     return menu
@@ -569,9 +588,18 @@ local function createPanel()
     panel.bags = bags
     local bagSummary = bags:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bagSummary:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -76)
-    bagSummary:SetWidth(PW - 24); bagSummary:SetJustifyH("LEFT")
+    bagSummary:SetWidth(196); bagSummary:SetJustifyH("LEFT")
     TB.SetTextColor(bagSummary, color("muted"))
     panel.bagSummary = bagSummary
+    local sweep = CreateFrame("Button", nil, bags, "UIPanelButtonTemplate")
+    sweep:SetWidth(110); sweep:SetHeight(20)
+    sweep:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -72)
+    sweep:SetText("Equip upgrades")
+    setTooltip(sweep, "Equip upgrades", { "The bot scans its bags and equips everything better." })
+    sweep:SetScript("OnClick", function()
+        if currentBot then TB.SendBotCommand("command " .. currentBot .. " d equip upgrades") end
+    end)
+    panel.sweepButton = sweep
     panel.bagButtons = {}
     local x0 = math.floor((PW - (BAG_COLS * STEP - 4)) / 2)
     for r = 1, BAG_ROWS do
@@ -624,14 +652,14 @@ local function createPanel()
         panel.behaviorChips[def.key] = chip
     end
     local bhHint = behavior:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    bhHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -228)
+    bhHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -258)
     bhHint:SetWidth(PW - 24); bhHint:SetJustifyH("LEFT")
-    bhHint:SetText("Party-wide AoE, Auto CC and Loot switches live on the Actions tab; these override one bot.")
+    bhHint:SetText("Party-wide switches live on the Actions tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
 
-    -- Footer: trade + refresh for every view.
+    -- Footer: trade, refresh, upkeep and gear-up for every view.
     local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    trade:SetWidth(100); trade:SetHeight(22)
+    trade:SetWidth(90); trade:SetHeight(22)
     trade:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 28)
     trade:SetText("Trade")
     setTooltip(trade, "Trade", {
@@ -643,7 +671,7 @@ local function createPanel()
     panel.tradeButton = trade
 
     local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    refresh:SetWidth(80); refresh:SetHeight(22)
+    refresh:SetWidth(64); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 6, 0)
     refresh:SetText("Refresh")
     setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
@@ -652,6 +680,28 @@ local function createPanel()
         if TB.PollList then TB.PollList(true) end
     end)
     panel.refreshButton = refresh
+
+    local upkeep = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    upkeep:SetWidth(68); upkeep:SetHeight(22)
+    upkeep:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
+    upkeep:SetText("Upkeep")
+    setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs." })
+    upkeep:SetScript("OnClick", function()
+        if currentBot then TB.SendBotCommand("maintenance " .. currentBot) end
+        if TB.PollList then TB.PollList(true) end
+    end)
+    panel.upkeepButton = upkeep
+
+    local gearup = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    gearup:SetWidth(68); gearup:SetHeight(22)
+    gearup:SetPoint("LEFT", upkeep, "RIGHT", 6, 0)
+    gearup:SetText("Gear up")
+    setTooltip(gearup, "Gear up", { "The bot equips the best gear it already owns in its bags." })
+    gearup:SetScript("OnClick", function()
+        if currentBot then TB.SendBotCommand("autogear " .. currentBot) end
+        if currentBot then TB.RequestInventory(currentBot) end
+    end)
+    panel.gearUpButton = gearup
 
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 12, 10)
@@ -809,6 +859,9 @@ function TB.RefreshBotPanel()
     end
     local online = TB.GetBotState(currentBot) ~= nil or botUnit(currentBot) ~= nil
     if online then panel.tradeButton:Enable() else panel.tradeButton:Disable() end
+    if panel.sweepButton then
+        if inv then panel.sweepButton:Enable() else panel.sweepButton:Disable() end
+    end
 end
 
 function TB.OpenBotPanel(name, view)

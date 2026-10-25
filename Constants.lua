@@ -328,7 +328,9 @@ TB.C.BEHAVIORS = {
     { key = "savemana", label = "Save mana",    tip = "Wait longer between repeated casts to stretch mana on long fights.", mana = true },
     { key = "boost",    label = "Cooldowns",    tip = "Use big offensive cooldowns during fights." },
     { key = "threat",   label = "Watch threat", tip = "Ease off damage when close to pulling aggro from the tank." },
-    { key = "potions",  label = "Potions",      tip = "Drink healing and mana potions when low." },
+    { key = "potions",  label = "Potions",    tip = "Drink healing and mana potions when low." },
+    { key = "mimic",    label = "Mimic",      tip = "Copy your consumable use (food, drink, potions) on this bot." },
+    { key = "spread",   label = "Spread out", tip = "Keep distance from nearby party members instead of stacking." },
 }
 TB.C.NO_MANA_CLASSES = { [1] = true, [4] = true } -- Warrior, Rogue
 

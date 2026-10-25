@@ -987,6 +987,72 @@ local cases = {
             TB.CloseBotPanel()
         end,
     },
+    {
+        id = "botpanel.behavior.mimic.on",
+        expected = { ".bot behavior Alpha mimic on" },
+        trigger = function()
+            TB.botPanel.tabBehavior.scripts.OnClick(TB.botPanel.tabBehavior)
+            TB.GetBotState("Alpha").mimic = "off"
+            local chip = TB.botPanel.behaviorChips.mimic
+            this = chip
+            chip.scripts.OnClick(chip)
+            TB.OnSystemMessage("TBM:ACTION_ACK|behavior mimic|bot:Alpha|1|on")
+        end,
+    },
+    {
+        id = "botpanel.behavior.spread.on",
+        expected = { ".bot behavior Alpha spread on" },
+        trigger = function()
+            TB.botPanel.tabBehavior.scripts.OnClick(TB.botPanel.tabBehavior)
+            TB.GetBotState("Alpha").spread = "off"
+            local chip = TB.botPanel.behaviorChips.spread
+            this = chip
+            chip.scripts.OnClick(chip)
+            TB.OnSystemMessage("TBM:ACTION_ACK|behavior spread|bot:Alpha|1|on")
+        end,
+    },
+    {
+        id = "botpanel.use",
+        expected = { ".bot command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h" },
+        trigger = function()
+            if env.seedItem then env.seedItem(159, { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }) end
+            TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
+            local water = TB.botPanel.bagButtons[3]
+            this = water
+            water.scripts.OnClick(water)
+            local menu = frames["TortoiseBotsManagerItemMenu"]
+            this = menu.third
+            menu.third.scripts.OnClick(menu.third)
+        end,
+    },
+    {
+        id = "botpanel.sweep",
+        expected = { ".bot command Alpha d equip upgrades" },
+        trigger = function()
+            TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
+            this = TB.botPanel.sweepButton
+            TB.botPanel.sweepButton.scripts.OnClick(TB.botPanel.sweepButton)
+        end,
+    },
+    {
+        id = "botpanel.upkeep",
+        expected = { ".bot maintenance Alpha", ".bot roster" },
+        trigger = function()
+            TB._pollPending = false; TB._pollQueued = false
+            this = TB.botPanel.upkeepButton
+            TB.botPanel.upkeepButton.scripts.OnClick(TB.botPanel.upkeepButton)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "botpanel.gearup",
+        expected = { ".bot autogear Alpha", ".bot inv Alpha" },
+        trigger = function()
+            this = TB.botPanel.gearUpButton
+            TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
+            TB.CloseBotPanel()
+        end,
+    },
 
 
 }

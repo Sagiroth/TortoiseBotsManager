@@ -983,6 +983,7 @@ local alphaOperation = TB.GetState("Alpha") and TB.GetState("Alpha").operation
 assert(not alphaOperation or alphaOperation.verb ~= "inv",
     "an inventory request must not start a roster operation")
 
+itemCache[159] = { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }
 itemCache[2586] = { name = "Gamemaster's Robe", quality = 4, texture = "Interface\\Icons\\INV_Chest_Cloth_05" }
 TB.OnSystemMessage("TBM:INV_BEGIN|Alpha|123456")
 TB.OnSystemMessage("TBM:INV_EQ|4|2586|40|50")
@@ -1017,6 +1018,7 @@ assert(not TB.botPanel.bagButtons[4].visible, "empty grid cells stay hidden")
 this = upgrade
 upgrade.scripts.OnClick(upgrade)
 assert(menu.first.text == "Equip" and menu.first.enabled and menu.second.enabled, "bag items offer Equip and Give")
+assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
 now = now + 1
 this = menu.first
 menu.first.scripts.OnClick(menu.first)
@@ -1027,8 +1029,23 @@ soulbound.scripts.OnClick(soulbound)
 assert(not menu.first.enabled and not menu.second.enabled, "soulbound junk cannot be equipped or given")
 menu:Hide()
 
+-- Bags header: one-click upgrade sweep.
+TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
+assert(TB.botPanel.sweepButton.visible, "bags offer an upgrade sweep")
+now = now + 1
+this = TB.botPanel.sweepButton
+TB.botPanel.sweepButton.scripts.OnClick(TB.botPanel.sweepButton)
+assert(lastAddon() == "command Alpha d equip upgrades", "the sweep equips everything better")
+
 -- Give without a trade window: pending, then re-sent when the window opens.
 local junk = TB.botPanel.bagButtons[3]
+this = junk
+junk.scripts.OnClick(junk)
+assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
+now = now + 1
+this = menu.third
+menu.third.scripts.OnClick(menu.third)
+assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h", "Use must send the item link")
 this = junk
 junk.scripts.OnClick(junk)
 now = now + 1
@@ -1058,13 +1075,26 @@ saveMana.scripts.OnClick(saveMana)
 assert(lastAddon() == "behavior Alpha savemana on", "a chip sends one behaviour toggle")
 assert(not saveMana.enabled, "a chip waits for the server")
 TB.OnSystemMessage("TBM:ACTION_ACK|behavior savemana|bot:Alpha|1|on")
-TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on")
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on,mimic=off,spread=off")
 assert(saveMana.enabled and saveMana.text == "Save mana: On" and TB.GetBotState("Gamma"),
     "a single BOTSTATE line updates one bot and keeps the others")
+assert(TB.botPanel.behaviorChips.mimic.visible and TB.botPanel.behaviorChips.spread.visible,
+    "mimic and spread chips render from the behaviour table")
 now = now + 1
 this = TB.botPanel.tradeButton
 TB.botPanel.tradeButton.scripts.OnClick(TB.botPanel.tradeButton)
 assert(lastAddon() == "item Alpha trade", "Trade opens a trade with the bot")
+-- Footer: upkeep restocks, gear-up re-gears and reloads the panel view.
+now = now + 1
+this = TB.botPanel.upkeepButton
+local beforeUpkeep = table.getn(addonSent)
+TB.botPanel.upkeepButton.scripts.OnClick(TB.botPanel.upkeepButton)
+assert(addonSent[beforeUpkeep + 1].message == "maintenance Alpha", "Upkeep restocks the bot")
+this = TB.botPanel.gearUpButton
+now = now + 1
+local beforeGearUp = table.getn(addonSent)
+TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
+assert(addonSent[beforeGearUp + 1].message == "autogear Alpha", "Gear up re-gears the bot")
 TB.CloseBotPanel()
 assert(not TB.botPanel.visible, "the panel closes")
 
@@ -1325,6 +1355,7 @@ dofile(root .. "/tests/wire_cases.lua")({
     setParty = function(members, className) partyMembers = members or {}; partyClassName = className or "Priest" end,
     setDead = function(unit, dead) deadUnits[unit] = dead end,
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
+    seedItem = function(id, item) itemCache[id] = item end,
 })
 
 dofile(root .. "/tests/phase0_tests.lua")()
