@@ -689,6 +689,26 @@ local cases = {
         end,
     },
     {
+        id = "npc.taxi.page",
+        expected = { ".bot inv Alpha", ".bot command Alpha taxi ?", ".bot command Alpha taxi 10" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.ask
+            TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+            TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+            for i = 1, 10 do TB.OnWhisperMessage(i .. ": Stop " .. i, "Alpha") end
+            assert(TB.botNpc.pageText.text == "1 / 2", "ten routes need two pages")
+            this = TB.botNpc.nextPage
+            TB.botNpc.nextPage.scripts.OnClick(TB.botNpc.nextPage)
+            this = TB.botNpc.rows[4]
+            TB.botNpc.rows[4].scripts.OnClick(TB.botNpc.rows[4])
+            TB.SetNpcPending("Alpha", false)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
         id = "npc.taxi.stale",
         expected = { ".bot inv Alpha", ".bot command Alpha taxi ?" },
         trigger = function()
@@ -706,7 +726,6 @@ local cases = {
             TB.CloseBotPanel()
         end,
     },
-    -- ── MiniBar Icons ──────────────────────────────────────────────────────
     {
         id = "minibar.attack",
         expected = { ".bot action attack" },

@@ -29,7 +29,7 @@ local TB = TortoiseBots
 local C = TB.C or {}
 local COL = C.COLOR or {}
 local NW = 300
-local NH = 252
+local NH = 274
 local ROWS = 6
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
@@ -156,6 +156,7 @@ function TB.RequestFlights(name)
     e.pending = true
     e.header = false
     e.at = now()
+    page = 1
     local sent = TB.SendBotCommand("command " .. name .. " taxi ?")
     -- The proxy acks with "Forwarded command" but no completion line ever
     -- follows a list query, so the command op is completed on send: leaving
@@ -179,6 +180,7 @@ end
 -- ── window ────────────────────────────────────────────────────────────────
 local npc
 local currentBot
+local page = 1
 
 function TB.GetNpcBot()
     return npc and npc:IsVisible() and currentBot or nil
@@ -245,6 +247,11 @@ local function createNpc()
     flights:SetPoint("TOPLEFT", npc, "TOPLEFT", 12, -92)
     flights:SetText("FLIGHTS")
     TB.SetTextColor(flights, color("gold"))
+    local flightHint = npc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    flightHint:SetPoint("TOPLEFT", npc, "TOPLEFT", 140, -92)
+    flightHint:SetWidth(NW - 152); flightHint:SetJustifyH("RIGHT")
+    flightHint:SetText("Be at a flight master.")
+    TB.SetTextColor(flightHint, color("muted"))
 
     npc.rows = {}
     for i = 1, ROWS do
@@ -266,11 +273,23 @@ local function createNpc()
     end)
     setTooltip(npc.ask, "Find flights", { "Lists this flight master's routes, then pick one." })
 
-    local hint = npc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hint:SetPoint("TOPLEFT", npc, "TOPLEFT", 154, -112 - ROWS * 22)
-    hint:SetWidth(NW - 166); hint:SetJustifyH("RIGHT")
-    hint:SetText("Stand at a flight master first.")
-    TB.SetTextColor(hint, color("muted"))
+    local prev = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
+    prev:SetWidth(26); prev:SetHeight(22)
+    prev:SetPoint("TOPLEFT", npc, "TOPLEFT", 154, -108 - ROWS * 22)
+    prev:SetText("<")
+    prev:SetScript("OnClick", function() page = page - 1; TB.RefreshNpc() end)
+    npc.prevPage = prev
+    local nextBtn = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
+    nextBtn:SetWidth(26); nextBtn:SetHeight(22)
+    nextBtn:SetPoint("TOPLEFT", npc, "TOPLEFT", 248, -108 - ROWS * 22)
+    nextBtn:SetText(">")
+    nextBtn:SetScript("OnClick", function() page = page + 1; TB.RefreshNpc() end)
+    npc.nextPage = nextBtn
+    local pageText = npc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pageText:SetPoint("TOPLEFT", npc, "TOPLEFT", 182, -112 - ROWS * 22)
+    pageText:SetWidth(64); pageText:SetJustifyH("CENTER")
+    TB.SetTextColor(pageText, color("muted"))
+    npc.pageText = pageText
 
     npc:Hide()
     TB.botNpc = npc
@@ -279,8 +298,11 @@ end
 local function renderRows()
     local e = currentBot and npcs[currentBot] or nil
     local list = (e and e.flights) or {}
+    local pages = math.max(1, math.ceil(table.getn(list) / ROWS))
+    if page > pages then page = pages end
+    if page < 1 then page = 1 end
     for i, row in ipairs(npc.rows) do
-        local flight = list[i]
+        local flight = list[(page - 1) * ROWS + i]
         if flight then
             row.flightN = flight.n
             row:SetText(flight.n .. ": " .. flight.name)
@@ -293,6 +315,9 @@ local function renderRows()
             row:Hide()
         end
     end
+    npc.pageText:SetText(page .. " / " .. pages)
+    if page > 1 then npc.prevPage:Enable() else npc.prevPage:Disable() end
+    if page < pages then npc.nextPage:Enable() else npc.nextPage:Disable() end
     if e and e.pending and table.getn(list) == 0 then
         npc.ask:SetText("Asking…")
         npc.ask:Disable()
@@ -325,6 +350,7 @@ function TB.OpenNpc(name)
     if not npc then createNpc() end
     if currentBot and currentBot ~= name then TB.SetNpcPending(currentBot, false) end
     if TB.SetMode then TB.SetMode("full") end
+    if currentBot ~= name then page = 1 end
     currentBot = name
     npc:ClearAllPoints()
     local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame
