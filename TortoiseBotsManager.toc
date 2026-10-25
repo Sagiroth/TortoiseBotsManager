@@ -13,5 +13,6 @@ Roster.lua
 Comms.lua
 UI.lua
 BotPanel.lua
+BotVault.lua
 MiniBar.lua
 Minimap.lua

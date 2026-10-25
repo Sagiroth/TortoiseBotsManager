@@ -779,6 +779,16 @@ local function createPanel()
     end)
     panel.refreshButton = refresh
 
+    local vaultLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    vaultLink:SetWidth(80); vaultLink:SetHeight(22)
+    vaultLink:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
+    vaultLink:SetText("Bank / mail")
+    setTooltip(vaultLink, "Bank and mail", { "Lists what this bot keeps in its bank and mailbox." })
+    vaultLink:SetScript("OnClick", function()
+        if currentBot and TB.OpenVault then TB.OpenVault(currentBot) end
+    end)
+    panel.vaultButton = vaultLink
+
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 12, 10)
     hint:SetWidth(PW - 24); hint:SetJustifyH("LEFT")

@@ -6,6 +6,7 @@ All notable changes to TortoiseBotsManager are documented here.
 
 ### Bot panel
 - New 4th `Spells` tab on the bot panel: asks the bot what it can cast and lists one row per known spell — clicking a row casts it by exact name. Spell replies from the open panel bot feed the list; every other whisper stays on the existing command path.
+- New `Bank / mail` vault on the bot panel: read-only bank and mailbox lists for the open bot — click a bank row to withdraw it, click a letter to take it. List queries clear the command op on send so no timed-out working state lingers; item and letter lines only count after their list header.
 
 ## v1.1.0 (2026-10-19)
 

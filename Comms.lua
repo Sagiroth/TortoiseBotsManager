@@ -575,6 +575,22 @@ end
 
 function TB.OnWhisperMessage(msg, sender)
     local name = TB.NormalizeName(sender or "")
+    -- Vault lines from the open vault bot go to the bank/mail lists, not
+    -- the command-op gate: the gate completes on the first whisper and would
+    -- swallow the rest of the list.
+    if name and TB.ConsumeVaultReply and TB.ConsumeVaultReply(name, msg or "") then
+        local entry = TB.GetVault and TB.GetVault(name)
+        local bank = entry and entry.bank and table.getn(entry.bank) or 0
+        local mail = entry and entry.mail and table.getn(entry.mail) or 0
+        if TB.SetStatus then
+            if string.find(msg or "", "=== Bank ===") or string.find(msg or "", "=== Mailbox ===") then
+                TB.SetStatus("Reading " .. name .. "'s vault…", "pending")
+            else
+                TB.SetStatus(name .. "'s vault · bank " .. bank .. " · mail " .. mail, "ok")
+            end
+        end
+        return
+    end
     -- Spellbook lines from the open panel bot go to the spellbook list, not
     -- the command-op gate: the gate completes on the first whisper and would
     -- swallow the rest of the list.
