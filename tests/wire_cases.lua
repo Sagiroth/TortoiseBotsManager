@@ -263,6 +263,96 @@ local cases = {
         end,
     },
 
+    -- ── P2: sap/spread switches, end pull, combat tactics ───────────────
+    {
+        id = "fight.sap.on",
+        expected = { ".bot action sap on" },
+        trigger = function()
+            TB.togglePending = {}
+            TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
+            TB.OnSystemMessage("TBM:BOTSTATE|Alpha|sap=off")
+            TB.OnSystemMessage("TBM:BOTSTATE_END")
+            this = TB.toggleButtons.sap
+            TB.toggleButtons.sap.scripts.OnClick(TB.toggleButtons.sap)
+        end,
+    },
+    {
+        id = "fight.sap.off",
+        expected = { ".bot action sap off" },
+        trigger = function()
+            TB.togglePending = {}
+            TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
+            TB.OnSystemMessage("TBM:BOTSTATE|Alpha|sap=on")
+            TB.OnSystemMessage("TBM:BOTSTATE_END")
+            this = TB.toggleButtons.sap
+            TB.toggleButtons.sap.scripts.OnClick(TB.toggleButtons.sap)
+        end,
+    },
+    {
+        id = "fight.spread.on",
+        expected = { ".bot behavior party spread on" },
+        trigger = function()
+            TB.togglePending = {}
+            TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
+            TB.OnSystemMessage("TBM:BOTSTATE|Alpha|spread=off")
+            TB.OnSystemMessage("TBM:BOTSTATE_END")
+            this = TB.toggleButtons.spread
+            TB.toggleButtons.spread.scripts.OnClick(TB.toggleButtons.spread)
+        end,
+    },
+    {
+        id = "fight.spread.off",
+        expected = { ".bot behavior party spread off" },
+        trigger = function()
+            TB.togglePending = {}
+            TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
+            TB.OnSystemMessage("TBM:BOTSTATE|Alpha|spread=on")
+            TB.OnSystemMessage("TBM:BOTSTATE_END")
+            this = TB.toggleButtons.spread
+            TB.toggleButtons.spread.scripts.OnClick(TB.toggleButtons.spread)
+        end,
+    },
+    {
+        id = "fight.endPull",
+        expected = { ".bot action end pull" },
+        trigger = function()
+            this = TB.actionButtons.endPull
+            TB.actionButtons.endPull.scripts.OnClick(TB.actionButtons.endPull)
+        end,
+    },
+    {
+        id = "fight.tactic.kite",
+        expected = { ".bot strategy ~kite" },
+        trigger = function()
+            this = TB.actionButtons.tacticKite
+            TB.actionButtons.tacticKite.scripts.OnClick(TB.actionButtons.tacticKite)
+        end,
+    },
+    {
+        id = "fight.tactic.mark",
+        expected = { ".bot strategy ~mark rti" },
+        trigger = function()
+            this = TB.actionButtons.tacticMark
+            TB.actionButtons.tacticMark.scripts.OnClick(TB.actionButtons.tacticMark)
+        end,
+    },
+    {
+        id = "fight.tactic.focus",
+        expected = { ".bot strategy ~focus" },
+        trigger = function()
+            this = TB.actionButtons.tacticFocus
+            TB.actionButtons.tacticFocus.scripts.OnClick(TB.actionButtons.tacticFocus)
+        end,
+    },
+    {
+        id = "fight.tactic.aoeFear",
+        expected = { ".bot strategy ~aoe fear" },
+        trigger = function()
+            this = TB.actionButtons.tacticAoeFear
+            TB.actionButtons.tacticAoeFear.scripts.OnClick(TB.actionButtons.tacticAoeFear)
+        end,
+    },
+
     -- ── CC Menu ────────────────────────────────────────────────────────────
     {
         id = "cc.cycle.moon",

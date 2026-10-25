@@ -942,6 +942,61 @@ TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
 assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
     and TB.toggleButtons.aoe.text == "AoE Mixed", "a targeted switch must only update that bot")
 
+-- P2: sap joins the switch row, spread rides the behavior verb, and the
+-- row of five stays inside the 480-wide content.
+assert(TB.toggleButtons.sap and TB.toggleButtons.spread, "sap and spread switches must exist")
+local switchCount = 0
+for _ in pairs(TB.toggleButtons) do switchCount = switchCount + 1 end
+assert(switchCount == 5, "the switches card must hold exactly five toggles")
+for _, btn in pairs(TB.toggleButtons) do
+    assert(btn.point and btn.point[4] >= 0 and (btn.point[4] + (btn.width or 0)) <= 480,
+        "every switch button must fit the 480-wide content")
+end
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,sap=off,spread=off")
+TB.OnSystemMessage("TBM:BOTSTATE|Gamma|move=flee,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on,sap=off,spread=off")
+now = now + 1
+this = TB.toggleButtons.sap
+TB.toggleButtons.sap.scripts.OnClick(TB.toggleButtons.sap)
+assert(lastAddon() == "action sap on", "Sap must send the sap intent")
+TB.OnSystemMessage("TBM:ACTION_ACK|sap|party|2|on")
+assert(TB.GetPartyToggleState("sap") == "on" and TB.toggleButtons.sap.enabled
+    and TB.toggleButtons.sap.text == "Sap On", "the sap ACK must settle the switch")
+now = now + 1
+this = TB.toggleButtons.spread
+TB.toggleButtons.spread.scripts.OnClick(TB.toggleButtons.spread)
+assert(lastAddon() == "behavior party spread on", "Spread must ride the behavior verb")
+assert(not TB.toggleButtons.spread.enabled, "spread waits for the server while pending")
+TB.OnSystemMessage("TBM:ACTION_ACK|behavior spread|party|2|on")
+assert(TB.GetPartyToggleState("spread") == "on" and TB.toggleButtons.spread.enabled
+    and TB.toggleButtons.spread.text == "Spread On", "the spread ACK must settle the switch")
+TB.OnSystemMessage("TBM:ACTION_ERR|behavior spread|failed|No scoped bot accepted")
+assert(TB.toggleButtons.spread.enabled, "a refused spread switch must not stick disabled")
+
+-- P2: End pull and the four tactics buttons send their intents; the server
+-- confirms tactics with "Strategy change" text.
+now = now + 1
+this = TB.actionButtons.endPull
+TB.actionButtons.endPull.scripts.OnClick(TB.actionButtons.endPull)
+assert(lastAddon() == "action end pull", "End pull must send the end pull intent")
+for _, tactic in ipairs({ "tacticKite", "tacticMark", "tacticFocus", "tacticAoeFear" }) do
+    now = now + 1
+    this = TB.actionButtons[tactic]
+    TB.actionButtons[tactic].scripts.OnClick(TB.actionButtons[tactic])
+end
+assert(lastAddon() == "strategy ~aoe fear", "tactics must send suffixless strategy changes")
+local beforeStrategyOps = 0
+for _, st in pairs({ TB.GetState("Alpha"), TB.GetState("Gamma") }) do
+    if st and st.operation then beforeStrategyOps = beforeStrategyOps + 1 end
+end
+TB.OnSystemMessage("Strategy change '~kite' applied to 2 bot(s).")
+assert(TB.lastSystem == "Strategy change '~kite' applied to 2 bot(s).",
+    "a strategy change must be consumed as handled")
+local afterStrategyOps = 0
+for _, st in pairs({ TB.GetState("Alpha"), TB.GetState("Gamma") }) do
+    if st and st.operation then afterStrategyOps = afterStrategyOps + 1 end
+end
+assert(afterStrategyOps == beforeStrategyOps, "a strategy reply must not start roster operations")
+
 -- Release follows the party's death state.
 TB.Refresh()
 assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")

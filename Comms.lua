@@ -522,7 +522,7 @@ function TB.OnCommandQueued(cmd)
     local verb = string.lower(string.gsub(cmd or "", "%s+.*", ""))
     local name = commandTargetName(cmd)
     if name and verb ~= "list" and verb ~= "roster" and verb ~= "stats"
-        and verb ~= "help" and verb ~= "action" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
+        and verb ~= "help" and verb ~= "action" and verb ~= "strategy" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
         if verb == "add" then TB.AddToRoster(name) end
         TB.BeginOperation(name, verb, true)
         if TB.Refresh then TB.Refresh() end
@@ -542,7 +542,7 @@ function TB.OnCommandSent(cmd)
     if TB.IsPanelVerb(verb) then return end
 
     if verb == "add" and name then TB.AddToRoster(name) end
-    if name and verb ~= "action" and TB.BeginOperation then
+    if name and verb ~= "action" and verb ~= "strategy" and TB.BeginOperation then
         TB.BeginOperation(name, verb, false)
     end
 
@@ -557,7 +557,7 @@ function TB.OnCommandSent(cmd)
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
     end
     if TB.Refresh then TB.Refresh() end
-    if verb ~= "action" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
+    if verb ~= "action" and verb ~= "strategy" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
@@ -730,6 +730,16 @@ function TB.OnSystemMessage(msg)
         -- stats alone doesn't prove list window, but counts as activity
         if TB.SetStatus then TB.SetStatus(msg, "muted") end
         return
+    end
+
+    do
+        local _, _, change = string.find(msg, "^Strategy change '([^']+)' applied")
+        if change then
+            if TB.SetStatus then TB.SetStatus(change .. " applied", "ok") end
+            if TB.Refresh then TB.Refresh() end
+            TB.lastSystem = msg
+            return
+        end
     end
 
     -- 2) action replies (optimistic → confirmed / rolled back)
