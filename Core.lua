@@ -501,6 +501,23 @@ function TB.SetFormation(formationId)
     end
     if TB.UpdateFormationPills then TB.UpdateFormationPills() end
 end
+function TB.SetStance(stanceId)
+    stanceId = TB.Trim(stanceId or "near")
+    TB.currentStance = stanceId
+    TB.SendActionIntent("stance " .. stanceId)
+    if TB.UpdateStancePills then TB.UpdateStancePills() end
+end
+
+function TB.UpdateStancePills()
+    local pills = TB.stancePills
+    if not pills then return end
+    local active = TB.currentStance
+    for id, btn in pairs(pills) do
+        if btn and btn.SetActive then
+            btn:SetActive(active ~= nil and id == active)
+        end
+    end
+end
 
 function TB.RequestServerCapabilities()
     if capabilitiesRequested then return false end

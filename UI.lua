@@ -105,10 +105,12 @@ local ACTION_TOOLTIPS = {
     stop     = "Bots stop fighting and drop their target (heals still run).",
     pull     = "The tank pulls your target and fights it where it stands. The others wait for the timer below, then join.",
     pullback = "The tank pulls your target and runs back to your spot. The others attack when it is back (timer below).",
-    follow   = "Bots follow you in the chosen formation.",
-    stay     = "Bots hold their current position.",
-    come     = "Bots run to where you stand and stay there (good for corner pulls).",
-    hold     = "Bots run to where you stand and stay there (good for corner pulls).",
+    guard    = "Bots plant themselves where they stand and fight anything close.",
+    free     = "Bots leave their guard posts and move freely again.",
+    ["stance near"]     = "Default scrum: melee crowds close around the target.",
+    ["stance tank"]     = "Tank goes toe-to-toe, turning the target away from the party.",
+    ["stance turnback"] = "Melee holds the far side of the target, away from your casters.",
+    ["stance behind"]   = "Melee works the target's rear, clear of frontal cleaves.",
     ["focus skull"] = "Marks your target with Skull (or uses the existing Skull) and every DPS bot focuses it.",
     ["cc moon"]     = "Opens the Marks panel: give each raid icon to one bot, which keeps that mob crowd-controlled.",
     aoe      = "Area-of-effect spells for DPS bots.",
@@ -168,7 +170,7 @@ TB.UI.Grid = {
     ROW_H         = ROW_H,
     CARD_ENGAGE_H = 58,
     CARD_PULL_H   = 76,
-    CARD_MOVE_H   = 58,
+    CARD_MOVE_H   = 86,
     CARD_SWITCH_H = 58,
     CARD_REST_H   = 88,
     CARD_FORM_H   = 76,
@@ -979,20 +981,41 @@ local function BuildPullCard(parent, buttons)
 end
 
 local function BuildMoveCard(parent, buttons)
-    -- Move: follow, stay, come
-    local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, 58, { y = -182, line = true })
+    -- Move: four orders on row one; Free plus four combat-stance pills
+    -- (optimistic active, like formations) on row two.
+    local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_MOVE_H or 86, { y = -182, line = true })
     local btnY = -24
-    buttons.follow   = makeActionButton(card, "follow", 148, 8, btnY)
-    buttons.stay     = makeActionButton(card, "stay", 148, 164, btnY)
-    buttons.come     = makeActionButton(card, "come", 148, 320, btnY)
+    buttons.follow   = makeActionButton(card, "follow", 110, 8, btnY)
+    buttons.stay     = makeActionButton(card, "stay", 110, 126, btnY)
+    buttons.come     = makeActionButton(card, "come", 110, 244, btnY)
     buttons.hold     = buttons.come
+    buttons.guard    = makeActionButton(card, "guard", 110, 362, btnY)
+    buttons.free     = makeActionButton(card, "free", 110, 8, -52)
+    TB.stancePills = {}
+    local stanceIds = { "near", "tank", "turnback", "behind" }
+    local stanceLabels = { near = "Near", tank = "Tank", turnback = "Turnback", behind = "Behind" }
+    for i, id in ipairs(stanceIds) do
+        local def = TB.GetActionDefinition and TB.GetActionDefinition("stance " .. id)
+        local label = stanceLabels[id] or id
+        local btn = TB.UI.CreateTogglePill(card, label, 74, 20, {
+            x = 122 + (i - 1) * 78,
+            y = -54,
+            tip = (def and def.tip) or (TB.ActionTooltip and TB.ActionTooltip("stance " .. id)),
+            tipTitle = (label .. " stance"),
+            onClick = function()
+                TB.SetStance(id)
+            end,
+        })
+        TB.stancePills[id] = btn
+    end
+    TB.UpdateStancePills()
     return card
 end
 
 local function BuildSwitchesCard(parent, buttons)
     -- Party switches: state comes from the server (TBM:BOTSTATE), the lamp
     -- shows it at a glance (green on, grey off, gold mixed/unknown).
-    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, 58, { y = -244, line = true })
+    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, 58, { y = -272, line = true })
     local btnY = -24
     TB.toggleButtons = {}
     local switchIdx = 1
@@ -2289,6 +2312,7 @@ function TB.RefreshActionControls()
         if serverHasCap("flee") then TB.actionButtons.flee:Enable() else TB.actionButtons.flee:Disable() end
     end
     if TB.UpdateFormationPills then TB.UpdateFormationPills() end
+    if TB.UpdateStancePills then TB.UpdateStancePills() end
 
     local scope, botName = targetScope()
     if TB.scopeIcon then

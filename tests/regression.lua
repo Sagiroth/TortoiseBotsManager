@@ -635,6 +635,27 @@ now = now + 1
 this = TB.actionButtons.come
 TB.actionButtons.come.scripts.OnClick(TB.actionButtons.come)
 assert(sent[table.getn(sent)] == ".bot action come", "Come button must send action come")
+now = now + 1
+this = TB.actionButtons.guard
+TB.actionButtons.guard.scripts.OnClick(TB.actionButtons.guard)
+assert(sent[table.getn(sent)] == ".bot action guard", "Guard button must send action guard")
+now = now + 1
+this = TB.actionButtons.free
+TB.actionButtons.free.scripts.OnClick(TB.actionButtons.free)
+assert(sent[table.getn(sent)] == ".bot action free", "Free button must send action free")
+now = now + 1
+this = TB.stancePills.tank
+TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
+assert(sent[table.getn(sent)] == ".bot action stance tank", "Tank stance pill must send stance tank")
+assert(TB.currentStance == "tank" and not TB.stancePills.tank.enabled and TB.stancePills.near.enabled,
+    "Active stance pill must become disabled")
+TB.OnSystemMessage("TBM:ACTION_ACK|stance tank|party|2|-")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "stance tank",
+    "structured stance ACK must be parsed")
+TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=guard,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
+TB.OnSystemMessage("TBM:BOTSTATE_END")
+assert(TB.MovementLabel("Alpha") == "Guarding", "guard movement must be labelled")
 
 now = now + 1
 this = TB.actionButtons.ready
