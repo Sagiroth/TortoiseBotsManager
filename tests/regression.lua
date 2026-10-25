@@ -1068,6 +1068,35 @@ assert(lastAddon() == "item Alpha trade", "Trade opens a trade with the bot")
 TB.CloseBotPanel()
 assert(not TB.botPanel.visible, "the panel closes")
 
+-- ── BotPanel spellbook (P6): 4th tab appended, indices 1-3 untouched ────────
+TB.OpenBotPanel("Alpha")
+assert(TB.botPanel.tabSpells and TB.botPanel.tabSpells.visible, "a 4th Spells tab must exist")
+TB.botPanel.tabGear.scripts.OnClick(TB.botPanel.tabGear)
+assert(TB.botPanel.gear.visible and not TB.botPanel.spells.visible, "Gear tab still shows the paper doll")
+TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
+assert(TB.botPanel.bags.visible and not TB.botPanel.spells.visible, "Bags tab still shows the grid")
+TB.botPanel.tabBehavior.scripts.OnClick(TB.botPanel.tabBehavior)
+assert(TB.botPanel.behavior.visible and not TB.botPanel.spells.visible, "Behaviour tab still shows the chips")
+TB.botPanel.tabSpells.scripts.OnClick(TB.botPanel.tabSpells)
+assert(TB.botPanel.spells.visible and not TB.botPanel.gear.visible, "Spells tab shows the spellbook")
+assert(table.getn(TB.botPanel.spellRows) == 12, "spellbook shows one page of rows")
+now = now + 1
+this = TB.botPanel.spellAsk
+TB.botPanel.spellAsk.scripts.OnClick(TB.botPanel.spellAsk)
+assert(lastAddon() == "command Alpha spells", "Ask for spellbook sends the proxy query")
+assert(not TB.botPanel.spellAsk.enabled, "Ask waits while the query is pending")
+TB.OnWhisperMessage("=== Spells ===", "Alpha")
+TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+assert(TB.botPanel.spellRows[1].visible and TB.botPanel.spellRows[1].spellName == "Fireball",
+    "spellbook rows render the parsed spells")
+assert(not TB.botPanel.spellRows[2].visible, "empty rows stay hidden")
+now = now + 1
+this = TB.botPanel.spellRows[1]
+TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
+assert(lastAddon() == "command Alpha cast Fireball", "clicking a spell casts it by exact name")
+TB.SetSpellPending("Alpha", false)
+TB.CloseBotPanel()
+
 -- ── Raid tab only exists in a raid ─────────────────────────────────────────
 assert(not TB.tabRaid.visible, "no Raid tab outside a raid")
 TB.ShowTab("raid")

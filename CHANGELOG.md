@@ -2,6 +2,11 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## Unreleased
+
+### Bot panel
+- New 4th `Spells` tab on the bot panel: asks the bot what it can cast and lists one row per known spell — clicking a row casts it by exact name. Spell replies from the open panel bot feed the list; every other whisper stays on the existing command path.
+
 ## v1.1.0 (2026-10-19)
 
 ### UI & Controls

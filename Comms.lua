@@ -575,6 +575,21 @@ end
 
 function TB.OnWhisperMessage(msg, sender)
     local name = TB.NormalizeName(sender or "")
+    -- Spellbook lines from the open panel bot go to the spellbook list, not
+    -- the command-op gate: the gate completes on the first whisper and would
+    -- swallow the rest of the list.
+    if name and TB.ConsumeSpellReply and TB.ConsumeSpellReply(name, msg or "") then
+        local entry = TB.GetSpellList and TB.GetSpellList(name)
+        local count = entry and entry.spells and table.getn(entry.spells) or 0
+        if TB.SetStatus then
+            if string.find(msg or "", "=== Spells ===") then
+                TB.SetStatus("Reading " .. name .. "'s spellbook…", "pending")
+            else
+                TB.SetStatus(name .. "'s spellbook · " .. count, "ok")
+            end
+        end
+        return
+    end
     local st = name and TB.GetState and TB.GetState(name) or nil
     if not st or not st.pendingAI or not st.operation or st.operation.verb ~= "command" then return end
     local now = (GetTime and GetTime()) or 0

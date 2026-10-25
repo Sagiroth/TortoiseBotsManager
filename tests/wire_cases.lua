@@ -987,11 +987,107 @@ local cases = {
             TB.CloseBotPanel()
         end,
     },
-
-
+    -- ── P6: BotPanel spellbook ─────────────────────────────────────────────
+    {
+        id = "p6.spells.ask",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            this = TB.botPanel.tabSpells
+            TB.botPanel.tabSpells.scripts.OnClick(TB.botPanel.tabSpells)
+            this = TB.botPanel.spellAsk
+            TB.botPanel.spellAsk.scripts.OnClick(TB.botPanel.spellAsk)
+        end,
+    },
+    {
+        id = "p6.spells.parse",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:168|h[Frost Armor]|h|r - |cffffff00yellow|r", "Alpha")
+            local entry = TB.GetSpellList("Alpha")
+            assert(entry and table.getn(entry.spells) == 2, "two spellbook lines must parse")
+            assert(entry.spells[1].id == 133 and entry.spells[1].name == "Fireball", "spell id and name must parse")
+            assert(entry.spells[2].id == 168 and entry.spells[2].name == "Frost Armor", "trailing skill text must not leak into the name")
+            assert(TB.ParseSpellLine("nothing here") == nil, "non-spell whispers must not parse")
+            assert(TB.botPanel.spellRows[1].spellName == "Fireball", "first row must show the first spell")
+            TB.SetSpellPending("Alpha", false)
+            assert(TB.ConsumeSpellReply("Alpha", "|cffffffff|Hspell:116|h[Frostbolt]|h|r") == false,
+                "late lines after the query must not enter the list")
+            assert(table.getn(TB.GetSpellList("Alpha").spells) == 2, "late lines must not grow the list")
+        end,
+    },
+    {
+        id = "p6.spells.gate",
+        expected = { ".bot inv Gamma", ".bot command Gamma spells" },
+        trigger = function()
+            TB.OpenBotPanel("Gamma", "spells")
+            TB.RequestSpells("Gamma")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 0,
+                "another bot's whispers must not enter the panel list")
+            TB.OnWhisperMessage("some other whisper", "Gamma")
+            local st = TB.GetState("Gamma")
+            assert(st and st.operation and st.operation.verb == "command",
+                "non-spell whispers must stay on the command-op gate")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 0, "non-spell whispers must not parse")
+            TB.SetSpellPending("Gamma", false)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.cast",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells", ".bot command Alpha cast Fireball" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            this = TB.botPanel.spellRows[1]
+            TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
+            TB.SetSpellPending("Alpha", false)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.empty",
+        expected = { ".bot inv Gamma", ".bot command Gamma spells" },
+        trigger = function()
+            TB.OpenBotPanel("Gamma", "spells")
+            TB.RequestSpells("Gamma")
+            assert(TB.ConsumeSpellReply("Gamma", "=== Spells ===") == "header",
+                "header alone starts an empty spellbook")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 0, "no lines means no spells")
+            assert(not TB.botPanel.spellAsk.enabled, "Ask waits while more lines may arrive")
+            assert(TB.ConsumeSpellReply("Gamma", "|cffffffff|Hspell:133|h[Fireball]|h|r") == 1,
+                "duplicate id still counts but must not grow the list")
+            assert(TB.ConsumeSpellReply("Gamma", "|cffffffff|Hspell:133|h[Fireball]|h|r") == 1,
+                "a repeated line must not duplicate the row")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 1, "same spell id stays one row")
+            TB.SetSpellPending("Gamma", false)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.stale",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            advanceTime(30)
+            assert(TB.ConsumeSpellReply("Alpha", "|cffffffff|Hspell:133|h[Fireball]|h|r") == false,
+                "a quiet spellbook closes: late lines return to the gate")
+            TB.OnWhisperMessage("Casting |cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.pendingAI), "late cast replies complete the command op")
+            TB.CloseBotPanel()
+        end,
+    },
 }
 
--- Execute each case and verify byte-for-byte wire text
 for _, tc in ipairs(cases) do
     local actual = executeTrigger(tc.trigger)
     if table.getn(actual) ~= table.getn(tc.expected) then
