@@ -586,6 +586,21 @@ end
 
 function TB.OnWhisperMessage(msg, sender)
     local name = TB.NormalizeName(sender or "")
+    -- Taxi lines from the open NPC bot feed the flight list, not the
+    -- command-op gate: the gate completes on the first whisper and would
+    -- swallow the rest of the list.
+    if name and TB.ConsumeTaxiReply and TB.ConsumeTaxiReply(name, msg or "") then
+        local entry = TB.GetNpcErrands and TB.GetNpcErrands(name)
+        local count = entry and entry.flights and table.getn(entry.flights) or 0
+        if TB.SetStatus then
+            if string.find(msg or "", "=== Taxi ===") then
+                TB.SetStatus("Reading " .. name .. "'s flights…", "pending")
+            else
+                TB.SetStatus(name .. "'s flights · " .. count, "ok")
+            end
+        end
+        return
+    end
     local st = name and TB.GetState and TB.GetState(name) or nil
     if not st or not st.pendingAI or not st.operation or st.operation.verb ~= "command" then return end
     local now = (GetTime and GetTime()) or 0

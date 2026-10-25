@@ -649,8 +649,173 @@ local cases = {
             setTarget(false, nil)
         end,
     },
-
-    -- ── MiniBar Icons ──────────────────────────────────────────────────────
+    -- -- P10 --------------------------------------------------------------
+    {
+        id = "npc.talk",
+        expected = { ".bot inv Alpha", ".bot command Alpha talk" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.talk
+            TB.botNpc.talk.scripts.OnClick(TB.botNpc.talk)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.home",
+        expected = { ".bot inv Alpha", ".bot command Alpha home" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.home
+            TB.botNpc.home.scripts.OnClick(TB.botNpc.home)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.trainer",
+        expected = { ".bot inv Alpha", ".bot command Alpha trainer learn" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.trainer
+            TB.botNpc.trainer.scripts.OnClick(TB.botNpc.trainer)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.leader",
+        expected = { ".bot inv Alpha", ".bot command Alpha give leader" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.leader
+            TB.botNpc.leader.scripts.OnClick(TB.botNpc.leader)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.taxi.list",
+        expected = { ".bot inv Alpha", ".bot command Alpha taxi ?" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.ask
+            TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+            assert(not TB.IsOperationPending("Alpha", "command"),
+                "a taxi query must not leave a command op that times out")
+            TB.SetNpcPending("Alpha", false)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.taxi.parse",
+        expected = { ".bot inv Alpha", ".bot command Alpha taxi ?" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.ask
+            TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+            TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+            assert(not TB.botNpc.rows[1].visible,
+                "flight lines before the header must not seed the list")
+            TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+            TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+            TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+            local flights = TB.GetNpcErrands("Alpha").flights
+            assert(flights and table.getn(flights) == 1, "same route stays one row")
+            assert(flights[1].n == 1 and flights[1].name == "Stormwind, Elwynn",
+                "flight number and name must parse")
+            assert(TB.ParseFlightLine("bogus") == nil, "non-route whispers must not parse")
+            TB.SetNpcPending("Alpha", false)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.taxi.gate",
+        expected = { ".bot inv Gamma", ".bot command Gamma taxi ?" },
+        trigger = function()
+            TB.OpenBotPanel("Gamma")
+            TB.OpenNpc("Gamma")
+            this = TB.botNpc.ask
+            TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+            TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+            assert(table.getn(TB.GetNpcErrands("Gamma").flights) == 0,
+                "another bot's whispers must not enter the flight list")
+            TB.OnWhisperMessage("some other whisper", "Gamma")
+            assert(table.getn(TB.GetNpcErrands("Gamma").flights) == 0,
+                "unparseable whispers before the header seed nothing")
+            TB.OnWhisperMessage("=== Taxi ===", "Gamma")
+            TB.OnWhisperMessage("some other whisper", "Gamma")
+            assert(table.getn(TB.GetNpcErrands("Gamma").flights) == 0,
+                "non-route lines after the header seed nothing")
+            TB.SetNpcPending("Gamma", false)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.taxi.fly",
+        expected = { ".bot inv Alpha", ".bot command Alpha taxi ?", ".bot command Alpha taxi 2" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.ask
+            TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+            TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+            TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+            TB.OnWhisperMessage("2: Ironforge, Dun Morogh", "Alpha")
+            this = TB.botNpc.rows[2]
+            TB.botNpc.rows[2].scripts.OnClick(TB.botNpc.rows[2])
+            TB.SetNpcPending("Alpha", false)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.taxi.page",
+        expected = { ".bot inv Alpha", ".bot command Alpha taxi ?", ".bot command Alpha taxi 10" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.ask
+            TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+            TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+            for i = 1, 10 do TB.OnWhisperMessage(i .. ": Stop " .. i, "Alpha") end
+            assert(TB.botNpc.pageText.text == "1 / 2", "ten routes need two pages")
+            this = TB.botNpc.nextPage
+            TB.botNpc.nextPage.scripts.OnClick(TB.botNpc.nextPage)
+            this = TB.botNpc.rows[4]
+            TB.botNpc.rows[4].scripts.OnClick(TB.botNpc.rows[4])
+            TB.SetNpcPending("Alpha", false)
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "npc.taxi.stale",
+        expected = { ".bot inv Alpha", ".bot command Alpha taxi ?" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            TB.OpenNpc("Alpha")
+            this = TB.botNpc.ask
+            TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+            advanceTime(30)
+            assert(TB.ConsumeTaxiReply("Alpha", "1: Stormwind, Elwynn") == false,
+                "a quiet flight list closes: late lines return to the gate")
+            TB.OnWhisperMessage("I can't fly with you", "Alpha")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.pendingAI), "late flight replies complete the command op")
+            TB.CloseNpc()
+            TB.CloseBotPanel()
+        end,
+    },
     {
         id = "minibar.attack",
         expected = { ".bot action attack" },

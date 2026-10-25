@@ -176,6 +176,7 @@ for _, file in ipairs({
     "Comms.lua",
     "UI.lua",
     "BotPanel.lua",
+    "BotNpc.lua",
     "MiniBar.lua",
     "Minimap.lua",
 }) do
@@ -1302,6 +1303,82 @@ TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
 assert(addonSent[beforeGearUp + 1].message == "autogear Alpha", "Gear up re-gears the bot")
 TB.CloseBotPanel()
 assert(not TB.botPanel.visible, "the panel closes")
+
+-- ── Bot NPC errands (P10): talk/bind/learn/flights for the panel bot ──────
+TB.OpenBotPanel("Alpha")
+assert(TB.botPanel.npcButton and TB.botPanel.npcButton.visible, "the panel links to NPC errands")
+now = now + 1
+this = TB.botPanel.npcButton
+TB.botPanel.npcButton.scripts.OnClick(TB.botPanel.npcButton)
+assert(TB.botNpc and TB.botNpc.visible and TB.GetNpcBot() == "Alpha", "NPC opens for the panel bot")
+now = now + 1
+this = TB.botNpc.talk
+TB.botNpc.talk.scripts.OnClick(TB.botNpc.talk)
+assert(lastAddon() == "command Alpha talk", "Talk greets the nearby NPC")
+now = now + 1
+this = TB.botNpc.home
+TB.botNpc.home.scripts.OnClick(TB.botNpc.home)
+assert(lastAddon() == "command Alpha home", "Bind home binds at the innkeeper")
+now = now + 1
+this = TB.botNpc.trainer
+TB.botNpc.trainer.scripts.OnClick(TB.botNpc.trainer)
+assert(lastAddon() == "command Alpha trainer learn", "Learn trains at the targeted trainer")
+now = now + 1
+this = TB.botNpc.leader
+TB.botNpc.leader.scripts.OnClick(TB.botNpc.leader)
+assert(lastAddon() == "command Alpha give leader", "Make leader passes leadership to you")
+now = now + 1
+this = TB.botNpc.ask
+TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+assert(lastAddon() == "command Alpha taxi ?", "Find flights lists the flight master's routes")
+assert(not TB.botNpc.ask.enabled, "Find flights waits while the query is pending")
+TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+assert(not TB.botNpc.rows[1].visible, "flight lines before the header must not seed the list")
+TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+TB.OnWhisperMessage("2: Ironforge, Dun Morogh", "Alpha")
+TB.OnWhisperMessage("talk to the flight master", "Alpha")
+assert(TB.botNpc.rows[1].visible and TB.botNpc.rows[1].flightN == 1, "flight rows render the parsed routes")
+assert(TB.botNpc.rows[2].visible and TB.botNpc.rows[2].flightN == 2, "the second route renders too")
+assert(not TB.botNpc.rows[3].visible, "empty flight rows stay hidden")
+assert(TB.ParseFlightLine("bogus") == nil, "non-route whispers must not parse")
+now = now + 1
+this = TB.botNpc.rows[2]
+TB.botNpc.rows[2].scripts.OnClick(TB.botNpc.rows[2])
+assert(lastAddon() == "command Alpha taxi 2", "clicking a flight flies that leg")
+-- Review geometry: the Ask row (y -240, h22) must end inside the window.
+local askY = TB.botNpc.ask.point[5]
+assert(askY == -108 - 6 * 22 and TB.botNpc.height >= -(askY - 22) + 12,
+    "the Find flights row must sit inside the window with bottom padding")
+-- Review paging: a hub burst of 10 routes pages 6 + 4 with BotPanel-style controls.
+now = now + 1
+this = TB.botNpc.ask
+TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+for i = 1, 10 do TB.OnWhisperMessage(i .. ": Stop " .. i, "Alpha") end
+assert(table.getn(TB.GetNpcErrands("Alpha").flights) == 10, "ten hub routes must all parse")
+assert(TB.botNpc.rows[1].flightN == 1 and TB.botNpc.rows[6].flightN == 6, "page one shows routes 1-6")
+assert(not TB.botNpc.prevPage.enabled and TB.botNpc.nextPage.enabled, "page one enables next only")
+assert(TB.botNpc.pageText.text == "1 / 2", "ten routes over six rows need two pages")
+now = now + 1
+this = TB.botNpc.nextPage
+TB.botNpc.nextPage.scripts.OnClick(TB.botNpc.nextPage)
+assert(TB.botNpc.rows[1].flightN == 7 and TB.botNpc.rows[4].flightN == 10, "page two shows routes 7-10")
+assert(not TB.botNpc.rows[5].visible, "page two hides unused rows")
+assert(TB.botNpc.prevPage.enabled and not TB.botNpc.nextPage.enabled, "page two enables prev only")
+now = now + 1
+this = TB.botNpc.rows[4]
+TB.botNpc.rows[4].scripts.OnClick(TB.botNpc.rows[4])
+assert(lastAddon() == "command Alpha taxi 10", "clicking a page-two flight flies that leg")
+now = now + 1
+this = TB.botNpc.prevPage
+TB.botNpc.prevPage.scripts.OnClick(TB.botNpc.prevPage)
+assert(TB.botNpc.rows[1].flightN == 1, "paging back restores routes 1-6")
+TB.SetNpcPending("Alpha", false)
+TB.CloseNpc()
+assert(not TB.botNpc.visible, "NPC closes")
+TB.CloseBotPanel()
 
 -- ── Raid tab only exists in a raid ─────────────────────────────────────────
 assert(not TB.tabRaid.visible, "no Raid tab outside a raid")

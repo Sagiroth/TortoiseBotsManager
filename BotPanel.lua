@@ -814,9 +814,9 @@ local function createPanel()
     bhHint:SetText("Party-wide switches live on the Actions tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
 
-    -- Footer: trade, refresh, upkeep and gear-up for every view.
+    -- Footer: trade, refresh, NPC errands, upkeep and gear-up for every view.
     local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    trade:SetWidth(90); trade:SetHeight(22)
+    trade:SetWidth(58); trade:SetHeight(22)
     trade:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 28)
     trade:SetText("Trade")
     setTooltip(trade, "Trade", {
@@ -828,7 +828,7 @@ local function createPanel()
     panel.tradeButton = trade
 
     local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    refresh:SetWidth(64); refresh:SetHeight(22)
+    refresh:SetWidth(58); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 6, 0)
     refresh:SetText("Refresh")
     setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
@@ -838,9 +838,19 @@ local function createPanel()
     end)
     panel.refreshButton = refresh
 
+    local npcLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    npcLink:SetWidth(52); npcLink:SetHeight(22)
+    npcLink:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
+    npcLink:SetText("NPC")
+    setTooltip(npcLink, "NPC errands", { "Talk, bind, learn and flights for this bot." })
+    npcLink:SetScript("OnClick", function()
+        if currentBot and TB.OpenNpc then TB.OpenNpc(currentBot) end
+    end)
+    panel.npcButton = npcLink
+
     local upkeep = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    upkeep:SetWidth(68); upkeep:SetHeight(22)
-    upkeep:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
+    upkeep:SetWidth(58); upkeep:SetHeight(22)
+    upkeep:SetPoint("LEFT", npcLink, "RIGHT", 6, 0)
     upkeep:SetText("Upkeep")
     setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs.", "Only while the bot is online." })
     upkeep:SetScript("OnClick", function()
@@ -850,7 +860,7 @@ local function createPanel()
     panel.upkeepButton = upkeep
 
     local gearup = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    gearup:SetWidth(68); gearup:SetHeight(22)
+    gearup:SetWidth(58); gearup:SetHeight(22)
     gearup:SetPoint("LEFT", upkeep, "RIGHT", 6, 0)
     gearup:SetText("Gear up")
     setTooltip(gearup, "Gear up", { "The bot equips the best gear it already owns in its bags.", "Only while the bot is online." })
