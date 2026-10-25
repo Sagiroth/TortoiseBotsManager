@@ -211,9 +211,20 @@ local function createVault()
     vault:SetFrameStrata("DIALOG")
     vault:EnableMouse(true)
     vault:SetMovable(true)
+    vault:SetClampedToScreen(true)
     vault:RegisterForDrag("LeftButton")
     vault:SetScript("OnDragStart", function() vault:StartMoving() end)
-    vault:SetScript("OnDragStop", function() vault:StopMovingOrSizing() end)
+    vault:SetScript("OnDragStop", function()
+        vault:StopMovingOrSizing()
+        -- 1.12-safe: StopMovingOrSizing detaches the anchor from the
+        -- logical parent (see UI.lua drag header), so re-anchor with
+        -- GetLeft/GetTop instead of ever calling GetPoint() after a drag.
+        local left, top = vault:GetLeft(), vault:GetTop()
+        if left and top then
+            vault:ClearAllPoints()
+            vault:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        end
+    end)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerBotVault") end
     TB.ApplyBackdrop(vault, 0.98, 1.0)
 
@@ -233,7 +244,7 @@ local function createVault()
 
     local summary = vault:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     summary:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -62)
-    summary:SetWidth(VW - 24); summary:SetJustifyH("LEFT")
+    summary:SetWidth(134); summary:SetJustifyH("LEFT")
     TB.SetTextColor(summary, color("muted"))
     vault.summary = summary
 
@@ -286,6 +297,7 @@ local function createVault()
     hint:SetWidth(VW - 162); hint:SetJustifyH("RIGHT")
     hint:SetText("Click a row to take it.")
     TB.SetTextColor(hint, color("muted"))
+    vault.hint = hint
 
     vault:Hide()
     TB.botVault = vault
@@ -336,7 +348,8 @@ end
 
 function TB.RefreshVault()
     if not vault or not vault:IsVisible() or not currentBot then return end
-    local entry = TB.GetRosterEntry and TB.GetRosterEntry(currentBot) or nil
+    local entry = (TB.GetRosterEntry and TB.GetRosterEntry(currentBot))
+        or (TB.GetClaimedEntry and TB.GetClaimedEntry(currentBot)) or nil
     local classId = entry and entry.classId
     local col = (classId and C.CLASS_COLORS and C.CLASS_COLORS[classId]) or color("gold")
     vault.nameText:SetText(currentBot or "")
@@ -365,15 +378,31 @@ function TB.OpenVault(name, view)
     vault:ClearAllPoints()
     local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame
     if anchor and anchor ~= TB.frame then
-        local right = anchor.GetRight and anchor:GetRight()
-        local screen = GetScreenWidth and GetScreenWidth()
-        local scale = (anchor.GetScale and anchor:GetScale()) or 1
-        if right and screen and (right + VW + 4) * scale > screen then
-            -- The panel sits right of main: anchoring left of the panel would
-            -- land on top of main, so dock left of main instead.
-            vault:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
+        local aRight = anchor.GetRight and anchor:GetRight()
+        local fLeft = TB.frame and TB.frame.GetLeft and TB.frame:GetLeft()
+        local aLeft = anchor.GetLeft and anchor:GetLeft()
+        if aRight and fLeft and aRight <= fLeft then
+            -- The panel sits LEFT of main: anchor right of the panel would
+            -- land on main, so dock left of the panel (or right of main
+            -- when the panel hugs the left screen edge).
+            if aLeft and aLeft - VW - 4 >= 0 then
+                vault:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+            elseif TB.frame then
+                vault:SetPoint("TOPLEFT", TB.frame, "TOPRIGHT", 4, 0)
+            else
+                vault:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            end
         else
-            vault:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            local right = anchor.GetRight and anchor:GetRight()
+            local screen = GetScreenWidth and GetScreenWidth()
+            local scale = (anchor.GetScale and anchor:GetScale()) or 1
+            if right and screen and (right + VW + 4) * scale > screen then
+                -- The panel sits right of main: anchoring left of the panel
+                -- would land on top of main, so dock left of main instead.
+                vault:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
+            else
+                vault:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            end
         end
     elseif TB.frame then
         local right = TB.frame.GetRight and TB.frame:GetRight()

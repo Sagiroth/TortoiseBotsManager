@@ -212,9 +212,20 @@ local function createNpc()
     npc:SetFrameStrata("DIALOG")
     npc:EnableMouse(true)
     npc:SetMovable(true)
+    npc:SetClampedToScreen(true)
     npc:RegisterForDrag("LeftButton")
     npc:SetScript("OnDragStart", function() npc:StartMoving() end)
-    npc:SetScript("OnDragStop", function() npc:StopMovingOrSizing() end)
+    npc:SetScript("OnDragStop", function()
+        npc:StopMovingOrSizing()
+        -- 1.12-safe: StopMovingOrSizing detaches the anchor from the
+        -- logical parent (see UI.lua drag header), so re-anchor with
+        -- GetLeft/GetTop instead of ever calling GetPoint() after a drag.
+        local left, top = npc:GetLeft(), npc:GetTop()
+        if left and top then
+            npc:ClearAllPoints()
+            npc:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        end
+    end)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerBotNpc") end
     TB.ApplyBackdrop(npc, 0.98, 1.0)
 
@@ -345,7 +356,10 @@ end
 
 function TB.RefreshNpc()
     if not npc or not npc:IsVisible() or not currentBot then return end
-    local col = color("gold")
+    local entry = (TB.GetRosterEntry and TB.GetRosterEntry(currentBot))
+        or (TB.GetClaimedEntry and TB.GetClaimedEntry(currentBot)) or nil
+    local classId = entry and entry.classId
+    local col = (classId and C.CLASS_COLORS and C.CLASS_COLORS[classId]) or color("gold")
     npc.nameText:SetText(currentBot or "")
     npc.nameText:SetTextColor(col[1], col[2], col[3])
     local e = npcs[currentBot]
@@ -371,15 +385,31 @@ function TB.OpenNpc(name)
     npc:ClearAllPoints()
     local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame
     if anchor and anchor ~= TB.frame then
-        local right = anchor.GetRight and anchor:GetRight()
-        local screen = GetScreenWidth and GetScreenWidth()
-        local scale = (anchor.GetScale and anchor:GetScale()) or 1
-        if right and screen and (right + NW + 4) * scale > screen then
-            -- The panel sits right of main: anchoring left of the panel would
-            -- land on top of main, so dock left of main instead.
-            npc:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
+        local aRight = anchor.GetRight and anchor:GetRight()
+        local fLeft = TB.frame and TB.frame.GetLeft and TB.frame:GetLeft()
+        local aLeft = anchor.GetLeft and anchor:GetLeft()
+        if aRight and fLeft and aRight <= fLeft then
+            -- The panel sits LEFT of main: anchor right of the panel would
+            -- land on main, so dock left of the panel (or right of main
+            -- when the panel hugs the left screen edge).
+            if aLeft and aLeft - NW - 4 >= 0 then
+                npc:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+            elseif TB.frame then
+                npc:SetPoint("TOPLEFT", TB.frame, "TOPRIGHT", 4, 0)
+            else
+                npc:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            end
         else
-            npc:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            local right = anchor.GetRight and anchor:GetRight()
+            local screen = GetScreenWidth and GetScreenWidth()
+            local scale = (anchor.GetScale and anchor:GetScale()) or 1
+            if right and screen and (right + NW + 4) * scale > screen then
+                -- The panel sits right of main: anchoring left of the panel
+                -- would land on top of main, so dock left of main instead.
+                npc:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
+            else
+                npc:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+            end
         end
     elseif TB.frame then
         local right = TB.frame.GetRight and TB.frame:GetRight()

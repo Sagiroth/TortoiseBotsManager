@@ -245,6 +245,9 @@ end
 -- Full labels stay in Constants and tooltips; only overlong labels map.
 local SHORT_ROLE_LABELS = {
     ["Assassination"] = "Assassin",
+    ["Beastmaster"] = "BM",
+    ["Destruction"] = "Destro",
+    ["Resto Heal"] = "Resto",
 }
 function TB.Roles.ShortLabel(label)
     return SHORT_ROLE_LABELS[label] or label

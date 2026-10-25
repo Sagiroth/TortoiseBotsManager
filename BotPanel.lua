@@ -357,7 +357,8 @@ local function botClassId(name)
         local ids = C.CLASS_NAME_TO_ID or {}
         return ids[classFile or ""] or ids[className or ""]
     end
-    local entry = TB.GetRosterEntry and TB.GetRosterEntry(name)
+    local entry = (TB.GetRosterEntry and TB.GetRosterEntry(name))
+        or (TB.GetClaimedEntry and TB.GetClaimedEntry(name))
     return entry and entry.classId or nil
 end
 
@@ -931,7 +932,7 @@ local function createPanel()
         table.insert(panel.spellRows, row)
     end
     local spellEmpty = spellsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    spellEmpty:SetPoint("CENTER", panel, "CENTER", 0, -140)
+    spellEmpty:SetPoint("TOPLEFT", spellsView, "TOPLEFT", 12, -195)
     spellEmpty:SetWidth(260); spellEmpty:SetJustifyH("CENTER")
     spellEmpty:SetText("Click 'Ask for spellbook' below to list this bot's spells.")
     TB.SetTextColor(spellEmpty, color("muted"))
@@ -977,8 +978,8 @@ local function createPanel()
     panel.tradeButton = trade
 
     local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    refresh:SetWidth(54); refresh:SetHeight(22)
-    refresh:SetPoint("LEFT", trade, "RIGHT", 4, 0)
+    refresh:SetWidth(56); refresh:SetHeight(22)
+    refresh:SetPoint("LEFT", trade, "RIGHT", 3, 0)
     refresh:SetText("Refresh")
     setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
     refresh:SetScript("OnClick", function()
@@ -989,7 +990,7 @@ local function createPanel()
 
     local npcLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     npcLink:SetWidth(38); npcLink:SetHeight(22)
-    npcLink:SetPoint("LEFT", refresh, "RIGHT", 4, 0)
+    npcLink:SetPoint("LEFT", refresh, "RIGHT", 3, 0)
     npcLink:SetText("NPC")
     setTooltip(npcLink, "NPC errands", { "Talk, bind, learn and flights for this bot." })
     npcLink:SetScript("OnClick", function()
@@ -999,7 +1000,7 @@ local function createPanel()
 
     local vaultLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     vaultLink:SetWidth(44); vaultLink:SetHeight(22)
-    vaultLink:SetPoint("LEFT", npcLink, "RIGHT", 4, 0)
+    vaultLink:SetPoint("LEFT", npcLink, "RIGHT", 3, 0)
     vaultLink:SetText("Bank")
     setTooltip(vaultLink, "Bank and mail", { "Lists what this bot keeps in its bank and mailbox." })
     vaultLink:SetScript("OnClick", function()
@@ -1009,7 +1010,7 @@ local function createPanel()
 
     local upkeep = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     upkeep:SetWidth(50); upkeep:SetHeight(22)
-    upkeep:SetPoint("LEFT", vaultLink, "RIGHT", 4, 0)
+    upkeep:SetPoint("LEFT", vaultLink, "RIGHT", 3, 0)
     upkeep:SetText("Upkeep")
     setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs.", "Only while the bot is online." })
     upkeep:SetScript("OnClick", function()
@@ -1019,9 +1020,9 @@ local function createPanel()
     panel.upkeepButton = upkeep
 
     local gearup = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    gearup:SetWidth(64); gearup:SetHeight(22)
-    gearup:SetPoint("LEFT", upkeep, "RIGHT", 4, 0)
-    gearup:SetText("Auto-gear")
+    gearup:SetWidth(63); gearup:SetHeight(22)
+    gearup:SetPoint("LEFT", upkeep, "RIGHT", 3, 0)
+    gearup:SetText("AutoGear")
     setTooltip(gearup, "Auto-gear (bags)", { "The bot equips the best gear it already owns in its bags.", "Bags → Equip upgrades re-scans and equips new loot instead.", "Only while the bot is online." })
     gearup:SetScript("OnClick", function()
         if currentBot then TB.SendBotCommand("autogear " .. currentBot) end

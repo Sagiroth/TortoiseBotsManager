@@ -30,6 +30,9 @@ return function()
     local function stripCodes(text)
         local s = string.gsub(text or "", "|c%x%x%x%x%x%x%x%x", "")
         s = string.gsub(s, "|r", "")
+        -- Item/spell hyperlinks render as their display label only.
+        s = string.gsub(s, "|H.-|h%[", "[")
+        s = string.gsub(s, "%]|h", "]")
         return s
     end
 
@@ -43,8 +46,11 @@ return function()
         return (string.len(text) - narrow) * (perChar or 6) + narrow * 3
     end
 
-    -- UIPanelButtonTemplate keeps ~10 px total for the endcaps.
+    -- UIPanelButtonTemplate keeps ~10 px total for the endcaps, and labels
+    -- need ~4 px of breathing room on top: FRIZQT__.TTF is proportional, so a
+    -- zero-margin label still touches the bevels in the client.
     local BUTTON_INSET = 10
+    local BUTTON_SLACK = 4
 
     local function overlaps(a, b)
         return not (a.right <= b.left or b.right <= a.left
@@ -143,18 +149,53 @@ return function()
         table.insert(problems, msg)
     end
 
-    -- FontStrings without explicit SetHeight: single-line height by template.
+    -- FontString height: explicit newlines and width-driven wrapping both
+    -- add lines (12px each); a single-line bare string stays 12px.
     local function textHeight(f)
         if f.height then return f.height end
-        return 12
+        local text = f.text or (f.GetText and f:GetText()) or ""
+        local lines = 1
+        for _ in string.gfind(text, "\n") do lines = lines + 1 end
+        if (f.width or 0) > 0 and text ~= "" then
+            local wrapped = math.ceil(textWidth(stripCodes(text), 6) / f.width)
+            if wrapped > lines then lines = wrapped end
+        end
+        return lines * 12
     end
 
-    -- Button label fit: centered text must clear endcaps, lamps and icons.
+    -- Control box of a FontString: full declared width with template (or
+    -- wrapped) height. Boxes on one line must not intersect even when the
+    -- rendered glyphs are short: a later SetText can fill the whole box.
+    local function boxRect(f, cache)
+        local r = frameRect(f, cache)
+        return { left = r.left, top = r.top,
+            right = r.left + (f.width or 0), bottom = r.top + textHeight(f) }
+    end
+
+    -- Rendered rect of a FontString: full control width only when centered
+    -- text fills it; left/right-justified or short text occupies its content.
+    local function fsRect(f, cache)
+        local r = frameRect(f, cache)
+        local h = textHeight(f)
+        local text = f.text or (f.GetText and f:GetText()) or ""
+        local w = math.min(r.right - r.left, textWidth(stripCodes(text), 6))
+        if w <= 0 then
+            return { left = r.left, top = r.top, right = r.left, bottom = r.top }
+        end
+        return { left = r.left, top = r.top, right = r.left + w, bottom = r.top + h }
+    end
+
+    -- Button label fit: 1.12 centers the label across the full width, so a
+    -- right-side lamp is cleared only when the half-text stays left of it
+    -- (need T <= W - 34 for an 8px lamp, not T + lamp <= W). Icons beside the
+    -- text still consume horizontal room; tall icons must also fit the 12px
+    -- interior left by the 3px top/bottom bevels.
     local function labelFits(name, btn, sampleText, perChar)
         local w = btn.width or 0
+        local h = btn.height or 0
         local text = sampleText or btn.text or btn:GetText() or ""
-        local need = textWidth(text, perChar) + BUTTON_INSET
-        if btn.lamp and btn.lamp.width then need = need + btn.lamp.width + 2 end
+        local t = textWidth(text, perChar)
+        local need = t + BUTTON_INSET + BUTTON_SLACK
         local icon = btn.icon
         if icon and icon.width and icon.visible ~= false and not (icon.hidden) then
             need = need + icon.width
@@ -162,6 +203,34 @@ return function()
         if need > w then
             bad(string.format("%s: label '%s' needs ~%dpx in a %dpx button",
                 name, stripCodes(text), need, w))
+        end
+        if btn.lamp and btn.lamp.width then
+            local lampLeft = w - 9 - (btn.lamp.width or 8) -- RIGHT anchor, -9 nominal
+            local pts = btn.lamp.points or {}
+            if table.getn(pts) > 0 then
+                local last = pts[table.getn(pts)]
+                if last[1] == "RIGHT" then lampLeft = w + (last[4] or -9) - (btn.lamp.width or 8) end
+            end
+            -- Centered text spans [W/2 - T/2 + dx, W/2 + T/2 + dx]; the label
+            -- FontString may carry a deliberate nudge (see switches card).
+            local dx = 0
+            local fs = btn.GetFontString and btn:GetFontString()
+            if fs and fs.points and table.getn(fs.points) > 0 then
+                local last = fs.points[table.getn(fs.points)]
+                if last[1] == "CENTER" then dx = last[4] or 0 end
+            end
+            if w / 2 + t / 2 + dx > lampLeft then
+                bad(string.format("%s: centered label '%s' (~%dpx) touches the lamp at x=%d in a %dpx button",
+                    name, stripCodes(text), t, lampLeft, w))
+            end
+        end
+        -- 16px icons are standard on 20px+ buttons; only short (stepper-row)
+        -- buttons leave too little interior for a full-size icon (see endPull).
+        if icon and icon.height and icon.visible ~= false and not (icon.hidden) then
+            if h > 0 and h < 20 and icon.height > h - 6 then
+                bad(string.format("%s: %dpx icon bleeds over the %dpx button bevels",
+                    name, icon.height, h))
+            end
         end
     end
 
@@ -293,6 +362,21 @@ return function()
                 if owner then table.insert(rows, { "row." .. id, owner }) end
             end
             noOverlaps("CC menu rows", rows, cache)
+            -- The hint sits under the title; the X must clear it.
+            local xBtn = menu.closeButton or menu.close
+            if not menu.hint then
+                bad("CC menu: hint text missing")
+            elseif not xBtn then
+                bad("CC menu: close button missing")
+            else
+                childrenInside("CC menu", menu, mr,
+                    { { "hint", menu.hint }, { "close", xBtn } }, cache, 0)
+                local hr, xr = boxRect(menu.hint, cache), frameRect(xBtn, cache)
+                if overlaps(hr, xr) then
+                    bad(string.format("CC menu: hint %s overlaps the close button %s",
+                        fmt(hr), fmt(xr)))
+                end
+            end
             if menu.clearAll then
                 childrenInside("CC menu", menu, mr, { { "clearAll", menu.clearAll } }, cache, 3)
             end
@@ -694,6 +778,75 @@ return function()
                     end
                     childrenInside("BotPanel spells", panel, pr, rows, cache, 2)
                     noOverlaps("BotPanel spell rows", rows, cache)
+                    -- Empty state: the hint must sit inside the list area,
+                    -- clear of the Ask/paging row it explains.
+                    if panel.spellEmpty and panel.spellAsk and panel.spellPrev
+                        and panel.spellPageText and panel.spellNext then
+                        local bottom = { { "ask", panel.spellAsk },
+                            { "prev", panel.spellPrev },
+                            { "page", panel.spellPageText },
+                            { "next", panel.spellNext } }
+                        childrenInside("BotPanel spells", panel, pr, bottom, cache, 2)
+                        local er = boxRect(panel.spellEmpty, cache)
+                        for _, entry in ipairs(bottom) do
+                            local r = frameRect(entry[2], cache)
+                            if overlaps(er, r) then
+                                bad(string.format("BotPanel: empty-state text %s overlaps '%s' %s",
+                                    fmt(er), entry[1], fmt(r)))
+                            end
+                        end
+                        -- Hidden spell rows paint nothing; only visible rows collide.
+                        for _, entry in ipairs(rows) do
+                            if entry[2]:IsVisible() then
+                                local r = frameRect(entry[2], cache)
+                                if overlaps(er, r) then
+                                    bad(string.format("BotPanel: empty-state text %s overlaps '%s' %s",
+                                        fmt(er), entry[1], fmt(r)))
+                                end
+                            end
+                        end
+                    end
+                    -- Filled state: two pages of real spell names. Visible rows
+                    -- must fit their text and clear the Ask/paging row.
+                    TB.SetSpellPending("Alpha", true)
+                    TB.ConsumeSpellReply("Alpha", "=== Spells ===")
+                    local spellNames = { "Fireball", "Frostbolt",
+                        "Polymorph", "Arcane Intellect", "Conjure Water",
+                        "Blizzard", "Frost Nova", "Counterspell", "Blink",
+                        "Evocation", "Mana Shield", "Dampen Magic",
+                        "Greater Heal", "Power Word: Shield" }
+                    for i, name in ipairs(spellNames) do
+                        TB.ConsumeSpellReply("Alpha",
+                            "|cffffffff|Hspell:" .. (100 + i) .. "|h[" .. name .. "]|h|r")
+                    end
+                    do
+                        local filled = {}
+                        for i, row in ipairs(panel.spellRows or {}) do
+                            if row:IsVisible() then
+                                table.insert(filled, { "spell" .. i, row })
+                                labelFits("BotPanel spell." .. i, row, nil, 6)
+                            end
+                        end
+                        noOverlaps("BotPanel filled spells", filled, cache)
+                        if panel.spellAsk and table.getn(filled) > 0 then
+                            local ar = frameRect(panel.spellAsk, cache)
+                            for _, entry in ipairs(filled) do
+                                local r = frameRect(entry[2], cache)
+                                if overlaps(r, ar) then
+                                    bad(string.format("BotPanel: filled '%s' %s overlaps the ask row %s",
+                                        entry[1], fmt(r), fmt(ar)))
+                                end
+                            end
+                        end
+                        if panel.spellEmpty and panel.spellEmpty:IsVisible() then
+                            bad("BotPanel: empty-state text stays visible with a filled spellbook")
+                        end
+                        local pages = panel.spellPageText and panel.spellPageText:GetText() or ""
+                        if pages ~= "1 / 2" then
+                            bad("BotPanel: 14 spells must page as '1 / 2', got '" .. pages .. "'")
+                        end
+                    end
+                    TB.SetSpellPending("Alpha", false)
                 end
             end
             TB.CloseBotPanel()
@@ -762,12 +915,69 @@ return function()
                     if vault[key] then table.insert(chrome, { key, vault[key] }) end
                 end
                 childrenInside("BotVault", vault, vr, chrome, cache, 2)
+                -- Summary (left) and hint (right) share the y=-62 line.
+                if not (vault.summary and vault.hint) then
+                    bad("BotVault: summary/hint texts missing")
+                else
+                    childrenInside("BotVault", vault, vr,
+                        { { "summary", vault.summary }, { "hint", vault.hint } }, cache, 2)
+                    local sr, hr = boxRect(vault.summary, cache), boxRect(vault.hint, cache)
+                    if overlaps(sr, hr) then
+                        bad(string.format("BotVault: summary %s overlaps hint %s",
+                            fmt(sr), fmt(hr)))
+                    end
+                end
                 local rows = {}
                 for i, row in ipairs(vault.rows or {}) do
                     table.insert(rows, { "row" .. i, row })
                 end
                 childrenInside("BotVault", vault, vr, rows, cache, 2)
                 noOverlaps("BotVault rows", rows, cache)
+                -- Filled state: bank lines with counts and a long name, then
+                -- the mailbox view with a long sender/subject line. Row text
+                -- must fit the button; rows must not cover the paging row.
+                TB.SetVaultPending("Alpha", true)
+                TB.ConsumeVaultReply("Alpha", "=== Bank ===")
+                TB.ConsumeVaultReply("Alpha",
+                    "|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|rx3")
+                TB.ConsumeVaultReply("Alpha",
+                    "|cffffffff|Hitem:5678:0:0:0|h[Greater Arcane Protection Potion of the Whale]|h|r")
+                do
+                    local filled = {}
+                    for i, row in ipairs(vault.rows or {}) do
+                        if row:IsVisible() then
+                            table.insert(filled, { "row" .. i, row })
+                            labelFits("BotVault filled." .. i, row, nil, 6)
+                        end
+                    end
+                    noOverlaps("BotVault filled rows", filled, cache)
+                    if vault.ask and table.getn(filled) > 0 then
+                        for _, entry in ipairs(filled) do
+                            local r = frameRect(entry[2], cache)
+                            local ar = frameRect(vault.ask, cache)
+                            if overlaps(r, ar) then
+                                bad(string.format("BotVault: filled '%s' %s overlaps the ask row %s",
+                                    entry[1], fmt(r), fmt(ar)))
+                            end
+                        end
+                    end
+                end
+                TB.OpenVault("Alpha", "mail")
+                TB.SetVaultPending("Alpha", true)
+                TB.ConsumeVaultReply("Alpha", "=== Mailbox ===")
+                TB.ConsumeVaultReply("Alpha",
+                    "#1 |cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r from Sendername, |cff00ff0030 day(s)")
+                do
+                    local filled = {}
+                    for i, row in ipairs(vault.rows or {}) do
+                        if row:IsVisible() then
+                            table.insert(filled, { "row" .. i, row })
+                            labelFits("BotVault mail." .. i, row, nil, 6)
+                        end
+                    end
+                    noOverlaps("BotVault mail rows", filled, cache)
+                end
+                TB.SetVaultPending("Alpha", false)
                 if not (vault.prevPage and vault.nextPage and vault.pageText) then
                     bad("BotVault: no < / page / > controls; items past row 8 are unreachable")
                 else
@@ -810,9 +1020,239 @@ return function()
                 end
                 childrenInside("BotNpc flights", npc, nr, rows, cache, 2)
                 noOverlaps("BotNpc flight rows", rows, cache)
+                -- Filled state: two pages of real flight legs plus the empty
+                -- hint hidden. Long destination names must fit their button.
+                TB.SetNpcPending("Alpha", true)
+                TB.ConsumeTaxiReply("Alpha", "=== Taxi ===")
+                local legs = { "Stormwind, Elwynn", "Ironforge, Dun Morogh",
+                    "Menethil Harbor, Wetlands", "Thelsamar, Loch Modan",
+                    "Refuge Pointe, Arathi", "Hammerfall, Arathi Highlands",
+                    "Booty Bay, Stranglethorn Vale" }
+                for i, name in ipairs(legs) do
+                    TB.ConsumeTaxiReply("Alpha", i .. ": " .. name)
+                end
+                do
+                    local filled = {}
+                    for i, row in ipairs(npc.rows or {}) do
+                        if row:IsVisible() then
+                            table.insert(filled, { "row" .. i, row })
+                            labelFits("BotNpc flight." .. i, row, nil, 6)
+                        end
+                    end
+                    noOverlaps("BotNpc filled flights", filled, cache)
+                    if npc.ask and table.getn(filled) > 0 then
+                        local ar = frameRect(npc.ask, cache)
+                        for _, entry in ipairs(filled) do
+                            local r = frameRect(entry[2], cache)
+                            if overlaps(r, ar) then
+                                bad(string.format("BotNpc: filled '%s' %s overlaps the ask row %s",
+                                    entry[1], fmt(r), fmt(ar)))
+                            end
+                        end
+                    end
+                    if npc.flightEmpty and npc.flightEmpty:IsVisible() then
+                        bad("BotNpc: empty-state text stays visible with filled flights")
+                    end
+                    local pages = npc.pageText and npc.pageText:GetText() or ""
+                    if pages ~= "1 / 2" then
+                        bad("BotNpc: 7 flights must page as '1 / 2', got '" .. pages .. "'")
+                    end
+                end
+                TB.SetNpcPending("Alpha", false)
             end
             TB.CloseNpc()
         end
+    end
+
+    -- ── Satellite docking on both sides of the main window ─────────────
+    -- The panel flips left of the main frame near the right screen edge;
+    -- the vault/NPC must follow the panel, never land on the main frame.
+    do
+        if TB.OpenBotPanel and TB.OpenVault and TB.OpenNpc and TB.frame then
+            local savedX = TB.frame.x
+            for _, edge in ipairs({ "right", "left" }) do
+                -- Park the main frame: near the right edge (panel flips
+                -- left) or near the left edge (panel docks right).
+                TB.frame.x = (edge == "right") and 700 or 60
+                TB.OpenBotPanel("Alpha")
+                local panel = TB.botPanel
+                if not (panel and panel:IsVisible()) then
+                    bad("Satellites (" .. edge .. "): panel did not open")
+                else
+                    local cache = {}
+                    local fr = frameRect(TB.frame, cache)
+                    local pr = frameRect(panel, cache)
+                    for _, open in ipairs({ { "vault", TB.OpenVault },
+                        { "npc", TB.OpenNpc } }) do
+                        open[2]("Alpha")
+                        local sat = (open[1] == "vault") and TB.botVault or TB.botNpc
+                        if not (sat and sat:IsVisible()) then
+                            bad("Satellites (" .. edge .. "): " .. open[1] .. " did not open")
+                        else
+                            local sr = frameRect(sat, cache)
+                            if overlaps(sr, fr) then
+                                bad(string.format("Satellites (%s): %s %s lands on the main frame %s",
+                                    edge, open[1], fmt(sr), fmt(fr)))
+                            end
+                            if overlaps(sr, pr) then
+                                bad(string.format("Satellites (%s): %s %s covers the panel %s",
+                                    edge, open[1], fmt(sr), fmt(fr)))
+                            end
+                            -- Anchor intent: beside the panel, or beside main
+                            -- only when the panel hugs the left screen edge.
+                            local pt = sat.point or {}
+                            local rel = pt[2]
+                            if rel == TB.frame then
+                                local panelLeft = panel.GetLeft and panel:GetLeft()
+                                if not (panelLeft and panelLeft - 304 < 0) then
+                                    bad(string.format("Satellites (%s): %s docks to main while the panel has room",
+                                        edge, open[1]))
+                                end
+                            elseif rel ~= panel then
+                                bad(string.format("Satellites (%s): %s anchors to neither panel nor main",
+                                    edge, open[1]))
+                            end
+                        end
+                        if TB.CloseVault then TB.CloseVault() end
+                        if TB.CloseNpc then TB.CloseNpc() end
+                    end
+                    TB.CloseBotPanel()
+                end
+            end
+            TB.frame.x = savedX
+        end
+    end
+
+    -- ── Per-bot header class colors (roster and claimed) ───────────────
+    do
+        -- Alpha is a roster warrior (class 1); Goldie is claimed-only (class 1).
+        for _, case in ipairs({ { "Alpha", "roster" }, { "Goldie", "claimed" } }) do
+            local name, kind = case[1], case[2]
+            local entry = (TB.GetRosterEntry and TB.GetRosterEntry(name))
+                or (TB.GetClaimedEntry and TB.GetClaimedEntry(name))
+            if not (entry and entry.classId) then
+                bad("Headers: no " .. kind .. " entry for " .. name)
+            else
+                local col = TB.C.CLASS_COLORS[entry.classId]
+                TB.OpenBotPanel(name)
+                TB.OpenVault(name)
+                TB.OpenNpc(name)
+                for _, win in ipairs({ { "panel", TB.botPanel and TB.botPanel.nameText },
+                    { "vault", TB.botVault and TB.botVault.nameText },
+                    { "npc", TB.botNpc and TB.botNpc.nameText } }) do
+                    local fs = win[2]
+                    if not fs then
+                        bad("Headers (" .. name .. "): " .. win[1] .. " has no name text")
+                    else
+                        local tc = fs.textColor
+                        if not (tc and tc[1] == col[1] and tc[2] == col[2] and tc[3] == col[3]) then
+                            bad(string.format("Headers (%s): %s name not class-colored (%s)",
+                                name, win[1], tostring(fs:GetText())))
+                        end
+                    end
+                end
+                TB.CloseBotPanel()
+            end
+        end
+    end
+
+    -- ── Item menu at the screen edges ──────────────────────────────────
+    do
+        local cache = {}
+        if TB.OpenBotPanel then
+            TB.OpenBotPanel("Alpha")
+            local panel = TB.botPanel
+            local menu = panel and panel.itemMenu or TB.itemMenu
+            if not menu or not menu.Open then
+                bad("ItemMenu: menu missing")
+            else
+                local owner = (panel.bagButtons or {})[1] or panel
+                -- Each corner: the menu must flip to stay on screen and keep
+                -- every visible row inside its own frame.
+                local corners = {
+                    { right = 2000, bottom = -50, my = "BOTTOMRIGHT", rel = "TOPLEFT" },
+                    { right = 2000, bottom = 900, my = "TOPRIGHT", rel = "BOTTOMLEFT" },
+                    { right = 60, bottom = -50, my = "BOTTOMLEFT", rel = "TOPRIGHT" },
+                    { right = 60, bottom = 900, my = "TOPLEFT", rel = "BOTTOMRIGHT" },
+                }
+                local realRight, realBottom = menu.GetRight, menu.GetBottom
+                for i, c in ipairs(corners) do
+                    menu.GetRight = function() return c.right end
+                    menu.GetBottom = function() return c.bottom end
+                    menu:Open(owner, { equipped = false, equippable = true })
+                    local pts = menu.points or {}
+                    local pt = pts[table.getn(pts)]
+                    if not pt then
+                        bad("ItemMenu corner " .. i .. ": no anchor after Open")
+                    else
+                        if not (pt[1] == c.my and pt[3] == c.rel) then
+                            bad(string.format("ItemMenu corner %d: anchors %s->%s; need %s->%s",
+                                i, tostring(pt[1]), tostring(pt[3]), c.my, c.rel))
+                        end
+                        local mr = frameRect(menu, cache)
+                        local items = {}
+                        for _, key in ipairs({ "first", "second", "third", "fourth",
+                            "fifth", "sixth", "seventh" }) do
+                            if menu[key] and menu[key]:IsVisible() then
+                                table.insert(items, { key, menu[key] })
+                            end
+                        end
+                        childrenInside("ItemMenu corner " .. i, menu, mr, items, cache, 4)
+                        noOverlaps("ItemMenu corner " .. i .. " rows", items, cache)
+                    end
+                end
+                menu.GetRight, menu.GetBottom = realRight, realBottom
+            end
+            TB.CloseBotPanel()
+        end
+    end
+
+    -- ── Drag-stop audit: every movable frame re-anchors safely ─────────
+    -- 1.12 detaches the anchor on StopMovingOrSizing (fatal GetPoint crash);
+    -- every OnDragStop that stops a move must ClearAllPoints and pin back to
+    -- UIParent/BOTTOMLEFT from GetLeft/GetTop (main header, MiniBar saver,
+    -- vault, npc). The minimap drags via center math and never stops a move.
+    do
+        local frames = {
+            { "main", TB.frame, TB.dragHeader },
+            { "minibar", TB.miniBar, TB.miniBar },
+            { "vault", TB.botVault, TB.botVault },
+            { "npc", TB.botNpc, TB.botNpc },
+        }
+        this = nil
+        for _, entry in ipairs(frames) do
+            local name, frame, drag = entry[1], entry[2], entry[3]
+            if frame and drag and drag.scripts
+                and drag.scripts.OnDragStart and drag.scripts.OnDragStop then
+                if frame.movable ~= true then
+                    bad("Drag " .. name .. ": movable frame lost SetMovable(true)")
+                end
+                if frame.clamped ~= true then
+                    bad("Drag " .. name .. ": movable frame must SetClampedToScreen(true)")
+                end
+                local stopped = false
+                local realStop = frame.StopMovingOrSizing
+                frame.StopMovingOrSizing = function(self) stopped = true end
+                this = drag
+                drag.scripts.OnDragStart()
+                this = drag
+                drag.scripts.OnDragStop()
+                frame.StopMovingOrSizing = realStop
+                if not stopped then
+                    bad("Drag " .. name .. ": OnDragStop never stops the move")
+                else
+                    local pts = frame.points or {}
+                    local pt = pts[table.getn(pts)]
+                    if not (pt and pt[1] == "TOPLEFT" and pt[2] == UIParent
+                        and pt[3] == "BOTTOMLEFT") then
+                        bad("Drag " .. name .. ": OnDragStop must re-anchor TOPLEFT->UIParent/BOTTOMLEFT")
+                    end
+                end
+            end
+        end
+        this = nil
+        if TB.CloseVault then TB.CloseVault() end
+        if TB.CloseNpc then TB.CloseNpc() end
     end
 
     -- ── Satellite exclusivity ────────────────────────────────────────

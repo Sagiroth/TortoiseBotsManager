@@ -429,6 +429,7 @@ CreateHeader = function(parent)
         frameDB.x or 0, frameDB.y or 15)
     parent:SetFrameStrata("DIALOG")
     parent:SetMovable(true)
+    parent:SetClampedToScreen(true)
     -- Dedicated drag header bar across the top.
     -- Moving dragging to a dedicated header prevents clicks on child action buttons
     -- (Attack, Stop, etc.) from inadvertently triggering drag events on the main dialog.
@@ -872,7 +873,7 @@ local function BuildCcMenu(parent, buttons)
 
     local ccHint = ccMenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ccHint:SetPoint("TOPLEFT", ccMenu, "TOPLEFT", 8, -24)
-    ccHint:SetWidth(284)
+    ccHint:SetWidth(254)
     ccHint:SetJustifyH("LEFT")
     ccHint:SetText("Assign each mark to one bot by name.")
     TB.SetTextColor(ccHint, color("muted"))
@@ -948,6 +949,7 @@ local function BuildCcMenu(parent, buttons)
     ccMenu.rows = ccRows
 
     local closeBtn = CreateFrame("Button", nil, ccMenu, "UIPanelCloseButton")
+    closeBtn:SetWidth(24); closeBtn:SetHeight(24)
     closeBtn:SetPoint("TOPRIGHT", ccMenu, "TOPRIGHT", -2, -2)
     closeBtn:SetScript("OnClick", function() TB.ToggleCcMenu() end)
     ccMenu.closeButton = closeBtn
@@ -1057,6 +1059,11 @@ local function BuildPullCard(parent, buttons)
 
     buttons.endPull = makeActionButton(card, "end pull", 110, 244, -46)
     buttons.endPull:SetHeight(18)
+    -- 12px icon inside the 18px button: the 3px top/bottom button bevels
+    -- leave 12px of interior, so a 16px icon would bleed onto the borders.
+    if buttons.endPull.icon then
+        buttons.endPull.icon:SetWidth(12); buttons.endPull.icon:SetHeight(12)
+    end
     buttons.focusSkull = makeActionButton(card, "focus skull", 110, 244, btnY)
     buttons.ccMoon     = makeActionButton(card, "cc moon", 110, 362, btnY)
     buttons.pull:SetHeight(22); buttons.pullback:SetHeight(22)
@@ -1118,7 +1125,11 @@ local function BuildSwitchesCard(parent, buttons)
             btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
             btn.lamp = btn:CreateTexture(nil, "OVERLAY")
             btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
-            btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -9, 0)
+            btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+            -- Centered labels ("Auto CC Off" ~66px) would touch a -9 lamp; the
+            -- text nudges 4px left of center to clear the lamp at -6.
+            local fs = btn.GetFontString and btn:GetFontString()
+            if fs then fs:SetPoint("CENTER", btn, "CENTER", -4, 0) end
             setButtonTooltip(btn, def.tip .. " Click to switch for the whole party (or only the targeted bot).",
                 def.label)
             TB.toggleButtons[def.toggle] = btn

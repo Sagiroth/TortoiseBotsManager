@@ -66,13 +66,27 @@ local function object(kind, parent)
     function methods:CreateFontString() return object("FontString", self) end
     function methods:SetTexture(...) self.texture = {...} end
     function methods:SetTexCoord(...) end
-    function methods:SetAllPoints(...) end
+    function methods:SetAllPoints(other)
+        other = other or self.parent
+        self.points = self.points or {}
+        table.insert(self.points, { "TOPLEFT", other, "TOPLEFT", 0, 0 })
+        table.insert(self.points, { "TOPRIGHT", other, "TOPRIGHT", 0, 0 })
+        self.point = { "TOPRIGHT", other, "TOPRIGHT", 0, 0 }
+    end
     function methods:SetBlendMode(...) end
     function methods:SetAutoFocus(...) end
     function methods:SetJustifyH(...) end
     function methods:SetText(text) self.text = text end
     function methods:GetText() return self.text end
-    function methods:SetTextColor(...) end
+    function methods:GetFontString()
+        -- 1.12 UIPanelButtonTemplate buttons own a centered label FontString.
+        if not self.fontString then
+            self.fontString = object("FontString", self)
+            self.fontString:SetPoint("CENTER", self, "CENTER", 0, 0)
+        end
+        return self.fontString
+    end
+    function methods:SetTextColor(r, g, b, a) self.textColor = { r, g, b, a } end
     function methods:SetVertexColor(...) end
     function methods:SetJustifyV(...) end
     function methods:SetChecked(checked) self.checked = checked and true or false end
@@ -98,9 +112,13 @@ local function object(kind, parent)
     return setmetatable(value, methods)
 end
 
-function CreateFrame(kind, name, parent)
+function CreateFrame(kind, name, parent, template)
     local frame = object(kind, parent)
     frame.name = name
+    if template == "UIPanelCloseButton" then
+        frame.width = 32
+        frame.height = 32
+    end
     if name then frames[name] = frame end
     return frame
 end
@@ -1346,13 +1364,13 @@ local beforeGearUp = table.getn(addonSent)
 TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
 assert(addonSent[beforeGearUp + 1].message == "autogear Alpha", "Gear up re-gears the bot")
 -- Layout: six footer buttons fit the 330px panel with no overlap.
-local footerSpan = 10 + 44 + 54 + 38 + 44 + 50 + 64 + 5 * 4
-assert(footerSpan <= 330, "footer (trade + refresh + NPC + bank + upkeep + auto-gear) must fit the 330px panel")
-assert(TB.botPanel.tradeButton.width == 44 and TB.botPanel.refreshButton.width == 54
+local footerSpan = 10 + 44 + 56 + 38 + 44 + 50 + 63 + 5 * 3
+assert(footerSpan == 320, "footer (trade + refresh + NPC + bank + upkeep + auto-gear) must end at the x=320 tab edge")
+assert(TB.botPanel.tradeButton.width == 44 and TB.botPanel.refreshButton.width == 56
     and TB.botPanel.npcButton.width == 38 and TB.botPanel.vaultButton.width == 44
-    and TB.botPanel.upkeepButton.width == 50 and TB.botPanel.gearUpButton.width == 64,
+    and TB.botPanel.upkeepButton.width == 50 and TB.botPanel.gearUpButton.width == 63,
     "footer buttons must keep their layout widths")
-assert(TB.botPanel.vaultButton.text == "Bank" and TB.botPanel.gearUpButton.text == "Auto-gear",
+assert(TB.botPanel.vaultButton.text == "Bank" and TB.botPanel.gearUpButton.text == "AutoGear",
     "footer buttons must carry their short labels")
 TB.CloseBotPanel()
 
