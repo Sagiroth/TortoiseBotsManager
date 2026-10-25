@@ -2,6 +2,25 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.2.0 (2026-10-25)
+
+### Tactical & Actions
+- Sap and Spread now have party-wide toggles alongside AoE, Auto CC, and Loot; the UI shows "Mixed" when bots differ. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- End a pull instantly with the new End pull button in the pull card. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- Movement controls add Guard and Free next to Follow, Stay, Come, and Hold, plus stance buttons: Near, Tank, Turnback, Behind. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- New Tactics card gives one-click Kite, Auto Mark, Focus Fire, and AoE Fear. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+
+### Camp & Formations
+- Camp tab adds Rebuff, Reset tactics, and Drop totems actions. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- Formations expanded from six to ten slots. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- Quests card: accept and share quests, toggle grinding on/off; Ready now also triggers the game's ready check. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+
+### Roster & Guild
+- Class filter plus Fill party and Fill raid for faster group setup. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- Key bindings added for the new roster and guild controls. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+
+---
+
 ## Unreleased
 
 ### Bot panel
