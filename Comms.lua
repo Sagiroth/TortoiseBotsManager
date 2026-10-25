@@ -604,6 +604,13 @@ end
 
 function TB.OnSystemMessage(msg)
     if not msg or msg == "" then return end
+    -- Some clients double the "|" of a "|A"/"|T" pair on server-delivered
+    -- chat lines before Lua sees them. Protocol fields never contain "||",
+    -- so restore those two pairs on TBM lines. Stock clients never send
+    -- "||" here and are unaffected.
+    if string.sub(msg, 1, 4) == "TBM:" then
+        msg = string.gsub(msg, "||([AT])", "|%1")
+    end
     local handled = false
 
     do
