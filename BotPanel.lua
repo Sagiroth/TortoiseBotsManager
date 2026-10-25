@@ -251,6 +251,8 @@ local currentView = "gear"
 local bagPage = 1
 local pendingGive = nil       -- { bot, bag, slot } awaiting the trade window
 local behaviorPending = {}    -- [bot .. "|" .. key] = true
+local pendingLink = nil       -- { bot, verb, id, label } awaiting the client item cache
+local retryingLink = false    -- true while the OnUpdate retry sends, so a miss does not requeue
 
 function TB.GetBotPanelBot()
     return panel and panel:IsVisible() and currentBot or nil
@@ -266,15 +268,74 @@ function TB.SendItemOrder(op, bag, slot)
     return TB.SendBotCommand(cmd)
 end
 
+-- Link orders (`destroy`, `cast Disenchant`, `sendmail`, `bank`) carry the full
+-- item hyperlink, so the module can match the exact stack without a bag/slot.
+-- An uncached item queues a tooltip lookup and retries once cached; the click
+-- is never silently dropped ("Loading…" shows while the client is fetching).
+local function linkText(id)
+    if not id or not GetItemInfo then return nil end
+    local name, link = GetItemInfo(id)
+    if not name or not link then return nil end
+    return "|H" .. link .. "|h[" .. name .. "]|h", name
+end
+
+local function sendLinkOrder(verb, id)
+    if not currentBot or not id then return false end
+    local link = linkText(id)
+    if not link then
+        requestItem(id)
+        pendingLink = { bot = currentBot, verb = verb, id = id,
+            label = (C.ACTION_LABELS and C.ACTION_LABELS[verb]) or verb }
+        if TB.SetStatus then TB.SetStatus("Loading item #" .. id .. "…", "pending") end
+        return false
+    end
+    pendingLink = nil
+    if TB.SetStatus then TB.SetStatus(((C.ACTION_LABELS and C.ACTION_LABELS[verb]) or verb) .. " → " .. currentBot .. "…", "pending") end
+    return TB.SendBotCommand("command " .. currentBot .. " " .. verb .. " " .. link)
+end
+TB.SendLinkOrder = sendLinkOrder
+-- Destroy asks first: a StaticPopup names the item, and the order only
+-- sends on Accept. No global hooks; the menu closes on open like elsewhere.
+function TB.ConfirmDestroyItem(id)
+    if not currentBot or not id then return false end
+    local link = linkText(id)
+    local name = itemInfo(id)
+    local what = link and ("|H" .. link .. "|h[" .. (name or ("item #" .. id)) .. "]|h") or ("item #" .. id)
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] = {
+            text = "Destroy " .. what .. " on " .. currentBot .. "?\n\nThis cannot be undone.",
+            button1 = "Destroy",
+            button2 = "Cancel",
+            OnAccept = function()
+                sendLinkOrder("destroy", id)
+                if TB.RequestInventory then TB.RequestInventory(currentBot) end
+            end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_DESTROY_ITEM")
+    else
+        sendLinkOrder("destroy", id)
+    end
+    return true
+end
+
 -- The `u` order takes a full item hyperlink (`command <bot> u <link>`),
 -- unlike SendItemOrder which addresses bag/slot. Returns false when the
 -- item is not cached yet (and queues a tooltip lookup instead).
 function TB.SendItemUse(id)
     if not currentBot or not id then return false end
-    local name, link = GetItemInfo(id)
-    if not name or not link then requestItem(id) return false end
+    local link = linkText(id)
+    if not link then
+        requestItem(id)
+        pendingLink = { bot = currentBot, verb = "u", id = id, label = "Use" }
+        if TB.SetStatus then TB.SetStatus("Loading item…", "pending") end
+        return false
+    end
+    pendingLink = nil
     if TB.SetStatus then TB.SetStatus(("Use → " .. currentBot .. "…"), "pending") end
-    return TB.SendBotCommand("command " .. currentBot .. " u |H" .. link .. "|h[" .. name .. "]|h")
+    return TB.SendBotCommand("command " .. currentBot .. " u " .. link)
 end
 
 function TB.SendBehavior(name, key)
@@ -343,7 +404,7 @@ end
 local itemMenu
 
 local function hideMenu()
-    if itemMenu then itemMenu:Hide(); itemMenu.owner = nil end
+    if itemMenu then itemMenu:Hide(); if itemMenu.catcher then itemMenu.catcher:Hide() end; itemMenu.owner = nil end
 end
 
 local function createItemButton(parent)
@@ -443,7 +504,7 @@ end
 
 local function createMenu(parent)
     local menu = CreateFrame("Frame", "TortoiseBotsManagerItemMenu", parent)
-    menu:SetWidth(118); menu:SetHeight(82)
+    menu:SetWidth(118); menu:SetHeight(178)
     menu:SetFrameStrata("TOOLTIP")
     menu:EnableMouse(true)
     TB.ApplyBackdrop(menu, 0.98, 1.0)
@@ -458,17 +519,40 @@ local function createMenu(parent)
     menu.first = button("Equip", -6, "The bot equips this item.")
     menu.second = button("Give to me", -30, "Opens a trade with the bot and puts this item in. Accept the trade to take it.")
     menu.third = button("Use", -54, "The bot uses this item (food, drink, potion).")
+    menu.fourth = button("Disenchant", -78, "The bot disenchants this item into dust or shards.")
+    menu.fifth = button("Send by mail", -102, "The bot mails this item to you.")
+    menu.sixth = button("Put to bank", -126, "The bot stores this item in its bank.")
+    menu.seventh = button("Destroy", -150, "The bot destroys this item. Cannot be undone.")
+    -- A panel-sized catcher closes the menu on a click outside it. It is a
+    -- plain panel child (no global mouse hook), shown only with the menu, so
+    -- other addons never see it.
+    menu.catcher = CreateFrame("Button", nil, parent)
+    menu.catcher:SetAllPoints(parent)
+    menu.catcher:EnableMouse(true)
+    menu.catcher:SetScript("OnClick", function() hideMenu() end)
     function menu:Open(owner, entry)
         self.owner = owner
         self.entry = entry
         self:ClearAllPoints()
         self:SetPoint("TOPLEFT", owner, "BOTTOMRIGHT", -8, 8)
+        -- Stay inside the screen: opening left of the slot when the right
+        -- side has no room (right-edge bag columns, panel at screen edge).
+        local right = self.GetRight and self:GetRight()
+        local screen = GetScreenWidth and GetScreenWidth()
+        if right and screen and right > screen then
+            self:ClearAllPoints()
+            self:SetPoint("TOPRIGHT", owner, "BOTTOMLEFT", 8, 8)
+        end
         if entry.equipped then
             self.first:SetText("Unequip")
             self.first:Enable()
             self.first.op = "unequip"
             self.second:Hide()
             self.third:Hide()
+            self.fourth:Hide()
+            self.fifth:Hide()
+            self.sixth:Hide()
+            self.seventh:Hide()
             self:SetHeight(34)
         else
             self.first:SetText("Equip")
@@ -477,8 +561,16 @@ local function createMenu(parent)
             self.second:Show()
             if entry.noTrade then self.second:Disable() else self.second:Enable() end
             self.third:Show()
-            self:SetHeight(82)
+            self.fourth:Show()
+            if entry.noTrade then self.fourth:Disable() else self.fourth:Enable() end
+            self.fifth:Show()
+            if entry.noTrade then self.fifth:Disable() else self.fifth:Enable() end
+            self.sixth:Show()
+            if entry.noTrade then self.sixth:Disable() else self.sixth:Enable() end
+            self.seventh:Show()
+            self:SetHeight(178)
         end
+        self.catcher:Show()
         self:Show()
     end
     menu.first:SetScript("OnClick", function()
@@ -496,7 +588,28 @@ local function createMenu(parent)
         hideMenu()
         if entry then TB.SendItemUse(entry.id) end
     end)
+    menu.fourth:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then sendLinkOrder("cast Disenchant", entry.id) end
+    end)
+    menu.fifth:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then sendLinkOrder("sendmail", entry.id) end
+    end)
+    menu.sixth:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then sendLinkOrder("bank", entry.id) end
+    end)
+    menu.seventh:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then TB.ConfirmDestroyItem(entry.id) end
+    end)
     menu:Hide()
+    menu.catcher:Hide()
     return menu
 end
 
@@ -685,7 +798,7 @@ local function createPanel()
     upkeep:SetWidth(68); upkeep:SetHeight(22)
     upkeep:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
     upkeep:SetText("Upkeep")
-    setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs." })
+    setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs.", "Only while the bot is online." })
     upkeep:SetScript("OnClick", function()
         if currentBot then TB.SendBotCommand("maintenance " .. currentBot) end
         if TB.PollList then TB.PollList(true) end
@@ -696,7 +809,7 @@ local function createPanel()
     gearup:SetWidth(68); gearup:SetHeight(22)
     gearup:SetPoint("LEFT", upkeep, "RIGHT", 6, 0)
     gearup:SetText("Gear up")
-    setTooltip(gearup, "Gear up", { "The bot equips the best gear it already owns in its bags." })
+    setTooltip(gearup, "Gear up", { "The bot equips the best gear it already owns in its bags.", "Only while the bot is online." })
     gearup:SetScript("OnClick", function()
         if currentBot then TB.SendBotCommand("autogear " .. currentBot) end
         if currentBot then TB.RequestInventory(currentBot) end
@@ -711,11 +824,22 @@ local function createPanel()
 
     itemMenu = createMenu(panel)
 
-    -- Uncached items re-render once the client has them.
+    -- Uncached items re-render once the client has them; a pending link
+    -- order retries then, so the first click sends once cached.
     panel:SetScript("OnUpdate", function()
         if uncachedAt and now() - uncachedAt > 1 then
             uncachedAt = nil
             TB.RefreshBotPanel()
+        end
+        if pendingLink and not retryingLink and pendingLink.bot == currentBot then
+            local name = GetItemInfo and GetItemInfo(pendingLink.id)
+            if name then
+                retryingLink = true
+                local verb, id = pendingLink.verb, pendingLink.id
+                pendingLink = nil
+                if verb == "u" then TB.SendItemUse(id) else sendLinkOrder(verb, id) end
+                retryingLink = false
+            end
         end
     end)
     panel:Hide()
@@ -859,6 +983,8 @@ function TB.RefreshBotPanel()
     end
     local online = TB.GetBotState(currentBot) ~= nil or botUnit(currentBot) ~= nil
     if online then panel.tradeButton:Enable() else panel.tradeButton:Disable() end
+    if online then panel.upkeepButton:Enable() else panel.upkeepButton:Disable() end
+    if online then panel.gearUpButton:Enable() else panel.gearUpButton:Disable() end
     if panel.sweepButton then
         if inv then panel.sweepButton:Enable() else panel.sweepButton:Disable() end
     end

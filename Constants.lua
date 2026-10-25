@@ -300,6 +300,10 @@ TB.C.ACTION_LABELS = {
     ["item unequip"]       = "Unequip",
     ["item give"]          = "Give",
     ["item trade"]         = "Trade",
+    ["cast Disenchant"]    = "Disenchant",
+    ["sendmail"]           = "Send by mail",
+    ["bank"]               = "Put to bank",
+    ["destroy"]            = "Destroy",
     inv                    = "Bags",
     hold                   = "Come & Hold",
 }

@@ -123,6 +123,9 @@ GameTooltip = {
 }
 
 function GetTime() return now end
+StaticPopupDialogs = StaticPopupDialogs or {}
+local lastPopupShown = nil
+function StaticPopup_Show(which) lastPopupShown = which end
 function time() return 123 end
 function SendChatMessage(message) table.insert(sent, message) end
 function SendAddonMessage(prefix, message, channel)
@@ -1019,6 +1022,11 @@ this = upgrade
 upgrade.scripts.OnClick(upgrade)
 assert(menu.first.text == "Equip" and menu.first.enabled and menu.second.enabled, "bag items offer Equip and Give")
 assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
+assert(menu.fourth.visible and menu.fourth.text == "Disenchant" and menu.fourth.enabled, "bag items offer Disenchant")
+assert(menu.fifth.visible and menu.fifth.text == "Send by mail" and menu.fifth.enabled, "bag items offer Send by mail")
+assert(menu.sixth.visible and menu.sixth.text == "Put to bank" and menu.sixth.enabled, "bag items offer Put to bank")
+assert(menu.seventh.visible and menu.seventh.text == "Destroy", "bag items offer Destroy")
+assert(menu.height == 178, "the full menu fits seven rows")
 now = now + 1
 this = menu.first
 menu.first.scripts.OnClick(menu.first)
@@ -1027,6 +1035,7 @@ local soulbound = TB.botPanel.bagButtons[1]
 this = soulbound
 soulbound.scripts.OnClick(soulbound)
 assert(not menu.first.enabled and not menu.second.enabled, "soulbound junk cannot be equipped or given")
+assert(not menu.fourth.enabled and not menu.fifth.enabled and not menu.sixth.enabled, "soulbound junk cannot be disenchanted, mailed or banked")
 menu:Hide()
 
 -- Bags header: one-click upgrade sweep.
@@ -1063,7 +1072,45 @@ assert(table.getn(addonSent) == beforeTrade + 1 and lastAddon() == "item Alpha g
 event = "TRADE_SHOW"
 frames["TortoiseBotsManagerTradeWatcher"].scripts.OnEvent()
 assert(table.getn(addonSent) == beforeTrade + 1, "the give order is repeated only once")
-tradePartner = nil
+-- P9: the menu closes on a click outside it (panel-local catcher, no global hook).
+this = junk
+junk.scripts.OnClick(junk)
+assert(menu.visible and menu.catcher.visible, "the menu shows its catcher")
+menu.catcher.scripts.OnClick(menu.catcher)
+assert(not menu.visible and not menu.catcher.visible and menu.owner == nil, "a click outside closes the menu")
+-- P9: Destroy asks first and only sends on confirm.
+this = junk
+junk.scripts.OnClick(junk)
+now = now + 1
+this = menu.seventh
+local beforeDestroy = table.getn(addonSent)
+menu.seventh.scripts.OnClick(menu.seventh)
+assert(table.getn(addonSent) == beforeDestroy, "Destroy must not send before the confirm")
+assert(lastPopupShown == "TORTOISEBOTSMANAGER_DESTROY_ITEM", "Destroy must ask first")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] ~= nil, "destroy dialog must exist")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].OnAccept()
+assert(lastAddon() == "command Alpha destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+    "confirming Destroy must send the item link")
+-- P9: Use on an uncached item tells the player and sends once cached.
+itemCache[159] = nil
+this = junk
+junk.scripts.OnClick(junk)
+now = now + 1
+this = menu.third
+local beforeUse = table.getn(addonSent)
+menu.third.scripts.OnClick(menu.third)
+assert(table.getn(addonSent) == beforeUse, "Use on an uncached item must not send silently")
+itemCache[159] = { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }
+TB.botPanel.scripts.OnUpdate(TB.botPanel)
+assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+    "Use must send once the item is cached")
+-- P9: Upkeep and Gear up disable while the bot is offline, like Trade.
+TB.OpenBotPanel("Zed", "bags")
+assert(not TB.botPanel.tradeButton.enabled and not TB.botPanel.upkeepButton.enabled
+    and not TB.botPanel.gearUpButton.enabled, "offline footer actions must disable")
+TB.OpenBotPanel("Alpha", "bags")
+assert(TB.botPanel.tradeButton.enabled and TB.botPanel.upkeepButton.enabled
+    and TB.botPanel.gearUpButton.enabled, "online footer actions must enable")
 
 -- Behaviour chips toggle one bot and follow its BOTSTATE line.
 TB.botPanel.tabBehavior.scripts.OnClick(TB.botPanel.tabBehavior)
@@ -1202,9 +1249,6 @@ TB.SetMode = realSetMode
 -- ── Claimed Guild Bots (Issue #489) ────────────────────────────────────────
 local uninvitedGuildMembers = {}
 function GuildUninvite(name) table.insert(uninvitedGuildMembers, name) end
-StaticPopupDialogs = StaticPopupDialogs or {}
-local lastPopupShown = nil
-function StaticPopup_Show(which) lastPopupShown = which end
 
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
 assert(TB.HasServerCapability("claimed-roster"), "server CAPS must advertise claimed-roster")

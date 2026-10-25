@@ -1053,6 +1053,86 @@ local cases = {
             TB.CloseBotPanel()
         end,
     },
+    -- P9: advanced item-menu rows (destroy asks first, rest send on click).
+    {
+        id = "botpanel.disenchant",
+        expected = { ".bot inv Alpha", ".bot command Alpha cast Disenchant |Hitem:1201:0:0:0|h[Shadowgem]|h" },
+        trigger = function()
+            if env.seedItem then env.seedItem(1201, { name = "Shadowgem", quality = 2, texture = "Interface\\Icons\\INV_Misc_Gem_Amethyst_01" }) end
+            TB.OpenBotPanel("Alpha", "bags")
+            local gem = nil
+            for _, b in ipairs(TB.botPanel.bagButtons) do
+                if b.visible and b.entry and b.entry.id == 1201 then gem = b break end
+            end
+            assert(gem, "P9: disenchant fixture must be visible")
+            this = gem
+            gem.scripts.OnClick(gem)
+            local menu = frames["TortoiseBotsManagerItemMenu"]
+            assert(menu.fourth.visible and menu.fourth.text == "Disenchant", "P9: Disenchant row must show")
+            this = menu.fourth
+            menu.fourth.scripts.OnClick(menu.fourth)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "botpanel.sendmail",
+        expected = { ".bot inv Alpha", ".bot command Alpha sendmail |Hitem:1201:0:0:0|h[Shadowgem]|h" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "bags")
+            local gem = nil
+            for _, b in ipairs(TB.botPanel.bagButtons) do
+                if b.visible and b.entry and b.entry.id == 1201 then gem = b break end
+            end
+            assert(gem, "P9: sendmail fixture must be visible")
+            this = gem
+            gem.scripts.OnClick(gem)
+            local menu = frames["TortoiseBotsManagerItemMenu"]
+            assert(menu.fifth.visible and menu.fifth.text == "Send by mail", "P9: Send by mail row must show")
+            this = menu.fifth
+            menu.fifth.scripts.OnClick(menu.fifth)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "botpanel.bank",
+        expected = { ".bot inv Alpha", ".bot command Alpha bank |Hitem:1201:0:0:0|h[Shadowgem]|h" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "bags")
+            local gem = nil
+            for _, b in ipairs(TB.botPanel.bagButtons) do
+                if b.visible and b.entry and b.entry.id == 1201 then gem = b break end
+            end
+            assert(gem, "P9: bank fixture must be visible")
+            this = gem
+            gem.scripts.OnClick(gem)
+            local menu = frames["TortoiseBotsManagerItemMenu"]
+            assert(menu.sixth.visible and menu.sixth.text == "Put to bank", "P9: Put to bank row must show")
+            this = menu.sixth
+            menu.sixth.scripts.OnClick(menu.sixth)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "botpanel.destroy",
+        expected = { ".bot inv Alpha", ".bot command Alpha destroy |Hitem:6948:0:0:0|h[Hearthstone]|h", ".bot inv Alpha" },
+        trigger = function()
+            if env.seedItem then env.seedItem(6948, { name = "Hearthstone", quality = 1, texture = "Interface\\Icons\\INV_Misc_Rune_01" }) end
+            TB.OpenBotPanel("Alpha", "bags")
+            local stone = nil
+            for _, b in ipairs(TB.botPanel.bagButtons) do
+                if b.visible and b.entry and b.entry.id == 6948 then stone = b break end
+            end
+            assert(stone, "P9: destroy fixture must be visible")
+            this = stone
+            stone.scripts.OnClick(stone)
+            local menu = frames["TortoiseBotsManagerItemMenu"]
+            assert(menu.seventh.visible and menu.seventh.text == "Destroy", "P9: Destroy row must show")
+            this = menu.seventh
+            menu.seventh.scripts.OnClick(menu.seventh)
+            StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].OnAccept()
+            TB.CloseBotPanel()
+        end,
+    },
 
 
 }
