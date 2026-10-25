@@ -170,8 +170,10 @@ function TB.GetSpellList(name)
 end
 
 local function parseSpellLine(msg)
-    if not msg then return nil end
-    local _, _, id, label = string.find(msg, "Hspell:(%d+)|h%[([^%]]+)%]")
+    -- List lines start with the color escape; cast confirmations ("Casting ...")
+    -- carry a link too but must reach the command-op gate, so never parse them.
+    if not msg or string.find(msg, "^Casting") then return nil end
+    local _, _, id, label = string.find(msg, "^|c%x+|Hspell:(%d+)|h%[([^%]]+)%]")
     id = tonumber(id)
     if not id or not label then return nil end
     label = TB.Trim(label)

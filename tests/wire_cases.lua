@@ -1014,7 +1014,9 @@ local cases = {
             assert(entry.spells[2].id == 168 and entry.spells[2].name == "Frost Armor", "trailing skill text must not leak into the name")
             assert(TB.ParseSpellLine("nothing here") == nil, "non-spell whispers must not parse")
             assert(TB.botPanel.spellRows[1].spellName == "Fireball", "first row must show the first spell")
-            TB.SetSpellPending("Alpha", false)
+            assert(not (TB.GetState("Alpha") and TB.GetState("Alpha").operation),
+                "consumed spell lines clear the command op")
+            advanceTime(30)
             assert(TB.ConsumeSpellReply("Alpha", "|cffffffff|Hspell:116|h[Frostbolt]|h|r") == false,
                 "late lines after the query must not enter the list")
             assert(table.getn(TB.GetSpellList("Alpha").spells) == 2, "late lines must not grow the list")
@@ -1026,13 +1028,14 @@ local cases = {
         trigger = function()
             TB.OpenBotPanel("Gamma", "spells")
             TB.RequestSpells("Gamma")
+            drainQueue()
             TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
             assert(table.getn(TB.GetSpellList("Gamma").spells) == 0,
                 "another bot's whispers must not enter the panel list")
             TB.OnWhisperMessage("some other whisper", "Gamma")
             local st = TB.GetState("Gamma")
-            assert(st and st.operation and st.operation.verb == "command",
-                "non-spell whispers must stay on the command-op gate")
+            assert(not (st and st.operation) and not (st and st.pendingAI),
+                "non-spell whispers complete the command op")
             assert(table.getn(TB.GetSpellList("Gamma").spells) == 0, "non-spell whispers must not parse")
             TB.SetSpellPending("Gamma", false)
             TB.CloseBotPanel()
@@ -1083,6 +1086,45 @@ local cases = {
             TB.OnWhisperMessage("Casting |cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
             local st = TB.GetState("Alpha")
             assert(not (st and st.pendingAI), "late cast replies complete the command op")
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.no_timeout",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.operation), "answered spellbook clears the command op")
+            assert(not (st and st.pendingAI), "answered spellbook clears the AI reply flag")
+            advanceTime(30)
+            TB.UpdateStateTimers()
+            st = TB.GetState("Alpha")
+            assert(not (st and st.lastError), "no timeout error after a consumed spell list")
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.cast_reply",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells", ".bot command Alpha cast Fireball" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            this = TB.botPanel.spellRows[1]
+            TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
+            drainQueue()
+            TB.OnWhisperMessage("Casting |cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            assert(table.getn(TB.GetSpellList("Alpha").spells) == 1, "cast reply must not join the spellbook")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.pendingAI), "cast reply completes the cast command op")
+            assert(not (st and st.operation), "cast reply clears the cast command op")
             TB.CloseBotPanel()
         end,
     },

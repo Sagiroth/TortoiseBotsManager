@@ -575,10 +575,17 @@ end
 
 function TB.OnWhisperMessage(msg, sender)
     local name = TB.NormalizeName(sender or "")
-    -- Spellbook lines from the open panel bot go to the spellbook list, not
-    -- the command-op gate: the gate completes on the first whisper and would
-    -- swallow the rest of the list.
+    -- Spellbook lines feed the open panel-bot list. The list is the command's
+    -- answer, so the first consumed line completes the command op; without
+    -- this the op lingers and times out 8 s after every spellbook request.
+    -- Anything the list ignores (other bots, plain text, "Casting ..." cast
+    -- confirmations) falls through to the command-op gate below.
     if name and TB.ConsumeSpellReply and TB.ConsumeSpellReply(name, msg or "") then
+        local st = name and TB.GetState and TB.GetState(name) or nil
+        if st and st.operation and st.operation.verb == "command" then
+            st.pendingAI = nil
+            if TB.CompleteOperation then TB.CompleteOperation(name, "command", true, msg) end
+        end
         local entry = TB.GetSpellList and TB.GetSpellList(name)
         local count = entry and entry.spells and table.getn(entry.spells) or 0
         if TB.SetStatus then
