@@ -82,6 +82,7 @@ def main():
     parser.add_argument("--short", action="store_true", help="Post a concise release announcement with download link instead of full changelog dump.")
     parser.add_argument("--edit-message-id", default="", help="Optional Discord message ID to edit in place.")
     parser.add_argument("--delete-message-id", default="", help="Optional Discord message ID to delete.")
+    parser.add_argument("--changelog-thread-id", default="", help="With --short: link to this Discord changelog thread instead of previewing the notes.")
     args = parser.parse_args()
 
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
@@ -129,7 +130,7 @@ def main():
             f"A new release of **TortoiseBotsManager Addon** ({args.tag or 'latest'}) is now available.",
             ""
         ]
-        if notes_text:
+        if notes_text and not args.changelog_thread_id:
             preview = notes_text[:600]
             if len(notes_text) > 600:
                 last_nl = preview.rfind("\n")
@@ -140,6 +141,9 @@ def main():
             desc_parts.append("")
 
         desc_parts.append(f"**[Download Addon & View Changelog on GitHub]({release_url})**")
+        if args.changelog_thread_id:
+            # A thread is a channel: <#id> renders as a link to it.
+            desc_parts.append(f"**What changed:** <#{args.changelog_thread_id}>")
 
         embed = {
             "title": embed_title,
