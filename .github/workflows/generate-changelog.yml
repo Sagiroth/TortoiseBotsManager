@@ -196,6 +196,21 @@ jobs:
               --latest
           fi
 
+      - name: Post Full Changelog to Discord
+        if: ${{ !inputs.edit_message_id && !inputs.delete_message_id }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK_URL || secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          # The full list of this release's changes goes to the changelog
+          # thread (the short announcement below goes to the release thread).
+          python3 tools/post_discord_changelog.py \
+            --notes /tmp/discord_notes.md \
+            --title "TortoiseBotsManager ${{ steps.version.outputs.release_tag }}" \
+            --tag "${{ steps.version.outputs.release_tag }}" \
+            --repo "Sagiroth/TortoiseBotsManager" \
+            --thread-id "${{ vars.DISCORD_CHANGELOG_THREAD_ID || secrets.DISCORD_CHANGELOG_THREAD_ID || '1559276000293158953' }}" \
+            --username "TortoiseBotsManager Releases"
+
       - name: Post Release Announcement to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK_URL || secrets.DISCORD_WEBHOOK_URL }}
@@ -205,8 +220,9 @@ jobs:
             --title "TortoiseBotsManager ${{ steps.version.outputs.release_tag }}" \
             --tag "${{ steps.version.outputs.release_tag }}" \
             --repo "Sagiroth/TortoiseBotsManager" \
-            --thread-id "${{ vars.DISCORD_RELEASE_THREAD_ID || vars.DISCORD_CHANGELOG_THREAD_ID || secrets.DISCORD_RELEASE_THREAD_ID || secrets.DISCORD_CHANGELOG_THREAD_ID || '1560007927828586586' }}" \
+            --thread-id "${{ vars.DISCORD_RELEASE_THREAD_ID || secrets.DISCORD_RELEASE_THREAD_ID || '1560007927828586586' }}" \
             --username "TortoiseBotsManager Releases" \
+            --changelog-thread-id "${{ vars.DISCORD_CHANGELOG_THREAD_ID || secrets.DISCORD_CHANGELOG_THREAD_ID || '1559276000293158953' }}" \
             --edit-message-id "${{ inputs.edit_message_id || '' }}" \
             --delete-message-id "${{ inputs.delete_message_id || '' }}" \
             --short
