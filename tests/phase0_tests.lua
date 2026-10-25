@@ -153,8 +153,8 @@ return function()
     assert(TB.UI.Grid.CARD_MOVE_H == 76, "Card move height must be 76")
     assert(TB.UI.Grid.CARD_SWITCH_H == 54, "Card switch height must be 54")
     assert(TB.UI.Grid.CARD_TACTIC_H == 46, "Card tactics height must be 46")
-    assert(TB.UI.Grid.CARD_REST_H == 88, "Card rest height must be 88")
-    assert(TB.UI.Grid.CARD_FORM_H == 76, "Card form height must be 76")
+    assert(TB.UI.Grid.CARD_REST_H == 116, "Card rest height must be 116")
+    assert(TB.UI.Grid.CARD_FORM_H == 100, "Card form height must be 100")
 
     -- ──────────────────────────────────────────────────────────────────────────
     -- 4. TB.UI component factories
@@ -249,6 +249,7 @@ return function()
     assert(type(TB.UI.BuildTacticsCard) == "function", "BuildTacticsCard must be exported")
     assert(type(TB.UI.BuildRestCard) == "function", "BuildRestCard must be exported")
     assert(type(TB.UI.BuildFormationCard) == "function", "BuildFormationCard must be exported")
+    assert(type(TB.UI.BuildQuestsCard) == "function", "BuildQuestsCard must be exported")
 
     print("PASS: Phase 0 component kit and definition table checks")
 end

@@ -519,6 +519,58 @@ function TB.UpdateStancePills()
     end
 end
 
+-- Camp chores with non-action verbs. Strategy and totem sends keep the exact
+-- server wire from §4 (.bot strategy / .bot totem party drop).
+function TB.SendStrategyCommand(change)
+    change = TB.Trim(change or "")
+    if change == "" then return false end
+    return TB.SendStrategy and TB.SendStrategy(change) or TB.SendBotCommand("strategy " .. change)
+end
+
+function TB.SendTotemDrop()
+    return TB.SendBotCommand("totem party drop")
+end
+
+function TB.SendGrindToggle()
+    if TB.GetGrindState and TB.GetGrindState() == "on" then
+        return TB.SendStrategyCommand("-grind")
+    end
+    return TB.SendStrategyCommand("+grind")
+end
+
+function TB.SendReadyCheck()
+    if type(DoReadyCheck) == "function" then DoReadyCheck() end
+    return TB.SendActionIntent("ready")
+end
+
+-- Accept/share loop over grouped owned bots via the proxy verb.
+function TB.SendQuestOrders(order)
+    order = TB.Trim(order or "")
+    if order ~= "accept" and order ~= "share" then return false end
+    local names = TB.GetGroupedBotNames and TB.GetGroupedBotNames() or {}
+    if table.getn(names) == 0 then
+        if TB.SetStatus then TB.SetStatus("No grouped bots to " .. order .. ".", "muted") end
+        return false
+    end
+    for _, name in ipairs(names) do
+        TB.SendBotCommand("command " .. name .. " " .. order)
+    end
+    return true
+end
+
+-- Grouped owned bots for quest loops: snapshot names in the client group.
+function TB.GetGroupedBotNames()
+    local out = {}
+    if not (TB.GetDisplayRows and TB.IsInGroup) then return out end
+    for _, row in ipairs(TB.GetDisplayRows("") or {}) do
+        if row.name and TB.IsInGroup(row.name) then
+            table.insert(out, row.name)
+        end
+    end
+    table.sort(out)
+    return out
+end
+
 function TB.RequestServerCapabilities()
     if capabilitiesRequested then return false end
     capabilitiesRequested = true

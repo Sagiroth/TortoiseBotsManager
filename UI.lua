@@ -127,6 +127,10 @@ local ACTION_TOOLTIPS = {
     sell     = "Bots sell their grey junk to a vendor near you.",
     learn    = "Target a class trainer first: bots of that class learn every spell they can pay for (with their own gold).",
     release  = "Dead bots release their spirit; once they are ghosts this button turns into Corpse run.",
+    rebuff   = "Bots re-cast missing group buffs.",
+    ["totem party drop"] = "Shaman bots drop totems.",
+    ["strategy +grind"] = "Bots grind on their own.",
+    ["strategy reset"] = "Strategy changes back to defaults.",
 }
 
 function TB.ActionTooltip(intent)
@@ -178,8 +182,8 @@ TB.UI.Grid = {
     CARD_MOVE_H   = 76,
     CARD_SWITCH_H = 54,
     CARD_TACTIC_H = 46,
-    CARD_REST_H   = 88,
-    CARD_FORM_H   = 76,
+    CARD_REST_H   = 116,
+    CARD_FORM_H   = 100,
 }
 
 TB.UI.SetTooltip  = setButtonTooltip
@@ -720,12 +724,20 @@ local function makeActionButton(parent, intent, width, x, y)
         onClick = function()
             if TB.PartyToggleKey and TB.PartyToggleKey(intent) then
                 TB.SendPartyToggle(TB.PartyToggleKey(intent))
+            elseif intent == "strategy +grind" or intent == "strategy -grind" then
+                TB.SendGrindToggle()
+            elseif intent == "strategy reset" then
+                TB.SendStrategyCommand("reset")
             elseif string.sub(intent, 1, 9) == "strategy " and TB.SendStrategy then
                 TB.SendStrategy(string.sub(intent, 10))
             elseif intent == "release" then
                 TB.SendActionIntent(TB.DeathIntent and TB.DeathIntent() or "release")
             elseif intent == "pull" or intent == "pullback" then
                 TB.SendActionIntent(TB.PullIntent and TB.PullIntent(intent) or intent)
+            elseif intent == "ready" then
+                TB.SendReadyCheck()
+            elseif intent == "totem party drop" then
+                TB.SendTotemDrop()
             else
                 TB.SendActionIntent(intent)
             end
@@ -1071,8 +1083,8 @@ local function BuildTacticsCard(parent, buttons)
 end
 
 local function BuildRestCard(campFrame, buttons)
-    -- Camp chores: Rest, ready, repair, sell, train, release
-    local card = TB.UI.CreateCard(campFrame, "REST, REPAIR & TRAIN", W - (C.PAD or 10) * 2, 88, { y = -18, line = true })
+    -- Camp chores: Rest, ready, repair, sell, train, release, rebuff, reset.
+    local card = TB.UI.CreateCard(campFrame, "REST, REPAIR & TRAIN", W - (C.PAD or 10) * 2, 116, { y = -18, line = true })
     local btnY = -24
     buttons.rest    = makeActionButton(card, "rest", 148, 8, btnY)
     buttons.ready   = makeActionButton(card, "ready", 148, 164, btnY)
@@ -1086,20 +1098,25 @@ local function BuildRestCard(campFrame, buttons)
         end
         return nil
     end
+    buttons.rebuff = makeActionButton(card, "rebuff", 148, 8, -84)
+    buttons.resetTactics = makeActionButton(card, "strategy reset", 148, 164, -84)
+    buttons.totem = makeActionButton(card, "totem party drop", 148, 320, -84)
     return card
 end
 
 local function BuildFormationCard(campFrame)
-    -- Formation pills with a line describing the active one.
-    local card = TB.UI.CreateCard(campFrame, "FORMATION", W - (C.PAD or 10) * 2, 76, { y = -110, line = true })
+    -- Formation pills with a line describing the active one, two rows of five.
+    local card = TB.UI.CreateCard(campFrame, "FORMATION", W - (C.PAD or 10) * 2, 100, { y = -138, line = true })
     local pills = {}
     local formationTips = {}
     for i, def in ipairs(C.FORMATIONS or {}) do
         local id = def.id
+        local row = (i > 5) and 1 or 0
+        local col = (i > 5) and (i - 6) or (i - 1)
         formationTips[id] = def.label .. ": " .. def.tip
         local btn = TB.UI.CreateTogglePill(card, def.label, 74, 20, {
-            x = 8 + (i - 1) * 78,
-            y = -26,
+            x = 8 + col * 78,
+            y = -26 - row * 24,
             tip = def.tip .. " Applies to the whole party, or only the targeted bot.",
             tipTitle = def.label,
             onClick = function()
@@ -1109,7 +1126,7 @@ local function BuildFormationCard(campFrame)
         pills[id] = btn
     end
     local formDesc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    formDesc:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -54)
+    formDesc:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -78)
     formDesc:SetWidth(460); formDesc:SetJustifyH("LEFT")
     TB.SetTextColor(formDesc, color("muted"))
 
@@ -1125,6 +1142,30 @@ local function BuildFormationCard(campFrame)
     return card
 end
 
+local function BuildQuestsCard(campFrame, buttons)
+    -- Party quests: accept/share loop over grouped bots, grind toggles the
+    -- autonomous grind strategy for the whole party.
+    local card = TB.UI.CreateCard(campFrame, "QUESTS", W - (C.PAD or 10) * 2, 58, { y = -242, line = true })
+    buttons.acceptQuest = TB.UI.CreateButton(card, "Accept", 148, 26, {
+        x = 8, y = -24,
+        tip = "Accept the quest you were offered on every grouped bot.",
+        tipTitle = "Accept",
+        onClick = function()
+            TB.SendQuestOrders("accept")
+        end,
+    })
+    buttons.shareQuest = TB.UI.CreateButton(card, "Share", 148, 26, {
+        x = 164, y = -24,
+        tip = "Share your tracked quests with every grouped bot.",
+        tipTitle = "Share",
+        onClick = function()
+            TB.SendQuestOrders("share")
+        end,
+    })
+    buttons.grind = makeActionButton(card, "strategy +grind", 148, 320, -24)
+    return card
+end
+
 TB.UI.BuildScopeCard     = BuildScopeCard
 TB.UI.BuildCcMenu        = BuildCcMenu
 TB.UI.BuildEngageCard    = BuildEngageCard
@@ -1134,6 +1175,7 @@ TB.UI.BuildSwitchesCard  = BuildSwitchesCard
 TB.UI.BuildTacticsCard   = BuildTacticsCard
 TB.UI.BuildRestCard      = BuildRestCard
 TB.UI.BuildFormationCard = BuildFormationCard
+TB.UI.BuildQuestsCard    = BuildQuestsCard
 
 CreateActions = function(parent)
     local frame = CreateFrame("Frame", nil, parent)
@@ -1168,13 +1210,13 @@ CreateActions = function(parent)
     -- Build cards for Camp view
     BuildRestCard(campFrame, buttons)
     BuildFormationCard(campFrame)
+    BuildQuestsCard(campFrame, buttons)
 
     local campTip = campFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    campTip:SetPoint("TOPLEFT", campFrame, "TOPLEFT", 6, -196)
+    campTip:SetPoint("TOPLEFT", campFrame, "TOPLEFT", 6, -312)
     campTip:SetWidth(468); campTip:SetJustifyH("LEFT")
     campTip:SetText("Gear, bags and per-bot habits: bag icon on the Party tab, or target a bot and use Gear & bags on Fight.")
     TB.SetTextColor(campTip, color("muted"))
-
     TB.campFrame = campFrame
     TB.actionButtons = buttons
     TB.actions = buttons
@@ -2324,6 +2366,7 @@ function TB.RefreshActionControls()
     end
     TB.RefreshToggleButtons()
     TB.RefreshDeathButton()
+    if TB.RefreshCampControls then TB.RefreshCampControls() end
     -- Flee is a newer server intent: hide it from servers that do not
     -- advertise it rather than let the click fail.
     if TB.actionButtons.flee then
@@ -2365,6 +2408,15 @@ function TB.RefreshToggleButtons()
         elseif state == "off" then btn.lamp:SetTexture(0.45, 0.45, 0.45, 1)
         else btn.lamp:SetTexture(0.95, 0.72, 0.28, 1) end
         if TB.togglePending and TB.togglePending[key] then btn:Disable() else btn:Enable() end
+    end
+end
+
+-- Camp toggle labels: grind follows the last "Strategy change" reply.
+function TB.RefreshCampControls()
+    if not TB.actionButtons then return end
+    if TB.actionButtons.grind then
+        local state = TB.GetGrindState and TB.GetGrindState() or nil
+        TB.actionButtons.grind:SetText(state == "on" and "Grind On" or "Grind Off")
     end
 end
 

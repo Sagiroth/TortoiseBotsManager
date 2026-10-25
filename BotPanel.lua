@@ -65,6 +65,28 @@ function TB.MovementLabel(name)
 end
 
 -- ── party toggles (Actions tab: AoE, Auto CC, Loot) ─────────────────────────
+-- Autonomous grind reply state for the Camp quests card.
+TB.grindState = TB.grindState or nil
+
+function TB.GetGrindState()
+    return TB.grindState
+end
+
+function TB.NoteStrategyChange(change)
+    change = TB.Trim(change or "")
+    if change == "+grind" then
+        TB.grindState = "on"
+    elseif change == "-grind" then
+        TB.grindState = "off"
+    elseif change == "reset" then
+        TB.grindState = "off"
+    else
+        return false
+    end
+    if TB.RefreshCampControls then TB.RefreshCampControls() end
+    return true
+end
+
 TB.togglePending = TB.togglePending or {}
 -- Used only when the server sends no BOTSTATE (older module): the last ACK.
 TB.toggleFallback = TB.toggleFallback or {}
