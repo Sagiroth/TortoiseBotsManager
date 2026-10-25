@@ -308,6 +308,47 @@ TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
 TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
 TB.OnSystemMessage("TBM:ROSTER_END")
 
+-- Clients that double "|A"/"|T" pairs on server-delivered chat must still parse.
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101||Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103||Tarbh|11|online|1|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+assert(TB.HasRosterSnapshot(), "doubled-pipe snapshot must commit")
+assert(TB.GetRosterSnapshotError() == nil, "doubled-pipe snapshot must leave no error")
+assert(table.getn(TB.GetDisplayRows("")) == 3, "doubled-pipe rows must all render")
+assert(TB.GetState("Alpha").location == "map:1,zone:2,area:3", "restored A-initial row must keep exact fields")
+assert(TB.GetState("Tarbh") ~= nil, "restored T-initial row must exist")
+TB.OnSystemMessage("TBM:ALTBOTS||Alpha")
+assert(TB.GetState("Alpha").altBot, "doubled-pipe alt-bot line must flag the named row")
+
+-- Same bytes over the addon channel.
+TB.OnAddonMessage("TBM", "TBM:ROSTER_BEGIN|2", "PARTY", "Tester")
+TB.OnAddonMessage("TBM", "TBM:ROSTER|101||Alpha|1|online|0|map:1,zone:2,area:3", "PARTY", "Tester")
+TB.OnAddonMessage("TBM", "TBM:ROSTER|104||Tilda|2|online|0|-", "PARTY", "Tester")
+TB.OnAddonMessage("TBM", "TBM:ROSTER_END", "PARTY", "Tester")
+assert(table.getn(TB.GetDisplayRows("")) == 2, "addon-channel doubled-pipe snapshot must commit")
+assert(TB.GetRosterSnapshotError() == nil, "addon-channel doubled-pipe snapshot must leave no error")
+
+-- One bad row must not empty the snapshot; the good rows still commit.
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|broken-row")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+assert(TB.HasRosterSnapshot(), "snapshot with one bad row must still commit")
+assert(table.getn(TB.GetDisplayRows("")) == 2, "good rows must render despite one bad row")
+assert(TB.GetState("Alpha") ~= nil and TB.GetState("Gamma") ~= nil, "good rows must be addressable")
+local partialErr = TB.GetRosterSnapshotError()
+assert(partialErr and partialErr.code == "partial_rows", "skipped rows must be recorded for debugging")
+
+-- Restore the canonical snapshot for the tests below.
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+
 -- Class colors and status badge
 local warriorColor = TB.GetClassColor(1)
 assert(warriorColor and warriorColor.hex == "ffc79c6e", "Warrior class color must match Tortoise palette")

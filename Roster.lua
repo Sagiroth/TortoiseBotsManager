@@ -171,6 +171,18 @@ local function snapshotError(code, message)
     TB.rosterSnapshotError = rosterSnapshotError
     if TB.Refresh then TB.Refresh() end
 end
+-- One bad row no longer poisons the whole snapshot: count it, record it for
+-- debugging, and keep receiving the rest. The END handler commits the good
+-- rows once every announced row is accounted for.
+local function skipSnapshotRow(code, message)
+    if receiving then receiving.skipped = (receiving.skipped or 0) + 1 end
+    rosterSnapshotError = {
+        code = TB.Trim(code or "unknown"),
+        message = TB.Trim(message or "Roster request failed."),
+    }
+    TB.rosterSnapshotError = rosterSnapshotError
+    if TB.Refresh then TB.Refresh() end
+end
 
 local function commitSnapshot(rows)
     local previousSelection = {}
@@ -343,21 +355,25 @@ function TB.ParseRosterMessage(msg)
 
     fields = protocolFields(msg, "TBM:ROSTER|")
     if fields then
-        if not receiving or (table.getn(fields) ~= 6 and table.getn(fields) ~= 7) then
+        if not receiving then
             snapshotError("malformed_row", "Malformed roster snapshot.")
             return true, "error"
+        end
+        if table.getn(fields) ~= 6 and table.getn(fields) ~= 7 then
+            skipSnapshotRow("malformed_row", "Malformed roster snapshot.")
+            return true, "error", rosterSnapshotError
         end
         local guid, name, classId, serverState, group, location, ccMark = unpack(fields)
         if TB.Trim(guid) == "" or TB.Trim(name) == "" or not string.find(classId, "^%d+$")
             or TB.Trim(serverState) == "" or (group ~= "0" and group ~= "1")
             or TB.Trim(location) == "" then
-            snapshotError("malformed_row", "Malformed roster snapshot.")
-            return true, "error"
+            skipSnapshotRow("malformed_row", "Malformed roster snapshot.")
+            return true, "error", rosterSnapshotError
         end
         local normalized = normalize(name)
         if not normalized or receiving.names[normalized] then
-            snapshotError("malformed_row", "Malformed roster snapshot.")
-            return true, "error"
+            skipSnapshotRow("malformed_row", "Malformed roster snapshot.")
+            return true, "error", rosterSnapshotError
         end
         receiving.names[normalized] = true
         table.insert(receiving.rows, {
@@ -379,11 +395,20 @@ function TB.ParseRosterMessage(msg)
         end
         local batch = receiving
         receiving = nil
-        if table.getn(batch.rows) ~= batch.expected then
+        if table.getn(batch.rows) + (batch.skipped or 0) ~= batch.expected then
             snapshotError("count_mismatch", "Incomplete roster snapshot.")
             return true, "error"
         end
         commitSnapshot(batch.rows)
+        if (batch.skipped or 0) > 0 then
+            rosterSnapshotError = {
+                code = "partial_rows",
+                message = tostring(batch.skipped) .. " malformed roster row(s) skipped.",
+            }
+            TB.rosterSnapshotError = rosterSnapshotError
+            if TB.Refresh then TB.Refresh() end
+            return true, "error", rosterSnapshotError
+        end
         return true, "end", batch.expected
     end
 
