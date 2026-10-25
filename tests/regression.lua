@@ -172,6 +172,7 @@ for _, file in ipairs({
     "BotPanel.lua",
     "MiniBar.lua",
     "Minimap.lua",
+    "Bindings.lua",
 }) do
     dofile(root .. "/" .. file)
 end
@@ -1311,6 +1312,77 @@ this = TB.guildFrame.syncBtn
 TB.guildFrame.syncBtn.scripts.OnClick(TB.guildFrame.syncBtn)
 assert(pollCalled == true, "Sync button must trigger forced PollList")
 TB.PollList = origPollList
+
+-- ── P7: class filter chips + fill buttons + keybinding handlers ─────────────
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|0|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+assert(table.getn(TB.classChips) == 10, "roster must show All plus 9 class filter chips")
+assert(TB.classFilter == nil, "class filter must start on All")
+TB.classFilter = 1
+TB.PaintClassChips()
+TB.Refresh()
+assert(table.getn(TB.GetDisplayRows("")) == 1 and TB.GetDisplayRows("")[1].name == "Alpha",
+    "Warrior filter must show only the Warrior row")
+assert(table.getn(TB.GetDisplayRows("gamma")) == 0,
+    "class filter must combine with the name search")
+TB.classFilter = nil
+TB.PaintClassChips()
+TB.Refresh()
+assert(table.getn(TB.GetDisplayRows("")) == 3, "clearing the class filter must restore all rows")
+local chipWarrior = nil
+for _, chip in ipairs(TB.classChips) do
+    if chip.classId == 1 then chipWarrior = chip break end
+end
+assert(chipWarrior, "Warrior filter chip must exist")
+this = chipWarrior
+chipWarrior.scripts.OnClick(chipWarrior)
+assert(TB.classFilter == 1 and table.getn(TB.GetDisplayRows("")) == 1,
+    "clicking the Warrior chip must filter the roster rows")
+assert(chipWarrior.enabled == false, "active filter chip must disable (pill pattern)")
+this = TB.classChips[1]
+TB.classChips[1].scripts.OnClick(TB.classChips[1])
+assert(TB.classFilter == nil and table.getn(TB.GetDisplayRows("")) == 3,
+    "clicking All must clear the class filter")
+assert(TB.lifecycleButtons.fill and TB.guildFrame.fillBtn,
+    "Fill party and Fill raid buttons must exist")
+partyMembers = { "Alpha", "Gamma", "Delta", "Epsilon" }
+assert(table.getn(TB.GetFillPartyNames()) == 0,
+    "Fill party must stay empty when the party is already full")
+partyMembers = {}
+local groupWatcher = frames["TortoiseBotsManagerGroupWatcher"]
+groupWatcher.scripts.OnEvent(groupWatcher)
+assert(TB.GetFillPartyNames()[1] == "Alpha" and TB.GetFillPartyNames()[2] == "Gamma",
+    "Fill party must pick invite-eligible bots up to the party cap")
+assert(table.getn(TB.GetFillRaidNames()) == 2 and TB.GetFillRaidNames()[1] == "Goldie",
+    "Fill raid must pick online ungrouped claimed bots up to the raid cap")
+partyMembers = {}
+TB.SetAddonTransport("none")
+now = now + 1
+TortoiseBotsDB.pullDelay = nil
+TortoiseBotsDB.pullbackDelay = nil
+local beforeKeys = table.getn(sent)
+assert(TB.SendKeyIntent("attack") == true, "keybinding Attack must send")
+assert(sent[table.getn(sent)] == ".bot action attack", "keybinding Attack must send the attack intent")
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|flee,inventory,behavior,claimed-roster")
+TB.SendKeyIntent("pull")
+assert(sent[table.getn(sent)] == ".bot action pull", "keybinding Pull must send the plain intent without the timer cap")
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TortoiseBotsDB.pullDelay = 10
+TB.SendKeyIntent("pull")
+assert(sent[table.getn(sent)] == ".bot action pull 10", "keybinding Pull must honor the pull timer cap")
+TortoiseBotsDB.pullDelay = nil
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|flee,inventory,behavior,claimed-roster")
+assert(TB.SendKeyIntent("flee") == true, "keybinding Flee must send while the cap is advertised")
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|inventory,behavior,claimed-roster")
+assert(TB.SendKeyIntent("flee") == false, "keybinding Flee must stay silent without the server cap")
+assert(table.getn(sent) == beforeKeys + 4, "keybindings must send exactly one intent per press")
 
 partyMembers = {}
 

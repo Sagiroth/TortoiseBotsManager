@@ -63,12 +63,13 @@ No module → addon loads but every action replies “TortoiseBots module not lo
 * `/tbm` (primary) — toggle panel. Aliases `/tb` / `/tbot` / `/tortoise` still work.
 * `/tbm mini` / `/tbm full` — small fight bar or the full window.
 * `/tbm list` — force a server roster refresh. `/tbm bags [name]` opens a bot's gear & bags (the targeted bot when no name is given). `/tbm help` and `/tbm resetpos` remain available.
+* **Keybindings** — Esc menu keybindings panel, `TortoiseBots Manager` header: Attack, Stop, Interrupt, Flee, Pull, Pull back, Focus skull, Follow, Stay, Come and hold, window toggle, mini bar toggle. All ship unbound; they send the same intents as their buttons (respecting enemy-target gating, pull timers and the flee cap).
 * **Fight / Camp** — use normal WoW target selection. With an enemy target, `Attack`, `Interrupt`, `Pull`, and `Pullback` operate on the party; `Interrupt` chooses one capable bot server-side. With an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
 * **Flee** — bots drop the fight and follow you without attacking; `Attack`, `Pull`, `Follow` or `Stay` calls them back.
 * **Tooltips** — every button explains what it does; hover before you click.
 * **Pull timers** — small `− N s +` steppers under the `Pull` and `Pull back` buttons set the DPS delay before Pull (default 10 s) and the join delay before Pull back (default 3 s). Range 0–60 s, step 1 (shift-click = 5), persisted in SavedVariables. When the server advertises `pull-seconds` in its `TBM:CAPS|…` roster trailer the buttons send `pull <n>` / `pullback <n>`; older servers send no `CAPS` line and the buttons send the plain intents exactly as before.
-* **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows.
-* **Guild** — invite any unguilded wandering bot with `/ginvite <BotName>` to claim it as your raid alt-bot. Manage claimed bots from the `Guild` tab: search, select, `Invite to Raid`, `Summon to Raid`, cycle combat roles, inspect gear & bags, or `Release` (confirmation popup, then `/gkick`) to return the bot to the wandering pool.
+* **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows. A `Class` chip row filters by class (session-only, combines with search); `Fill` invites online bots until the party is full (5) with no selection needed.
+* **Guild** — invite any unguilded wandering bot with `/ginvite <BotName>` to claim it as your raid alt-bot. Manage claimed bots from the `Guild` tab: search, select, `Invite to Raid`, `Summon to Raid`, `Fill Raid` (invite claimed bots until the raid is full, 40), cycle combat roles, inspect gear & bags, or `Release` (confirmation popup, then `/gkick`) to return the bot to the wandering pool.
 * **Party** — use the player row's class-role buttons to tell bots whether you are tank, healer, or DPS. The selection sends `.bot role self <role>`; bot rows retain their existing role controls.
 * **Focus / CC** — mark enemies with normal raid icons. Open `CC Mark` for the Marks panel: 8 rows (one per raid icon) showing the current owner, a `Next` button assigning the mark to the next online bot by explicit name (`cc <mark> <Bot>`), a per-row `X` clearing that mark's owner (`cc clear <Owner>`), and `Clear all` (`cc clear`). Ownership is exclusive server-side (one mark = one bot); the Party tab shows each bot's current CC icon.
 * **Search** — filters the server snapshot by name.
@@ -100,6 +101,8 @@ UI.lua          — Fight/Camp/Party/Roster/Guild/Raid/Log tabs and contextual l
 BotPanel.lua    — per-bot state (TBM:BOTSTATE), party switches, gear/bags/behaviour panel
 MiniBar.lua     — mini mode: small draggable bar of fight icons
 Minimap.lua     — draggable minimap button
+Bindings.lua    — keybinding handlers (same intents as the buttons; all bindings ship unbound)
+Bindings.xml    — keybinding declarations for the Esc keybindings panel
 ```
 
 ## Versions (per-merge builds)
