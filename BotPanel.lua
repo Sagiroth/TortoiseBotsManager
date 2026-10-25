@@ -18,6 +18,7 @@ local PH = 470 -- taller than the main window: paper doll + footer
 local SLOT = 34
 local STEP = 38
 local BAG_COLS, BAG_ROWS = 8, 7
+local SPELL_ROWS = 12
 local EQUIPPED_BAG = 255 -- INVENTORY_SLOT_BAG_0: equipment and backpack
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
@@ -65,13 +66,40 @@ function TB.MovementLabel(name)
 end
 
 -- ── party toggles (Actions tab: AoE, Auto CC, Loot) ─────────────────────────
+-- Autonomous grind reply state for the Camp quests card.
+TB.grindState = TB.grindState or nil
+
+function TB.GetGrindState()
+    return TB.grindState
+end
+
+function TB.NoteStrategyChange(change)
+    change = TB.Trim(change or "")
+    if change == "+grind" then
+        TB.grindState = "on"
+    elseif change == "-grind" then
+        TB.grindState = "off"
+    elseif change == "reset" then
+        TB.grindState = "off"
+    else
+        return false
+    end
+    if TB.RefreshCampControls then TB.RefreshCampControls() end
+    return true
+end
+
 TB.togglePending = TB.togglePending or {}
 -- Used only when the server sends no BOTSTATE (older module): the last ACK.
 TB.toggleFallback = TB.toggleFallback or {}
 
 local toggleByIntent = {}
 for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
-    if def.toggle then toggleByIntent[def.intent] = def.toggle end
+    if def.toggle then
+        toggleByIntent[def.intent] = def.toggle
+        if def.send == "behavior" then
+            toggleByIntent["behavior " .. def.toggle] = def.toggle
+        end
+    end
 end
 
 function TB.PartyToggleKey(intent)
@@ -99,7 +127,16 @@ function TB.SendPartyToggle(key)
     TB.togglePending[key] = true
     if key == "aoe" then TB.aoePending = true end
     if TB.RefreshToggleButtons then TB.RefreshToggleButtons() end
+    if toggle.send == "behavior" then
+        return TB.SendBotCommand("behavior party " .. key .. " " .. nextState)
+    end
     return TB.SendActionIntent(toggle.intent .. " " .. nextState)
+end
+
+function TB.SendStrategy(change)
+    change = TB.Trim(change or "")
+    if change == "" then return false end
+    return TB.SendBotCommand("strategy " .. change)
 end
 
 -- value nil = the request failed: only the pending flag is cleared.
@@ -144,6 +181,96 @@ function TB.RequestInventory(name)
     name = norm(name)
     if not name then return false end
     return TB.SendBotCommand("inv " .. name)
+end
+
+-- ── spellbook model ─────────────────────────────────────────────────────────
+-- Whisper replies to ".bot command <bot> spells": one "=== Spells ===" header
+-- line, then one "|cffffffff|Hspell:<id>|h[<name>]|h|r ..." line per spell
+-- (server: ListSpellsAction.cpp; Hspell shape: ChatHelper::formatSpell).
+-- Clicking a row asks the bot to cast by exact name
+-- (".bot command <bot> cast <name>").
+local spellLists = {} -- [bot] = { at, pending, spells = { { id, name } } }
+
+function TB.SetSpellPending(name, pending)
+    name = norm(name)
+    if not name then return end
+    local entry = spellLists[name] or { spells = {} }
+    entry.pending = pending and true or false
+    entry.at = now()
+    spellLists[name] = entry
+end
+
+function TB.GetSpellList(name)
+    name = norm(name)
+    return name and spellLists[name] or nil
+end
+
+local function parseSpellLine(msg)
+    -- List lines start with the color escape; cast confirmations ("Casting ...")
+    -- carry a link too but must reach the command-op gate, so never parse them.
+    if not msg or string.find(msg, "^Casting") then return nil end
+    local _, _, id, label = string.find(msg, "^|c%x+|Hspell:(%d+)|h%[([^%]]+)%]")
+    id = tonumber(id)
+    if not id or not label then return nil end
+    label = TB.Trim(label)
+    if label == "" then return nil end
+    return id, label
+end
+TB.ParseSpellLine = parseSpellLine
+
+-- Returns "header" / spell count / false. Only lines from the panel bot
+-- while its spell query is pending reach the list; anything else stays on
+-- the legacy AI-reply path so the command-op gate keeps working.
+function TB.ConsumeSpellReply(name, msg)
+    name = norm(name)
+    if not name or not msg or msg == "" then return false end
+    if name ~= TB.GetBotPanelBot() then return false end
+    local entry = spellLists[name]
+    if not entry or not entry.pending then return false end
+    -- No end-of-list marker on the wire (one whisper per line): the burst
+    -- ends when the bot goes quiet, then later whispers (cast replies, AI
+    -- answers) flow back to the command-op gate.
+    if now() - (entry.at or 0) > (C.ACTION_TIMEOUT or 8) then
+        entry.pending = false
+        return false
+    end
+    if string.find(msg, "=== Spells ===") then
+        entry.spells = {}
+        entry.at = now()
+        spellPage = 1
+        if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+        return "header"
+    end
+    local id, label = parseSpellLine(msg)
+    if not id then return false end
+    entry.spells = entry.spells or {}
+    for _, known in ipairs(entry.spells) do
+        if known.id == id then return table.getn(entry.spells) end
+    end
+    table.insert(entry.spells, { id = id, name = label })
+    entry.at = now()
+    if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+    return table.getn(entry.spells)
+end
+
+function TB.RequestSpells(name)
+    name = norm(name)
+    if not name then return false end
+    local entry = spellLists[name] or { spells = {} }
+    entry.pending = true
+    entry.at = now()
+    spellLists[name] = entry
+    if TB.SetStatus then TB.SetStatus("Asking " .. name .. " for its spellbook…", "pending") end
+    if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+    return TB.SendBotCommand("command " .. name .. " spells")
+end
+
+function TB.SendBotCast(name, spellName)
+    name = norm(name)
+    spellName = TB.Trim(spellName or "")
+    if not name or spellName == "" then return false end
+    if TB.SetStatus then TB.SetStatus(name .. " casts " .. spellName .. "…", "pending") end
+    return TB.SendBotCommand("command " .. name .. " cast " .. spellName)
 end
 
 -- ── item helpers ────────────────────────────────────────────────────────────
@@ -230,7 +357,8 @@ local function botClassId(name)
         local ids = C.CLASS_NAME_TO_ID or {}
         return ids[classFile or ""] or ids[className or ""]
     end
-    local entry = TB.GetRosterEntry and TB.GetRosterEntry(name)
+    local entry = (TB.GetRosterEntry and TB.GetRosterEntry(name))
+        or (TB.GetClaimedEntry and TB.GetClaimedEntry(name))
     return entry and entry.classId or nil
 end
 
@@ -249,8 +377,11 @@ local panel
 local currentBot
 local currentView = "gear"
 local bagPage = 1
+local spellPage = 1
 local pendingGive = nil       -- { bot, bag, slot } awaiting the trade window
 local behaviorPending = {}    -- [bot .. "|" .. key] = true
+local pendingLink = nil       -- { bot, verb, id, label } awaiting the client item cache
+local retryingLink = false    -- true while the OnUpdate retry sends, so a miss does not requeue
 
 function TB.GetBotPanelBot()
     return panel and panel:IsVisible() and currentBot or nil
@@ -264,6 +395,75 @@ function TB.SendItemOrder(op, bag, slot)
     if bag and slot then cmd = cmd .. " " .. bag .. " " .. slot end
     if TB.SetStatus then TB.SetStatus((C.ACTION_LABELS["item " .. op] or op) .. " → " .. currentBot .. "…", "pending") end
     return TB.SendBotCommand(cmd)
+end
+
+-- Link orders (`destroy`, `cast Disenchant`, `sendmail`, `bank`) carry the full
+-- item hyperlink, so the module can match the exact stack without a bag/slot.
+-- An uncached item queues a tooltip lookup and retries once cached; the click
+-- is never silently dropped ("Loading…" shows while the client is fetching).
+local function linkText(id)
+    if not id or not GetItemInfo then return nil end
+    local name, link = GetItemInfo(id)
+    if not name or not link then return nil end
+    return "|H" .. link .. "|h[" .. name .. "]|h", name
+end
+
+local function sendLinkOrder(verb, id)
+    if not currentBot or not id then return false end
+    local link = linkText(id)
+    if not link then
+        requestItem(id)
+        pendingLink = { bot = currentBot, verb = verb, id = id,
+            label = (C.ACTION_LABELS and C.ACTION_LABELS[verb]) or verb }
+        if TB.SetStatus then TB.SetStatus("Loading item #" .. id .. "…", "pending") end
+        return false
+    end
+    pendingLink = nil
+    if TB.SetStatus then TB.SetStatus(((C.ACTION_LABELS and C.ACTION_LABELS[verb]) or verb) .. " → " .. currentBot .. "…", "pending") end
+    return TB.SendBotCommand("command " .. currentBot .. " " .. verb .. " " .. link)
+end
+TB.SendLinkOrder = sendLinkOrder
+-- Destroy asks first: a StaticPopup names the item, and the order only
+-- sends on Accept. No global hooks; the menu closes on open like elsewhere.
+function TB.ConfirmDestroyItem(id)
+    if not currentBot or not id then return false end
+    local link = linkText(id)
+    local what = link or ("item #" .. id)
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] = {
+            text = "Destroy " .. what .. " on " .. currentBot .. "?\n\nThis cannot be undone.",
+            button1 = "Destroy",
+            button2 = "Cancel",
+            OnAccept = function()
+                sendLinkOrder("destroy", id)
+                if TB.RequestInventory then TB.RequestInventory(currentBot) end
+            end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_DESTROY_ITEM")
+    else
+        sendLinkOrder("destroy", id)
+    end
+    return true
+end
+
+-- The `u` order takes a full item hyperlink (`command <bot> u <link>`),
+-- unlike SendItemOrder which addresses bag/slot. Returns false when the
+-- item is not cached yet (and queues a tooltip lookup instead).
+function TB.SendItemUse(id)
+    if not currentBot or not id then return false end
+    local link = linkText(id)
+    if not link then
+        requestItem(id)
+        pendingLink = { bot = currentBot, verb = "u", id = id, label = "Use" }
+        if TB.SetStatus then TB.SetStatus("Loading item…", "pending") end
+        return false
+    end
+    pendingLink = nil
+    if TB.SetStatus then TB.SetStatus(("Use → " .. currentBot .. "…"), "pending") end
+    return TB.SendBotCommand("command " .. currentBot .. " u " .. link)
 end
 
 function TB.SendBehavior(name, key)
@@ -332,7 +532,7 @@ end
 local itemMenu
 
 local function hideMenu()
-    if itemMenu then itemMenu:Hide(); itemMenu.owner = nil end
+    if itemMenu then itemMenu:Hide(); if itemMenu.catcher then itemMenu.catcher:Hide() end; itemMenu.owner = nil end
 end
 
 local function createItemButton(parent)
@@ -432,7 +632,7 @@ end
 
 local function createMenu(parent)
     local menu = CreateFrame("Frame", "TortoiseBotsManagerItemMenu", parent)
-    menu:SetWidth(118); menu:SetHeight(58)
+    menu:SetWidth(118); menu:SetHeight(178)
     menu:SetFrameStrata("TOOLTIP")
     menu:EnableMouse(true)
     TB.ApplyBackdrop(menu, 0.98, 1.0)
@@ -446,16 +646,48 @@ local function createMenu(parent)
     end
     menu.first = button("Equip", -6, "The bot equips this item.")
     menu.second = button("Give to me", -30, "Opens a trade with the bot and puts this item in. Accept the trade to take it.")
+    menu.third = button("Use", -54, "The bot uses this item (food, drink, potion).")
+    menu.fourth = button("Disenchant", -78, "The bot disenchants this item into dust or shards.")
+    menu.fifth = button("Send by mail", -102, "The bot mails this item to you.")
+    menu.sixth = button("Put to bank", -126, "The bot stores this item in its bank.")
+    menu.seventh = button("|cffff5555Destroy|r", -150, "The bot destroys this item. Cannot be undone.")
+    -- A panel-sized catcher closes the menu on a click outside it. It is a
+    -- plain panel child (no global mouse hook), shown only with the menu, so
+    -- other addons never see it.
+    menu.catcher = CreateFrame("Button", nil, parent)
+    menu.catcher:SetAllPoints(parent)
+    menu.catcher:EnableMouse(true)
+    menu.catcher:SetScript("OnClick", function() hideMenu() end)
     function menu:Open(owner, entry)
         self.owner = owner
         self.entry = entry
         self:ClearAllPoints()
         self:SetPoint("TOPLEFT", owner, "BOTTOMRIGHT", -8, 8)
+        -- Stay inside the screen: opening left of the slot when the right
+        -- side has no room (right-edge bag columns, panel at screen edge),
+        -- and above the slot when the bottom has no room (lower bag rows).
+        -- Both flips combine: a bottom-right slot opens above AND left.
+        local right = self.GetRight and self:GetRight()
+        local screen = GetScreenWidth and GetScreenWidth()
+        local bottom = self.GetBottom and self:GetBottom()
+        local flipX = right and screen and right > screen
+        local flipY = bottom and bottom < 0
+        if flipX or flipY then
+            self:ClearAllPoints()
+            local myPt = (flipY and "BOTTOM" or "TOP") .. (flipX and "RIGHT" or "LEFT")
+            local relPt = (flipY and "TOP" or "BOTTOM") .. (flipX and "LEFT" or "RIGHT")
+            self:SetPoint(myPt, owner, relPt, flipX and 8 or -8, flipY and -8 or 8)
+        end
         if entry.equipped then
             self.first:SetText("Unequip")
             self.first:Enable()
             self.first.op = "unequip"
             self.second:Hide()
+            self.third:Hide()
+            self.fourth:Hide()
+            self.fifth:Hide()
+            self.sixth:Hide()
+            self.seventh:Hide()
             self:SetHeight(34)
         else
             self.first:SetText("Equip")
@@ -463,8 +695,20 @@ local function createMenu(parent)
             if entry.equippable then self.first:Enable() else self.first:Disable() end
             self.second:Show()
             if entry.noTrade then self.second:Disable() else self.second:Enable() end
-            self:SetHeight(58)
+            self.third:Show()
+            -- Only Give and Send by mail move the item off the bot, so only
+            -- those disable for soulbound items. Disenchanting and banking
+            -- soulbound gear are normal profession/bank uses.
+            self.fourth:Show()
+            self.fourth:Enable()
+            self.fifth:Show()
+            if entry.noTrade then self.fifth:Disable() else self.fifth:Enable() end
+            self.sixth:Show()
+            self.sixth:Enable()
+            self.seventh:Show()
+            self:SetHeight(178)
         end
+        self.catcher:Show()
         self:Show()
     end
     menu.first:SetScript("OnClick", function()
@@ -477,7 +721,33 @@ local function createMenu(parent)
         hideMenu()
         if entry then TB.SendItemOrder("give", entry.bag, entry.slot) end
     end)
+    menu.third:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then TB.SendItemUse(entry.id) end
+    end)
+    menu.fourth:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then sendLinkOrder("cast Disenchant", entry.id) end
+    end)
+    menu.fifth:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then sendLinkOrder("sendmail", entry.id) end
+    end)
+    menu.sixth:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then sendLinkOrder("bank", entry.id) end
+    end)
+    menu.seventh:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then TB.ConfirmDestroyItem(entry.id) end
+    end)
     menu:Hide()
+    menu.catcher:Hide()
     return menu
 end
 
@@ -508,7 +778,7 @@ local function createPanel()
 
     local sub = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     sub:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -28)
-    sub:SetWidth(200); sub:SetJustifyH("LEFT")
+    sub:SetWidth(PW - 44); sub:SetJustifyH("LEFT")
     TB.SetTextColor(sub, color("muted"))
     panel.subText = sub
 
@@ -521,12 +791,14 @@ local function createPanel()
     close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function() TB.CloseBotPanel() end)
 
-    panel.tabGear = makeTab(panel, "Gear", 10, 96, "gear")
-    panel.tabBags = makeTab(panel, "Bags", 110, 104, "bags")
-    panel.tabBehavior = makeTab(panel, "Behaviour", 218, 102, "behavior")
+    panel.tabGear = makeTab(panel, "Gear", 10, 68, "gear")
+    panel.tabBags = makeTab(panel, "Bags", 82, 76, "bags")
+    panel.tabBehavior = makeTab(panel, "Behaviour", 162, 78, "behavior")
+    panel.tabSpells = makeTab(panel, "Spells", 244, 76, "spells")
     setTooltip(panel.tabGear, "Gear", { "What the bot wears. Click a slot to unequip." })
     setTooltip(panel.tabBags, "Bags", { "Everything in the bot's bags. Click an item to equip it or take it." })
     setTooltip(panel.tabBehavior, "Behaviour", { "Per-bot combat habits, stored on the server." })
+    setTooltip(panel.tabSpells, "Spells", { "What this bot can cast. Click a spell to cast it." })
 
     -- Gear view: paper doll around the bot's 3D model.
     local gear = CreateFrame("Frame", nil, panel)
@@ -569,9 +841,18 @@ local function createPanel()
     panel.bags = bags
     local bagSummary = bags:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bagSummary:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -76)
-    bagSummary:SetWidth(PW - 24); bagSummary:SetJustifyH("LEFT")
+    bagSummary:SetWidth(196); bagSummary:SetJustifyH("LEFT")
     TB.SetTextColor(bagSummary, color("muted"))
     panel.bagSummary = bagSummary
+    local sweep = CreateFrame("Button", nil, bags, "UIPanelButtonTemplate")
+    sweep:SetWidth(110); sweep:SetHeight(20)
+    sweep:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -72)
+    sweep:SetText("Equip upgrades")
+    setTooltip(sweep, "Equip upgrades (new loot)", { "The bot scans its bags and equips everything better.", "Footer → Auto-gear does a full re-gear from bags instead." })
+    sweep:SetScript("OnClick", function()
+        if currentBot then TB.SendBotCommand("command " .. currentBot .. " d equip upgrades") end
+    end)
+    panel.sweepButton = sweep
     panel.bagButtons = {}
     local x0 = math.floor((PW - (BAG_COLS * STEP - 4)) / 2)
     for r = 1, BAG_ROWS do
@@ -624,14 +905,68 @@ local function createPanel()
         panel.behaviorChips[def.key] = chip
     end
     local bhHint = behavior:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    bhHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -228)
+    bhHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -258)
     bhHint:SetWidth(PW - 24); bhHint:SetJustifyH("LEFT")
-    bhHint:SetText("Party-wide AoE, Auto CC and Loot switches live on the Actions tab; these override one bot.")
+    bhHint:SetText("Party-wide switches live on the Fight tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
 
-    -- Footer: trade + refresh for every view.
+    -- Spells view: the bot's spellbook, one row per known spell.
+    local spellsView = CreateFrame("Frame", nil, panel)
+    spellsView:SetAllPoints(panel)
+    panel.spells = spellsView
+    local spTitle = spellsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    spTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -78)
+    spTitle:SetText("What this bot can cast (from the server)")
+    TB.SetTextColor(spTitle, color("gold"))
+    panel.spellRows = {}
+    for i = 1, SPELL_ROWS do
+        local row = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+        row:SetWidth(PW - 24); row:SetHeight(20)
+        row:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -98 - (i - 1) * 22)
+        row.spellId = 0
+        row.spellName = nil
+        setTooltip(row, "Spell", { "Click: ask the bot to cast it." })
+        row:SetScript("OnClick", function()
+            if currentBot and this.spellName then TB.SendBotCast(currentBot, this.spellName) end
+        end)
+        table.insert(panel.spellRows, row)
+    end
+    local spellEmpty = spellsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    spellEmpty:SetPoint("TOPLEFT", spellsView, "TOPLEFT", 12, -195)
+    spellEmpty:SetWidth(260); spellEmpty:SetJustifyH("CENTER")
+    spellEmpty:SetText("Click 'Ask for spellbook' below to list this bot's spells.")
+    TB.SetTextColor(spellEmpty, color("muted"))
+    panel.spellEmpty = spellEmpty
+
+    local ask = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    ask:SetWidth(150); ask:SetHeight(22)
+    ask:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
+    ask:SetText("Ask for spellbook")
+    setTooltip(ask, "Ask for spellbook", { "Lists what this bot can cast.", "Click a row to cast it." })
+    ask:SetScript("OnClick", function()
+        if currentBot then TB.RequestSpells(currentBot) end
+    end)
+    panel.spellAsk = ask
+    local prev = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    prev:SetWidth(26); prev:SetHeight(20)
+    prev:SetPoint("LEFT", ask, "RIGHT", 6, 0)
+    prev:SetText("<")
+    prev:SetScript("OnClick", function() spellPage = spellPage - 1; TB.RefreshBotPanel() end)
+    panel.spellPrev = prev
+    local pageText = spellsView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pageText:SetPoint("LEFT", prev, "RIGHT", 2, 0)
+    pageText:SetWidth(52); pageText:SetJustifyH("CENTER")
+    panel.spellPageText = pageText
+    local nextBtn = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    nextBtn:SetWidth(26); nextBtn:SetHeight(20)
+    nextBtn:SetPoint("LEFT", pageText, "RIGHT", 2, 0)
+    nextBtn:SetText(">")
+    nextBtn:SetScript("OnClick", function() spellPage = spellPage + 1; TB.RefreshBotPanel() end)
+    panel.spellNext = nextBtn
+
+    -- Footer: trade, refresh, NPC errands, vault, upkeep, gear-up, every view.
     local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    trade:SetWidth(100); trade:SetHeight(22)
+    trade:SetWidth(44); trade:SetHeight(22)
     trade:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 28)
     trade:SetText("Trade")
     setTooltip(trade, "Trade", {
@@ -643,8 +978,8 @@ local function createPanel()
     panel.tradeButton = trade
 
     local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    refresh:SetWidth(80); refresh:SetHeight(22)
-    refresh:SetPoint("LEFT", trade, "RIGHT", 6, 0)
+    refresh:SetWidth(56); refresh:SetHeight(22)
+    refresh:SetPoint("LEFT", trade, "RIGHT", 3, 0)
     refresh:SetText("Refresh")
     setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
     refresh:SetScript("OnClick", function()
@@ -653,6 +988,48 @@ local function createPanel()
     end)
     panel.refreshButton = refresh
 
+    local npcLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    npcLink:SetWidth(38); npcLink:SetHeight(22)
+    npcLink:SetPoint("LEFT", refresh, "RIGHT", 3, 0)
+    npcLink:SetText("NPC")
+    setTooltip(npcLink, "NPC errands", { "Talk, bind, learn and flights for this bot." })
+    npcLink:SetScript("OnClick", function()
+        if currentBot and TB.OpenNpc then TB.OpenNpc(currentBot) end
+    end)
+    panel.npcButton = npcLink
+
+    local vaultLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    vaultLink:SetWidth(44); vaultLink:SetHeight(22)
+    vaultLink:SetPoint("LEFT", npcLink, "RIGHT", 3, 0)
+    vaultLink:SetText("Bank")
+    setTooltip(vaultLink, "Bank and mail", { "Lists what this bot keeps in its bank and mailbox." })
+    vaultLink:SetScript("OnClick", function()
+        if currentBot and TB.OpenVault then TB.OpenVault(currentBot) end
+    end)
+    panel.vaultButton = vaultLink
+
+    local upkeep = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    upkeep:SetWidth(50); upkeep:SetHeight(22)
+    upkeep:SetPoint("LEFT", vaultLink, "RIGHT", 3, 0)
+    upkeep:SetText("Upkeep")
+    setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs.", "Only while the bot is online." })
+    upkeep:SetScript("OnClick", function()
+        if currentBot then TB.SendBotCommand("maintenance " .. currentBot) end
+        if TB.PollList then TB.PollList(true) end
+    end)
+    panel.upkeepButton = upkeep
+
+    local gearup = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    gearup:SetWidth(63); gearup:SetHeight(22)
+    gearup:SetPoint("LEFT", upkeep, "RIGHT", 3, 0)
+    gearup:SetText("AutoGear")
+    setTooltip(gearup, "Auto-gear (bags)", { "The bot equips the best gear it already owns in its bags.", "Bags → Equip upgrades re-scans and equips new loot instead.", "Only while the bot is online." })
+    gearup:SetScript("OnClick", function()
+        if currentBot then TB.SendBotCommand("autogear " .. currentBot) end
+        if currentBot then TB.RequestInventory(currentBot) end
+    end)
+    panel.gearUpButton = gearup
+
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 12, 10)
     hint:SetWidth(PW - 24); hint:SetJustifyH("LEFT")
@@ -660,12 +1037,24 @@ local function createPanel()
     TB.SetTextColor(hint, color("muted"))
 
     itemMenu = createMenu(panel)
+    panel.itemMenu = itemMenu
 
-    -- Uncached items re-render once the client has them.
+    -- Uncached items re-render once the client has them; a pending link
+    -- order retries then, so the first click sends once cached.
     panel:SetScript("OnUpdate", function()
         if uncachedAt and now() - uncachedAt > 1 then
             uncachedAt = nil
             TB.RefreshBotPanel()
+        end
+        if pendingLink and not retryingLink and pendingLink.bot == currentBot then
+            local name = GetItemInfo and GetItemInfo(pendingLink.id)
+            if name then
+                retryingLink = true
+                local verb, id = pendingLink.verb, pendingLink.id
+                pendingLink = nil
+                if verb == "u" then TB.SendItemUse(id) else sendLinkOrder(verb, id) end
+                retryingLink = false
+            end
         end
     end)
     panel:Hide()
@@ -791,32 +1180,80 @@ local function renderBehavior()
     end
 end
 
+local function renderSpells()
+    local entry = currentBot and spellLists[currentBot] or nil
+    local list = (entry and entry.spells) or {}
+    local pages = math.max(1, math.ceil(table.getn(list) / SPELL_ROWS))
+    if spellPage > pages then spellPage = pages end
+    if spellPage < 1 then spellPage = 1 end
+    for i, row in ipairs(panel.spellRows) do
+        local spell = list[(spellPage - 1) * SPELL_ROWS + i]
+        if spell then
+            row.spellId = spell.id
+            row.spellName = spell.name
+            row:SetText(spell.name)
+            row:Show()
+            row:Enable()
+        else
+            row.spellId = 0
+            row.spellName = nil
+            row:SetText("")
+            row:Hide()
+        end
+    end
+    if entry and entry.pending and table.getn(list) == 0 then
+        panel.spellAsk:SetText("Asking…")
+        panel.spellAsk:Disable()
+    else
+        panel.spellAsk:SetText(table.getn(list) == 0 and "Ask for spellbook" or "Ask again")
+        panel.spellAsk:Enable()
+    end
+    panel.spellPageText:SetText(spellPage .. " / " .. pages)
+    if spellPage > 1 then panel.spellPrev:Enable() else panel.spellPrev:Disable() end
+    if spellPage < pages then panel.spellNext:Enable() else panel.spellNext:Disable() end
+    if panel.spellEmpty then
+        if table.getn(list) == 0 then panel.spellEmpty:Show() else panel.spellEmpty:Hide() end
+    end
+end
+
 function TB.RefreshBotPanel()
     if not panel or not panel:IsVisible() or not currentBot then return end
     local inv = TB.GetInventory(currentBot)
     renderHeader(inv)
-    panel.gear:Hide(); panel.bags:Hide(); panel.behavior:Hide()
-    panel.tabGear:Enable(); panel.tabBags:Enable(); panel.tabBehavior:Enable()
+    panel.gear:Hide(); panel.bags:Hide(); panel.behavior:Hide(); panel.spells:Hide()
+    panel.tabGear:Enable(); panel.tabBags:Enable(); panel.tabBehavior:Enable(); panel.tabSpells:Enable()
     if currentView == "bags" then
         panel.bags:Show(); panel.tabBags:Disable()
         renderBags(inv)
     elseif currentView == "behavior" then
         panel.behavior:Show(); panel.tabBehavior:Disable()
         renderBehavior()
+    elseif currentView == "spells" then
+        panel.spells:Show(); panel.tabSpells:Disable()
+        renderSpells()
     else
         panel.gear:Show(); panel.tabGear:Disable()
         renderGear(inv)
     end
     local online = TB.GetBotState(currentBot) ~= nil or botUnit(currentBot) ~= nil
     if online then panel.tradeButton:Enable() else panel.tradeButton:Disable() end
+    if online then panel.upkeepButton:Enable() else panel.upkeepButton:Disable() end
+    if online then panel.gearUpButton:Enable() else panel.gearUpButton:Disable() end
+    if panel.npcButton then if online then panel.npcButton:Enable() else panel.npcButton:Disable() end end
+    if panel.vaultButton then if online then panel.vaultButton:Enable() else panel.vaultButton:Disable() end end
+    if panel.sweepButton then
+        if inv then panel.sweepButton:Enable() else panel.sweepButton:Disable() end
+    end
 end
 
 function TB.OpenBotPanel(name, view)
     name = norm(name)
     if not name then return false end
     if not panel then createPanel() end
+    if currentBot and currentBot ~= name then TB.SetSpellPending(currentBot, false) end
+    if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.SetMode then TB.SetMode("full") end
-    if currentBot ~= name then bagPage = 1 end
+    if currentBot ~= name then bagPage = 1; spellPage = 1 end
     currentBot = name
     if view then currentView = view end
     hideMenu()
@@ -842,6 +1279,9 @@ end
 
 function TB.CloseBotPanel()
     hideMenu()
+    if TB.CloseVault then TB.CloseVault() end
+    if TB.CloseNpc then TB.CloseNpc() end
+    if TB.CloseRunWindow then TB.CloseRunWindow() end
     if panel then panel:Hide() end
 end
 

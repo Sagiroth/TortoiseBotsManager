@@ -24,9 +24,9 @@ TB.C.GAP_BTN = 4   -- button gap
 
 -- Column widths for the snapshot roster. The last-location column is allowed
 -- to collapse in UI.lua when a server row has no location metadata.
-TB.C.ROSTER_NAME_W = 118
+TB.C.ROSTER_NAME_W = 112
 TB.C.ROSTER_CLASS_W = 70
-TB.C.ROSTER_STATUS_W = 145
+TB.C.ROSTER_STATUS_W = 138
 
 TB.C.CLASS_NAMES = {
     [1] = "Warrior",
@@ -151,8 +151,14 @@ TB.C.ACTION_DEFINITIONS = {
         custom = true,
         tip = "Assign crowd-control raid marks (Moon, Circle, Square, etc.) to specific bots by name.",
     },
-
-    -- Move
+    {
+        id = "endPull",
+        intent = "end pull",
+        label = "End pull",
+        section = "pull",
+        icon = "Interface\\Icons\\INV_Misc_Note_01",
+        tip = "Call off the current pull. The tank stops pulling and the party stands down.",
+    },
     {
         id = "follow",
         intent = "follow",
@@ -174,11 +180,57 @@ TB.C.ACTION_DEFINITIONS = {
     {
         id = "come",
         intent = "come",
-        label = "Come & Hold",
+        label = "Come",
         section = "move",
         icon = "Interface\\Icons\\Spell_Arcane_PortalIronForge",
         tip = "Bots rush to your position and hold there.",
         mini = 10,
+    },
+    {
+        id = "guard",
+        intent = "guard",
+        label = "Guard",
+        section = "move",
+        icon = "Interface\\Icons\\Ability_Warrior_DefensiveStance",
+        tip = "Bots plant themselves where they stand and fight anything close.",
+    },
+    {
+        id = "free",
+        intent = "free",
+        label = "Free",
+        section = "move",
+        icon = "Interface\\Icons\\Spell_Nature_Swiftness",
+        tip = "Bots leave their guard posts and move freely again.",
+    },
+
+    -- Combat stances (Fight MOVE card pills)
+    {
+        id = "stanceNear",
+        intent = "stance near",
+        label = "Near",
+        section = "stance",
+        tip = "Default scrum: melee crowds close around the target.",
+    },
+    {
+        id = "stanceTank",
+        intent = "stance tank",
+        label = "Tank",
+        section = "stance",
+        tip = "Tank goes toe-to-toe, turning the target away from the party.",
+    },
+    {
+        id = "stanceTurnback",
+        intent = "stance turnback",
+        label = "Turnback",
+        section = "stance",
+        tip = "Melee holds the far side of the target, away from your casters.",
+    },
+    {
+        id = "stanceBehind",
+        intent = "stance behind",
+        label = "Behind",
+        section = "stance",
+        tip = "Melee works the target's rear, clear of frontal cleaves.",
     },
 
     -- Party Switches
@@ -202,6 +254,25 @@ TB.C.ACTION_DEFINITIONS = {
         tip = "Bots sheep/sap a loose add that hits your healer, on their own. Your CC marks always win.",
     },
     {
+        id = "sap",
+        intent = "sap",
+        label = "Sap",
+        section = "switch",
+        toggle = "sap",
+        icon = "Interface\\Icons\\Ability_Sap",
+        tip = "Rogues open with Sap on the pull target while everyone else holds back. Needs a rogue in the party.",
+    },
+    {
+        id = "spread",
+        intent = "behavior spread",
+        label = "Spread",
+        section = "switch",
+        toggle = "spread",
+        send = "behavior",
+        icon = "Interface\\Icons\\INV_Misc_GroupNeedMore",
+        tip = "Bots keep their distance from each other to dodge enemy area damage.",
+    },
+    {
         id = "loot",
         intent = "loot",
         label = "Loot",
@@ -211,6 +282,43 @@ TB.C.ACTION_DEFINITIONS = {
         tip = "Bots loot corpses after a fight.",
     },
 
+    -- Combat tactics (one-shot strategy orders)
+    {
+        id = "tacticKite",
+        intent = "strategy ~kite",
+        label = "Kite",
+        section = "tactic",
+        strategy = "~kite",
+        icon = "Interface\\Icons\\Ability_Rogue_FleetFooted",
+        tip = "Bots keep their distance from enemies while fighting.",
+    },
+    {
+        id = "tacticMark",
+        intent = "strategy ~mark rti",
+        label = "Auto Mark",
+        section = "tactic",
+        strategy = "~mark rti",
+        icon = "Interface\\Icons\\Ability_Hunter_SniperShot",
+        tip = "Bots mark the next target with Skull on their own when the fight starts.",
+    },
+    {
+        id = "tacticFocus",
+        intent = "strategy ~focus",
+        label = "Focus Fire",
+        section = "tactic",
+        strategy = "~focus",
+        icon = "Interface\\Icons\\Ability_Hunter_AimedShot",
+        tip = "Every DPS bot burns down one target instead of spreading damage.",
+    },
+    {
+        id = "tacticAoeFear",
+        intent = "strategy ~aoe fear",
+        label = "AoE Fear",
+        section = "tactic",
+        strategy = "~aoe fear",
+        icon = "Interface\\Icons\\Spell_Shadow_DeathScream",
+        tip = "Bots may use fear effects against groups. Held back inside instances.",
+    },
     -- Rest, Repair & Train (Camp)
     {
         id = "rest",
@@ -261,6 +369,41 @@ TB.C.ACTION_DEFINITIONS = {
         icon = "Interface\\Icons\\Spell_Holy_Resurrection",
         tip = "Order dead bots to release spirit, or ghosts to run back to their corpses.",
     },
+    {
+        id = "rebuff",
+        intent = "rebuff",
+        label = "Rebuff",
+        section = "rest",
+        icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofKings",
+        tip = "Bots re-cast missing group buffs out of combat.",
+    },
+    {
+        id = "resetTactics",
+        intent = "strategy reset",
+        label = "Reset tactics",
+        section = "rest",
+        strategy = true,
+        icon = "Interface\\Icons\\INV_Misc_Note_01",
+        tip = "Clear custom combat and non-combat strategy changes back to defaults.",
+    },
+    {
+        id = "totem",
+        intent = "totem party drop",
+        label = "Drop totems",
+        section = "rest",
+        totem = true,
+        icon = "Interface\\Icons\\Spell_Nature_StoneClawTotem",
+        tip = "Shaman bots drop their configured totems now.",
+    },
+    {
+        id = "grind",
+        intent = "strategy +grind",
+        label = "Grind",
+        section = "quests",
+        strategy = true,
+        icon = "Interface\\Icons\\Ability_MeleeDamage",
+        tip = "Bots roam and grind mobs on their own. Click again to stop.",
+    },
 }
 
 TB.C.ACTIONS_BY_ID = {}
@@ -300,8 +443,27 @@ TB.C.ACTION_LABELS = {
     ["item unequip"]       = "Unequip",
     ["item give"]          = "Give",
     ["item trade"]         = "Trade",
+    ["cast Disenchant"]    = "Disenchant",
+    ["sendmail"]           = "Send by mail",
+    ["bank"]               = "Put to bank",
+    ["destroy"]            = "Destroy",
     inv                    = "Bags",
-    hold                   = "Come & Hold",
+    stance                 = "Stance",
+    hold                   = "Come",
+    ["strategy +grind"]    = "Grind",
+    ["strategy -grind"]    = "Grind",
+    ["strategy reset"]     = "Reset tactics",
+    ["commander bind"]     = "Bind party",
+    ["commander unbind"]   = "Unbind party",
+    ["commander status"]   = "Party status",
+    ["cmd enter"]          = "Enter dungeon",
+    ["run list"]           = "Dungeon plans",
+    ["run start"]          = "Run start",
+    ["run pause"]          = "Run pause",
+    ["run resume"]         = "Run resume",
+    ["run skip"]           = "Run skip",
+    ["run stop"]           = "Run stop",
+    ["run status"]         = "Run status",
 }
 for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
     TB.C.ACTION_LABELS[def.intent] = def.label
@@ -315,6 +477,7 @@ for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
             intent = def.intent,
             label  = def.label,
             tip    = def.tip,
+            send   = def.send,
         })
     end
 end
@@ -328,7 +491,9 @@ TB.C.BEHAVIORS = {
     { key = "savemana", label = "Save mana",    tip = "Wait longer between repeated casts to stretch mana on long fights.", mana = true },
     { key = "boost",    label = "Cooldowns",    tip = "Use big offensive cooldowns during fights." },
     { key = "threat",   label = "Watch threat", tip = "Ease off damage when close to pulling aggro from the tank." },
-    { key = "potions",  label = "Potions",      tip = "Drink healing and mana potions when low." },
+    { key = "potions",  label = "Potions",    tip = "Drink healing and mana potions when low." },
+    { key = "mimic",    label = "Mimic",      tip = "Copy your consumable use (food, drink, potions) on this bot." },
+    { key = "spread",   label = "Spread out", tip = "Keep distance from nearby party members instead of stacking." },
 }
 TB.C.NO_MANA_CLASSES = { [1] = true, [4] = true } -- Warrior, Rogue
 
@@ -394,7 +559,11 @@ TB.C.FORMATIONS = {
     { id = "queue",  label = "Queue",  tip = "Single file behind you, for bridges and ledges." },
     { id = "arrow",  label = "Arrow",  tip = "V-shaped wedge pointing forward, for open ground." },
     { id = "circle", label = "Circle", tip = "Ring around you, facing out." },
-    { id = "line",   label = "Line",   tip = "Side by side in one line with you in the middle, for open ground." },
+    { id = "line",    label = "Line",    tip = "Side by side in one line with you in the middle, for open ground." },
+    { id = "far",     label = "Far",     tip = "Loose spread at maximum leash range, for open-world pulling." },
+    { id = "melee",   label = "Melee",   tip = "Melee stack on the tank's target, ranged hang back." },
+    { id = "chaos",   label = "Chaos",   tip = "Scattered skirmish spread with no fixed shape." },
+    { id = "default", label = "Default", tip = "Server default spacing, before any formation order." },
 }
 
 -- Addon command transport (server side: host/BotAddonAdapter.cpp).

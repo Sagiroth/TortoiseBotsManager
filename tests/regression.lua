@@ -66,13 +66,27 @@ local function object(kind, parent)
     function methods:CreateFontString() return object("FontString", self) end
     function methods:SetTexture(...) self.texture = {...} end
     function methods:SetTexCoord(...) end
-    function methods:SetAllPoints(...) end
+    function methods:SetAllPoints(other)
+        other = other or self.parent
+        self.points = self.points or {}
+        table.insert(self.points, { "TOPLEFT", other, "TOPLEFT", 0, 0 })
+        table.insert(self.points, { "TOPRIGHT", other, "TOPRIGHT", 0, 0 })
+        self.point = { "TOPRIGHT", other, "TOPRIGHT", 0, 0 }
+    end
     function methods:SetBlendMode(...) end
     function methods:SetAutoFocus(...) end
     function methods:SetJustifyH(...) end
     function methods:SetText(text) self.text = text end
     function methods:GetText() return self.text end
-    function methods:SetTextColor(...) end
+    function methods:GetFontString()
+        -- 1.12 UIPanelButtonTemplate buttons own a centered label FontString.
+        if not self.fontString then
+            self.fontString = object("FontString", self)
+            self.fontString:SetPoint("CENTER", self, "CENTER", 0, 0)
+        end
+        return self.fontString
+    end
+    function methods:SetTextColor(r, g, b, a) self.textColor = { r, g, b, a } end
     function methods:SetVertexColor(...) end
     function methods:SetJustifyV(...) end
     function methods:SetChecked(checked) self.checked = checked and true or false end
@@ -87,6 +101,8 @@ local function object(kind, parent)
     function methods:StopMovingOrSizing() end
     function methods:GetLeft() return self.x or 100 end
     function methods:GetTop() return (self.y or 100) + (self.height or 50) end
+    function methods:GetRight() return (self.x or 100) + (self.width or 118) end
+    function methods:GetBottom() return (self.y or 100) end
     function methods:GetCenter() return 0, 0 end
     function methods:GetEffectiveScale() return 1 end
     function methods:Enable() self.enabled = true end
@@ -96,9 +112,13 @@ local function object(kind, parent)
     return setmetatable(value, methods)
 end
 
-function CreateFrame(kind, name, parent)
+function CreateFrame(kind, name, parent, template)
     local frame = object(kind, parent)
     frame.name = name
+    if template == "UIPanelCloseButton" then
+        frame.width = 32
+        frame.height = 32
+    end
     if name then frames[name] = frame end
     return frame
 end
@@ -123,12 +143,16 @@ GameTooltip = {
 }
 
 function GetTime() return now end
+StaticPopupDialogs = StaticPopupDialogs or {}
+local lastPopupShown = nil
+function StaticPopup_Show(which) lastPopupShown = which end
 function time() return 123 end
 function SendChatMessage(message) table.insert(sent, message) end
 function SendAddonMessage(prefix, message, channel)
     table.insert(addonSent, { prefix = prefix, message = message, channel = channel })
 end
 function GetCursorPosition() return 0, 0 end
+function GetScreenWidth() return 1024 end
 function UnitExists(unit)
     if unit == "player" then return true end
     if unit == "target" then return targetExists end
@@ -170,8 +194,12 @@ for _, file in ipairs({
     "Comms.lua",
     "UI.lua",
     "BotPanel.lua",
+    "BotNpc.lua",
+    "BotVault.lua",
+    "BotRun.lua",
     "MiniBar.lua",
     "Minimap.lua",
+    "Bindings.lua",
 }) do
     dofile(root .. "/" .. file)
 end
@@ -308,6 +336,47 @@ TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
 TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
 TB.OnSystemMessage("TBM:ROSTER_END")
 
+-- Clients that double "|A"/"|T" pairs on server-delivered chat must still parse.
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101||Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103||Tarbh|11|online|1|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+assert(TB.HasRosterSnapshot(), "doubled-pipe snapshot must commit")
+assert(TB.GetRosterSnapshotError() == nil, "doubled-pipe snapshot must leave no error")
+assert(table.getn(TB.GetDisplayRows("")) == 3, "doubled-pipe rows must all render")
+assert(TB.GetState("Alpha").location == "map:1,zone:2,area:3", "restored A-initial row must keep exact fields")
+assert(TB.GetState("Tarbh") ~= nil, "restored T-initial row must exist")
+TB.OnSystemMessage("TBM:ALTBOTS||Alpha")
+assert(TB.GetState("Alpha").altBot, "doubled-pipe alt-bot line must flag the named row")
+
+-- Same bytes over the addon channel.
+TB.OnAddonMessage("TBM", "TBM:ROSTER_BEGIN|2", "PARTY", "Tester")
+TB.OnAddonMessage("TBM", "TBM:ROSTER|101||Alpha|1|online|0|map:1,zone:2,area:3", "PARTY", "Tester")
+TB.OnAddonMessage("TBM", "TBM:ROSTER|104||Tilda|2|online|0|-", "PARTY", "Tester")
+TB.OnAddonMessage("TBM", "TBM:ROSTER_END", "PARTY", "Tester")
+assert(table.getn(TB.GetDisplayRows("")) == 2, "addon-channel doubled-pipe snapshot must commit")
+assert(TB.GetRosterSnapshotError() == nil, "addon-channel doubled-pipe snapshot must leave no error")
+
+-- One bad row must not empty the snapshot; the good rows still commit.
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|broken-row")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+assert(TB.HasRosterSnapshot(), "snapshot with one bad row must still commit")
+assert(table.getn(TB.GetDisplayRows("")) == 2, "good rows must render despite one bad row")
+assert(TB.GetState("Alpha") ~= nil and TB.GetState("Gamma") ~= nil, "good rows must be addressable")
+local partialErr = TB.GetRosterSnapshotError()
+assert(partialErr and partialErr.code == "partial_rows", "skipped rows must be recorded for debugging")
+
+-- Restore the canonical snapshot for the tests below.
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+
 -- Class colors and status badge
 local warriorColor = TB.GetClassColor(1)
 assert(warriorColor and warriorColor.hex == "ffc79c6e", "Warrior class color must match Tortoise palette")
@@ -333,9 +402,26 @@ TB.formationPills.near.scripts.OnClick(TB.formationPills.near)
 assert(TB.currentFormation == "near", "Clicking near pill must set current formation to near")
 assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
     "Active formation pill must become disabled")
-
+assert(table.getn(TB.C.FORMATIONS) == 10, "Camp must expose all ten server formations")
+assert(TB.formationPills.far and TB.formationPills.melee and TB.formationPills.chaos
+    and TB.formationPills.default, "New formation pills must exist")
+assert(TB.formationPills.far.enabled, "Far should start enabled")
+now = now + 1
+this = TB.formationPills.far
+TB.formationPills.far.scripts.OnClick(TB.formationPills.far)
+assert(TB.currentFormation == "far", "Clicking far pill must set current formation to far")
+assert(not TB.formationPills.far.enabled and TB.formationPills.near.enabled,
+    "Active formation pill must become disabled, previous one re-enabled")
+now = now + 1
+TB.SetFormation("shield")
+assert(TB.currentFormation == "shield" and not TB.formationPills.shield.enabled,
+    "Formation must reset to shield for later cases")
+assert(TB.actionButtons.rebuff and TB.actionButtons.resetTactics and TB.actionButtons.totem
+    and TB.actionButtons.acceptQuest and TB.actionButtons.shareQuest and TB.actionButtons.grind,
+    "Camp chore buttons must exist")
+assert(TB.UI.Grid.CARD_REST_H == 116 and TB.UI.Grid.CARD_FORM_H == 100,
+    "Camp cards must fit the 480x330 content frame")
 -- Constants: structured formation metadata must survive (no raw-list clobber),
--- and Hunter/Rogue must expose all three backend-supported specs.
 assert(TB.C.FORMATIONS[1].id == "shield" and TB.C.FORMATIONS[1].label == "Shield",
     "structured formation metadata must remain intact")
 assert(table.getn(TB.C.FORMATION_IDS) == 10 and TB.C.FORMATION_IDS[7] == "shield",
@@ -635,6 +721,27 @@ now = now + 1
 this = TB.actionButtons.come
 TB.actionButtons.come.scripts.OnClick(TB.actionButtons.come)
 assert(sent[table.getn(sent)] == ".bot action come", "Come button must send action come")
+now = now + 1
+this = TB.actionButtons.guard
+TB.actionButtons.guard.scripts.OnClick(TB.actionButtons.guard)
+assert(sent[table.getn(sent)] == ".bot action guard", "Guard button must send action guard")
+now = now + 1
+this = TB.actionButtons.free
+TB.actionButtons.free.scripts.OnClick(TB.actionButtons.free)
+assert(sent[table.getn(sent)] == ".bot action free", "Free button must send action free")
+now = now + 1
+this = TB.stancePills.tank
+TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
+assert(sent[table.getn(sent)] == ".bot action stance tank", "Tank stance pill must send stance tank")
+assert(TB.currentStance == "tank" and not TB.stancePills.tank.enabled and TB.stancePills.near.enabled,
+    "Active stance pill must become disabled")
+TB.OnSystemMessage("TBM:ACTION_ACK|stance|party|2|tank")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "stance" and TB.lastActionAck.executor == "tank",
+    "structured stance ACK must be parsed")
+TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=guard,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
+TB.OnSystemMessage("TBM:BOTSTATE_END")
+assert(TB.MovementLabel("Alpha") == "Guarding", "guard movement must be labelled")
 
 now = now + 1
 this = TB.actionButtons.ready
@@ -722,7 +829,7 @@ now = now + 1
 local beforeRoleCmd = table.getn(sent)
 TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be stored as dps")
-assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot command Priestbot +shadow,-holy,-discipline,-offdps",
+assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot strategy +shadow,-holy,-discipline Priestbot",
     "Clicking Shadow role must send Playerbot strategy command")
 assert(TB.partyFrame.rows[2].roleButtons[3].text:find("|cffffd200Shadow|r"), "Selected Shadow button must be highlighted gold")
 
@@ -754,7 +861,7 @@ assert(queueFrame, "demotion spec strategy must queue behind the throttle")
 this, arg1 = queueFrame, 0.1
 queueFrame.scripts.OnUpdate(queueFrame)
 assert(table.getn(sent) == beforeDemoteCmd + 2
-    and sent[table.getn(sent)] == ".bot command Tankbot +arms,-protection",
+    and sent[table.getn(sent)] == ".bot strategy +arms,-protection Tankbot",
     "Demotion spec strategy must follow after the throttle clears")
 partyClassName = "Priest"
 partyMembers = { "Priestbot" }
@@ -909,7 +1016,7 @@ TB.Refresh()
 assert(not TB.actionButtons.flee.enabled, "Flee must be disabled on servers without the capability")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
 
--- BOTSTATE drives the switches; a mixed party shows Mixed and turns on.
+-- BOTSTATE drives the switches; a mixed party shows "~" and turns on.
 partyMembers = { "Alpha", "Gamma" }
 TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|2")
 TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
@@ -919,8 +1026,8 @@ assert(TB.GetBotState("Alpha").move == "follow" and TB.GetBotState("gamma").save
     "BOTSTATE rows must be stored per bot")
 assert(TB.GetPartyToggleState("loot") == "mixed" and TB.GetPartyToggleState("aoe") == "off",
     "party switch state must aggregate the bots")
-assert(TB.toggleButtons.loot.text == "Loot Mixed" and TB.toggleButtons.autocc.text == "Auto CC Off",
-    "switch labels must show the server state")
+assert(TB.toggleButtons.loot.text == "Loot ~" and TB.toggleButtons.autocc.text == "Auto CC Off",
+    "switch labels must show the server state (~ for mixed)")
 assert(TB.MovementLabel("Gamma") == "Fleeing (passive)", "flee movement must be labelled")
 now = now + 1
 this = TB.toggleButtons.loot
@@ -940,8 +1047,105 @@ assert(TB.GetPartyToggleState("autocc") == "off" and TB.toggleButtons.autocc.ena
 -- A single-bot ACK only changes that bot.
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
 assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
-    and TB.toggleButtons.aoe.text == "AoE Mixed", "a targeted switch must only update that bot")
+    and TB.toggleButtons.aoe.text == "AoE ~", "a targeted switch must only update that bot")
 
+-- P2: sap joins the switch row, spread rides the behavior verb, and the
+-- row of five stays inside the 480-wide content.
+assert(TB.toggleButtons.sap and TB.toggleButtons.spread, "sap and spread switches must exist")
+local switchCount = 0
+for _ in pairs(TB.toggleButtons) do switchCount = switchCount + 1 end
+assert(switchCount == 5, "the switches card must hold exactly five toggles")
+for _, btn in pairs(TB.toggleButtons) do
+    assert(btn.point and btn.point[4] >= 0 and (btn.point[4] + (btn.width or 0)) <= 480,
+        "every switch button must fit the 480-wide content")
+end
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,sap=off,spread=off")
+TB.OnSystemMessage("TBM:BOTSTATE|Gamma|move=flee,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on,sap=off,spread=off")
+now = now + 1
+this = TB.toggleButtons.sap
+TB.toggleButtons.sap.scripts.OnClick(TB.toggleButtons.sap)
+assert(lastAddon() == "action sap on", "Sap must send the sap intent")
+TB.OnSystemMessage("TBM:ACTION_ACK|sap|party|2|on")
+assert(TB.GetPartyToggleState("sap") == "on" and TB.toggleButtons.sap.enabled
+    and TB.toggleButtons.sap.text == "Sap On", "the sap ACK must settle the switch")
+now = now + 1
+this = TB.toggleButtons.spread
+TB.toggleButtons.spread.scripts.OnClick(TB.toggleButtons.spread)
+assert(lastAddon() == "behavior party spread on", "Spread must ride the behavior verb")
+assert(not TB.toggleButtons.spread.enabled, "spread waits for the server while pending")
+TB.OnSystemMessage("TBM:ACTION_ACK|behavior spread|party|2|on")
+assert(TB.GetPartyToggleState("spread") == "on" and TB.toggleButtons.spread.enabled
+    and TB.toggleButtons.spread.text == "Spread On", "the spread ACK must settle the switch")
+TB.OnSystemMessage("TBM:ACTION_ERR|behavior spread|failed|No scoped bot accepted")
+assert(TB.toggleButtons.spread.enabled, "a refused spread switch must not stick disabled")
+
+-- P2: End pull and the four tactics buttons send their intents; the server
+-- confirms tactics with "Strategy change" text.
+now = now + 1
+this = TB.actionButtons.endPull
+TB.actionButtons.endPull.scripts.OnClick(TB.actionButtons.endPull)
+assert(lastAddon() == "action end pull", "End pull must send the end pull intent")
+for _, tactic in ipairs({ "tacticKite", "tacticMark", "tacticFocus", "tacticAoeFear" }) do
+    now = now + 1
+    this = TB.actionButtons[tactic]
+    TB.actionButtons[tactic].scripts.OnClick(TB.actionButtons[tactic])
+end
+assert(lastAddon() == "strategy ~aoe fear", "tactics must send suffixless strategy changes")
+local beforeStrategyOps = 0
+for _, st in pairs({ TB.GetState("Alpha"), TB.GetState("Gamma") }) do
+    if st and st.operation then beforeStrategyOps = beforeStrategyOps + 1 end
+end
+TB.OnSystemMessage("Strategy change '~kite' applied to 2 bot(s).")
+assert(TB.lastSystem == "Strategy change '~kite' applied to 2 bot(s).",
+    "a strategy change must be consumed as handled")
+local afterStrategyOps = 0
+for _, st in pairs({ TB.GetState("Alpha"), TB.GetState("Gamma") }) do
+    if st and st.operation then afterStrategyOps = afterStrategyOps + 1 end
+end
+assert(afterStrategyOps == beforeStrategyOps, "a strategy reply must not start roster operations")
+
+-- Layout: every Fight card keeps its re-stacked slot (no overlaps) and every
+-- control fits the 330px content frame.
+local fightOrder = { "engage", "pull", "move", "switches", "tactics" }
+local fightTops = { engage = -35, pull = -86, move = -157, switches = -232, tactics = -282 }
+local fightHeights = { engage = 48, pull = 68, move = 72, switches = 48, tactics = 48 }
+local fightBottom = { engage = 0, pull = 0, move = 0, switches = 0, tactics = 0 }
+for _, id in ipairs(fightOrder) do
+    local card = TB.fightCards[id]
+    local _, _, _, _, top = card:GetPoint(1)
+    assert(top == fightTops[id] and card.height == fightHeights[id],
+        "fight card " .. id .. " must keep its integrated slot")
+    assert(top <= 0 and -(top - card.height) <= 330, "fight card " .. id .. " must fit the 330px content")
+    fightBottom[id] = top - card.height
+end
+for i = 2, table.getn(fightOrder) do
+    assert(fightTops[fightOrder[i]] <= fightBottom[fightOrder[i - 1]],
+        "fight card " .. fightOrder[i] .. " must start below " .. fightOrder[i - 1])
+end
+local function cardBottom(control, cardTop)
+    local _, _, _, _, top = control:GetPoint(1)
+    return cardTop + top - (control.height or 0)
+end
+local moveIds = { "follow", "stay", "come", "guard", "free" }
+for _, id in ipairs(moveIds) do
+    local btn = TB.actionButtons[id]
+    assert(cardBottom(btn, fightTops.move) >= -330, "move control " .. id .. " must fit the 330px content")
+end
+for id, pill in pairs(TB.stancePills) do
+    assert(cardBottom(pill, fightTops.move) >= -330, "stance pill " .. id .. " must fit the 330px content")
+end
+for key, btn in pairs(TB.toggleButtons) do
+    assert(cardBottom(btn, fightTops.switches) >= -330, "switch " .. key .. " must fit the 330px content")
+end
+for _, id in ipairs({ "tacticKite", "tacticMark", "tacticFocus", "tacticAoeFear" }) do
+    assert(cardBottom(TB.actionButtons[id], fightTops.tactics) >= -330,
+        "tactic " .. id .. " must fit the 330px content")
+end
+for _, id in ipairs({ "attack", "stop", "interrupt", "flee" }) do
+    assert(cardBottom(TB.actionButtons[id], fightTops.engage) >= -330,
+        "engage control " .. id .. " must fit the 330px content")
+end
+assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -330, "end pull must fit the 330px content")
 -- Release follows the party's death state.
 TB.Refresh()
 assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")
@@ -983,6 +1187,7 @@ local alphaOperation = TB.GetState("Alpha") and TB.GetState("Alpha").operation
 assert(not alphaOperation or alphaOperation.verb ~= "inv",
     "an inventory request must not start a roster operation")
 
+itemCache[159] = { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }
 itemCache[2586] = { name = "Gamemaster's Robe", quality = 4, texture = "Interface\\Icons\\INV_Chest_Cloth_05" }
 TB.OnSystemMessage("TBM:INV_BEGIN|Alpha|123456")
 TB.OnSystemMessage("TBM:INV_EQ|4|2586|40|50")
@@ -1017,6 +1222,29 @@ assert(not TB.botPanel.bagButtons[4].visible, "empty grid cells stay hidden")
 this = upgrade
 upgrade.scripts.OnClick(upgrade)
 assert(menu.first.text == "Equip" and menu.first.enabled and menu.second.enabled, "bag items offer Equip and Give")
+assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
+assert(menu.fourth.visible and menu.fourth.text == "Disenchant" and menu.fourth.enabled, "bag items offer Disenchant")
+assert(menu.fifth.visible and menu.fifth.text == "Send by mail" and menu.fifth.enabled, "bag items offer Send by mail")
+assert(menu.sixth.visible and menu.sixth.text == "Put to bank" and menu.sixth.enabled, "bag items offer Put to bank")
+assert(menu.seventh.visible and menu.seventh.text == "|cffff5555Destroy|r", "bag items offer Destroy (red)")
+assert(menu.height == 178, "the full menu fits seven rows")
+-- P9: the menu flips left/right and above/below to stay on screen.
+menu:Hide()
+menu.x = 950
+menu.y = 100
+this = upgrade
+upgrade.scripts.OnClick(upgrade)
+assert(menu.point[1] == "TOPRIGHT", "the menu opens left of a right-edge slot")
+menu.x = 100
+menu.y = -50
+menu:Hide()
+this = upgrade
+upgrade.scripts.OnClick(upgrade)
+assert(menu.point[1] == "BOTTOMLEFT", "the menu opens above a low slot")
+menu.x = nil
+menu.y = nil
+this = upgrade
+upgrade.scripts.OnClick(upgrade)
 now = now + 1
 this = menu.first
 menu.first.scripts.OnClick(menu.first)
@@ -1025,10 +1253,27 @@ local soulbound = TB.botPanel.bagButtons[1]
 this = soulbound
 soulbound.scripts.OnClick(soulbound)
 assert(not menu.first.enabled and not menu.second.enabled, "soulbound junk cannot be equipped or given")
+assert(not menu.fifth.enabled, "soulbound junk cannot be mailed away")
+assert(menu.fourth.enabled and menu.sixth.enabled, "soulbound gear can still be disenchanted and banked")
 menu:Hide()
+
+-- Bags header: one-click upgrade sweep.
+TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
+assert(TB.botPanel.sweepButton.visible, "bags offer an upgrade sweep")
+now = now + 1
+this = TB.botPanel.sweepButton
+TB.botPanel.sweepButton.scripts.OnClick(TB.botPanel.sweepButton)
+assert(lastAddon() == "command Alpha d equip upgrades", "the sweep equips everything better")
 
 -- Give without a trade window: pending, then re-sent when the window opens.
 local junk = TB.botPanel.bagButtons[3]
+this = junk
+junk.scripts.OnClick(junk)
+assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
+now = now + 1
+this = menu.third
+menu.third.scripts.OnClick(menu.third)
+assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h", "Use must send the item link")
 this = junk
 junk.scripts.OnClick(junk)
 now = now + 1
@@ -1046,7 +1291,48 @@ assert(table.getn(addonSent) == beforeTrade + 1 and lastAddon() == "item Alpha g
 event = "TRADE_SHOW"
 frames["TortoiseBotsManagerTradeWatcher"].scripts.OnEvent()
 assert(table.getn(addonSent) == beforeTrade + 1, "the give order is repeated only once")
-tradePartner = nil
+-- P9: the menu closes on a click outside it (panel-local catcher, no global hook).
+this = junk
+junk.scripts.OnClick(junk)
+assert(menu.visible and menu.catcher.visible, "the menu shows its catcher")
+menu.catcher.scripts.OnClick(menu.catcher)
+assert(not menu.visible and not menu.catcher.visible and menu.owner == nil, "a click outside closes the menu")
+-- P9: Destroy asks first and only sends on confirm.
+this = junk
+junk.scripts.OnClick(junk)
+now = now + 1
+this = menu.seventh
+local beforeDestroy = table.getn(addonSent)
+menu.seventh.scripts.OnClick(menu.seventh)
+assert(table.getn(addonSent) == beforeDestroy, "Destroy must not send before the confirm")
+assert(lastPopupShown == "TORTOISEBOTSMANAGER_DESTROY_ITEM", "Destroy must ask first")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] ~= nil, "destroy dialog must exist")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].text ==
+    "Destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h on Alpha?\n\nThis cannot be undone.",
+    "the confirm must name the item with a single clean link")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].OnAccept()
+assert(lastAddon() == "command Alpha destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+    "confirming Destroy must send the item link")
+-- P9: Use on an uncached item tells the player and sends once cached.
+itemCache[159] = nil
+this = junk
+junk.scripts.OnClick(junk)
+now = now + 1
+this = menu.third
+local beforeUse = table.getn(addonSent)
+menu.third.scripts.OnClick(menu.third)
+assert(table.getn(addonSent) == beforeUse, "Use on an uncached item must not send silently")
+itemCache[159] = { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }
+TB.botPanel.scripts.OnUpdate(TB.botPanel)
+assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+    "Use must send once the item is cached")
+-- P9: Upkeep and Gear up disable while the bot is offline, like Trade.
+TB.OpenBotPanel("Zed", "bags")
+assert(not TB.botPanel.tradeButton.enabled and not TB.botPanel.upkeepButton.enabled
+    and not TB.botPanel.gearUpButton.enabled, "offline footer actions must disable")
+TB.OpenBotPanel("Alpha", "bags")
+assert(TB.botPanel.tradeButton.enabled and TB.botPanel.upkeepButton.enabled
+    and TB.botPanel.gearUpButton.enabled, "online footer actions must enable")
 
 -- Behaviour chips toggle one bot and follow its BOTSTATE line.
 TB.botPanel.tabBehavior.scripts.OnClick(TB.botPanel.tabBehavior)
@@ -1058,13 +1344,178 @@ saveMana.scripts.OnClick(saveMana)
 assert(lastAddon() == "behavior Alpha savemana on", "a chip sends one behaviour toggle")
 assert(not saveMana.enabled, "a chip waits for the server")
 TB.OnSystemMessage("TBM:ACTION_ACK|behavior savemana|bot:Alpha|1|on")
-TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on")
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on,mimic=off,spread=off")
 assert(saveMana.enabled and saveMana.text == "Save mana: On" and TB.GetBotState("Gamma"),
     "a single BOTSTATE line updates one bot and keeps the others")
+assert(TB.botPanel.behaviorChips.mimic.visible and TB.botPanel.behaviorChips.spread.visible,
+    "mimic and spread chips render from the behaviour table")
 now = now + 1
 this = TB.botPanel.tradeButton
 TB.botPanel.tradeButton.scripts.OnClick(TB.botPanel.tradeButton)
 assert(lastAddon() == "item Alpha trade", "Trade opens a trade with the bot")
+-- Footer: upkeep restocks, gear-up re-gears and reloads the panel view.
+now = now + 1
+this = TB.botPanel.upkeepButton
+local beforeUpkeep = table.getn(addonSent)
+TB.botPanel.upkeepButton.scripts.OnClick(TB.botPanel.upkeepButton)
+assert(addonSent[beforeUpkeep + 1].message == "maintenance Alpha", "Upkeep restocks the bot")
+this = TB.botPanel.gearUpButton
+now = now + 1
+local beforeGearUp = table.getn(addonSent)
+TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
+assert(addonSent[beforeGearUp + 1].message == "autogear Alpha", "Gear up re-gears the bot")
+-- Layout: six footer buttons fit the 330px panel with no overlap.
+local footerSpan = 10 + 44 + 56 + 38 + 44 + 50 + 63 + 5 * 3
+assert(footerSpan == 320, "footer (trade + refresh + NPC + bank + upkeep + auto-gear) must end at the x=320 tab edge")
+assert(TB.botPanel.tradeButton.width == 44 and TB.botPanel.refreshButton.width == 56
+    and TB.botPanel.npcButton.width == 38 and TB.botPanel.vaultButton.width == 44
+    and TB.botPanel.upkeepButton.width == 50 and TB.botPanel.gearUpButton.width == 63,
+    "footer buttons must keep their layout widths")
+assert(TB.botPanel.vaultButton.text == "Bank" and TB.botPanel.gearUpButton.text == "AutoGear",
+    "footer buttons must carry their short labels")
+TB.CloseBotPanel()
+
+-- ── Bot NPC errands (P10): talk/bind/learn/flights for the panel bot ──────
+TB.OpenBotPanel("Alpha")
+assert(TB.botPanel.npcButton and TB.botPanel.npcButton.visible, "the panel links to NPC errands")
+now = now + 1
+this = TB.botPanel.npcButton
+TB.botPanel.npcButton.scripts.OnClick(TB.botPanel.npcButton)
+assert(TB.botNpc and TB.botNpc.visible and TB.GetNpcBot() == "Alpha", "NPC opens for the panel bot")
+now = now + 1
+this = TB.botNpc.talk
+TB.botNpc.talk.scripts.OnClick(TB.botNpc.talk)
+assert(lastAddon() == "command Alpha talk", "Talk greets the nearby NPC")
+now = now + 1
+this = TB.botNpc.home
+TB.botNpc.home.scripts.OnClick(TB.botNpc.home)
+assert(lastAddon() == "command Alpha home", "Bind home binds at the innkeeper")
+now = now + 1
+this = TB.botNpc.trainer
+TB.botNpc.trainer.scripts.OnClick(TB.botNpc.trainer)
+assert(lastAddon() == "command Alpha trainer learn", "Learn trains at the targeted trainer")
+now = now + 1
+this = TB.botNpc.leader
+TB.botNpc.leader.scripts.OnClick(TB.botNpc.leader)
+assert(lastAddon() == "command Alpha give leader", "Make leader passes leadership to you")
+now = now + 1
+this = TB.botNpc.ask
+TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+assert(lastAddon() == "command Alpha taxi ?", "Find flights lists the flight master's routes")
+assert(not TB.botNpc.ask.enabled, "Find flights waits while the query is pending")
+TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+assert(not TB.botNpc.rows[1].visible, "flight lines before the header must not seed the list")
+TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+TB.OnWhisperMessage("1: Stormwind, Elwynn", "Alpha")
+TB.OnWhisperMessage("2: Ironforge, Dun Morogh", "Alpha")
+TB.OnWhisperMessage("talk to the flight master", "Alpha")
+assert(TB.botNpc.rows[1].visible and TB.botNpc.rows[1].flightN == 1, "flight rows render the parsed routes")
+assert(TB.botNpc.rows[2].visible and TB.botNpc.rows[2].flightN == 2, "the second route renders too")
+assert(not TB.botNpc.rows[3].visible, "empty flight rows stay hidden")
+assert(TB.ParseFlightLine("bogus") == nil, "non-route whispers must not parse")
+now = now + 1
+this = TB.botNpc.rows[2]
+TB.botNpc.rows[2].scripts.OnClick(TB.botNpc.rows[2])
+assert(lastAddon() == "command Alpha taxi 2", "clicking a flight flies that leg")
+-- Review geometry: the Ask row (y -240, h22) must end inside the window.
+local askY = TB.botNpc.ask.point[5]
+assert(askY == -108 - 6 * 22 and TB.botNpc.height >= -(askY - 22) + 12,
+    "the Find flights row must sit inside the window with bottom padding")
+-- Review paging: a hub burst of 10 routes pages 6 + 4 with BotPanel-style controls.
+now = now + 1
+this = TB.botNpc.ask
+TB.botNpc.ask.scripts.OnClick(TB.botNpc.ask)
+TB.OnWhisperMessage("=== Taxi ===", "Alpha")
+for i = 1, 10 do TB.OnWhisperMessage(i .. ": Stop " .. i, "Alpha") end
+assert(table.getn(TB.GetNpcErrands("Alpha").flights) == 10, "ten hub routes must all parse")
+assert(TB.botNpc.rows[1].flightN == 1 and TB.botNpc.rows[6].flightN == 6, "page one shows routes 1-6")
+assert(not TB.botNpc.prevPage.enabled and TB.botNpc.nextPage.enabled, "page one enables next only")
+assert(TB.botNpc.pageText.text == "1 / 2", "ten routes over six rows need two pages")
+now = now + 1
+this = TB.botNpc.nextPage
+TB.botNpc.nextPage.scripts.OnClick(TB.botNpc.nextPage)
+assert(TB.botNpc.rows[1].flightN == 7 and TB.botNpc.rows[4].flightN == 10, "page two shows routes 7-10")
+assert(not TB.botNpc.rows[5].visible, "page two hides unused rows")
+assert(TB.botNpc.prevPage.enabled and not TB.botNpc.nextPage.enabled, "page two enables prev only")
+now = now + 1
+this = TB.botNpc.rows[4]
+TB.botNpc.rows[4].scripts.OnClick(TB.botNpc.rows[4])
+assert(lastAddon() == "command Alpha taxi 10", "clicking a page-two flight flies that leg")
+now = now + 1
+this = TB.botNpc.prevPage
+TB.botNpc.prevPage.scripts.OnClick(TB.botNpc.prevPage)
+assert(TB.botNpc.rows[1].flightN == 1, "paging back restores routes 1-6")
+TB.SetNpcPending("Alpha", false)
+TB.CloseNpc()
+assert(not TB.botNpc.visible, "NPC closes")
+-- ── BotPanel spellbook (P6): 4th tab appended, indices 1-3 untouched ────────
+TB.OpenBotPanel("Alpha")
+assert(TB.botPanel.tabSpells and TB.botPanel.tabSpells.visible, "a 4th Spells tab must exist")
+TB.botPanel.tabGear.scripts.OnClick(TB.botPanel.tabGear)
+assert(TB.botPanel.gear.visible and not TB.botPanel.spells.visible, "Gear tab still shows the paper doll")
+TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
+assert(TB.botPanel.bags.visible and not TB.botPanel.spells.visible, "Bags tab still shows the grid")
+TB.botPanel.tabBehavior.scripts.OnClick(TB.botPanel.tabBehavior)
+assert(TB.botPanel.behavior.visible and not TB.botPanel.spells.visible, "Behaviour tab still shows the chips")
+TB.botPanel.tabSpells.scripts.OnClick(TB.botPanel.tabSpells)
+assert(TB.botPanel.spells.visible and not TB.botPanel.gear.visible, "Spells tab shows the spellbook")
+assert(table.getn(TB.botPanel.spellRows) == 12, "spellbook shows one page of rows")
+now = now + 1
+this = TB.botPanel.spellAsk
+TB.botPanel.spellAsk.scripts.OnClick(TB.botPanel.spellAsk)
+assert(lastAddon() == "command Alpha spells", "Ask for spellbook sends the proxy query")
+assert(not TB.botPanel.spellAsk.enabled, "Ask waits while the query is pending")
+TB.OnWhisperMessage("=== Spells ===", "Alpha")
+TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+assert(TB.botPanel.spellRows[1].visible and TB.botPanel.spellRows[1].spellName == "Fireball",
+    "spellbook rows render the parsed spells")
+assert(not TB.botPanel.spellRows[2].visible, "empty rows stay hidden")
+assert(TB.botPanel.spellPageText:GetText() == "1 / 1", "one spell fits on one page")
+now = now + 1
+this = TB.botPanel.spellRows[1]
+TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
+assert(lastAddon() == "command Alpha cast Fireball", "clicking a spell casts it by exact name")
+TB.SetSpellPending("Alpha", false)
+TB.CloseBotPanel()
+
+-- ── Bot vault (P8): bank + mailbox for the panel bot ─────────────────────
+TB.OpenBotPanel("Alpha")
+assert(TB.botPanel.vaultButton and TB.botPanel.vaultButton.visible, "the panel links to bank and mail")
+now = now + 1
+this = TB.botPanel.vaultButton
+TB.botPanel.vaultButton.scripts.OnClick(TB.botPanel.vaultButton)
+assert(lastAddon() == "command Alpha bank", "Bank / mail opens the vault bank list")
+assert(TB.botVault and TB.botVault.visible and TB.GetVaultBot() == "Alpha", "the vault tracks the panel bot")
+assert(TB.botVault.point and TB.botVault.point[2] == TB.botPanel, "the vault sits beside the open panel")
+assert(table.getn(TB.botVault.rows) == 8, "the vault shows one page of rows")
+TB.OnWhisperMessage("=== Bank ===", "Alpha")
+TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|rx3", "Alpha")
+assert(TB.botVault.rows[1].visible and TB.botVault.rows[1].itemId == 1234,
+    "vault rows render the parsed bank items")
+assert(not TB.botVault.rows[2].visible, "empty vault rows stay hidden")
+now = now + 1
+this = TB.botVault.rows[1]
+TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
+assert(lastAddon() == "command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h",
+    "clicking a bank row withdraws it by link")
+TB.SetVaultPending("Alpha", false)
+now = now + 1
+this = TB.botVault.tabMail
+TB.botVault.tabMail.scripts.OnClick(TB.botVault.tabMail)
+TB.RequestMailbox("Alpha")
+assert(lastAddon() == "command Alpha mail ?", "the mailbox tab asks for its letters")
+TB.OnWhisperMessage("=== Mailbox ===", "Alpha")
+TB.OnWhisperMessage("#1 |cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r, |cff00ff000 day(s)", "Alpha")
+assert(TB.botVault.rows[1].visible and TB.botVault.rows[1].mailN == 1,
+    "mailbox rows render the parsed letters")
+now = now + 1
+this = TB.botVault.rows[1]
+TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
+assert(lastAddon() == "command Alpha mail take 1", "clicking a letter takes it by index")
+TB.SetVaultPending("Alpha", false)
+TB.CloseVault()
+assert(not TB.botVault.visible, "the vault closes")
 TB.CloseBotPanel()
 assert(not TB.botPanel.visible, "the panel closes")
 
@@ -1172,9 +1623,6 @@ TB.SetMode = realSetMode
 -- ── Claimed Guild Bots (Issue #489) ────────────────────────────────────────
 local uninvitedGuildMembers = {}
 function GuildUninvite(name) table.insert(uninvitedGuildMembers, name) end
-StaticPopupDialogs = StaticPopupDialogs or {}
-local lastPopupShown = nil
-function StaticPopup_Show(which) lastPopupShown = which end
 
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
 assert(TB.HasServerCapability("claimed-roster"), "server CAPS must advertise claimed-roster")
@@ -1312,8 +1760,177 @@ TB.guildFrame.syncBtn.scripts.OnClick(TB.guildFrame.syncBtn)
 assert(pollCalled == true, "Sync button must trigger forced PollList")
 TB.PollList = origPollList
 
+-- ── P7: class filter chips + fill buttons + keybinding handlers ─────────────
+TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|0|map:4,zone:5,area:6")
+TB.OnSystemMessage("TBM:ROSTER_END")
+assert(table.getn(TB.classChips) == 10, "roster must show All plus 9 class filter chips")
+local function frameEdges(f)
+    local _, _, _, x, y = f:GetPoint(1)
+    return x, x + f.width, y, y - f.height
+end
+for _, chip in ipairs(TB.classChips) do
+    local left, right, top, bottom = frameEdges(chip)
+    assert(left >= 0 and right <= 480,
+        "class chip must stay inside the 480px roster frame")
+    assert(top <= -22 and bottom >= -62,
+        "class chips must sit on their own rows below the search box")
+end
+local searchLeft, searchRight, searchTop, searchBottom = frameEdges(TB.searchBox)
+local clearLeft, clearRight, clearTop, clearBottom = frameEdges(TB.searchClear)
+for _, chip in ipairs(TB.classChips) do
+    local left, right, top, bottom = frameEdges(chip)
+    local overlapsSearch = not (right <= searchLeft or left >= searchRight or top <= searchBottom or bottom >= searchTop)
+    local overlapsClear = not (right <= clearLeft or left >= clearRight or top <= clearBottom or bottom >= clearTop)
+    assert(not overlapsSearch and not overlapsClear,
+        "class chips must not intersect the search box or Clear button")
+end
+assert(TB.classFilter == nil, "class filter must start on All")
+TB.classFilter = 1
+TB.PaintClassChips()
+TB.Refresh()
+assert(table.getn(TB.GetDisplayRows("")) == 1 and TB.GetDisplayRows("")[1].name == "Alpha",
+    "Warrior filter must show only the Warrior row")
+assert(table.getn(TB.GetDisplayRows("gamma")) == 0,
+    "class filter must combine with the name search")
+TB.classFilter = nil
+TB.PaintClassChips()
+TB.Refresh()
+assert(table.getn(TB.GetDisplayRows("")) == 3, "clearing the class filter must restore all rows")
+local chipWarrior = nil
+for _, chip in ipairs(TB.classChips) do
+    if chip.classId == 1 then chipWarrior = chip break end
+end
+assert(chipWarrior, "Warrior filter chip must exist")
+this = chipWarrior
+chipWarrior.scripts.OnClick(chipWarrior)
+assert(TB.classFilter == 1 and table.getn(TB.GetDisplayRows("")) == 1,
+    "clicking the Warrior chip must filter the roster rows")
+assert(chipWarrior.enabled == false, "active filter chip must disable (pill pattern)")
+this = TB.classChips[1]
+TB.classChips[1].scripts.OnClick(TB.classChips[1])
+assert(TB.classFilter == nil and table.getn(TB.GetDisplayRows("")) == 3,
+    "clicking All must clear the class filter")
+assert(TB.lifecycleButtons.fill and TB.guildFrame.fillBtn,
+    "Fill party and Fill raid buttons must exist")
+local rosterSpan = 95 + 56 + 62 + 56 + 50 + 66 + 44 + 6 * 4
+assert(rosterSpan <= 480, "roster bar (selection + 6 buttons) must fit the 480px frame")
+local guildSpan = 85 + 110 + 110 + 56 + 56 + 4 * 4
+assert(guildSpan <= 480, "guild bar (selection + 4 buttons) must fit the 480px frame")
+local fillLeft, fillRight = frameEdges(TB.lifecycleButtons.fill)
+assert(fillLeft >= 0 and fillRight <= 480, "Fill button must stay inside the roster frame")
+partyMembers = { "Alpha", "Gamma", "Delta", "Epsilon" }
+assert(table.getn(TB.GetFillPartyNames()) == 0,
+    "Fill party must stay empty when the party is already full")
 partyMembers = {}
+local groupWatcher = frames["TortoiseBotsManagerGroupWatcher"]
+groupWatcher.scripts.OnEvent(groupWatcher)
+assert(TB.GetFillPartyNames()[1] == "Alpha" and TB.GetFillPartyNames()[2] == "Gamma",
+    "Fill party must pick invite-eligible bots up to the party cap")
+assert(table.getn(TB.GetFillRaidNames()) == 2 and TB.GetFillRaidNames()[1] == "Goldie",
+    "Fill raid must pick online ungrouped claimed bots up to the raid cap")
+partyMembers = {}
+TB.SetAddonTransport("none")
+now = now + 1
+TortoiseBotsDB.pullDelay = nil
+TortoiseBotsDB.pullbackDelay = nil
+local beforeKeys = table.getn(sent)
+assert(TB.SendKeyIntent("attack") == true, "keybinding Attack must send")
+assert(sent[table.getn(sent)] == ".bot action attack", "keybinding Attack must send the attack intent")
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|flee,inventory,behavior,claimed-roster")
+TB.SendKeyIntent("pull")
+assert(sent[table.getn(sent)] == ".bot action pull", "keybinding Pull must send the plain intent without the timer cap")
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TortoiseBotsDB.pullDelay = 10
+TB.SendKeyIntent("pull")
+assert(sent[table.getn(sent)] == ".bot action pull 10", "keybinding Pull must honor the pull timer cap")
+TortoiseBotsDB.pullDelay = nil
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|flee,inventory,behavior,claimed-roster")
+assert(TB.SendKeyIntent("flee") == true, "keybinding Flee must send while the cap is advertised")
+now = now + 1
+TB.OnSystemMessage("TBM:CAPS|inventory,behavior,claimed-roster")
+assert(TB.SendKeyIntent("flee") == false, "keybinding Flee must stay silent without the server cap")
+assert(table.getn(sent) == beforeKeys + 4, "keybindings must send exactly one intent per press")
 
+-- ── Dungeon run window (P11): capability-gated satellite ─────────────────
+TB.OnSystemMessage("TBM:TRANSPORT|party")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TB.RefreshPartyView()
+assert(not TB.partyFrame.runButton:IsVisible(), "no Dungeon run button without the capability")
+assert(TB.OpenRunWindow() == false, "the run window stays shut without the capability")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run")
+TB.RefreshPartyView()
+assert(TB.partyFrame.runButton:IsVisible(), "the capability shows the Dungeon run button")
+now = now + 1
+this = TB.partyFrame.runButton
+TB.partyFrame.runButton.scripts.OnClick(TB.partyFrame.runButton)
+assert(TB.runWindow and TB.runWindow:IsVisible(), "Dungeon run opens the window")
+local runQueue = frames["TortoiseBotsManagerQueueFrame"]
+for _ = 1, 30 do
+    if lastAddon() == "run status" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(lastAddon() == "run status", "opening asks for the run status")
+assert(TB.runWindow.point and (TB.runWindow.point[2] == TB.frame or TB.runWindow.point[2] == TB.botPanel), "the run window sits beside main")
+TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet)")
+assert(table.getn(TB.GetRunPlans()) == 2, "the plan list parses")
+assert(TB.runWindow.planRows[1].visible and TB.runWindow.planRows[1].planName == "uldaman",
+    "plan rows render the parsed plans")
+now = now + 1
+this = TB.runWindow.planRows[2]
+TB.runWindow.planRows[2].scripts.OnClick(TB.runWindow.planRows[2])
+assert(TB.GetRunSelectedPlan() == "ragefire_chasm", "clicking a plan picks it")
+now = now + 1
+this = TB.runWindow.start
+TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+assert(lastAddon() == "run start ragefire_chasm", "Start sends the picked plan")
+TB.OnSystemMessage("TBM:ACTION_ACK|run start|party|120|ragefire_chasm")
+TB.OnSystemMessage("TBM:RUN|ragefire_chasm|running|1/120|tunnel|move|walk|walking to tunnel")
+assert(TB.GetRun().state == "running", "the status line drives the model")
+assert(TB.runWindow.runStep.text == "Step 1 of 120", "step x/y renders")
+now = now + 1
+this = TB.runWindow.pause
+TB.runWindow.pause.scripts.OnClick(TB.runWindow.pause)
+assert(lastAddon() == "run pause", "Pause sends")
+TB.OnSystemMessage("TBM:RUN|ragefire_chasm|paused|1/120|tunnel|move|walk|paused by .bot run pause")
+assert(TB.runWindow.resume.enabled and not TB.runWindow.pause:IsVisible(), "pause swaps Pause for Resume")
+now = now + 1
+this = TB.runWindow.resume
+TB.runWindow.resume.scripts.OnClick(TB.runWindow.resume)
+assert(lastAddon() == "run resume", "Resume sends")
+now = now + 1
+this = TB.runWindow.skip
+TB.runWindow.skip.scripts.OnClick(TB.runWindow.skip)
+assert(lastAddon() == "run skip", "Skip sends")
+TB.SetRunStopReason("done for tonight")
+now = now + 1
+this = TB.runWindow.stop
+TB.runWindow.stop.scripts.OnClick(TB.runWindow.stop)
+assert(lastAddon() == "run stop done for tonight", "Stop sends the reason")
+TB.SetRunStopReason("")
+TB.OnSystemMessage("TBM:RUN|ragefire_chasm|done|5/120|tunnel|move|walk|stopped: done for tonight")
+assert(not TB.runWindow.stop.enabled, "Stop waits once the run is done")
+-- Mutual exclusion with the vault/NPC satellites.
+TB.OpenBotPanel("Alpha")
+TB.OpenVault("Alpha")
+assert(not TB.runWindow:IsVisible() and TB.botVault:IsVisible(), "the vault closes the run window")
+TB.OpenRunWindow()
+assert(TB.runWindow:IsVisible() and not TB.botVault:IsVisible(), "the run window closes the vault")
+TB.CloseBotPanel()
+assert(not TB.runWindow:IsVisible(), "the run window closes with its parent")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TB.RefreshPartyView()
+assert(not TB.partyFrame.runButton:IsVisible(), "losing the cap hides everything again")
+assert(TB.GetRun() == nil, "losing the cap drops the model")
+
+partyMembers = {}
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,
@@ -1325,7 +1942,10 @@ dofile(root .. "/tests/wire_cases.lua")({
     setParty = function(members, className) partyMembers = members or {}; partyClassName = className or "Priest" end,
     setDead = function(unit, dead) deadUnits[unit] = dead end,
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
+    seedItem = function(id, item) itemCache[id] = item end,
 })
+
+dofile(root .. "/tests/geometry_tests.lua")()
 
 dofile(root .. "/tests/phase0_tests.lua")()
 

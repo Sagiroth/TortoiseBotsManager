@@ -144,6 +144,11 @@ end
 local function actionLabel(intent)
     local def = TB.GetActionDefinition and TB.GetActionDefinition(intent)
     if def and def.label then return def.label end
+    if intent == "strategy +grind" or intent == "strategy -grind" then return "Grind" end
+    if intent == "totem drop" then
+        if C.ACTION_LABELS and C.ACTION_LABELS["totem party drop"] then return C.ACTION_LABELS["totem party drop"] end
+        return "Drop totems"
+    end
     if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
     local _, _, behaviorKey = string.find(intent or "", "^behavior%s+(%S+)$")
     if behaviorKey then
@@ -225,6 +230,12 @@ function TB.ParseActionMessage(msg)
                 TB.OnPartyToggleResult(toggleKey, packet.scope, packet.executor)
             end
         end
+        -- Combat stances: ACK detail carries the chosen stance
+        -- ("TBM:ACTION_ACK|stance|party|N|<option>"); the server confirms
+        -- the intent, the pill click already set the active stance.
+        if packet.intent == "stance" and TB.currentStance and TB.UpdateStancePills then
+            TB.UpdateStancePills()
+        end
         -- Bot panel and raid replies render their own text.
         if TB.OnBotPanelAck and TB.OnBotPanelAck(packet) then
             if TB.Refresh then TB.Refresh() end
@@ -234,6 +245,9 @@ function TB.ParseActionMessage(msg)
             if TB.Refresh then TB.Refresh() end
             return true, "ack", packet
         end
+        -- Dungeon run: clears the model on the "no run" status ACK; the
+        -- generic text below still reports every run ACK/ERR.
+        if TB.OnRunAck then TB.OnRunAck(packet) end
         local scope = packet.scope == "party" and "party" or packet.scope
         local text = actionLabel(packet.intent) .. " accepted · " .. scope .. " · " .. packet.count
         if packet.executor ~= "-" then text = text .. " (" .. packet.executor .. ")" end
@@ -522,7 +536,7 @@ function TB.OnCommandQueued(cmd)
     local verb = string.lower(string.gsub(cmd or "", "%s+.*", ""))
     local name = commandTargetName(cmd)
     if name and verb ~= "list" and verb ~= "roster" and verb ~= "stats"
-        and verb ~= "help" and verb ~= "action" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
+        and verb ~= "help" and verb ~= "action" and verb ~= "strategy" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
         if verb == "add" then TB.AddToRoster(name) end
         TB.BeginOperation(name, verb, true)
         if TB.Refresh then TB.Refresh() end
@@ -542,7 +556,11 @@ function TB.OnCommandSent(cmd)
     if TB.IsPanelVerb(verb) then return end
 
     if verb == "add" and name then TB.AddToRoster(name) end
-    if name and verb ~= "action" and TB.BeginOperation then
+    -- commander / cmd / run take a lead bot or a plan, not a roster name:
+    -- no per-bot operation for them.
+    if name and verb ~= "action" and verb ~= "strategy"
+        and verb ~= "commander" and verb ~= "cmd" and verb ~= "run"
+        and TB.BeginOperation then
         TB.BeginOperation(name, verb, false)
     end
 
@@ -557,7 +575,7 @@ function TB.OnCommandSent(cmd)
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
     end
     if TB.Refresh then TB.Refresh() end
-    if verb ~= "action" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
+    if verb ~= "action" and verb ~= "strategy" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
@@ -575,6 +593,56 @@ end
 
 function TB.OnWhisperMessage(msg, sender)
     local name = TB.NormalizeName(sender or "")
+    -- Vault lines from the open vault bot go to the bank/mail lists, not
+    -- the command-op gate: the gate completes on the first whisper and would
+    -- swallow the rest of the list.
+    if name and TB.ConsumeVaultReply and TB.ConsumeVaultReply(name, msg or "") then
+        local entry = TB.GetVault and TB.GetVault(name)
+        local bank = entry and entry.bank and table.getn(entry.bank) or 0
+        local mail = entry and entry.mail and table.getn(entry.mail) or 0
+        if TB.SetStatus then
+            if string.find(msg or "", "=== Bank ===") or string.find(msg or "", "=== Mailbox ===") then
+                TB.SetStatus("Reading " .. name .. "'s vault…", "pending")
+            else
+                TB.SetStatus(name .. "'s vault · bank " .. bank .. " · mail " .. mail, "ok")
+            end
+        end
+        return
+    end
+    -- List whispers feed their own pending list first, then the command-op
+    -- gate below: the gate completes on the first whisper and would swallow
+    -- the rest of a burst. Each route only consumes lines of its own open
+    -- reply; anything else falls through.
+    if name and TB.ConsumeTaxiReply and TB.ConsumeTaxiReply(name, msg or "") then
+        local entry = TB.GetNpcErrands and TB.GetNpcErrands(name)
+        local count = entry and entry.flights and table.getn(entry.flights) or 0
+        if TB.SetStatus then
+            if string.find(msg or "", "=== Taxi ===") then
+                TB.SetStatus("Reading " .. name .. "'s flights…", "pending")
+            else
+                TB.SetStatus(name .. "'s flights · " .. count, "ok")
+            end
+        end
+        return
+    end
+
+    if name and TB.ConsumeSpellReply and TB.ConsumeSpellReply(name, msg or "") then
+        local st = name and TB.GetState and TB.GetState(name) or nil
+        if st and st.operation and st.operation.verb == "command" then
+            st.pendingAI = nil
+            if TB.CompleteOperation then TB.CompleteOperation(name, "command", true, msg) end
+        end
+        local entry = TB.GetSpellList and TB.GetSpellList(name)
+        local count = entry and entry.spells and table.getn(entry.spells) or 0
+        if TB.SetStatus then
+            if string.find(msg or "", "=== Spells ===") then
+                TB.SetStatus("Reading " .. name .. "'s spellbook…", "pending")
+            else
+                TB.SetStatus(name .. "'s spellbook · " .. count, "ok")
+            end
+        end
+        return
+    end
     local st = name and TB.GetState and TB.GetState(name) or nil
     if not st or not st.pendingAI or not st.operation or st.operation.verb ~= "command" then return end
     local now = (GetTime and GetTime()) or 0
@@ -604,6 +672,13 @@ end
 
 function TB.OnSystemMessage(msg)
     if not msg or msg == "" then return end
+    -- Some clients double the "|" of a "|A"/"|T" pair on server-delivered
+    -- chat lines before Lua sees them. Protocol fields never contain "||",
+    -- so restore those two pairs on TBM lines. Stock clients never send
+    -- "||" here and are unaffected.
+    if string.sub(msg, 1, 4) == "TBM:" then
+        msg = string.gsub(msg, "||([AT])", "|%1")
+    end
     local handled = false
 
     do
@@ -626,6 +701,10 @@ function TB.OnSystemMessage(msg)
                 serverCaps[string.lower(TB.Trim(item))] = true
             end
             TB._serverCaps = serverCaps
+            -- The run feature can vanish with a restart: re-gate the window
+            -- (and its button, via Refresh) on every CAPS line.
+            if TB.NoteRunCaps then TB.NoteRunCaps() end
+            if TB.Refresh then TB.Refresh() end
             TB.lastSystem = msg
             return
         end
@@ -666,10 +745,28 @@ function TB.OnSystemMessage(msg)
         return
     end
 
+    if TB.ParseRunMessage then
+        local runHandled = TB.ParseRunMessage(msg)
+        if runHandled then
+            TB.lastSystem = msg
+            return
+        end
+    end
+
     local actionHandled = TB.ParseActionMessage and TB.ParseActionMessage(msg)
     if actionHandled then
         TB.lastSystem = msg
         return
+    end
+    do
+        local _, _, change = string.find(msg, "^Strategy change '([^']+)' applied")
+        if change then
+            if TB.NoteStrategyChange then TB.NoteStrategyChange(change) end
+            if TB.SetStatus then TB.SetStatus(change .. " applied", "ok") end
+            if TB.Refresh then TB.Refresh() end
+            TB.lastSystem = msg
+            return
+        end
     end
     if updateServerCommands(msg) then
         if TB.SetStatus then TB.SetStatus(msg, "muted") end

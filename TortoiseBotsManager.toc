@@ -13,5 +13,9 @@ Roster.lua
 Comms.lua
 UI.lua
 BotPanel.lua
+BotNpc.lua
+BotVault.lua
+BotRun.lua
 MiniBar.lua
 Minimap.lua
+Bindings.lua

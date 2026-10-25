@@ -93,6 +93,24 @@ return function()
     assert(aoeDef and aoeDef.id == "aoe" and aoeDef.toggle == "aoe" and aoeDef.section == "switch",
         "aoe definition must specify toggle = 'aoe'")
 
+    local sapDef = TB.GetActionDefinition("sap")
+    assert(sapDef and sapDef.id == "sap" and sapDef.toggle == "sap" and sapDef.section == "switch",
+        "sap definition must specify toggle = 'sap'")
+
+    local spreadDef = TB.GetActionDefinition("behavior spread")
+    assert(spreadDef and spreadDef.id == "spread" and spreadDef.toggle == "spread"
+        and spreadDef.send == "behavior" and spreadDef.section == "switch",
+        "spread definition must route through the behavior verb")
+
+    local kiteDef = TB.GetActionDefinition("strategy ~kite")
+    assert(kiteDef and kiteDef.id == "tacticKite" and kiteDef.section == "tactic"
+        and kiteDef.strategy == "~kite",
+        "kite definition must carry the strategy change")
+
+    local endPullDef = TB.GetActionDefinition("end pull")
+    assert(endPullDef and endPullDef.id == "endPull" and endPullDef.section == "pull",
+        "end pull definition must live in the pull section")
+
     local restDef = TB.GetActionDefinition("rest")
     assert(restDef and restDef.id == "rest" and restDef.section == "rest",
         "rest definition must specify section = 'rest'")
@@ -115,7 +133,7 @@ return function()
     assert(TB.C.ACTIONS == nil, "C.ACTIONS must be deleted")
     assert(TB.Roles.CLASS_ROLES and TB.C.CLASS_ROLES == TB.Roles.CLASS_ROLES,
         "TB.Roles must be the single source of truth for CLASS_ROLES")
-    assert(TB.C.PARTY_TOGGLES and table.getn(TB.C.PARTY_TOGGLES) == 3,
+    assert(TB.C.PARTY_TOGGLES and table.getn(TB.C.PARTY_TOGGLES) == 5,
         "PARTY_TOGGLES must be derived from ACTION_DEFINITIONS")
     assert(TB.C.ACTION_ICONS and TB.C.ACTION_ICONS.attack,
         "ACTION_ICONS must be derived from ACTION_DEFINITIONS")
@@ -130,12 +148,13 @@ return function()
     assert(TB.UI.Grid.BTN_H == 26, "Default button height must be 26")
     assert(TB.UI.Grid.BTN_H_SM == 22, "Small button height must be 22")
     assert(TB.UI.Grid.ROW_H == 28, "Row height must be 28")
-    assert(TB.UI.Grid.CARD_ENGAGE_H == 58, "Card engage height must be 58")
-    assert(TB.UI.Grid.CARD_PULL_H == 76, "Card pull height must be 76")
-    assert(TB.UI.Grid.CARD_MOVE_H == 58, "Card move height must be 58")
-    assert(TB.UI.Grid.CARD_SWITCH_H == 58, "Card switch height must be 58")
-    assert(TB.UI.Grid.CARD_REST_H == 88, "Card rest height must be 88")
-    assert(TB.UI.Grid.CARD_FORM_H == 76, "Card form height must be 76")
+    assert(TB.UI.Grid.CARD_ENGAGE_H == 48, "Card engage height must be 48")
+    assert(TB.UI.Grid.CARD_PULL_H == 68, "Card pull height must be 68")
+    assert(TB.UI.Grid.CARD_MOVE_H == 72, "Card move height must be 72")
+    assert(TB.UI.Grid.CARD_SWITCH_H == 48, "Card switch height must be 48")
+    assert(TB.UI.Grid.CARD_TACTIC_H == 48, "Card tactics height must be 48")
+    assert(TB.UI.Grid.CARD_REST_H == 116, "Card rest height must be 116")
+    assert(TB.UI.Grid.CARD_FORM_H == 100, "Card form height must be 100")
 
     -- ──────────────────────────────────────────────────────────────────────────
     -- 4. TB.UI component factories
@@ -227,8 +246,10 @@ return function()
     assert(type(TB.UI.BuildPullCard) == "function", "BuildPullCard must be exported")
     assert(type(TB.UI.BuildMoveCard) == "function", "BuildMoveCard must be exported")
     assert(type(TB.UI.BuildSwitchesCard) == "function", "BuildSwitchesCard must be exported")
+    assert(type(TB.UI.BuildTacticsCard) == "function", "BuildTacticsCard must be exported")
     assert(type(TB.UI.BuildRestCard) == "function", "BuildRestCard must be exported")
     assert(type(TB.UI.BuildFormationCard) == "function", "BuildFormationCard must be exported")
+    assert(type(TB.UI.BuildQuestsCard) == "function", "BuildQuestsCard must be exported")
 
     print("PASS: Phase 0 component kit and definition table checks")
 end

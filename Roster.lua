@@ -171,6 +171,12 @@ local function snapshotError(code, message)
     TB.rosterSnapshotError = rosterSnapshotError
     if TB.Refresh then TB.Refresh() end
 end
+-- One bad row no longer poisons the whole snapshot: count it and keep
+-- receiving the rest. The END handler commits the good rows and reports how
+-- many were skipped once every announced row is accounted for.
+local function skipSnapshotRow()
+    if receiving then receiving.skipped = (receiving.skipped or 0) + 1 end
+end
 
 local function commitSnapshot(rows)
     local previousSelection = {}
@@ -343,21 +349,25 @@ function TB.ParseRosterMessage(msg)
 
     fields = protocolFields(msg, "TBM:ROSTER|")
     if fields then
-        if not receiving or (table.getn(fields) ~= 6 and table.getn(fields) ~= 7) then
+        if not receiving then
             snapshotError("malformed_row", "Malformed roster snapshot.")
             return true, "error"
+        end
+        if table.getn(fields) ~= 6 and table.getn(fields) ~= 7 then
+            skipSnapshotRow()
+            return true, "row"
         end
         local guid, name, classId, serverState, group, location, ccMark = unpack(fields)
         if TB.Trim(guid) == "" or TB.Trim(name) == "" or not string.find(classId, "^%d+$")
             or TB.Trim(serverState) == "" or (group ~= "0" and group ~= "1")
             or TB.Trim(location) == "" then
-            snapshotError("malformed_row", "Malformed roster snapshot.")
-            return true, "error"
+            skipSnapshotRow()
+            return true, "row"
         end
         local normalized = normalize(name)
         if not normalized or receiving.names[normalized] then
-            snapshotError("malformed_row", "Malformed roster snapshot.")
-            return true, "error"
+            skipSnapshotRow()
+            return true, "row"
         end
         receiving.names[normalized] = true
         table.insert(receiving.rows, {
@@ -379,11 +389,20 @@ function TB.ParseRosterMessage(msg)
         end
         local batch = receiving
         receiving = nil
-        if table.getn(batch.rows) ~= batch.expected then
+        if table.getn(batch.rows) + (batch.skipped or 0) ~= batch.expected then
             snapshotError("count_mismatch", "Incomplete roster snapshot.")
             return true, "error"
         end
         commitSnapshot(batch.rows)
+        if (batch.skipped or 0) > 0 then
+            rosterSnapshotError = {
+                code = "partial_rows",
+                message = tostring(batch.skipped) .. " malformed roster row(s) skipped.",
+            }
+            TB.rosterSnapshotError = rosterSnapshotError
+            if TB.Refresh then TB.Refresh() end
+            return true, "error", rosterSnapshotError
+        end
         return true, "end", batch.expected
     end
 
@@ -778,11 +797,15 @@ function TB.ConfirmSeen(name, info)
 end
 
 -- ── server-backed roster rows ───────────────────────────────────────────────
-function TB.GetDisplayRows(filter)
+-- Class filter is session-only (like the name search): nil shows every class,
+-- otherwise only rows with that class ID.
+function TB.GetDisplayRows(filter, classFilter)
     filter = string.lower(filter or "")
+    if classFilter == nil then classFilter = TB.classFilter end
     local rows = {}
     for name, st in pairs(state) do
-        if displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true)) then
+        if displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true))
+            and (classFilter == nil or st.classId == classFilter) then
             table.insert(rows, {
                 name = name,
                 guid = st.guid,
@@ -976,9 +999,42 @@ function TB.GetEligibleRosterNames(action)
     return names
 end
 
+-- Fill selectors (P7): invite-eligible names across the current view, capped
+-- so the group never exceeds 5 (party) or 40 (raid).  Selection is ignored:
+-- Fill picks the bots for you.  Wire is unchanged: plain invite batches.
+function TB.GetFillPartyNames()
+    local groupSize = ((GetNumPartyMembers and GetNumPartyMembers()) or 0) + 1
+    local free = 5 - groupSize
+    if free <= 0 then return {} end
+    local out = {}
+    for _, row in ipairs(TB.GetDisplayRows and TB.GetDisplayRows(TB.filterText or "") or {}) do
+        if table.getn(out) >= free then break end
+        if lifecycleEligible(row.name, "invite") then table.insert(out, row.name) end
+    end
+    return out
+end
+
+function TB.GetFillRaidNames()
+    local raidSize = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local groupSize = raidSize
+    if groupSize == 0 then
+        groupSize = ((GetNumPartyMembers and GetNumPartyMembers()) or 0) + 1
+    end
+    local free = 40 - groupSize
+    if free <= 0 then return {} end
+    local out = {}
+    for _, bot in ipairs(claimedBots) do
+        if table.getn(out) >= free then break end
+        if bot.online and not bot.group then
+            table.insert(out, bot.name)
+        end
+    end
+    return out
+end
+
 -- Friendly aliases for callers that describe the same contextual bottom bar.
-TB.GetEligibleSelection = TB.GetEligibleRosterNames
-TB.GetSelectedNames = TB.GetSelectedRosterNames
+ TB.GetEligibleSelection = TB.GetEligibleRosterNames
+ TB.GetSelectedNames = TB.GetSelectedRosterNames
 
 -- Vanilla 1.12 canonical group events: PARTY_MEMBERS_CHANGED covers party,
 -- RAID_ROSTER_UPDATE covers raid (subgroup shifts, convert to raid).
