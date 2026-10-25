@@ -649,7 +649,7 @@ local function createMenu(parent)
     menu.fourth = button("Disenchant", -78, "The bot disenchants this item into dust or shards.")
     menu.fifth = button("Send by mail", -102, "The bot mails this item to you.")
     menu.sixth = button("Put to bank", -126, "The bot stores this item in its bank.")
-    menu.seventh = button("Destroy", -150, "The bot destroys this item. Cannot be undone.")
+    menu.seventh = button("|cffff5555Destroy|r", -150, "The bot destroys this item. Cannot be undone.")
     -- A panel-sized catcher closes the menu on a click outside it. It is a
     -- plain panel child (no global mouse hook), shown only with the menu, so
     -- other addons never see it.
@@ -665,16 +665,17 @@ local function createMenu(parent)
         -- Stay inside the screen: opening left of the slot when the right
         -- side has no room (right-edge bag columns, panel at screen edge),
         -- and above the slot when the bottom has no room (lower bag rows).
+        -- Both flips combine: a bottom-right slot opens above AND left.
         local right = self.GetRight and self:GetRight()
         local screen = GetScreenWidth and GetScreenWidth()
-        if right and screen and right > screen then
-            self:ClearAllPoints()
-            self:SetPoint("TOPRIGHT", owner, "BOTTOMLEFT", 8, 8)
-        end
         local bottom = self.GetBottom and self:GetBottom()
-        if bottom and bottom < 0 then
+        local flipX = right and screen and right > screen
+        local flipY = bottom and bottom < 0
+        if flipX or flipY then
             self:ClearAllPoints()
-            self:SetPoint("BOTTOMLEFT", owner, "TOPRIGHT", -8, -8)
+            local myPt = (flipY and "BOTTOM" or "TOP") .. (flipX and "RIGHT" or "LEFT")
+            local relPt = (flipY and "TOP" or "BOTTOM") .. (flipX and "LEFT" or "RIGHT")
+            self:SetPoint(myPt, owner, relPt, flipX and 8 or -8, flipY and -8 or 8)
         end
         if entry.equipped then
             self.first:SetText("Unequip")
@@ -776,7 +777,7 @@ local function createPanel()
 
     local sub = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     sub:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -28)
-    sub:SetWidth(200); sub:SetJustifyH("LEFT")
+    sub:SetWidth(PW - 24); sub:SetJustifyH("LEFT")
     TB.SetTextColor(sub, color("muted"))
     panel.subText = sub
 
@@ -846,7 +847,7 @@ local function createPanel()
     sweep:SetWidth(110); sweep:SetHeight(20)
     sweep:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -72)
     sweep:SetText("Equip upgrades")
-    setTooltip(sweep, "Equip upgrades", { "The bot scans its bags and equips everything better." })
+    setTooltip(sweep, "Equip upgrades (new loot)", { "The bot scans its bags and equips everything better.", "Footer → Auto-gear does a full re-gear from bags instead." })
     sweep:SetScript("OnClick", function()
         if currentBot then TB.SendBotCommand("command " .. currentBot .. " d equip upgrades") end
     end)
@@ -905,7 +906,7 @@ local function createPanel()
     local bhHint = behavior:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bhHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -258)
     bhHint:SetWidth(PW - 24); bhHint:SetJustifyH("LEFT")
-    bhHint:SetText("Party-wide switches live on the Actions tab; these override one bot.")
+    bhHint:SetText("Party-wide switches live on the Fight tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
 
     -- Spells view: the bot's spellbook, one row per known spell.
@@ -929,6 +930,13 @@ local function createPanel()
         end)
         table.insert(panel.spellRows, row)
     end
+    local spellEmpty = spellsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    spellEmpty:SetPoint("CENTER", panel, "CENTER", 0, -140)
+    spellEmpty:SetWidth(260); spellEmpty:SetJustifyH("CENTER")
+    spellEmpty:SetText("Click 'Ask for spellbook' below to list this bot's spells.")
+    TB.SetTextColor(spellEmpty, color("muted"))
+    panel.spellEmpty = spellEmpty
+
     local ask = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
     ask:SetWidth(150); ask:SetHeight(22)
     ask:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
@@ -969,8 +977,8 @@ local function createPanel()
     panel.tradeButton = trade
 
     local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    refresh:SetWidth(46); refresh:SetHeight(22)
-    refresh:SetPoint("LEFT", trade, "RIGHT", 6, 0)
+    refresh:SetWidth(54); refresh:SetHeight(22)
+    refresh:SetPoint("LEFT", trade, "RIGHT", 4, 0)
     refresh:SetText("Refresh")
     setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
     refresh:SetScript("OnClick", function()
@@ -980,8 +988,8 @@ local function createPanel()
     panel.refreshButton = refresh
 
     local npcLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    npcLink:SetWidth(36); npcLink:SetHeight(22)
-    npcLink:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
+    npcLink:SetWidth(38); npcLink:SetHeight(22)
+    npcLink:SetPoint("LEFT", refresh, "RIGHT", 4, 0)
     npcLink:SetText("NPC")
     setTooltip(npcLink, "NPC errands", { "Talk, bind, learn and flights for this bot." })
     npcLink:SetScript("OnClick", function()
@@ -990,9 +998,9 @@ local function createPanel()
     panel.npcButton = npcLink
 
     local vaultLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    vaultLink:SetWidth(64); vaultLink:SetHeight(22)
-    vaultLink:SetPoint("LEFT", npcLink, "RIGHT", 6, 0)
-    vaultLink:SetText("Bank / mail")
+    vaultLink:SetWidth(44); vaultLink:SetHeight(22)
+    vaultLink:SetPoint("LEFT", npcLink, "RIGHT", 4, 0)
+    vaultLink:SetText("Bank")
     setTooltip(vaultLink, "Bank and mail", { "Lists what this bot keeps in its bank and mailbox." })
     vaultLink:SetScript("OnClick", function()
         if currentBot and TB.OpenVault then TB.OpenVault(currentBot) end
@@ -1000,8 +1008,8 @@ local function createPanel()
     panel.vaultButton = vaultLink
 
     local upkeep = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    upkeep:SetWidth(46); upkeep:SetHeight(22)
-    upkeep:SetPoint("LEFT", vaultLink, "RIGHT", 6, 0)
+    upkeep:SetWidth(50); upkeep:SetHeight(22)
+    upkeep:SetPoint("LEFT", vaultLink, "RIGHT", 4, 0)
     upkeep:SetText("Upkeep")
     setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs.", "Only while the bot is online." })
     upkeep:SetScript("OnClick", function()
@@ -1011,10 +1019,10 @@ local function createPanel()
     panel.upkeepButton = upkeep
 
     local gearup = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    gearup:SetWidth(46); gearup:SetHeight(22)
-    gearup:SetPoint("LEFT", upkeep, "RIGHT", 6, 0)
-    gearup:SetText("Gear up")
-    setTooltip(gearup, "Gear up", { "The bot equips the best gear it already owns in its bags.", "Only while the bot is online." })
+    gearup:SetWidth(64); gearup:SetHeight(22)
+    gearup:SetPoint("LEFT", upkeep, "RIGHT", 4, 0)
+    gearup:SetText("Auto-gear")
+    setTooltip(gearup, "Auto-gear (bags)", { "The bot equips the best gear it already owns in its bags.", "Bags → Equip upgrades re-scans and equips new loot instead.", "Only while the bot is online." })
     gearup:SetScript("OnClick", function()
         if currentBot then TB.SendBotCommand("autogear " .. currentBot) end
         if currentBot then TB.RequestInventory(currentBot) end
@@ -1028,6 +1036,7 @@ local function createPanel()
     TB.SetTextColor(hint, color("muted"))
 
     itemMenu = createMenu(panel)
+    panel.itemMenu = itemMenu
 
     -- Uncached items re-render once the client has them; a pending link
     -- order retries then, so the first click sends once cached.
@@ -1201,6 +1210,9 @@ local function renderSpells()
     panel.spellPageText:SetText(spellPage .. " / " .. pages)
     if spellPage > 1 then panel.spellPrev:Enable() else panel.spellPrev:Disable() end
     if spellPage < pages then panel.spellNext:Enable() else panel.spellNext:Disable() end
+    if panel.spellEmpty then
+        if table.getn(list) == 0 then panel.spellEmpty:Show() else panel.spellEmpty:Hide() end
+    end
 end
 
 function TB.RefreshBotPanel()
@@ -1265,6 +1277,8 @@ end
 
 function TB.CloseBotPanel()
     hideMenu()
+    if TB.CloseVault then TB.CloseVault() end
+    if TB.CloseNpc then TB.CloseNpc() end
     if panel then panel:Hide() end
 end
 

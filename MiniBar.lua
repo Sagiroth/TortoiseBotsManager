@@ -46,7 +46,12 @@ end
 local function makeIcon(parent, item, index)
     local b = CreateFrame("Button", nil, parent)
     b:SetWidth(ICON); b:SetHeight(ICON)
-    b:SetPoint("LEFT", parent, "LEFT", 34 + (index - 1) * STEP, 0)
+    -- Visual groups: engage (1-4), pull/focus (5-7), move (8-10), AoE (11).
+    local gap = 0
+    if index > 4 then gap = gap + 6 end
+    if index > 7 then gap = gap + 6 end
+    if index > 10 then gap = gap + 6 end
+    b:SetPoint("LEFT", parent, "LEFT", 34 + (index - 1) * STEP + gap, 0)
     b:RegisterForClicks("LeftButtonUp")
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints(b)
@@ -101,7 +106,7 @@ end
 
 local function createBar()
     bar = CreateFrame("Frame", "TortoiseBotsManagerMiniBar", UIParent)
-    bar:SetWidth(34 + table.getn(ITEMS) * STEP + 32)
+    bar:SetWidth(34 + table.getn(ITEMS) * STEP + 18 + 32)
     bar:SetHeight(ICON + 10)
     bar:SetFrameStrata("DIALOG")
     bar:SetMovable(true)
@@ -201,6 +206,8 @@ function TB.SetMode(mode)
     if not bar then createBar() end
     if mode == "mini" then
         if TB.CloseBotPanel then TB.CloseBotPanel() end
+        if TB.CloseVault then TB.CloseVault() end
+        if TB.CloseNpc then TB.CloseNpc() end
         if TB.frame then TB.frame:Hide() end
         bar:Show()
         TB.RefreshMiniBar()

@@ -14,7 +14,7 @@ local TB = TortoiseBots
 local C = TB.C or {}
 local COL = C.COLOR or {}
 local VW = 300
-local VH = 300
+local VH = 290
 local ROWS = 8
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
@@ -186,7 +186,7 @@ local function setTooltip(button, title, lines)
     button:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
         GameTooltip:SetText(title)
-        for _, line in ipairs(lines) do GameTooltip:AddLine(line, 0.62, 0.60, 0.56) end
+        for _, line in ipairs(lines) do GameTooltip:AddLine(line, 0.9, 0.9, 0.9, 1) end
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -195,7 +195,7 @@ end
 local function makeTab(parent, label, x, width, view)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetWidth(width); b:SetHeight(20)
-    b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -46)
+    b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -36)
     b:SetText(label)
     b:SetScript("OnClick", function()
         currentView = view
@@ -210,6 +210,11 @@ local function createVault()
     vault:SetWidth(VW); vault:SetHeight(VH)
     vault:SetFrameStrata("DIALOG")
     vault:EnableMouse(true)
+    vault:SetMovable(true)
+    vault:RegisterForDrag("LeftButton")
+    vault:SetScript("OnDragStart", function() vault:StartMoving() end)
+    vault:SetScript("OnDragStop", function() vault:StopMovingOrSizing() end)
+    if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerBotVault") end
     TB.ApplyBackdrop(vault, 0.98, 1.0)
 
     local name = vault:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -227,7 +232,7 @@ local function createVault()
     setTooltip(vault.tabMail, "Mailbox", { "Letters waiting for this bot." })
 
     local summary = vault:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    summary:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -70)
+    summary:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -62)
     summary:SetWidth(VW - 24); summary:SetJustifyH("LEFT")
     TB.SetTextColor(summary, color("muted"))
     vault.summary = summary
@@ -236,7 +241,7 @@ local function createVault()
     for i = 1, ROWS do
         local row = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
         row:SetWidth(VW - 24); row:SetHeight(20)
-        row:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -90 - (i - 1) * 22)
+        row:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -80 - (i - 1) * 22)
         row:SetScript("OnClick", function()
             if currentView == "bank" then
                 if currentBot and this.itemId then TB.SendBankWithdraw(currentBot, this.itemId, this.itemName) end
@@ -248,8 +253,8 @@ local function createVault()
     end
 
     local ask = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
-    ask:SetWidth(150); ask:SetHeight(22)
-    ask:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -90 - ROWS * 22)
+    ask:SetWidth(134); ask:SetHeight(22)
+    ask:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -80 - ROWS * 22)
     ask:SetText("Ask again")
     ask:SetScript("OnClick", function()
         if not currentBot then return end
@@ -258,9 +263,27 @@ local function createVault()
     setTooltip(ask, "Ask again", { "Reloads this list from the bot." })
     vault.ask = ask
 
+    local prev = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
+    prev:SetWidth(26); prev:SetHeight(22)
+    prev:SetPoint("TOPLEFT", vault, "TOPLEFT", 154, -80 - ROWS * 22)
+    prev:SetText("<")
+    prev:SetScript("OnClick", function() page = page - 1; TB.RefreshVault() end)
+    vault.prevPage = prev
+    local nextBtn = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
+    nextBtn:SetWidth(26); nextBtn:SetHeight(22)
+    nextBtn:SetPoint("TOPLEFT", vault, "TOPLEFT", 262, -80 - ROWS * 22)
+    nextBtn:SetText(">")
+    nextBtn:SetScript("OnClick", function() page = page + 1; TB.RefreshVault() end)
+    vault.nextPage = nextBtn
+    local pageText = vault:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pageText:SetPoint("TOPLEFT", vault, "TOPLEFT", 182, -84 - ROWS * 22)
+    pageText:SetWidth(78); pageText:SetJustifyH("CENTER")
+    TB.SetTextColor(pageText, color("muted"))
+    vault.pageText = pageText
+
     local hint = vault:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hint:SetPoint("TOPLEFT", vault, "TOPLEFT", 168, -94 - ROWS * 22)
-    hint:SetWidth(VW - 180); hint:SetJustifyH("RIGHT")
+    hint:SetPoint("TOPLEFT", vault, "TOPLEFT", 150, -62)
+    hint:SetWidth(VW - 162); hint:SetJustifyH("RIGHT")
     hint:SetText("Click a row to take it.")
     TB.SetTextColor(hint, color("muted"))
 
@@ -284,10 +307,10 @@ local function renderRows()
         if item then
             row.itemId, row.itemName, row.mailN = item.id, item.name, item.n
             if currentView == "mail" then
-                row:SetText("#" .. item.n)
+                row:SetText(item.text)
                 setTooltip(row, "Letter #" .. item.n, { item.text, "Click: take this letter." })
             else
-                row:SetText((item.count and item.count > 1 and (item.name .. "x" .. item.count)) or item.name)
+                row:SetText((item.count and item.count > 1 and (item.name .. " x" .. item.count)) or item.name)
                 setTooltip(row, item.name, { "Click: the bot takes this from its bank." })
             end
             row:Show()
@@ -298,6 +321,9 @@ local function renderRows()
             row:Hide()
         end
     end
+    vault.pageText:SetText(page .. " / " .. pages)
+    if page > 1 then vault.prevPage:Enable() else vault.prevPage:Disable() end
+    if page < pages then vault.nextPage:Enable() else vault.nextPage:Disable() end
     if v and v.pending and table.getn(list) == 0 then
         vault.ask:SetText("Asking…")
         vault.ask:Disable()
@@ -310,7 +336,9 @@ end
 
 function TB.RefreshVault()
     if not vault or not vault:IsVisible() or not currentBot then return end
-    local col = color("gold")
+    local entry = TB.GetRosterEntry and TB.GetRosterEntry(currentBot) or nil
+    local classId = entry and entry.classId
+    local col = (classId and C.CLASS_COLORS and C.CLASS_COLORS[classId]) or color("gold")
     vault.nameText:SetText(currentBot or "")
     vault.nameText:SetTextColor(col[1], col[2], col[3])
     local v = vaults[currentBot]
@@ -329,6 +357,7 @@ function TB.OpenVault(name, view)
     if not name then return false end
     if not vault then createVault() end
     if currentBot and currentBot ~= name then TB.SetVaultPending(currentBot, false) end
+    if TB.CloseNpc then TB.CloseNpc() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then page = 1 end
     currentBot = name
@@ -340,7 +369,9 @@ function TB.OpenVault(name, view)
         local screen = GetScreenWidth and GetScreenWidth()
         local scale = (anchor.GetScale and anchor:GetScale()) or 1
         if right and screen and (right + VW + 4) * scale > screen then
-            vault:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+            -- The panel sits right of main: anchoring left of the panel would
+            -- land on top of main, so dock left of main instead.
+            vault:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
         else
             vault:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
         end

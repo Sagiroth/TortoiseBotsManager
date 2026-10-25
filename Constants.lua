@@ -24,9 +24,9 @@ TB.C.GAP_BTN = 4   -- button gap
 
 -- Column widths for the snapshot roster. The last-location column is allowed
 -- to collapse in UI.lua when a server row has no location metadata.
-TB.C.ROSTER_NAME_W = 118
+TB.C.ROSTER_NAME_W = 112
 TB.C.ROSTER_CLASS_W = 70
-TB.C.ROSTER_STATUS_W = 145
+TB.C.ROSTER_STATUS_W = 138
 
 TB.C.CLASS_NAMES = {
     [1] = "Warrior",
@@ -156,7 +156,7 @@ TB.C.ACTION_DEFINITIONS = {
         intent = "end pull",
         label = "End pull",
         section = "pull",
-        icon = "Interface\\Icons\\Ability_Defend",
+        icon = "Interface\\Icons\\INV_Misc_Note_01",
         tip = "Call off the current pull. The tank stops pulling and the party stands down.",
     },
     {
@@ -180,7 +180,7 @@ TB.C.ACTION_DEFINITIONS = {
     {
         id = "come",
         intent = "come",
-        label = "Come & Hold",
+        label = "Come",
         section = "move",
         icon = "Interface\\Icons\\Spell_Arcane_PortalIronForge",
         tip = "Bots rush to your position and hold there.",
@@ -449,7 +449,7 @@ TB.C.ACTION_LABELS = {
     ["destroy"]            = "Destroy",
     inv                    = "Bags",
     stance                 = "Stance",
-    hold                   = "Come & Hold",
+    hold                   = "Come",
     ["strategy +grind"]    = "Grind",
     ["strategy -grind"]    = "Grind",
     ["strategy reset"]     = "Reset tactics",

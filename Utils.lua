@@ -241,6 +241,15 @@ function TB.Roles.GetRoleLabel(classId, roleId, fallback)
     return fallback or roleId or "Default"
 end
 
+-- Display-only short tokens for narrow role buttons (Party/Guild rows).
+-- Full labels stay in Constants and tooltips; only overlong labels map.
+local SHORT_ROLE_LABELS = {
+    ["Assassination"] = "Assassin",
+}
+function TB.Roles.ShortLabel(label)
+    return SHORT_ROLE_LABELS[label] or label
+end
+
 function TB.Roles.GetPlayerRoleToken(roleId)
     if roleId == "tank" then return "tank" end
     if roleId == "heal" then return "healer" end

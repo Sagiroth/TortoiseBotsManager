@@ -997,7 +997,7 @@ TB.Refresh()
 assert(not TB.actionButtons.flee.enabled, "Flee must be disabled on servers without the capability")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
 
--- BOTSTATE drives the switches; a mixed party shows Mixed and turns on.
+-- BOTSTATE drives the switches; a mixed party shows "~" and turns on.
 partyMembers = { "Alpha", "Gamma" }
 TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|2")
 TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
@@ -1007,8 +1007,8 @@ assert(TB.GetBotState("Alpha").move == "follow" and TB.GetBotState("gamma").save
     "BOTSTATE rows must be stored per bot")
 assert(TB.GetPartyToggleState("loot") == "mixed" and TB.GetPartyToggleState("aoe") == "off",
     "party switch state must aggregate the bots")
-assert(TB.toggleButtons.loot.text == "Loot Mixed" and TB.toggleButtons.autocc.text == "Auto CC Off",
-    "switch labels must show the server state")
+assert(TB.toggleButtons.loot.text == "Loot ~" and TB.toggleButtons.autocc.text == "Auto CC Off",
+    "switch labels must show the server state (~ for mixed)")
 assert(TB.MovementLabel("Gamma") == "Fleeing (passive)", "flee movement must be labelled")
 now = now + 1
 this = TB.toggleButtons.loot
@@ -1028,7 +1028,7 @@ assert(TB.GetPartyToggleState("autocc") == "off" and TB.toggleButtons.autocc.ena
 -- A single-bot ACK only changes that bot.
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
 assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
-    and TB.toggleButtons.aoe.text == "AoE Mixed", "a targeted switch must only update that bot")
+    and TB.toggleButtons.aoe.text == "AoE ~", "a targeted switch must only update that bot")
 
 -- P2: sap joins the switch row, spread rides the behavior verb, and the
 -- row of five stays inside the 480-wide content.
@@ -1085,10 +1085,11 @@ for _, st in pairs({ TB.GetState("Alpha"), TB.GetState("Gamma") }) do
 end
 assert(afterStrategyOps == beforeStrategyOps, "a strategy reply must not start roster operations")
 
--- Integration: every Fight card and control fits the 330px content frame.
+-- Layout: every Fight card keeps its re-stacked slot (no overlaps) and every
+-- control fits the 330px content frame.
 local fightOrder = { "engage", "pull", "move", "switches", "tactics" }
-local fightTops = { engage = -38, pull = -94, move = -174, switches = -252, tactics = -286 }
-local fightHeights = { engage = 52, pull = 76, move = 76, switches = 50, tactics = 44 }
+local fightTops = { engage = -35, pull = -86, move = -157, switches = -232, tactics = -282 }
+local fightHeights = { engage = 48, pull = 68, move = 72, switches = 48, tactics = 48 }
 local fightBottom = { engage = 0, pull = 0, move = 0, switches = 0, tactics = 0 }
 for _, id in ipairs(fightOrder) do
     local card = TB.fightCards[id]
@@ -1099,7 +1100,7 @@ for _, id in ipairs(fightOrder) do
     fightBottom[id] = top - card.height
 end
 for i = 2, table.getn(fightOrder) do
-    assert(fightTops[fightOrder[i]] <= fightBottom[fightOrder[i - 1]] + 16,
+    assert(fightTops[fightOrder[i]] <= fightBottom[fightOrder[i - 1]],
         "fight card " .. fightOrder[i] .. " must start below " .. fightOrder[i - 1])
 end
 local function cardBottom(control, cardTop)
@@ -1206,7 +1207,7 @@ assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
 assert(menu.fourth.visible and menu.fourth.text == "Disenchant" and menu.fourth.enabled, "bag items offer Disenchant")
 assert(menu.fifth.visible and menu.fifth.text == "Send by mail" and menu.fifth.enabled, "bag items offer Send by mail")
 assert(menu.sixth.visible and menu.sixth.text == "Put to bank" and menu.sixth.enabled, "bag items offer Put to bank")
-assert(menu.seventh.visible and menu.seventh.text == "Destroy", "bag items offer Destroy")
+assert(menu.seventh.visible and menu.seventh.text == "|cffff5555Destroy|r", "bag items offer Destroy (red)")
 assert(menu.height == 178, "the full menu fits seven rows")
 -- P9: the menu flips left/right and above/below to stay on screen.
 menu:Hide()
@@ -1344,13 +1345,15 @@ now = now + 1
 local beforeGearUp = table.getn(addonSent)
 TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
 assert(addonSent[beforeGearUp + 1].message == "autogear Alpha", "Gear up re-gears the bot")
--- Integration: six footer buttons fit the 330px panel with no overlap.
-local footerSpan = 10 + 44 + 46 + 36 + 64 + 46 + 46 + 5 * 6
-assert(footerSpan <= 330, "footer (trade + refresh + NPC + vault + upkeep + gear up) must fit the 330px panel")
-assert(TB.botPanel.tradeButton.width == 44 and TB.botPanel.refreshButton.width == 46
-    and TB.botPanel.npcButton.width == 36 and TB.botPanel.vaultButton.width == 64
-    and TB.botPanel.upkeepButton.width == 46 and TB.botPanel.gearUpButton.width == 46,
-    "footer buttons must keep their integrated widths")
+-- Layout: six footer buttons fit the 330px panel with no overlap.
+local footerSpan = 10 + 44 + 54 + 38 + 44 + 50 + 64 + 5 * 4
+assert(footerSpan <= 330, "footer (trade + refresh + NPC + bank + upkeep + auto-gear) must fit the 330px panel")
+assert(TB.botPanel.tradeButton.width == 44 and TB.botPanel.refreshButton.width == 54
+    and TB.botPanel.npcButton.width == 38 and TB.botPanel.vaultButton.width == 44
+    and TB.botPanel.upkeepButton.width == 50 and TB.botPanel.gearUpButton.width == 64,
+    "footer buttons must keep their layout widths")
+assert(TB.botPanel.vaultButton.text == "Bank" and TB.botPanel.gearUpButton.text == "Auto-gear",
+    "footer buttons must carry their short labels")
 TB.CloseBotPanel()
 
 -- ── Bot NPC errands (P10): talk/bind/learn/flights for the panel bot ──────
@@ -1850,6 +1853,8 @@ dofile(root .. "/tests/wire_cases.lua")({
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
     seedItem = function(id, item) itemCache[id] = item end,
 })
+
+dofile(root .. "/tests/geometry_tests.lua")()
 
 dofile(root .. "/tests/phase0_tests.lua")()
 

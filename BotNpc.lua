@@ -190,7 +190,7 @@ local function setTooltip(button, title, lines)
     button:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
         GameTooltip:SetText(title)
-        for _, line in ipairs(lines) do GameTooltip:AddLine(line, 0.62, 0.60, 0.56) end
+        for _, line in ipairs(lines) do GameTooltip:AddLine(line, 0.9, 0.9, 0.9, 1) end
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -211,6 +211,11 @@ local function createNpc()
     npc:SetWidth(NW); npc:SetHeight(NH)
     npc:SetFrameStrata("DIALOG")
     npc:EnableMouse(true)
+    npc:SetMovable(true)
+    npc:RegisterForDrag("LeftButton")
+    npc:SetScript("OnDragStart", function() npc:StartMoving() end)
+    npc:SetScript("OnDragStop", function() npc:StopMovingOrSizing() end)
+    if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerBotNpc") end
     TB.ApplyBackdrop(npc, 0.98, 1.0)
 
     local name = npc:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -232,14 +237,14 @@ local function createNpc()
         "Bind home", function()
             if currentBot then TB.SendNpcHome(currentBot) end
         end)
-    npc.trainer = orderButton(npc, "Learn", 12, -64,
+    npc.trainer = orderButton(npc, "Train spells", 12, -64,
         "The bot learns what it can from the trainer you both stand at.",
-        "Learn", function()
+        "Train spells", function()
             if currentBot then TB.SendNpcTrainerLearn(currentBot) end
         end)
-    npc.leader = orderButton(npc, "Make leader", 154, -64,
+    npc.leader = orderButton(npc, "Take lead", 154, -64,
         "The bot passes party leadership to you.",
-        "Make leader", function()
+        "Take lead", function()
             if currentBot then TB.SendNpcGiveLeader(currentBot) end
         end)
 
@@ -263,6 +268,13 @@ local function createNpc()
         end)
         table.insert(npc.rows, row)
     end
+    local flightEmpty = npc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    flightEmpty:SetPoint("TOPLEFT", npc, "TOPLEFT", 12, -168)
+    flightEmpty:SetWidth(NW - 24); flightEmpty:SetJustifyH("CENTER")
+    flightEmpty:SetText("Stand at a flight master and click Find flights.")
+    TB.SetTextColor(flightEmpty, color("muted"))
+    npc.flightEmpty = flightEmpty
+
 
     npc.ask = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
     npc.ask:SetWidth(134); npc.ask:SetHeight(22)
@@ -281,13 +293,13 @@ local function createNpc()
     npc.prevPage = prev
     local nextBtn = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
     nextBtn:SetWidth(26); nextBtn:SetHeight(22)
-    nextBtn:SetPoint("TOPLEFT", npc, "TOPLEFT", 248, -108 - ROWS * 22)
+    nextBtn:SetPoint("TOPLEFT", npc, "TOPLEFT", 262, -108 - ROWS * 22)
     nextBtn:SetText(">")
     nextBtn:SetScript("OnClick", function() page = page + 1; TB.RefreshNpc() end)
     npc.nextPage = nextBtn
     local pageText = npc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     pageText:SetPoint("TOPLEFT", npc, "TOPLEFT", 182, -112 - ROWS * 22)
-    pageText:SetWidth(64); pageText:SetJustifyH("CENTER")
+    pageText:SetWidth(78); pageText:SetJustifyH("CENTER")
     TB.SetTextColor(pageText, color("muted"))
     npc.pageText = pageText
 
@@ -325,6 +337,9 @@ local function renderRows()
         npc.ask:SetText("Find flights")
         npc.ask:Enable()
     end
+    if npc.flightEmpty then
+        if table.getn(list) == 0 then npc.flightEmpty:Show() else npc.flightEmpty:Hide() end
+    end
     return list
 end
 
@@ -349,6 +364,7 @@ function TB.OpenNpc(name)
     if not name then return false end
     if not npc then createNpc() end
     if currentBot and currentBot ~= name then TB.SetNpcPending(currentBot, false) end
+    if TB.CloseVault then TB.CloseVault() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then page = 1 end
     currentBot = name
@@ -359,7 +375,9 @@ function TB.OpenNpc(name)
         local screen = GetScreenWidth and GetScreenWidth()
         local scale = (anchor.GetScale and anchor:GetScale()) or 1
         if right and screen and (right + NW + 4) * scale > screen then
-            npc:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+            -- The panel sits right of main: anchoring left of the panel would
+            -- land on top of main, so dock left of main instead.
+            npc:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
         else
             npc:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
         end

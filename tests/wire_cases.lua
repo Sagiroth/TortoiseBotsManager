@@ -1583,7 +1583,7 @@ local cases = {
             this = stone
             stone.scripts.OnClick(stone)
             local menu = frames["TortoiseBotsManagerItemMenu"]
-            assert(menu.seventh.visible and menu.seventh.text == "Destroy", "P9: Destroy row must show")
+            assert(menu.seventh.visible and menu.seventh.text == "|cffff5555Destroy|r", "P9: Destroy row must show (red)")
             this = menu.seventh
             menu.seventh.scripts.OnClick(menu.seventh)
             StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].OnAccept()

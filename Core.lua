@@ -64,7 +64,8 @@ local function initDB()
     db.pullbackDelay = TB.ClampPullSeconds(db.pullbackDelay)
     if type(db.botRoles) ~= "table" then db.botRoles = {} end
     if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster"
-        and db.activeTab ~= "raid" and db.activeTab ~= "camp" and db.activeTab ~= "log" then
+        and db.activeTab ~= "raid" and db.activeTab ~= "camp" and db.activeTab ~= "log"
+        and db.activeTab ~= "guild" then
         db.activeTab = "actions"
     end
 end
