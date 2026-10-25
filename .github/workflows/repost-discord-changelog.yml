@@ -1,0 +1,65 @@
+name: Re-post Discord changelog
+
+# Manual re-post of one release's CHANGELOG.md section to the Discord
+# changelog thread, for a release whose automatic post was missing or
+# incomplete. Touches neither CHANGELOG.md, the version, tags nor releases.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag whose CHANGELOG.md section is posted (e.g. v1.2.0)"
+        required: true
+      thread_id:
+        description: "Changelog thread ID (empty = the repository setting)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  repost:
+    # Manual Discord posts: repository owner only.
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract the release section
+        env:
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          tag = os.environ["TAG"].strip()
+          lines = open("CHANGELOG.md", encoding="utf-8").read().splitlines()
+          out, inside = [], False
+          for line in lines:
+              if line.startswith("## "):
+                  if inside:
+                      break
+                  inside = line[3:].split(" ")[0] == tag
+                  continue
+              if inside:
+                  if line.strip() == "---":
+                      break
+                  out.append(line)
+          text = "\n".join(out).strip()
+          if not text:
+              sys.exit(f"No CHANGELOG.md section for {tag}")
+          open("/tmp/discord_notes.md", "w", encoding="utf-8").write(text + "\n")
+          print(text)
+          PY
+
+      - name: Post the changelog to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK_URL || secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python3 tools/post_discord_changelog.py \
+            --notes /tmp/discord_notes.md \
+            --title "TortoiseBotsManager ${{ inputs.release_tag }}" \
+            --tag "${{ inputs.release_tag }}" \
+            --repo "Sagiroth/TortoiseBotsManager" \
+            --thread-id "${{ inputs.thread_id || vars.DISCORD_CHANGELOG_THREAD_ID || secrets.DISCORD_CHANGELOG_THREAD_ID || '1559276000293158953' }}" \
+            --username "TortoiseBotsManager Releases"
