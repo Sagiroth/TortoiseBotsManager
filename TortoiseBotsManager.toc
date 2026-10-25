@@ -17,3 +17,4 @@ BotNpc.lua
 BotVault.lua
 MiniBar.lua
 Minimap.lua
+Bindings.lua

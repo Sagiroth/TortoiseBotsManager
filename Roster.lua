@@ -797,11 +797,15 @@ function TB.ConfirmSeen(name, info)
 end
 
 -- ── server-backed roster rows ───────────────────────────────────────────────
-function TB.GetDisplayRows(filter)
+-- Class filter is session-only (like the name search): nil shows every class,
+-- otherwise only rows with that class ID.
+function TB.GetDisplayRows(filter, classFilter)
     filter = string.lower(filter or "")
+    if classFilter == nil then classFilter = TB.classFilter end
     local rows = {}
     for name, st in pairs(state) do
-        if displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true)) then
+        if displayState(st) and (filter == "" or string.find(string.lower(name), filter, 1, true))
+            and (classFilter == nil or st.classId == classFilter) then
             table.insert(rows, {
                 name = name,
                 guid = st.guid,
@@ -995,9 +999,42 @@ function TB.GetEligibleRosterNames(action)
     return names
 end
 
+-- Fill selectors (P7): invite-eligible names across the current view, capped
+-- so the group never exceeds 5 (party) or 40 (raid).  Selection is ignored:
+-- Fill picks the bots for you.  Wire is unchanged: plain invite batches.
+function TB.GetFillPartyNames()
+    local groupSize = ((GetNumPartyMembers and GetNumPartyMembers()) or 0) + 1
+    local free = 5 - groupSize
+    if free <= 0 then return {} end
+    local out = {}
+    for _, row in ipairs(TB.GetDisplayRows and TB.GetDisplayRows(TB.filterText or "") or {}) do
+        if table.getn(out) >= free then break end
+        if lifecycleEligible(row.name, "invite") then table.insert(out, row.name) end
+    end
+    return out
+end
+
+function TB.GetFillRaidNames()
+    local raidSize = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local groupSize = raidSize
+    if groupSize == 0 then
+        groupSize = ((GetNumPartyMembers and GetNumPartyMembers()) or 0) + 1
+    end
+    local free = 40 - groupSize
+    if free <= 0 then return {} end
+    local out = {}
+    for _, bot in ipairs(claimedBots) do
+        if table.getn(out) >= free then break end
+        if bot.online and not bot.group then
+            table.insert(out, bot.name)
+        end
+    end
+    return out
+end
+
 -- Friendly aliases for callers that describe the same contextual bottom bar.
-TB.GetEligibleSelection = TB.GetEligibleRosterNames
-TB.GetSelectedNames = TB.GetSelectedRosterNames
+ TB.GetEligibleSelection = TB.GetEligibleRosterNames
+ TB.GetSelectedNames = TB.GetSelectedRosterNames
 
 -- Vanilla 1.12 canonical group events: PARTY_MEMBERS_CHANGED covers party,
 -- RAID_ROSTER_UPDATE covers raid (subgroup shifts, convert to raid).

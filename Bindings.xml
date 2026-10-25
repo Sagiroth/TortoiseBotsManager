@@ -1,0 +1,38 @@
+<Bindings>
+  <Binding runOnUp="false" name="TBM_ATTACK" header="TBM">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("attack") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_STOP">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("stop") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_INTERRUPT">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("interrupt") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_FLEE">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("flee") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_PULL">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("pull") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_PULLBACK">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("pullback") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_FOCUS_SKULL">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("focus skull") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_FOLLOW">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("follow") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_STAY">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("stay") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_COME">
+    if TortoiseBots and TortoiseBots.SendKeyIntent then TortoiseBots.SendKeyIntent("come") end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_TOGGLE_WINDOW">
+    if TortoiseBots and TortoiseBots.Toggle then TortoiseBots.Toggle() end
+  </Binding>
+  <Binding runOnUp="false" name="TBM_MINI_MODE">
+    if TortoiseBots and TortoiseBots.ToggleMiniBar then TortoiseBots.ToggleMiniBar() end
+  </Binding>
+</Bindings>

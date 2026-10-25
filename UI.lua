@@ -513,6 +513,46 @@ CreateHeader = function(parent)
     divider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(C.PAD or 10), -34)
     divider:SetHeight(1)
 end
+-- Class filter: two compact rows of 5 small chips on their own row under the
+-- search box (roster frame is 480 wide: 5 x (88 + 4) + 6 + 6 = 472).
+local CLASS_CHIP_IDS = { nil, 1, 2, 3, 4, 5, 7, 8, 9, 11 }
+
+local function classChipLabel(classId)
+    if classId == nil then return "All" end
+    local name = (C.CLASS_NAMES and C.CLASS_NAMES[classId]) or ("#" .. tostring(classId))
+    return string.sub(name, 1, 5)
+end
+
+function TB.PaintClassChips()
+    for _, chip in ipairs(TB.classChips or {}) do
+        if chip.SetActive then chip:SetActive(TB.classFilter == chip.classId) end
+    end
+end
+
+local function createRosterClassChips(parent)
+    local chips = {}
+    for i = 1, table.getn(CLASS_CHIP_IDS) do
+        local id = CLASS_CHIP_IDS[i]
+        local row = math.floor((i - 1) / 5)
+        local col = math.mod(i - 1, 5)
+        local chip = TB.UI.CreateTogglePill(parent, classChipLabel(id), 88, 16, {
+            point = "TOPLEFT",
+            x = 6 + col * 92,
+            y = -22 - row * 20,
+            tip = (id == nil) and "Show every class" or ("Show only " .. ((C.CLASS_NAMES and C.CLASS_NAMES[id]) or "this class") .. " bots"),
+            onClick = function()
+                TB.classFilter = id
+                TB.PaintClassChips()
+                TB.Refresh()
+            end,
+        })
+        chip.classId = id
+        table.insert(chips, chip)
+    end
+    TB.classChips = chips
+    TB.PaintClassChips()
+    return chips
+end
 
 CreateFilterRow = function(parent)
     local search = CreateFrame("EditBox", "TortoiseBotsManagerSearch", parent, "InputBoxTemplate")
@@ -537,6 +577,7 @@ CreateFilterRow = function(parent)
         TB.filterText = ""
         TB.Refresh()
     end)
+    TB.searchClear = clear
 
     local count = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     count:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -2)
@@ -544,12 +585,13 @@ CreateFilterRow = function(parent)
     count:SetJustifyH("RIGHT")
     TB.SetTextColor(count, color("muted"))
     TB.countLabel = count
+    createRosterClassChips(parent)
 end
 
 local function createRosterColumnHeaders(parent)
     local checkAll = CreateFrame("CheckButton", "TortoiseBotsManagerCheckAll", parent, "UICheckButtonTemplate")
     checkAll:SetWidth(20); checkAll:SetHeight(20)
-    checkAll:SetPoint("TOPLEFT", parent, "TOPLEFT", 5, -20)
+    checkAll:SetPoint("TOPLEFT", parent, "TOPLEFT", 5, -62)
     setButtonTooltip(checkAll, "Select or deselect all bots")
     checkAll:SetScript("OnClick", function()
         local isChecked = this:GetChecked() and true or false
@@ -567,7 +609,7 @@ local function createRosterColumnHeaders(parent)
     local x = left
     for _, header in ipairs(headers) do
         local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -24)
+        fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -66)
         fs:SetWidth(header.width)
         fs:SetText(header.text)
         TB.SetTextColor(fs, color("muted"))
@@ -578,7 +620,7 @@ end
 CreateScroll = function(parent)
     createRosterColumnHeaders(parent)
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerScroll", parent, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -42)
+    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -84)
     scroll:SetWidth(W - (C.PAD or 10) * 2)
     scroll:SetHeight(ROW_N * ROW_H + 4)
     scroll:SetScript("OnVerticalScroll", function() FauxScrollFrame_OnVerticalScroll(ROW_H, TB.Refresh) end)
@@ -671,7 +713,7 @@ end
 
 CreateRosterBar = function(parent)
     local bar = CreateFrame("Frame", nil, parent)
-    bar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(42 + ROW_N * ROW_H + 4))
+    bar:SetPoint("TOPLEFT", TB.scroll, "BOTTOMLEFT", 0, -4)
     bar:SetWidth(W - (C.PAD or 10) * 2)
     bar:SetHeight(34)
 
@@ -699,8 +741,20 @@ CreateRosterBar = function(parent)
     kick:SetPoint("LEFT", invite, "RIGHT", C.GAP_BTN or 4, 0)
     local summon = button("Summon", 66, "summon", "summon", "Summon selected online bots")
     summon:SetPoint("LEFT", kick, "RIGHT", C.GAP_BTN or 4, 0)
+    local fill = TB.UI.CreateButton(bar, "Fill", 44, 22, {
+        onClick = function()
+            local names = TB.GetFillPartyNames and TB.GetFillPartyNames() or {}
+            if table.getn(names) > 0 and TB.QueueRosterBatch then
+                TB.QueueRosterBatch("invite", names)
+            elseif TB.SetStatus then
+                TB.SetStatus("No bots to fill the party.", "muted")
+            end
+        end,
+        tip = "Invite online bots until the party is full (5). Needs no selection.",
+    })
+    fill:SetPoint("LEFT", summon, "RIGHT", C.GAP_BTN or 4, 0)
 
-    TB.lifecycleButtons = { login = login, logout = logout, invite = invite, kick = kick, summon = summon }
+    TB.lifecycleButtons = { login = login, logout = logout, invite = invite, kick = kick, summon = summon, fill = fill }
     TB.rosterBar = bar
     return bar
 end
@@ -1774,6 +1828,25 @@ function TB.InitUI()
         end)
         guildFrame.syncBtn = syncBtn
 
+        local fillBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        fillBtn:SetWidth(56); fillBtn:SetHeight(22)
+        fillBtn:SetPoint("LEFT", syncBtn, "RIGHT", 4, 0)
+        fillBtn:SetText("Fill Raid")
+        setButtonTooltip(fillBtn, "Invite online claimed bots until the raid is full (40). Needs no selection.")
+        fillBtn:SetScript("OnClick", function()
+            local names = TB.GetFillRaidNames and TB.GetFillRaidNames() or {}
+            if table.getn(names) > 0 then
+                if TB.QueueRosterBatch then
+                    TB.QueueRosterBatch("invite", names)
+                else
+                    for _, n in ipairs(names) do TB.SendBotCommand("invite " .. n) end
+                end
+            elseif TB.SetStatus then
+                TB.SetStatus("No bots to fill the raid.", "muted")
+            end
+        end)
+        guildFrame.fillBtn = fillBtn
+
         guildFrame.guildBar = bar
         return guildFrame
     end
@@ -2087,6 +2160,10 @@ function TB.InitUI()
         if frame.summonBtn then
             if selCount > 0 then frame.summonBtn:Enable() else frame.summonBtn:Disable() end
         end
+        if frame.fillBtn then
+            local fillable = TB.GetFillRaidNames and TB.GetFillRaidNames() or {}
+            if table.getn(fillable) > 0 then frame.fillBtn:Enable() else frame.fillBtn:Disable() end
+        end
     end
 
     local tabs = {
@@ -2352,6 +2429,16 @@ RefreshRosterSelection = function()
                 button:Enable()
             else
                 button:Disable()
+            end
+        end
+        local fillBtn = TB.lifecycleButtons.fill
+        if fillBtn then
+            local fillable = TB.GetFillPartyNames and TB.GetFillPartyNames() or {}
+            local busy = TB.IsRosterBatchActive and TB.IsRosterBatchActive("invite")
+            if not busy and serverSupports("invite") and table.getn(fillable) > 0 then
+                fillBtn:Enable()
+            else
+                fillBtn:Disable()
             end
         end
     end

@@ -1641,6 +1641,55 @@ local cases = {
         end,
     },
 
+    -- ── P7 (roster + shell): fill batches reuse the plain invite verb ──────
+    {
+        id = "roster.fill.party",
+        expected = { ".bot invite Alpha", ".bot invite Gamma" },
+        trigger = function()
+            TB.ShowTab("roster")
+            TB.ClearRosterSelection()
+            updateGroup({}, "Priest")
+            TB.SetState("Alpha", { group = false })
+            TB.SetState("Gamma", { group = false })
+            if TB.GetState("Alpha") then TB.GetState("Alpha").operation = nil end
+            if TB.GetState("Gamma") then TB.GetState("Gamma").operation = nil end
+            this = TB.lifecycleButtons.fill
+            TB.lifecycleButtons.fill.scripts.OnClick(TB.lifecycleButtons.fill)
+            drainQueue()
+            if TB.OnRosterBatchResult then
+                TB.OnRosterBatchResult("Alpha", "invite", true)
+                drainQueue()
+                TB.OnRosterBatchResult("Gamma", "invite", true)
+            end
+            if TB.GetState("Alpha") then TB.GetState("Alpha").operation = nil end
+            if TB.GetState("Gamma") then TB.GetState("Gamma").operation = nil end
+            TB.ClearRosterSelection()
+        end,
+    },
+    {
+        id = "guild.fill.raid",
+        expected = { ".bot invite Goldie" },
+        trigger = function()
+            TB.ShowTab("guild")
+            TB.ClearClaimedSelection()
+            updateGroup({}, "Priest")
+            local goldie = TB.GetClaimedEntry and TB.GetClaimedEntry("Goldie")
+            if goldie then
+                goldie.online = true
+                goldie.enteredWorld = true
+                goldie.group = false
+            end
+            local silver = TB.GetClaimedEntry and TB.GetClaimedEntry("Silver")
+            local silverWas = silver and silver.group
+            if silver then silver.group = true end
+            this = TB.guildFrame.fillBtn
+            TB.guildFrame.fillBtn.scripts.OnClick(TB.guildFrame.fillBtn)
+            if TB.OnRosterBatchResult then TB.OnRosterBatchResult("Goldie", "invite", true) end
+            if silver then silver.group = silverWas end
+            TB.ClearClaimedSelection()
+        end,
+    },
+
 
     -- ── P1: role-wire correctness ────────────────────────────────────
     {
