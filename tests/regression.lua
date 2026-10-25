@@ -177,6 +177,7 @@ for _, file in ipairs({
     "UI.lua",
     "BotPanel.lua",
     "BotNpc.lua",
+    "BotVault.lua",
     "MiniBar.lua",
     "Minimap.lua",
 }) do
@@ -1406,6 +1407,45 @@ this = TB.botPanel.spellRows[1]
 TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
 assert(lastAddon() == "command Alpha cast Fireball", "clicking a spell casts it by exact name")
 TB.SetSpellPending("Alpha", false)
+TB.CloseBotPanel()
+
+-- ── Bot vault (P8): bank + mailbox for the panel bot ─────────────────────
+TB.OpenBotPanel("Alpha")
+assert(TB.botPanel.vaultButton and TB.botPanel.vaultButton.visible, "the panel links to bank and mail")
+now = now + 1
+this = TB.botPanel.vaultButton
+TB.botPanel.vaultButton.scripts.OnClick(TB.botPanel.vaultButton)
+assert(lastAddon() == "command Alpha bank", "Bank / mail opens the vault bank list")
+assert(TB.botVault and TB.botVault.visible and TB.GetVaultBot() == "Alpha", "the vault tracks the panel bot")
+assert(TB.botVault.point and TB.botVault.point[2] == TB.botPanel, "the vault sits beside the open panel")
+assert(table.getn(TB.botVault.rows) == 8, "the vault shows one page of rows")
+TB.OnWhisperMessage("=== Bank ===", "Alpha")
+TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|rx3", "Alpha")
+assert(TB.botVault.rows[1].visible and TB.botVault.rows[1].itemId == 1234,
+    "vault rows render the parsed bank items")
+assert(not TB.botVault.rows[2].visible, "empty vault rows stay hidden")
+now = now + 1
+this = TB.botVault.rows[1]
+TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
+assert(lastAddon() == "command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h",
+    "clicking a bank row withdraws it by link")
+TB.SetVaultPending("Alpha", false)
+now = now + 1
+this = TB.botVault.tabMail
+TB.botVault.tabMail.scripts.OnClick(TB.botVault.tabMail)
+TB.RequestMailbox("Alpha")
+assert(lastAddon() == "command Alpha mail ?", "the mailbox tab asks for its letters")
+TB.OnWhisperMessage("=== Mailbox ===", "Alpha")
+TB.OnWhisperMessage("#1 |cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r, |cff00ff000 day(s)", "Alpha")
+assert(TB.botVault.rows[1].visible and TB.botVault.rows[1].mailN == 1,
+    "mailbox rows render the parsed letters")
+now = now + 1
+this = TB.botVault.rows[1]
+TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
+assert(lastAddon() == "command Alpha mail take 1", "clicking a letter takes it by index")
+TB.SetVaultPending("Alpha", false)
+TB.CloseVault()
+assert(not TB.botVault.visible, "the vault closes")
 TB.CloseBotPanel()
 
 -- ── Raid tab only exists in a raid ─────────────────────────────────────────

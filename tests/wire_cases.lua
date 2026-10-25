@@ -1803,6 +1803,144 @@ local cases = {
             TB.CloseBotPanel()
         end,
     },
+    -- ── P8: BotPanel vault (bank + mailbox) ──────────────────────────────
+    {
+        id = "p8.vault.open",
+        expected = { ".bot command Alpha bank" },
+        trigger = function()
+            TB.OpenVault("Alpha")
+            assert(TB.botVault and TB.botVault.visible, "the vault opens")
+            assert(TB.GetVaultBot() == "Alpha", "the vault tracks the open bot")
+            assert(TB.botVault.tabBank.text == "Bank" and TB.botVault.tabMail.text == "Mailbox",
+                "the vault has bank and mailbox tabs")
+            TB.CloseVault()
+        end,
+    },
+    {
+        id = "p8.vault.parse",
+        expected = { ".bot command Alpha bank" },
+        trigger = function()
+            TB.OpenVault("Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|rx3", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").bank) == 0,
+                "item lines before the header must not seed the list")
+            TB.OnWhisperMessage("=== Bank ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|rx3", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|rx3", "Alpha")
+            local vault = TB.GetVault("Alpha")
+            assert(vault and table.getn(vault.bank) == 1, "same bank item stays one row")
+            assert(vault.bank[1].id == 1234 and vault.bank[1].name == "Linen Cloth" and vault.bank[1].count == 3,
+                "bank id, name and count must parse")
+            assert(TB.botVault.rows[1].itemId == 1234, "the first row offers the parsed item")
+            assert(TB.ParseVaultLine("nothing here") == nil, "non-item whispers must not parse")
+            TB.SetVaultPending("Alpha", false)
+            TB.CloseVault()
+        end,
+    },
+    {
+        id = "p8.vault.gate",
+        expected = { ".bot command Gamma bank" },
+        trigger = function()
+            advanceTime(30)
+            TB.OpenVault("Gamma")
+            assert(not TB.IsOperationPending("Gamma", "command"),
+                "a vault query must not leave a command op that times out")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Alpha")
+            assert(table.getn(TB.GetVault("Gamma").bank) == 0,
+                "another bot's whispers must not enter the vault list")
+            TB.OnWhisperMessage("some other whisper", "Gamma")
+            assert(table.getn(TB.GetVault("Gamma").bank) == 0,
+                "unparseable whispers before the header seed nothing")
+            TB.OnWhisperMessage("=== Bank ===", "Gamma")
+            TB.OnWhisperMessage("some other whisper", "Gamma")
+            TB.OnWhisperMessage("#1 |cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Gamma")
+            assert(table.getn(TB.GetVault("Gamma").bank) == 0,
+                "bank headers must not accept letter lines")
+            assert(table.getn(TB.GetVault("Gamma").mail) == 0,
+                "bank headers must not leak letter lines into mail")
+            TB.SetVaultPending("Gamma", false)
+            TB.CloseVault()
+        end,
+    },
+    {
+        id = "p8.vault.withdraw",
+        expected = { ".bot command Alpha bank", ".bot command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h" },
+        trigger = function()
+            TB.OpenVault("Alpha")
+            TB.OnWhisperMessage("=== Bank ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Alpha")
+            this = TB.botVault.rows[1]
+            TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
+            TB.SetVaultPending("Alpha", false)
+            TB.CloseVault()
+        end,
+    },
+    {
+        id = "p8.vault.mail",
+        expected = { ".bot command Alpha mail ?", ".bot command Alpha mail take 1" },
+        trigger = function()
+            TB.OpenVault("Alpha", "mail")
+            assert(not TB.botVault.tabMail.enabled, "the mailbox tab shows while active")
+            TB.OnWhisperMessage("=== Mailbox ===", "Alpha")
+            TB.OnWhisperMessage("#1 |cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r, |cff00ff000 day(s)", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").mail) == 1, "one letter line parses")
+            assert(TB.GetVault("Alpha").mail[1].n == 1, "the letter index parses")
+            this = TB.botVault.rows[1]
+            TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
+            TB.SetVaultPending("Alpha", false)
+            TB.CloseVault()
+        end,
+    },
+    {
+        id = "p8.vault.mailgate",
+        expected = { ".bot command Alpha mail ?" },
+        trigger = function()
+            TB.OpenVault("Alpha", "mail")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").mail) == 0,
+                "item lines before the mailbox header must not seed the mail list")
+            TB.OnWhisperMessage("=== Mailbox ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").mail) == 0,
+                "mail headers must not accept bank lines")
+            TB.OnWhisperMessage("#1 thing", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").mail) == 1, "letter lines parse under the mailbox header")
+            TB.SetVaultPending("Alpha", false)
+        end,
+    },
+    {
+        id = "p8.vault.anchor",
+        expected = { ".bot inv Alpha", ".bot command Alpha bank", ".bot command Alpha bank" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            assert(TB.botPanel and TB.botPanel:IsVisible(), "the panel must be open")
+            TB.OpenVault("Alpha")
+            assert(TB.botVault.point and TB.botVault.point[2] == TB.botPanel,
+                "the vault anchors to the open panel, not over it")
+            TB.SetVaultPending("Alpha", false)
+            TB.CloseVault()
+            TB.CloseBotPanel()
+            TB.OpenVault("Alpha")
+            assert(TB.botVault.point and TB.botVault.point[2] == TB.frame,
+                "the vault falls back to the main window without the panel")
+            TB.SetVaultPending("Alpha", false)
+            TB.CloseVault()
+        end,
+    },
+    {
+        id = "p8.vault.stale",
+        expected = { ".bot command Alpha bank" },
+        trigger = function()
+            TB.OpenVault("Alpha")
+            advanceTime(30)
+            assert(TB.ConsumeVaultReply("Alpha", "|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r") == false,
+                "a quiet vault closes: late lines return to the gate")
+            TB.OnWhisperMessage("got |cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r from bank", "Alpha")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.pendingAI), "late withdraw replies complete the command op")
+            TB.CloseVault()
+        end,
+    },
 }
 
 for _, tc in ipairs(cases) do

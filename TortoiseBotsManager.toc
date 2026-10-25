@@ -14,5 +14,6 @@ Comms.lua
 UI.lua
 BotPanel.lua
 BotNpc.lua
+BotVault.lua
 MiniBar.lua
 Minimap.lua
