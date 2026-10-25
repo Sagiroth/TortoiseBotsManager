@@ -1230,13 +1230,14 @@ return function()
     -- 1.12 detaches the anchor on StopMovingOrSizing (fatal GetPoint crash);
     -- every OnDragStop that stops a move must ClearAllPoints and pin back to
     -- UIParent/BOTTOMLEFT from GetLeft/GetTop (main header, MiniBar saver,
-    -- vault, npc). The minimap drags via center math and never stops a move.
+    -- vault, npc, run). The minimap drags via center math and never stops a move.
     do
         local frames = {
             { "main", TB.frame, TB.dragHeader },
             { "minibar", TB.miniBar, TB.miniBar },
             { "vault", TB.botVault, TB.botVault },
             { "npc", TB.botNpc, TB.botNpc },
+            { "run", TB.runWindow, TB.runWindow },
         }
         this = nil
         for _, entry in ipairs(frames) do
@@ -1272,6 +1273,7 @@ return function()
         this = nil
         if TB.CloseVault then TB.CloseVault() end
         if TB.CloseNpc then TB.CloseNpc() end
+        if TB.CloseRunWindow then TB.CloseRunWindow() end
     end
 
     -- ── Dungeon run window (P11) ───────────────────────────────────────
@@ -1282,8 +1284,6 @@ return function()
         else
             TB.OnSystemMessage("TBM:CAPS|dungeon-run")
             TB.OpenRunWindow()
-            TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet), deadmines (map 36, 90 steps), wailing_caverns (map 43, 100 steps)")
-            TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851|left 2")
             local win = TB.runWindow
             if not win then
                 bad("RunWindow: did not open")
@@ -1309,24 +1309,91 @@ return function()
                     bad("RunWindow: Pause and Resume show at the same time")
                 end
                 childrenInside("RunWindow", win, wr, items, cache, 2)
-                local rows = {}
-                for i, row in ipairs(win.planRows or {}) do
-                    table.insert(rows, { "row" .. i, row })
+                -- Empty plan list: the hint shows, rows hide, the pager
+                -- still fits; filled: two pages of plans incl. a long
+                -- name, rows fit their buttons and clear the pager row.
+                if win.planEmpty and not win.planEmpty:IsVisible() then
+                    bad("RunWindow: empty-state text must show with no plans")
                 end
-                childrenInside("RunWindow plans", win, wr, rows, cache, 2)
-                noOverlaps("RunWindow plan rows", rows, cache)
-                -- The window must not cover main: it docks beside it.
-                local main = TB.frame and frameRect(TB.frame, cache)
-                if main and overlaps(wr, main) then
-                    bad(string.format("RunWindow: %s covers the main window %s",
-                        fmt(wr), fmt(main)))
+                TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet), deadmines (map 36, 90 steps), wailing_caverns (map 43, 100 steps)")
+                do
+                    local filled = {}
+                    for i, row in ipairs(win.planRows or {}) do
+                        if row:IsVisible() then
+                            table.insert(filled, { "row" .. i, row })
+                            labelFits("RunWindow plan." .. i, row, nil, 6)
+                        end
+                    end
+                    noOverlaps("RunWindow filled plans", filled, cache)
+                    if win.plans and table.getn(filled) > 0 then
+                        local ar = frameRect(win.plans, cache)
+                        for _, entry in ipairs(filled) do
+                            local r = frameRect(entry[2], cache)
+                            if overlaps(r, ar) then
+                                bad(string.format("RunWindow: filled '%s' %s overlaps the pager row %s",
+                                    entry[1], fmt(r), fmt(ar)))
+                            end
+                        end
+                    end
+                    if win.planEmpty and win.planEmpty:IsVisible() then
+                        bad("RunWindow: empty-state text stays visible with filled plans")
+                    end
+                    local pages = win.planPageText and win.planPageText:GetText() or ""
+                    if pages ~= "1 / 2" then
+                        bad("RunWindow: 4 plans must page as '1 / 2', got '" .. pages .. "'")
+                    end
                 end
+                -- Status shown: a running line paints state, step, bar and
+                -- the leg/phase/note lines, all inside the window.
+                TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851|left 2")
                 local status = {}
                 for _, key in ipairs({ "runBar", "runLeg", "runPhase",
                     "runNote", "runStep", "runState" }) do
                     if win[key] then table.insert(status, { key, win[key] }) end
                 end
                 childrenInside("RunWindow status", win, wr, status, cache, 2)
+                local boxes = {}
+                for _, key in ipairs({ "runLeg", "runPhase", "runNote" }) do
+                    if win[key] and win[key].kind == "FontString" then
+                        table.insert(boxes, { key, boxRect(win[key], cache) })
+                    end
+                end
+                for i = 1, table.getn(boxes) do
+                    for j = i + 1, table.getn(boxes) do
+                        if overlaps(boxes[i][2], boxes[j][2]) then
+                            bad(string.format("RunWindow status: '%s' %s overlaps '%s' %s",
+                                boxes[i][1], fmt(boxes[i][2]),
+                                boxes[j][1], fmt(boxes[j][2])))
+                        end
+                    end
+                end
+                -- Docked beside main with the panel open, on both sides:
+                -- the window never covers main or the panel.
+                if TB.OpenBotPanel and TB.frame then
+                    local savedX = TB.frame.x
+                    for _, edge in ipairs({ "right", "left" }) do
+                        TB.frame.x = (edge == "right") and 700 or 60
+                        TB.OpenBotPanel("Alpha")
+                        TB.OpenRunWindow()
+                        local rw = frameRect(win, cache)
+                        local main = frameRect(TB.frame, cache)
+                        if overlaps(rw, main) then
+                            bad(string.format("RunWindow (%s): %s covers the main window %s",
+                                edge, fmt(rw), fmt(main)))
+                        end
+                        local panel = TB.botPanel
+                        if panel and panel:IsVisible() then
+                            local pr = frameRect(panel, cache)
+                            if overlaps(rw, pr) then
+                                bad(string.format("RunWindow (%s): %s covers the panel %s",
+                                    edge, fmt(rw), fmt(pr)))
+                            end
+                        end
+                        TB.CloseBotPanel()
+                    end
+                    TB.frame.x = savedX
+                    TB.OpenRunWindow()
+                end
             end
             TB.CloseRunWindow()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")

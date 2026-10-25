@@ -386,9 +386,20 @@ local function createWindow()
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
+    win:SetClampedToScreen(true)
     win:RegisterForDrag("LeftButton")
     win:SetScript("OnDragStart", function() win:StartMoving() end)
-    win:SetScript("OnDragStop", function() win:StopMovingOrSizing() end)
+    win:SetScript("OnDragStop", function()
+        win:StopMovingOrSizing()
+        -- 1.12-safe: StopMovingOrSizing detaches the anchor from the
+        -- logical parent (see UI.lua drag header), so re-anchor with
+        -- GetLeft/GetTop instead of ever calling GetPoint() after a drag.
+        local left, top = win:GetLeft(), win:GetTop()
+        if left and top then
+            win:ClearAllPoints()
+            win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        end
+    end)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerRunWindow") end
     TB.ApplyBackdrop(win, 0.98, 1.0)
 
@@ -561,8 +572,9 @@ local function renderPlans()
         local plan = plans[(planPage - 1) * PROW + i]
         if plan then
             row.planName = plan.name
-            local text = plan.name .. " · map " .. tostring(plan.map or "?")
-                .. " · " .. tostring(plan.steps or 0) .. " steps"
+            -- One line per row: name + steps (+ unsupported tail). The map
+            -- lives in the tooltip: even the longest plan name must fit.
+            local text = plan.name .. " · " .. tostring(plan.steps or 0) .. " steps"
             if (plan.unsupported or 0) > 0 then
                 text = text .. " · " .. plan.unsupported .. " unsupported"
             end
