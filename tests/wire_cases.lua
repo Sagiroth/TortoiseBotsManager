@@ -1128,6 +1128,42 @@ local cases = {
             TB.CloseBotPanel()
         end,
     },
+    {
+        id = "p6.spells.paging",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells", ".bot command Alpha cast Spell 30", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            for i = 1, 45 do
+                TB.OnWhisperMessage("|cffffffff|Hspell:" .. (100 + i) .. "|h[Spell " .. i .. "]|h|r", "Alpha")
+            end
+            assert(table.getn(TB.GetSpellList("Alpha").spells) == 45, "all 45 spell lines must land in the list")
+            assert(TB.botPanel.spellPageText:GetText() == "1 / 4", "45 spells over 12 rows is 4 pages")
+            assert(TB.botPanel.spellRows[1].spellName == "Spell 1", "page 1 starts at the first spell")
+            this = TB.botPanel.spellNext
+            TB.botPanel.spellNext.scripts.OnClick(TB.botPanel.spellNext)
+            TB.botPanel.spellNext.scripts.OnClick(TB.botPanel.spellNext)
+            assert(TB.botPanel.spellPageText:GetText() == "3 / 4", "two next clicks reach page 3")
+            assert(TB.botPanel.spellRows[1].spellName == "Spell 25", "page 3 starts at spell 25")
+            this = TB.botPanel.spellRows[6]
+            TB.botPanel.spellRows[6].scripts.OnClick(TB.botPanel.spellRows[6])
+            drainQueue()
+            this = TB.botPanel.spellNext
+            TB.botPanel.spellNext.scripts.OnClick(TB.botPanel.spellNext)
+            assert(TB.botPanel.spellPageText:GetText() == "4 / 4", "last page holds the final spells")
+            assert(TB.botPanel.spellRows[1].spellName == "Spell 37", "page 4 starts at spell 37")
+            assert(TB.botPanel.spellRows[9].visible, "page 4 shows its 9 rows")
+            assert(not TB.botPanel.spellRows[10].visible, "empty rows stay hidden on the last page")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:201|h[Spell 1]|h|r", "Alpha")
+            assert(TB.botPanel.spellPageText:GetText() == "1 / 1", "a new list resets to page 1")
+            TB.CloseBotPanel()
+        end,
+    },
 }
 
 for _, tc in ipairs(cases) do

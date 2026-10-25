@@ -201,6 +201,7 @@ function TB.ConsumeSpellReply(name, msg)
     if string.find(msg, "=== Spells ===") then
         entry.spells = {}
         entry.at = now()
+        spellPage = 1
         if TB.RefreshBotPanel then TB.RefreshBotPanel() end
         return "header"
     end
@@ -339,6 +340,7 @@ local panel
 local currentBot
 local currentView = "gear"
 local bagPage = 1
+local spellPage = 1
 local pendingGive = nil       -- { bot, bag, slot } awaiting the trade window
 local behaviorPending = {}    -- [bot .. "|" .. key] = true
 
@@ -746,16 +748,27 @@ local function createPanel()
     ask:SetWidth(150); ask:SetHeight(22)
     ask:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
     ask:SetText("Ask for spellbook")
-    setTooltip(ask, "Ask for spellbook", { "Lists what this bot can cast." })
+    setTooltip(ask, "Ask for spellbook", { "Lists what this bot can cast.", "Click a row to cast it." })
     ask:SetScript("OnClick", function()
         if currentBot then TB.RequestSpells(currentBot) end
     end)
     panel.spellAsk = ask
-    local spHint = spellsView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    spHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 168, -370)
-    spHint:SetWidth(PW - 180); spHint:SetJustifyH("RIGHT")
-    spHint:SetText("Click a spell to cast it.")
-    TB.SetTextColor(spHint, color("muted"))
+    local prev = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    prev:SetWidth(26); prev:SetHeight(20)
+    prev:SetPoint("LEFT", ask, "RIGHT", 6, 0)
+    prev:SetText("<")
+    prev:SetScript("OnClick", function() spellPage = spellPage - 1; TB.RefreshBotPanel() end)
+    panel.spellPrev = prev
+    local pageText = spellsView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pageText:SetPoint("LEFT", prev, "RIGHT", 2, 0)
+    pageText:SetWidth(52); pageText:SetJustifyH("CENTER")
+    panel.spellPageText = pageText
+    local nextBtn = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    nextBtn:SetWidth(26); nextBtn:SetHeight(20)
+    nextBtn:SetPoint("LEFT", pageText, "RIGHT", 2, 0)
+    nextBtn:SetText(">")
+    nextBtn:SetScript("OnClick", function() spellPage = spellPage + 1; TB.RefreshBotPanel() end)
+    panel.spellNext = nextBtn
 
     -- Footer: trade + refresh for every view.
     local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -922,8 +935,11 @@ end
 local function renderSpells()
     local entry = currentBot and spellLists[currentBot] or nil
     local list = (entry and entry.spells) or {}
+    local pages = math.max(1, math.ceil(table.getn(list) / SPELL_ROWS))
+    if spellPage > pages then spellPage = pages end
+    if spellPage < 1 then spellPage = 1 end
     for i, row in ipairs(panel.spellRows) do
-        local spell = list[i]
+        local spell = list[(spellPage - 1) * SPELL_ROWS + i]
         if spell then
             row.spellId = spell.id
             row.spellName = spell.name
@@ -944,6 +960,9 @@ local function renderSpells()
         panel.spellAsk:SetText(table.getn(list) == 0 and "Ask for spellbook" or "Ask again")
         panel.spellAsk:Enable()
     end
+    panel.spellPageText:SetText(spellPage .. " / " .. pages)
+    if spellPage > 1 then panel.spellPrev:Enable() else panel.spellPrev:Disable() end
+    if spellPage < pages then panel.spellNext:Enable() else panel.spellNext:Disable() end
 end
 
 function TB.RefreshBotPanel()
@@ -975,7 +994,7 @@ function TB.OpenBotPanel(name, view)
     if not panel then createPanel() end
     if currentBot and currentBot ~= name then TB.SetSpellPending(currentBot, false) end
     if TB.SetMode then TB.SetMode("full") end
-    if currentBot ~= name then bagPage = 1 end
+    if currentBot ~= name then bagPage = 1; spellPage = 1 end
     currentBot = name
     if view then currentView = view end
     hideMenu()

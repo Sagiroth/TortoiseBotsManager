@@ -1090,6 +1090,7 @@ TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
 assert(TB.botPanel.spellRows[1].visible and TB.botPanel.spellRows[1].spellName == "Fireball",
     "spellbook rows render the parsed spells")
 assert(not TB.botPanel.spellRows[2].visible, "empty rows stay hidden")
+assert(TB.botPanel.spellPageText:GetText() == "1 / 1", "one spell fits on one page")
 now = now + 1
 this = TB.botPanel.spellRows[1]
 TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
