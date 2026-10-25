@@ -19,13 +19,25 @@ All notable changes to TortoiseBotsManager are documented here.
 - Class filter plus Fill party and Fill raid for faster group setup. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
 - Key bindings added for the new roster and guild controls. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
 
----
-
-## Unreleased
-
 ### Bot panel
-- New 4th `Spells` tab on the bot panel: asks the bot what it can cast and lists one row per known spell — clicking a row casts it by exact name. Spell replies from the open panel bot feed the list; every other whisper stays on the existing command path.
-- New `Bank / mail` vault on the bot panel: read-only bank and mailbox lists for the open bot — click a bank row to withdraw it, click a letter to take it. List queries clear the command op on send so no timed-out working state lingers; item and letter lines only count after their list header.
+- New Spells tab: the bot's spells, paged; click a spell to cast it. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- Item menu adds Use, Disenchant, Send by mail, Put to bank and Destroy (asks first); soulbound items keep Disenchant and Bank. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- New Bank and mailbox window for the open bot: withdraw items and take letters, paged. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- New NPC window: talk, bind at the inn, learn from a trainer, make leader, pick a flight. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- Upkeep and AutoGear buttons, mimic and spread switches per bot, and Equip upgrades in the bags view. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+
+### Dungeon run (Preview)
+- A Dungeon run window on the Party tab binds your bot party, takes it into the dungeon, picks a plan and starts, pauses, resumes, skips or stops the run with live progress. It only appears when the server has the dungeon run turned on. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+
+### Fixes
+- Damage and healer role changes now reach the bots (they were sent in a form the server ignored). [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- The roster no longer goes empty with ClassicAPI.dll, and one bad roster line no longer empties the whole roster. Fixes [#38](https://github.com/Sagiroth/TortoiseBotsManager/issues/38). [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+- Layout: nothing overlaps or runs out of its window, labels fit their buttons, and the new windows can be dragged safely in the 1.12 client. [#39](https://github.com/Sagiroth/TortoiseBotsManager/pull/39)
+
+### Needs a server
+- Stances, Guard/Free, End pull, Rebuff, Reset tactics, the toggle status queries and the sap state need TortoiseBots with [PR #1247](https://github.com/Sagiroth/TortoiseBots/pull/1247) (released in [#1248](https://github.com/Sagiroth/TortoiseBots/pull/1248)).
+
+---
 
 ## v1.1.0 (2026-10-19)
 
