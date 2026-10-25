@@ -1495,6 +1495,7 @@ TB.SetVaultPending("Alpha", false)
 TB.CloseVault()
 assert(not TB.botVault.visible, "the vault closes")
 TB.CloseBotPanel()
+assert(not TB.botPanel.visible, "the panel closes")
 
 -- ── Raid tab only exists in a raid ─────────────────────────────────────────
 assert(not TB.tabRaid.visible, "no Raid tab outside a raid")
