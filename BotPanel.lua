@@ -674,6 +674,15 @@ local function createPanel()
         if TB.PollList then TB.PollList(true) end
     end)
     panel.refreshButton = refresh
+    local npcLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    npcLink:SetWidth(80); npcLink:SetHeight(22)
+    npcLink:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
+    npcLink:SetText("NPC")
+    setTooltip(npcLink, "NPC errands", { "Talk, bind, learn and flights for this bot." })
+    npcLink:SetScript("OnClick", function()
+        if currentBot and TB.OpenNpc then TB.OpenNpc(currentBot) end
+    end)
+    panel.npcButton = npcLink
 
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 12, 10)
