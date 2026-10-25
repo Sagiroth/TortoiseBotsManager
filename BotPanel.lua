@@ -957,7 +957,7 @@ local function createPanel()
 
     -- Footer: trade, refresh, NPC errands, vault, upkeep, gear-up, every view.
     local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    trade:SetWidth(48); trade:SetHeight(22)
+    trade:SetWidth(44); trade:SetHeight(22)
     trade:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 28)
     trade:SetText("Trade")
     setTooltip(trade, "Trade", {
@@ -969,7 +969,7 @@ local function createPanel()
     panel.tradeButton = trade
 
     local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    refresh:SetWidth(50); refresh:SetHeight(22)
+    refresh:SetWidth(46); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 6, 0)
     refresh:SetText("Refresh")
     setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
@@ -980,7 +980,7 @@ local function createPanel()
     panel.refreshButton = refresh
 
     local npcLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    npcLink:SetWidth(40); npcLink:SetHeight(22)
+    npcLink:SetWidth(36); npcLink:SetHeight(22)
     npcLink:SetPoint("LEFT", refresh, "RIGHT", 6, 0)
     npcLink:SetText("NPC")
     setTooltip(npcLink, "NPC errands", { "Talk, bind, learn and flights for this bot." })
@@ -990,7 +990,7 @@ local function createPanel()
     panel.npcButton = npcLink
 
     local vaultLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    vaultLink:SetWidth(72); vaultLink:SetHeight(22)
+    vaultLink:SetWidth(64); vaultLink:SetHeight(22)
     vaultLink:SetPoint("LEFT", npcLink, "RIGHT", 6, 0)
     vaultLink:SetText("Bank / mail")
     setTooltip(vaultLink, "Bank and mail", { "Lists what this bot keeps in its bank and mailbox." })
@@ -1000,7 +1000,7 @@ local function createPanel()
     panel.vaultButton = vaultLink
 
     local upkeep = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    upkeep:SetWidth(50); upkeep:SetHeight(22)
+    upkeep:SetWidth(46); upkeep:SetHeight(22)
     upkeep:SetPoint("LEFT", vaultLink, "RIGHT", 6, 0)
     upkeep:SetText("Upkeep")
     setTooltip(upkeep, "Upkeep", { "Restock this bot: food, drink, reagents, ammo and repairs.", "Only while the bot is online." })
@@ -1011,7 +1011,7 @@ local function createPanel()
     panel.upkeepButton = upkeep
 
     local gearup = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    gearup:SetWidth(50); gearup:SetHeight(22)
+    gearup:SetWidth(46); gearup:SetHeight(22)
     gearup:SetPoint("LEFT", upkeep, "RIGHT", 6, 0)
     gearup:SetText("Gear up")
     setTooltip(gearup, "Gear up", { "The bot equips the best gear it already owns in its bags.", "Only while the bot is online." })

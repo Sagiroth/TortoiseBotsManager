@@ -177,11 +177,11 @@ TB.UI.Grid = {
     BTN_H         = 26,
     BTN_H_SM      = 22,
     ROW_H         = ROW_H,
-    CARD_ENGAGE_H = 56,
+    CARD_ENGAGE_H = 52,
     CARD_PULL_H   = 76,
     CARD_MOVE_H   = 76,
-    CARD_SWITCH_H = 54,
-    CARD_TACTIC_H = 46,
+    CARD_SWITCH_H = 50,
+    CARD_TACTIC_H = 44,
     CARD_REST_H   = 116,
     CARD_FORM_H   = 100,
 }
@@ -985,7 +985,7 @@ end
 
 local function BuildEngageCard(parent, buttons)
     -- Fight: Engage (attack, stop, interrupt, flee)
-    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 56, { y = -38, line = true })
+    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 52, { y = -38, line = true })
     local btnY = -22
     buttons.attack    = makeActionButton(card, "attack", 110, 8, btnY)
     buttons.stop      = makeActionButton(card, "stop", 110, 126, btnY)
@@ -998,7 +998,7 @@ local function BuildPullCard(parent, buttons)
     -- Pull & Focus: pull, pullback with timers, focus skull, cc mark cover
     -- the button row; End pull sits in the timer row as the small
     -- "stop pulling" escape next to the timing controls.
-    local card = TB.UI.CreateCard(parent, "PULL & FOCUS", W - (C.PAD or 10) * 2, 76, { y = -98, line = true })
+    local card = TB.UI.CreateCard(parent, "PULL & FOCUS", W - (C.PAD or 10) * 2, 76, { y = -94, line = true })
     local btnY = -22
     buttons.pull      = makeActionButton(card, "pull", 110, 8, btnY)
     buttons.pullback  = makeActionButton(card, "pullback", 110, 126, btnY)
@@ -1059,7 +1059,7 @@ end
 
 local function BuildMoveCard(parent, buttons)
     -- Move: five orders plus stance pills inline on one row.
-    local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_MOVE_H or 86, { y = -182, line = true })
+    local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_MOVE_H or 86, { y = -174, line = true })
     local btnY = -24
     buttons.follow   = makeActionButton(card, "follow", 88, 8, btnY)
     buttons.stay     = makeActionButton(card, "stay", 88, 100, btnY)
@@ -1095,7 +1095,7 @@ local function BuildSwitchesCard(parent, buttons)
     -- shows it at a glance (green on, grey off, gold mixed/unknown). One
     -- row of five compact buttons fits the content width; icons are left
     -- off so the state words clear the lamp on the narrow buttons.
-    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_SWITCH_H or 54, { y = -262, line = true })
+    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_SWITCH_H or 54, { y = -252, line = true })
     local btnY = -22
     TB.toggleButtons = {}
     local switchIdx = 1
@@ -1124,7 +1124,7 @@ end
 local function BuildTacticsCard(parent, buttons)
     -- Combat tactics: one-shot strategy orders (kiting, auto-mark, focus
     -- fire, fear). The server confirms each via "Strategy change" text.
-    local card = TB.UI.CreateCard(parent, "TACTICS", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_TACTIC_H or 46, { y = -288, line = true })
+    local card = TB.UI.CreateCard(parent, "TACTICS", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_TACTIC_H or 46, { y = -286, line = true })
     buttons.tacticKite = makeActionButton(card, "strategy ~kite", 110, 8, -22)
     buttons.tacticMark = makeActionButton(card, "strategy ~mark rti", 110, 126, -22)
     buttons.tacticFocus = makeActionButton(card, "strategy ~focus", 110, 244, -22)
@@ -1255,11 +1255,13 @@ CreateActions = function(parent)
 
     -- Build cards for Fight view
     BuildCcMenu(frame, buttons)
-    BuildEngageCard(frame, buttons)
-    BuildPullCard(frame, buttons)
-    BuildMoveCard(frame, buttons)
-    BuildSwitchesCard(frame, buttons)
-    BuildTacticsCard(frame, buttons)
+    TB.fightCards = {
+        engage = BuildEngageCard(frame, buttons),
+        pull = BuildPullCard(frame, buttons),
+        move = BuildMoveCard(frame, buttons),
+        switches = BuildSwitchesCard(frame, buttons),
+        tactics = BuildTacticsCard(frame, buttons),
+    }
 
     -- Build cards for Camp view
     BuildRestCard(campFrame, buttons)

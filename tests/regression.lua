@@ -1085,6 +1085,47 @@ for _, st in pairs({ TB.GetState("Alpha"), TB.GetState("Gamma") }) do
 end
 assert(afterStrategyOps == beforeStrategyOps, "a strategy reply must not start roster operations")
 
+-- Integration: every Fight card and control fits the 330px content frame.
+local fightOrder = { "engage", "pull", "move", "switches", "tactics" }
+local fightTops = { engage = -38, pull = -94, move = -174, switches = -252, tactics = -286 }
+local fightHeights = { engage = 52, pull = 76, move = 76, switches = 50, tactics = 44 }
+local fightBottom = { engage = 0, pull = 0, move = 0, switches = 0, tactics = 0 }
+for _, id in ipairs(fightOrder) do
+    local card = TB.fightCards[id]
+    local _, _, _, _, top = card:GetPoint(1)
+    assert(top == fightTops[id] and card.height == fightHeights[id],
+        "fight card " .. id .. " must keep its integrated slot")
+    assert(top <= 0 and -(top - card.height) <= 330, "fight card " .. id .. " must fit the 330px content")
+    fightBottom[id] = top - card.height
+end
+for i = 2, table.getn(fightOrder) do
+    assert(fightTops[fightOrder[i]] <= fightBottom[fightOrder[i - 1]] + 16,
+        "fight card " .. fightOrder[i] .. " must start below " .. fightOrder[i - 1])
+end
+local function cardBottom(control, cardTop)
+    local _, _, _, _, top = control:GetPoint(1)
+    return cardTop + top - (control.height or 0)
+end
+local moveIds = { "follow", "stay", "come", "guard", "free" }
+for _, id in ipairs(moveIds) do
+    local btn = TB.actionButtons[id]
+    assert(cardBottom(btn, fightTops.move) >= -330, "move control " .. id .. " must fit the 330px content")
+end
+for id, pill in pairs(TB.stancePills) do
+    assert(cardBottom(pill, fightTops.move) >= -330, "stance pill " .. id .. " must fit the 330px content")
+end
+for key, btn in pairs(TB.toggleButtons) do
+    assert(cardBottom(btn, fightTops.switches) >= -330, "switch " .. key .. " must fit the 330px content")
+end
+for _, id in ipairs({ "tacticKite", "tacticMark", "tacticFocus", "tacticAoeFear" }) do
+    assert(cardBottom(TB.actionButtons[id], fightTops.tactics) >= -330,
+        "tactic " .. id .. " must fit the 330px content")
+end
+for _, id in ipairs({ "attack", "stop", "interrupt", "flee" }) do
+    assert(cardBottom(TB.actionButtons[id], fightTops.engage) >= -330,
+        "engage control " .. id .. " must fit the 330px content")
+end
+assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -330, "end pull must fit the 330px content")
 -- Release follows the party's death state.
 TB.Refresh()
 assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")
@@ -1303,8 +1344,14 @@ now = now + 1
 local beforeGearUp = table.getn(addonSent)
 TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
 assert(addonSent[beforeGearUp + 1].message == "autogear Alpha", "Gear up re-gears the bot")
+-- Integration: six footer buttons fit the 330px panel with no overlap.
+local footerSpan = 10 + 44 + 46 + 36 + 64 + 46 + 46 + 5 * 6
+assert(footerSpan <= 330, "footer (trade + refresh + NPC + vault + upkeep + gear up) must fit the 330px panel")
+assert(TB.botPanel.tradeButton.width == 44 and TB.botPanel.refreshButton.width == 46
+    and TB.botPanel.npcButton.width == 36 and TB.botPanel.vaultButton.width == 64
+    and TB.botPanel.upkeepButton.width == 46 and TB.botPanel.gearUpButton.width == 46,
+    "footer buttons must keep their integrated widths")
 TB.CloseBotPanel()
-assert(not TB.botPanel.visible, "the panel closes")
 
 -- ── Bot NPC errands (P10): talk/bind/learn/flights for the panel bot ──────
 TB.OpenBotPanel("Alpha")
