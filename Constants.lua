@@ -347,7 +347,7 @@ TB.C.ACTION_LABELS = {
     ["item give"]          = "Give",
     ["item trade"]         = "Trade",
     inv                    = "Bags",
-    hold                   = "Come & Hold",
+    stance                 = "Stance",
 }
 for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
     TB.C.ACTION_LABELS[def.intent] = def.label

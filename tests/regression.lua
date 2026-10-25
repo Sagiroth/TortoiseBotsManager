@@ -649,8 +649,8 @@ TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
 assert(sent[table.getn(sent)] == ".bot action stance tank", "Tank stance pill must send stance tank")
 assert(TB.currentStance == "tank" and not TB.stancePills.tank.enabled and TB.stancePills.near.enabled,
     "Active stance pill must become disabled")
-TB.OnSystemMessage("TBM:ACTION_ACK|stance tank|party|2|-")
-assert(TB.lastActionAck and TB.lastActionAck.intent == "stance tank",
+TB.OnSystemMessage("TBM:ACTION_ACK|stance|party|2|tank")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "stance" and TB.lastActionAck.executor == "tank",
     "structured stance ACK must be parsed")
 TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
 TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=guard,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
