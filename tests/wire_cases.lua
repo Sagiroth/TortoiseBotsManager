@@ -576,7 +576,7 @@ local cases = {
     },
     {
         id = "party.bot.demote_to_dps",
-        expected = { ".bot role Tankbot clear", ".bot command Tankbot +arms,-protection" },
+        expected = { ".bot role Tankbot clear", ".bot strategy +arms,-protection Tankbot" },
         trigger = function()
             setParty({ "Tankbot" }, "Warrior")
             TortoiseBotsDB.botRoles["Tankbot"] = "tank"
@@ -588,7 +588,7 @@ local cases = {
     },
     {
         id = "party.bot.priest.shadow",
-        expected = { ".bot command Priestbot +shadow,-holy,-discipline,-offdps" },
+        expected = { ".bot strategy +shadow,-holy,-discipline Priestbot" },
         trigger = function()
             setParty({ "Priestbot" }, "Priest")
             TortoiseBotsDB.botRoles["Priestbot"] = "heal"
@@ -722,7 +722,7 @@ local cases = {
     },
     {
         id = "guild.role.demote",
-        expected = { ".bot role Goldie clear", ".bot command Goldie +arms,-protection" },
+        expected = { ".bot role Goldie clear", ".bot strategy +arms,-protection Goldie" },
         trigger = function()
             TB.ShowTab("guild")
             TortoiseBotsDB.botRoles["Goldie"] = "tank"
@@ -988,6 +988,44 @@ local cases = {
         end,
     },
 
+
+    -- ── P1: role-wire correctness ────────────────────────────────────
+    {
+        id = "p1.role.warrior.dps",
+        expected = { ".bot strategy +arms,-protection Warrspec" },
+        trigger = function()
+            setParty({ "Warrspec" }, "Warrior")
+            TortoiseBotsDB.botRoles["Warrspec"] = nil
+            TB.ShowTab("party")
+            TB.RefreshPartyView()
+            this = TB.partyFrame.rows[2].roleButtons[2]
+            TB.partyFrame.rows[2].roleButtons[2].scripts.OnClick()
+        end,
+    },
+    {
+        id = "p1.role.paladin.heal",
+        expected = { ".bot strategy +holy,-protection,-retribution Pallyspec" },
+        trigger = function()
+            setParty({ "Pallyspec" }, "Paladin")
+            TortoiseBotsDB.botRoles["Pallyspec"] = "dps"
+            TB.ShowTab("party")
+            TB.RefreshPartyView()
+            this = TB.partyFrame.rows[2].roleButtons[2]
+            TB.partyFrame.rows[2].roleButtons[2].scripts.OnClick()
+        end,
+    },
+    {
+        id = "p1.role.priest.shadow",
+        expected = { ".bot strategy +shadow,-holy,-discipline Prispec" },
+        trigger = function()
+            setParty({ "Prispec" }, "Priest")
+            TortoiseBotsDB.botRoles["Prispec"] = "heal"
+            TB.ShowTab("party")
+            TB.RefreshPartyView()
+            this = TB.partyFrame.rows[2].roleButtons[3]
+            TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
+        end,
+    },
 
 }
 
