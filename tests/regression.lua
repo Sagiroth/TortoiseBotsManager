@@ -87,6 +87,8 @@ local function object(kind, parent)
     function methods:StopMovingOrSizing() end
     function methods:GetLeft() return self.x or 100 end
     function methods:GetTop() return (self.y or 100) + (self.height or 50) end
+    function methods:GetRight() return (self.x or 100) + (self.width or 118) end
+    function methods:GetBottom() return (self.y or 100) end
     function methods:GetCenter() return 0, 0 end
     function methods:GetEffectiveScale() return 1 end
     function methods:Enable() self.enabled = true end
@@ -132,6 +134,7 @@ function SendAddonMessage(prefix, message, channel)
     table.insert(addonSent, { prefix = prefix, message = message, channel = channel })
 end
 function GetCursorPosition() return 0, 0 end
+function GetScreenWidth() return 1024 end
 function UnitExists(unit)
     if unit == "player" then return true end
     if unit == "target" then return targetExists end
@@ -1027,6 +1030,23 @@ assert(menu.fifth.visible and menu.fifth.text == "Send by mail" and menu.fifth.e
 assert(menu.sixth.visible and menu.sixth.text == "Put to bank" and menu.sixth.enabled, "bag items offer Put to bank")
 assert(menu.seventh.visible and menu.seventh.text == "Destroy", "bag items offer Destroy")
 assert(menu.height == 178, "the full menu fits seven rows")
+-- P9: the menu flips left/right and above/below to stay on screen.
+menu:Hide()
+menu.x = 950
+menu.y = 100
+this = upgrade
+upgrade.scripts.OnClick(upgrade)
+assert(menu.point[1] == "TOPRIGHT", "the menu opens left of a right-edge slot")
+menu.x = 100
+menu.y = -50
+menu:Hide()
+this = upgrade
+upgrade.scripts.OnClick(upgrade)
+assert(menu.point[1] == "BOTTOMLEFT", "the menu opens above a low slot")
+menu.x = nil
+menu.y = nil
+this = upgrade
+upgrade.scripts.OnClick(upgrade)
 now = now + 1
 this = menu.first
 menu.first.scripts.OnClick(menu.first)
@@ -1035,7 +1055,8 @@ local soulbound = TB.botPanel.bagButtons[1]
 this = soulbound
 soulbound.scripts.OnClick(soulbound)
 assert(not menu.first.enabled and not menu.second.enabled, "soulbound junk cannot be equipped or given")
-assert(not menu.fourth.enabled and not menu.fifth.enabled and not menu.sixth.enabled, "soulbound junk cannot be disenchanted, mailed or banked")
+assert(not menu.fifth.enabled, "soulbound junk cannot be mailed away")
+assert(menu.fourth.enabled and menu.sixth.enabled, "soulbound gear can still be disenchanted and banked")
 menu:Hide()
 
 -- Bags header: one-click upgrade sweep.
@@ -1088,6 +1109,9 @@ menu.seventh.scripts.OnClick(menu.seventh)
 assert(table.getn(addonSent) == beforeDestroy, "Destroy must not send before the confirm")
 assert(lastPopupShown == "TORTOISEBOTSMANAGER_DESTROY_ITEM", "Destroy must ask first")
 assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] ~= nil, "destroy dialog must exist")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].text ==
+    "Destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h on Alpha?\n\nThis cannot be undone.",
+    "the confirm must name the item with a single clean link")
 StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].OnAccept()
 assert(lastAddon() == "command Alpha destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
     "confirming Destroy must send the item link")

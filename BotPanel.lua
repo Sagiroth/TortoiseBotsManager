@@ -299,8 +299,7 @@ TB.SendLinkOrder = sendLinkOrder
 function TB.ConfirmDestroyItem(id)
     if not currentBot or not id then return false end
     local link = linkText(id)
-    local name = itemInfo(id)
-    local what = link and ("|H" .. link .. "|h[" .. (name or ("item #" .. id)) .. "]|h") or ("item #" .. id)
+    local what = link or ("item #" .. id)
     if StaticPopupDialogs and StaticPopup_Show then
         StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] = {
             text = "Destroy " .. what .. " on " .. currentBot .. "?\n\nThis cannot be undone.",
@@ -536,12 +535,18 @@ local function createMenu(parent)
         self:ClearAllPoints()
         self:SetPoint("TOPLEFT", owner, "BOTTOMRIGHT", -8, 8)
         -- Stay inside the screen: opening left of the slot when the right
-        -- side has no room (right-edge bag columns, panel at screen edge).
+        -- side has no room (right-edge bag columns, panel at screen edge),
+        -- and above the slot when the bottom has no room (lower bag rows).
         local right = self.GetRight and self:GetRight()
         local screen = GetScreenWidth and GetScreenWidth()
         if right and screen and right > screen then
             self:ClearAllPoints()
             self:SetPoint("TOPRIGHT", owner, "BOTTOMLEFT", 8, 8)
+        end
+        local bottom = self.GetBottom and self:GetBottom()
+        if bottom and bottom < 0 then
+            self:ClearAllPoints()
+            self:SetPoint("BOTTOMLEFT", owner, "TOPRIGHT", -8, -8)
         end
         if entry.equipped then
             self.first:SetText("Unequip")
@@ -561,12 +566,15 @@ local function createMenu(parent)
             self.second:Show()
             if entry.noTrade then self.second:Disable() else self.second:Enable() end
             self.third:Show()
+            -- Only Give and Send by mail move the item off the bot, so only
+            -- those disable for soulbound items. Disenchanting and banking
+            -- soulbound gear are normal profession/bank uses.
             self.fourth:Show()
-            if entry.noTrade then self.fourth:Disable() else self.fourth:Enable() end
+            self.fourth:Enable()
             self.fifth:Show()
             if entry.noTrade then self.fifth:Disable() else self.fifth:Enable() end
             self.sixth:Show()
-            if entry.noTrade then self.sixth:Disable() else self.sixth:Enable() end
+            self.sixth:Enable()
             self.seventh:Show()
             self:SetHeight(178)
         end
