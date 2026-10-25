@@ -145,9 +145,9 @@ local function actionLabel(intent)
     local def = TB.GetActionDefinition and TB.GetActionDefinition(intent)
     if def and def.label then return def.label end
     if intent == "strategy +grind" or intent == "strategy -grind" then return "Grind" end
-    if intent == "strategy reset" or intent == "totem party drop" then
-        if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
-        return intent
+    if intent == "totem drop" then
+        if C.ACTION_LABELS and C.ACTION_LABELS["totem party drop"] then return C.ACTION_LABELS["totem party drop"] end
+        return "Drop totems"
     end
     if C.ACTION_LABELS and C.ACTION_LABELS[intent] then return C.ACTION_LABELS[intent] end
     local _, _, behaviorKey = string.find(intent or "", "^behavior%s+(%S+)$")

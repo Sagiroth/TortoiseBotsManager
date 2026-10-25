@@ -325,16 +325,34 @@ assert(TB.actionButtons.ready and TB.actionButtons.ready.icon, "Ready check butt
 -- Formation pills
 assert(TB.formationPills and TB.formationPills.shield and TB.formationPills.near,
     "Formation pills must exist")
+assert(not TB.formationPills.shield.enabled, "Shield should start disabled (active)")
+assert(TB.formationPills.near.enabled, "Near should start enabled")
+now = now + 1
+this = TB.formationPills.near
+TB.formationPills.near.scripts.OnClick(TB.formationPills.near)
+assert(TB.currentFormation == "near", "Clicking near pill must set current formation to near")
+assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
+    "Active formation pill must become disabled")
 assert(table.getn(TB.C.FORMATIONS) == 10, "Camp must expose all ten server formations")
 assert(TB.formationPills.far and TB.formationPills.melee and TB.formationPills.chaos
     and TB.formationPills.default, "New formation pills must exist")
+assert(TB.formationPills.far.enabled, "Far should start enabled")
+now = now + 1
+this = TB.formationPills.far
+TB.formationPills.far.scripts.OnClick(TB.formationPills.far)
+assert(TB.currentFormation == "far", "Clicking far pill must set current formation to far")
+assert(not TB.formationPills.far.enabled and TB.formationPills.near.enabled,
+    "Active formation pill must become disabled, previous one re-enabled")
+now = now + 1
+TB.SetFormation("shield")
+assert(TB.currentFormation == "shield" and not TB.formationPills.shield.enabled,
+    "Formation must reset to shield for later cases")
 assert(TB.actionButtons.rebuff and TB.actionButtons.resetTactics and TB.actionButtons.totem
     and TB.actionButtons.acceptQuest and TB.actionButtons.shareQuest and TB.actionButtons.grind,
     "Camp chore buttons must exist")
 assert(TB.UI.Grid.CARD_REST_H == 116 and TB.UI.Grid.CARD_FORM_H == 100,
     "Camp cards must fit the 480x330 content frame")
 -- Constants: structured formation metadata must survive (no raw-list clobber),
--- and Hunter/Rogue must expose all three backend-supported specs.
 assert(TB.C.FORMATIONS[1].id == "shield" and TB.C.FORMATIONS[1].label == "Shield",
     "structured formation metadata must remain intact")
 assert(table.getn(TB.C.FORMATION_IDS) == 10 and TB.C.FORMATION_IDS[7] == "shield",
