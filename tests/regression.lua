@@ -1106,6 +1106,7 @@ this = TB.botPanel.vaultButton
 TB.botPanel.vaultButton.scripts.OnClick(TB.botPanel.vaultButton)
 assert(lastAddon() == "command Alpha bank", "Bank / mail opens the vault bank list")
 assert(TB.botVault and TB.botVault.visible and TB.GetVaultBot() == "Alpha", "the vault tracks the panel bot")
+assert(TB.botVault.point and TB.botVault.point[2] == TB.botPanel, "the vault sits beside the open panel")
 assert(table.getn(TB.botVault.rows) == 8, "the vault shows one page of rows")
 TB.OnWhisperMessage("=== Bank ===", "Alpha")
 TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|rx3", "Alpha")
@@ -1115,7 +1116,7 @@ assert(not TB.botVault.rows[2].visible, "empty vault rows stay hidden")
 now = now + 1
 this = TB.botVault.rows[1]
 TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
-assert(lastAddon() == "command Alpha bank |Hitem:1234:0:0:0|h[Linen Cloth]|h",
+assert(lastAddon() == "command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h",
     "clicking a bank row withdraws it by link")
 TB.SetVaultPending("Alpha", false)
 now = now + 1

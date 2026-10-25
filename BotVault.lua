@@ -6,7 +6,7 @@
 --   "=== Bank ===" then one "|c…|Hitem:<id>:…|h[<name>]|h|r[xN]" line per item
 --   "=== Mailbox ===" then one "#<n> <item links/money>" line per letter
 -- (server: BankAction.cpp ListItems/InventoryTellItems, MailAction.cpp
--- TellMailProcessor). Clicking a bank row sends "command <bot> bank <link>";
+-- TellMailProcessor). Clicking a bank row sends "command <bot> bank -<link>";
 -- clicking Take sends "command <bot> mail take <n>". Withdraw/take replies
 -- arrive as ordinary whispers on the command-op gate.
 
@@ -94,7 +94,8 @@ function TB.ConsumeVaultReply(name, msg)
         if TB.RefreshVault then TB.RefreshVault() end
         return "header"
     end
-    if string.find(msg, "^#%d+ ") then
+    if v.header == "mail" then
+        if not string.find(msg, "^#%d+ ") then return false end
         local _, _, n = string.find(msg, "^#(%d+) ")
         v.mail = v.mail or {}
         table.insert(v.mail, { n = tonumber(n) or 0, text = msg })
@@ -103,6 +104,7 @@ function TB.ConsumeVaultReply(name, msg)
         return table.getn(v.mail)
     end
     if v.header ~= "bank" then return false end
+    if string.find(msg, "^#%d+ ") then return false end
     local id, label, count = parseVaultLine(msg)
     if not id then return false end
     v.bank = v.bank or {}
@@ -152,14 +154,14 @@ function TB.RequestMailbox(name)
     return sent
 end
 
--- Link form: the bank parser also accepts bare ids (ChatHelper::parseItems),
--- so a full Hitem link is the exact, unambiguous withdraw form.
+-- Withdraw form: a leading "-" selects bank stock (BankAction::ExecuteCommand:
+-- "-" withdraws via ITERATE_ITEMS_IN_BANK, without it deposits from bags).
 function TB.SendBankWithdraw(name, id, label)
     name = norm(name)
     id = tonumber(id)
     if not name or not id then return false end
     if TB.SetStatus then TB.SetStatus(name .. " takes " .. (label or ("item " .. id)) .. " from its bank…", "pending") end
-    return TB.SendBotCommand("command " .. name .. " bank |Hitem:" .. id .. ":0:0:0|h[" .. (label or ("item " .. id)) .. "]|h")
+    return TB.SendBotCommand("command " .. name .. " bank -|Hitem:" .. id .. ":0:0:0|h[" .. (label or ("item " .. id)) .. "]|h")
 end
 
 function TB.SendMailTake(name, n)
@@ -332,7 +334,17 @@ function TB.OpenVault(name, view)
     currentBot = name
     currentView = view or "bank"
     vault:ClearAllPoints()
-    if TB.frame then
+    local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame
+    if anchor and anchor ~= TB.frame then
+        local right = anchor.GetRight and anchor:GetRight()
+        local screen = GetScreenWidth and GetScreenWidth()
+        local scale = (anchor.GetScale and anchor:GetScale()) or 1
+        if right and screen and (right + VW + 4) * scale > screen then
+            vault:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+        else
+            vault:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+        end
+    elseif TB.frame then
         local right = TB.frame.GetRight and TB.frame:GetRight()
         local screen = GetScreenWidth and GetScreenWidth()
         local scale = (TB.frame.GetScale and TB.frame:GetScale()) or 1

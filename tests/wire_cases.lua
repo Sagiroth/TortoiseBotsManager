@@ -1139,13 +1139,15 @@ local cases = {
             TB.OnWhisperMessage("#1 |cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Gamma")
             assert(table.getn(TB.GetVault("Gamma").bank) == 0,
                 "bank headers must not accept letter lines")
+            assert(table.getn(TB.GetVault("Gamma").mail) == 0,
+                "bank headers must not leak letter lines into mail")
             TB.SetVaultPending("Gamma", false)
             TB.CloseVault()
         end,
     },
     {
         id = "p8.vault.withdraw",
-        expected = { ".bot command Alpha bank", ".bot command Alpha bank |Hitem:1234:0:0:0|h[Linen Cloth]|h" },
+        expected = { ".bot command Alpha bank", ".bot command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h" },
         trigger = function()
             TB.OpenVault("Alpha")
             TB.OnWhisperMessage("=== Bank ===", "Alpha")
@@ -1168,6 +1170,42 @@ local cases = {
             assert(TB.GetVault("Alpha").mail[1].n == 1, "the letter index parses")
             this = TB.botVault.rows[1]
             TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
+            TB.SetVaultPending("Alpha", false)
+            TB.CloseVault()
+        end,
+    },
+    {
+        id = "p8.vault.mailgate",
+        expected = { ".bot command Alpha mail ?" },
+        trigger = function()
+            TB.OpenVault("Alpha", "mail")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").mail) == 0,
+                "item lines before the mailbox header must not seed the mail list")
+            TB.OnWhisperMessage("=== Mailbox ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").mail) == 0,
+                "mail headers must not accept bank lines")
+            TB.OnWhisperMessage("#1 thing", "Alpha")
+            assert(table.getn(TB.GetVault("Alpha").mail) == 1, "letter lines parse under the mailbox header")
+            TB.SetVaultPending("Alpha", false)
+        end,
+    },
+    {
+        id = "p8.vault.anchor",
+        expected = { ".bot inv Alpha", ".bot command Alpha bank", ".bot command Alpha bank" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            assert(TB.botPanel and TB.botPanel:IsVisible(), "the panel must be open")
+            TB.OpenVault("Alpha")
+            assert(TB.botVault.point and TB.botVault.point[2] == TB.botPanel,
+                "the vault anchors to the open panel, not over it")
+            TB.SetVaultPending("Alpha", false)
+            TB.CloseVault()
+            TB.CloseBotPanel()
+            TB.OpenVault("Alpha")
+            assert(TB.botVault.point and TB.botVault.point[2] == TB.frame,
+                "the vault falls back to the main window without the panel")
             TB.SetVaultPending("Alpha", false)
             TB.CloseVault()
         end,
