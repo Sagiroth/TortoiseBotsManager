@@ -1446,13 +1446,68 @@ local cases = {
             TB.CloseBotPanel()
         end,
     },
+    -- ── P6: BotPanel spellbook ─────────────────────────────────────────────
+    {
+        id = "p6.spells.ask",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha")
+            this = TB.botPanel.tabSpells
+            TB.botPanel.tabSpells.scripts.OnClick(TB.botPanel.tabSpells)
+            this = TB.botPanel.spellAsk
+            TB.botPanel.spellAsk.scripts.OnClick(TB.botPanel.spellAsk)
+        end,
+    },
+    {
+        id = "p6.spells.parse",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:168|h[Frost Armor]|h|r - |cffffff00yellow|r", "Alpha")
+            local entry = TB.GetSpellList("Alpha")
+            assert(entry and table.getn(entry.spells) == 2, "two spellbook lines must parse")
+            assert(entry.spells[1].id == 133 and entry.spells[1].name == "Fireball", "spell id and name must parse")
+            assert(entry.spells[2].id == 168 and entry.spells[2].name == "Frost Armor", "trailing skill text must not leak into the name")
+            assert(TB.ParseSpellLine("nothing here") == nil, "non-spell whispers must not parse")
+            assert(TB.botPanel.spellRows[1].spellName == "Fireball", "first row must show the first spell")
+            assert(not (TB.GetState("Alpha") and TB.GetState("Alpha").operation),
+                "consumed spell lines clear the command op")
+            advanceTime(30)
+            assert(TB.ConsumeSpellReply("Alpha", "|cffffffff|Hspell:116|h[Frostbolt]|h|r") == false,
+                "late lines after the query must not enter the list")
+            assert(table.getn(TB.GetSpellList("Alpha").spells) == 2, "late lines must not grow the list")
+        end,
+    },
+    {
+        id = "p6.spells.gate",
+        expected = { ".bot inv Gamma", ".bot command Gamma spells" },
+        trigger = function()
+            TB.OpenBotPanel("Gamma", "spells")
+            TB.RequestSpells("Gamma")
+            drainQueue()
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 0,
+                "another bot's whispers must not enter the panel list")
+            TB.OnWhisperMessage("some other whisper", "Gamma")
+            local st = TB.GetState("Gamma")
+            assert(not (st and st.operation) and not (st and st.pendingAI),
+                "non-spell whispers complete the command op")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 0, "non-spell whispers must not parse")
+            TB.SetSpellPending("Gamma", false)
+            TB.CloseBotPanel()
+        end,
+    },
     {
         id = "botpanel.gearup",
-        expected = { ".bot autogear Alpha", ".bot inv Alpha" },
+        expected = { ".bot inv Alpha", ".bot autogear Alpha", ".bot inv Alpha" },
         trigger = function()
+            TB.OpenBotPanel("Alpha")
+            drainQueue()
             this = TB.botPanel.gearUpButton
             TB.botPanel.gearUpButton.scripts.OnClick(TB.botPanel.gearUpButton)
-            TB.CloseBotPanel()
         end,
     },
     -- P9: advanced item-menu rows (destroy asks first, rest send on click).
@@ -1625,9 +1680,131 @@ local cases = {
         end,
     },
 
+    {
+        id = "p6.spells.cast",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells", ".bot command Alpha cast Fireball" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            this = TB.botPanel.spellRows[1]
+            TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
+            TB.SetSpellPending("Alpha", false)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.empty",
+        expected = { ".bot inv Gamma", ".bot command Gamma spells" },
+        trigger = function()
+            TB.OpenBotPanel("Gamma", "spells")
+            TB.RequestSpells("Gamma")
+            assert(TB.ConsumeSpellReply("Gamma", "=== Spells ===") == "header",
+                "header alone starts an empty spellbook")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 0, "no lines means no spells")
+            assert(not TB.botPanel.spellAsk.enabled, "Ask waits while more lines may arrive")
+            assert(TB.ConsumeSpellReply("Gamma", "|cffffffff|Hspell:133|h[Fireball]|h|r") == 1,
+                "duplicate id still counts but must not grow the list")
+            assert(TB.ConsumeSpellReply("Gamma", "|cffffffff|Hspell:133|h[Fireball]|h|r") == 1,
+                "a repeated line must not duplicate the row")
+            assert(table.getn(TB.GetSpellList("Gamma").spells) == 1, "same spell id stays one row")
+            TB.SetSpellPending("Gamma", false)
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.stale",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            advanceTime(30)
+            assert(TB.ConsumeSpellReply("Alpha", "|cffffffff|Hspell:133|h[Fireball]|h|r") == false,
+                "a quiet spellbook closes: late lines return to the gate")
+            TB.OnWhisperMessage("Casting |cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.pendingAI), "late cast replies complete the command op")
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.no_timeout",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.operation), "answered spellbook clears the command op")
+            assert(not (st and st.pendingAI), "answered spellbook clears the AI reply flag")
+            advanceTime(30)
+            TB.UpdateStateTimers()
+            st = TB.GetState("Alpha")
+            assert(not (st and st.lastError), "no timeout error after a consumed spell list")
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.cast_reply",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells", ".bot command Alpha cast Fireball" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            this = TB.botPanel.spellRows[1]
+            TB.botPanel.spellRows[1].scripts.OnClick(TB.botPanel.spellRows[1])
+            drainQueue()
+            TB.OnWhisperMessage("Casting |cffffffff|Hspell:133|h[Fireball]|h|r", "Alpha")
+            assert(table.getn(TB.GetSpellList("Alpha").spells) == 1, "cast reply must not join the spellbook")
+            local st = TB.GetState("Alpha")
+            assert(not (st and st.pendingAI), "cast reply completes the cast command op")
+            assert(not (st and st.operation), "cast reply clears the cast command op")
+            TB.CloseBotPanel()
+        end,
+    },
+    {
+        id = "p6.spells.paging",
+        expected = { ".bot inv Alpha", ".bot command Alpha spells", ".bot command Alpha cast Spell 30", ".bot command Alpha spells" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "spells")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            for i = 1, 45 do
+                TB.OnWhisperMessage("|cffffffff|Hspell:" .. (100 + i) .. "|h[Spell " .. i .. "]|h|r", "Alpha")
+            end
+            assert(table.getn(TB.GetSpellList("Alpha").spells) == 45, "all 45 spell lines must land in the list")
+            assert(TB.botPanel.spellPageText:GetText() == "1 / 4", "45 spells over 12 rows is 4 pages")
+            assert(TB.botPanel.spellRows[1].spellName == "Spell 1", "page 1 starts at the first spell")
+            this = TB.botPanel.spellNext
+            TB.botPanel.spellNext.scripts.OnClick(TB.botPanel.spellNext)
+            TB.botPanel.spellNext.scripts.OnClick(TB.botPanel.spellNext)
+            assert(TB.botPanel.spellPageText:GetText() == "3 / 4", "two next clicks reach page 3")
+            assert(TB.botPanel.spellRows[1].spellName == "Spell 25", "page 3 starts at spell 25")
+            this = TB.botPanel.spellRows[6]
+            TB.botPanel.spellRows[6].scripts.OnClick(TB.botPanel.spellRows[6])
+            drainQueue()
+            this = TB.botPanel.spellNext
+            TB.botPanel.spellNext.scripts.OnClick(TB.botPanel.spellNext)
+            assert(TB.botPanel.spellPageText:GetText() == "4 / 4", "last page holds the final spells")
+            assert(TB.botPanel.spellRows[1].spellName == "Spell 37", "page 4 starts at spell 37")
+            assert(TB.botPanel.spellRows[9].visible, "page 4 shows its 9 rows")
+            assert(not TB.botPanel.spellRows[10].visible, "empty rows stay hidden on the last page")
+            TB.RequestSpells("Alpha")
+            drainQueue()
+            TB.OnWhisperMessage("=== Spells ===", "Alpha")
+            TB.OnWhisperMessage("|cffffffff|Hspell:201|h[Spell 1]|h|r", "Alpha")
+            assert(TB.botPanel.spellPageText:GetText() == "1 / 1", "a new list resets to page 1")
+            TB.CloseBotPanel()
+        end,
+    },
 }
 
--- Execute each case and verify byte-for-byte wire text
 for _, tc in ipairs(cases) do
     local actual = executeTrigger(tc.trigger)
     if table.getn(actual) ~= table.getn(tc.expected) then

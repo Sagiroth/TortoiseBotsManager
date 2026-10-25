@@ -18,6 +18,7 @@ local PH = 470 -- taller than the main window: paper doll + footer
 local SLOT = 34
 local STEP = 38
 local BAG_COLS, BAG_ROWS = 8, 7
+local SPELL_ROWS = 12
 local EQUIPPED_BAG = 255 -- INVENTORY_SLOT_BAG_0: equipment and backpack
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
@@ -182,6 +183,96 @@ function TB.RequestInventory(name)
     return TB.SendBotCommand("inv " .. name)
 end
 
+-- ── spellbook model ─────────────────────────────────────────────────────────
+-- Whisper replies to ".bot command <bot> spells": one "=== Spells ===" header
+-- line, then one "|cffffffff|Hspell:<id>|h[<name>]|h|r ..." line per spell
+-- (server: ListSpellsAction.cpp; Hspell shape: ChatHelper::formatSpell).
+-- Clicking a row asks the bot to cast by exact name
+-- (".bot command <bot> cast <name>").
+local spellLists = {} -- [bot] = { at, pending, spells = { { id, name } } }
+
+function TB.SetSpellPending(name, pending)
+    name = norm(name)
+    if not name then return end
+    local entry = spellLists[name] or { spells = {} }
+    entry.pending = pending and true or false
+    entry.at = now()
+    spellLists[name] = entry
+end
+
+function TB.GetSpellList(name)
+    name = norm(name)
+    return name and spellLists[name] or nil
+end
+
+local function parseSpellLine(msg)
+    -- List lines start with the color escape; cast confirmations ("Casting ...")
+    -- carry a link too but must reach the command-op gate, so never parse them.
+    if not msg or string.find(msg, "^Casting") then return nil end
+    local _, _, id, label = string.find(msg, "^|c%x+|Hspell:(%d+)|h%[([^%]]+)%]")
+    id = tonumber(id)
+    if not id or not label then return nil end
+    label = TB.Trim(label)
+    if label == "" then return nil end
+    return id, label
+end
+TB.ParseSpellLine = parseSpellLine
+
+-- Returns "header" / spell count / false. Only lines from the panel bot
+-- while its spell query is pending reach the list; anything else stays on
+-- the legacy AI-reply path so the command-op gate keeps working.
+function TB.ConsumeSpellReply(name, msg)
+    name = norm(name)
+    if not name or not msg or msg == "" then return false end
+    if name ~= TB.GetBotPanelBot() then return false end
+    local entry = spellLists[name]
+    if not entry or not entry.pending then return false end
+    -- No end-of-list marker on the wire (one whisper per line): the burst
+    -- ends when the bot goes quiet, then later whispers (cast replies, AI
+    -- answers) flow back to the command-op gate.
+    if now() - (entry.at or 0) > (C.ACTION_TIMEOUT or 8) then
+        entry.pending = false
+        return false
+    end
+    if string.find(msg, "=== Spells ===") then
+        entry.spells = {}
+        entry.at = now()
+        spellPage = 1
+        if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+        return "header"
+    end
+    local id, label = parseSpellLine(msg)
+    if not id then return false end
+    entry.spells = entry.spells or {}
+    for _, known in ipairs(entry.spells) do
+        if known.id == id then return table.getn(entry.spells) end
+    end
+    table.insert(entry.spells, { id = id, name = label })
+    entry.at = now()
+    if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+    return table.getn(entry.spells)
+end
+
+function TB.RequestSpells(name)
+    name = norm(name)
+    if not name then return false end
+    local entry = spellLists[name] or { spells = {} }
+    entry.pending = true
+    entry.at = now()
+    spellLists[name] = entry
+    if TB.SetStatus then TB.SetStatus("Asking " .. name .. " for its spellbook…", "pending") end
+    if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+    return TB.SendBotCommand("command " .. name .. " spells")
+end
+
+function TB.SendBotCast(name, spellName)
+    name = norm(name)
+    spellName = TB.Trim(spellName or "")
+    if not name or spellName == "" then return false end
+    if TB.SetStatus then TB.SetStatus(name .. " casts " .. spellName .. "…", "pending") end
+    return TB.SendBotCommand("command " .. name .. " cast " .. spellName)
+end
+
 -- ── item helpers ────────────────────────────────────────────────────────────
 -- Vanilla GetItemInfo: name, link ("item:id:0:0:0"), quality, level, type,
 -- subtype, stack, equipLoc, texture. Nil until the client cached the item.
@@ -285,6 +376,7 @@ local panel
 local currentBot
 local currentView = "gear"
 local bagPage = 1
+local spellPage = 1
 local pendingGive = nil       -- { bot, bag, slot } awaiting the trade window
 local behaviorPending = {}    -- [bot .. "|" .. key] = true
 local pendingLink = nil       -- { bot, verb, id, label } awaiting the client item cache
@@ -697,12 +789,14 @@ local function createPanel()
     close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function() TB.CloseBotPanel() end)
 
-    panel.tabGear = makeTab(panel, "Gear", 10, 96, "gear")
-    panel.tabBags = makeTab(panel, "Bags", 110, 104, "bags")
-    panel.tabBehavior = makeTab(panel, "Behaviour", 218, 102, "behavior")
+    panel.tabGear = makeTab(panel, "Gear", 10, 68, "gear")
+    panel.tabBags = makeTab(panel, "Bags", 82, 76, "bags")
+    panel.tabBehavior = makeTab(panel, "Behaviour", 162, 78, "behavior")
+    panel.tabSpells = makeTab(panel, "Spells", 244, 76, "spells")
     setTooltip(panel.tabGear, "Gear", { "What the bot wears. Click a slot to unequip." })
     setTooltip(panel.tabBags, "Bags", { "Everything in the bot's bags. Click an item to equip it or take it." })
     setTooltip(panel.tabBehavior, "Behaviour", { "Per-bot combat habits, stored on the server." })
+    setTooltip(panel.tabSpells, "Spells", { "What this bot can cast. Click a spell to cast it." })
 
     -- Gear view: paper doll around the bot's 3D model.
     local gear = CreateFrame("Frame", nil, panel)
@@ -813,6 +907,53 @@ local function createPanel()
     bhHint:SetWidth(PW - 24); bhHint:SetJustifyH("LEFT")
     bhHint:SetText("Party-wide switches live on the Actions tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
+
+    -- Spells view: the bot's spellbook, one row per known spell.
+    local spellsView = CreateFrame("Frame", nil, panel)
+    spellsView:SetAllPoints(panel)
+    panel.spells = spellsView
+    local spTitle = spellsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    spTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -78)
+    spTitle:SetText("What this bot can cast (from the server)")
+    TB.SetTextColor(spTitle, color("gold"))
+    panel.spellRows = {}
+    for i = 1, SPELL_ROWS do
+        local row = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+        row:SetWidth(PW - 24); row:SetHeight(20)
+        row:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -98 - (i - 1) * 22)
+        row.spellId = 0
+        row.spellName = nil
+        setTooltip(row, "Spell", { "Click: ask the bot to cast it." })
+        row:SetScript("OnClick", function()
+            if currentBot and this.spellName then TB.SendBotCast(currentBot, this.spellName) end
+        end)
+        table.insert(panel.spellRows, row)
+    end
+    local ask = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    ask:SetWidth(150); ask:SetHeight(22)
+    ask:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
+    ask:SetText("Ask for spellbook")
+    setTooltip(ask, "Ask for spellbook", { "Lists what this bot can cast.", "Click a row to cast it." })
+    ask:SetScript("OnClick", function()
+        if currentBot then TB.RequestSpells(currentBot) end
+    end)
+    panel.spellAsk = ask
+    local prev = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    prev:SetWidth(26); prev:SetHeight(20)
+    prev:SetPoint("LEFT", ask, "RIGHT", 6, 0)
+    prev:SetText("<")
+    prev:SetScript("OnClick", function() spellPage = spellPage - 1; TB.RefreshBotPanel() end)
+    panel.spellPrev = prev
+    local pageText = spellsView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pageText:SetPoint("LEFT", prev, "RIGHT", 2, 0)
+    pageText:SetWidth(52); pageText:SetJustifyH("CENTER")
+    panel.spellPageText = pageText
+    local nextBtn = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    nextBtn:SetWidth(26); nextBtn:SetHeight(20)
+    nextBtn:SetPoint("LEFT", pageText, "RIGHT", 2, 0)
+    nextBtn:SetText(">")
+    nextBtn:SetScript("OnClick", function() spellPage = spellPage + 1; TB.RefreshBotPanel() end)
+    panel.spellNext = nextBtn
 
     -- Footer: trade, refresh, NPC errands, upkeep and gear-up for every view.
     local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -1019,18 +1160,54 @@ local function renderBehavior()
     end
 end
 
+local function renderSpells()
+    local entry = currentBot and spellLists[currentBot] or nil
+    local list = (entry and entry.spells) or {}
+    local pages = math.max(1, math.ceil(table.getn(list) / SPELL_ROWS))
+    if spellPage > pages then spellPage = pages end
+    if spellPage < 1 then spellPage = 1 end
+    for i, row in ipairs(panel.spellRows) do
+        local spell = list[(spellPage - 1) * SPELL_ROWS + i]
+        if spell then
+            row.spellId = spell.id
+            row.spellName = spell.name
+            row:SetText(spell.name)
+            row:Show()
+            row:Enable()
+        else
+            row.spellId = 0
+            row.spellName = nil
+            row:SetText("")
+            row:Hide()
+        end
+    end
+    if entry and entry.pending and table.getn(list) == 0 then
+        panel.spellAsk:SetText("Asking…")
+        panel.spellAsk:Disable()
+    else
+        panel.spellAsk:SetText(table.getn(list) == 0 and "Ask for spellbook" or "Ask again")
+        panel.spellAsk:Enable()
+    end
+    panel.spellPageText:SetText(spellPage .. " / " .. pages)
+    if spellPage > 1 then panel.spellPrev:Enable() else panel.spellPrev:Disable() end
+    if spellPage < pages then panel.spellNext:Enable() else panel.spellNext:Disable() end
+end
+
 function TB.RefreshBotPanel()
     if not panel or not panel:IsVisible() or not currentBot then return end
     local inv = TB.GetInventory(currentBot)
     renderHeader(inv)
-    panel.gear:Hide(); panel.bags:Hide(); panel.behavior:Hide()
-    panel.tabGear:Enable(); panel.tabBags:Enable(); panel.tabBehavior:Enable()
+    panel.gear:Hide(); panel.bags:Hide(); panel.behavior:Hide(); panel.spells:Hide()
+    panel.tabGear:Enable(); panel.tabBags:Enable(); panel.tabBehavior:Enable(); panel.tabSpells:Enable()
     if currentView == "bags" then
         panel.bags:Show(); panel.tabBags:Disable()
         renderBags(inv)
     elseif currentView == "behavior" then
         panel.behavior:Show(); panel.tabBehavior:Disable()
         renderBehavior()
+    elseif currentView == "spells" then
+        panel.spells:Show(); panel.tabSpells:Disable()
+        renderSpells()
     else
         panel.gear:Show(); panel.tabGear:Disable()
         renderGear(inv)
@@ -1048,8 +1225,9 @@ function TB.OpenBotPanel(name, view)
     name = norm(name)
     if not name then return false end
     if not panel then createPanel() end
+    if currentBot and currentBot ~= name then TB.SetSpellPending(currentBot, false) end
     if TB.SetMode then TB.SetMode("full") end
-    if currentBot ~= name then bagPage = 1 end
+    if currentBot ~= name then bagPage = 1; spellPage = 1 end
     currentBot = name
     if view then currentView = view end
     hideMenu()

@@ -586,9 +586,10 @@ end
 
 function TB.OnWhisperMessage(msg, sender)
     local name = TB.NormalizeName(sender or "")
-    -- Taxi lines from the open NPC bot feed the flight list, not the
-    -- command-op gate: the gate completes on the first whisper and would
-    -- swallow the rest of the list.
+    -- List whispers feed their own pending list first, then the command-op
+    -- gate below: the gate completes on the first whisper and would swallow
+    -- the rest of a burst. Each route only consumes lines of its own open
+    -- reply; anything else falls through.
     if name and TB.ConsumeTaxiReply and TB.ConsumeTaxiReply(name, msg or "") then
         local entry = TB.GetNpcErrands and TB.GetNpcErrands(name)
         local count = entry and entry.flights and table.getn(entry.flights) or 0
@@ -597,6 +598,23 @@ function TB.OnWhisperMessage(msg, sender)
                 TB.SetStatus("Reading " .. name .. "'s flights…", "pending")
             else
                 TB.SetStatus(name .. "'s flights · " .. count, "ok")
+            end
+        end
+        return
+    end
+    if name and TB.ConsumeSpellReply and TB.ConsumeSpellReply(name, msg or "") then
+        local st = name and TB.GetState and TB.GetState(name) or nil
+        if st and st.operation and st.operation.verb == "command" then
+            st.pendingAI = nil
+            if TB.CompleteOperation then TB.CompleteOperation(name, "command", true, msg) end
+        end
+        local entry = TB.GetSpellList and TB.GetSpellList(name)
+        local count = entry and entry.spells and table.getn(entry.spells) or 0
+        if TB.SetStatus then
+            if string.find(msg or "", "=== Spells ===") then
+                TB.SetStatus("Reading " .. name .. "'s spellbook…", "pending")
+            else
+                TB.SetStatus(name .. "'s spellbook · " .. count, "ok")
             end
         end
         return
