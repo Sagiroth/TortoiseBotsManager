@@ -151,8 +151,14 @@ TB.C.ACTION_DEFINITIONS = {
         custom = true,
         tip = "Assign crowd-control raid marks (Moon, Circle, Square, etc.) to specific bots by name.",
     },
-
-    -- Move
+    {
+        id = "endPull",
+        intent = "end pull",
+        label = "End pull",
+        section = "pull",
+        icon = "Interface\\Icons\\Ability_Defend",
+        tip = "Call off the current pull. The tank stops pulling and the party stands down.",
+    },
     {
         id = "follow",
         intent = "follow",
@@ -248,6 +254,25 @@ TB.C.ACTION_DEFINITIONS = {
         tip = "Bots sheep/sap a loose add that hits your healer, on their own. Your CC marks always win.",
     },
     {
+        id = "sap",
+        intent = "sap",
+        label = "Sap",
+        section = "switch",
+        toggle = "sap",
+        icon = "Interface\\Icons\\Ability_Sap",
+        tip = "Rogues open with Sap on the pull target while everyone else holds back. Needs a rogue in the party.",
+    },
+    {
+        id = "spread",
+        intent = "behavior spread",
+        label = "Spread",
+        section = "switch",
+        toggle = "spread",
+        send = "behavior",
+        icon = "Interface\\Icons\\INV_Misc_GroupNeedMore",
+        tip = "Bots keep their distance from each other to dodge enemy area damage.",
+    },
+    {
         id = "loot",
         intent = "loot",
         label = "Loot",
@@ -257,6 +282,43 @@ TB.C.ACTION_DEFINITIONS = {
         tip = "Bots loot corpses after a fight.",
     },
 
+    -- Combat tactics (one-shot strategy orders)
+    {
+        id = "tacticKite",
+        intent = "strategy ~kite",
+        label = "Kite",
+        section = "tactic",
+        strategy = "~kite",
+        icon = "Interface\\Icons\\Ability_Rogue_FleetFooted",
+        tip = "Bots keep their distance from enemies while fighting.",
+    },
+    {
+        id = "tacticMark",
+        intent = "strategy ~mark rti",
+        label = "Auto Mark",
+        section = "tactic",
+        strategy = "~mark rti",
+        icon = "Interface\\Icons\\Ability_Hunter_SniperShot",
+        tip = "Bots mark the next target with Skull on their own when the fight starts.",
+    },
+    {
+        id = "tacticFocus",
+        intent = "strategy ~focus",
+        label = "Focus Fire",
+        section = "tactic",
+        strategy = "~focus",
+        icon = "Interface\\Icons\\Ability_Hunter_AimedShot",
+        tip = "Every DPS bot burns down one target instead of spreading damage.",
+    },
+    {
+        id = "tacticAoeFear",
+        intent = "strategy ~aoe fear",
+        label = "AoE Fear",
+        section = "tactic",
+        strategy = "~aoe fear",
+        icon = "Interface\\Icons\\Spell_Shadow_DeathScream",
+        tip = "Bots may use fear effects against groups. Held back inside instances.",
+    },
     -- Rest, Repair & Train (Camp)
     {
         id = "rest",
@@ -365,6 +427,7 @@ for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
             intent = def.intent,
             label  = def.label,
             tip    = def.tip,
+            send   = def.send,
         })
     end
 end

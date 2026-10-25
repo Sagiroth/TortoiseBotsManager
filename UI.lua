@@ -120,8 +120,10 @@ local ACTION_TOOLTIPS = {
     ready    = "Ready check: bots report health, mana and drinks.",
     interrupt = "The best bot with a ready interrupt stops your target's cast.",
     flee     = "Get out: bots stop fighting and run after you without attacking. Attack, Pull, Follow or Stay brings them back.",
-    rest     = "Bots sit down to eat and drink until full. Moving or a fight ends it.",
-    repair   = "Bots repair their gear at a repair vendor near you.",
+    ["strategy ~kite"]     = "Bots keep their distance from enemies while fighting.",
+    ["strategy ~mark rti"] = "Bots mark the next target with Skull on their own when the fight starts.",
+    ["strategy ~focus"]    = "Every DPS bot burns down one target instead of spreading damage.",
+    ["strategy ~aoe fear"] = "Bots may use fear effects against groups. Held back inside instances.",
     sell     = "Bots sell their grey junk to a vendor near you.",
     learn    = "Target a class trainer first: bots of that class learn every spell they can pay for (with their own gold).",
     release  = "Dead bots release their spirit; once they are ghosts this button turns into Corpse run.",
@@ -171,10 +173,11 @@ TB.UI.Grid = {
     BTN_H         = 26,
     BTN_H_SM      = 22,
     ROW_H         = ROW_H,
-    CARD_ENGAGE_H = 58,
+    CARD_ENGAGE_H = 56,
     CARD_PULL_H   = 76,
-    CARD_MOVE_H   = 86,
-    CARD_SWITCH_H = 58,
+    CARD_MOVE_H   = 76,
+    CARD_SWITCH_H = 54,
+    CARD_TACTIC_H = 46,
     CARD_REST_H   = 88,
     CARD_FORM_H   = 76,
 }
@@ -717,6 +720,8 @@ local function makeActionButton(parent, intent, width, x, y)
         onClick = function()
             if TB.PartyToggleKey and TB.PartyToggleKey(intent) then
                 TB.SendPartyToggle(TB.PartyToggleKey(intent))
+            elseif string.sub(intent, 1, 9) == "strategy " and TB.SendStrategy then
+                TB.SendStrategy(string.sub(intent, 10))
             elseif intent == "release" then
                 TB.SendActionIntent(TB.DeathIntent and TB.DeathIntent() or "release")
             elseif intent == "pull" or intent == "pullback" then
@@ -914,8 +919,8 @@ end
 
 local function BuildEngageCard(parent, buttons)
     -- Fight: Engage (attack, stop, interrupt, flee)
-    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 58, { y = -40, line = true })
-    local btnY = -24
+    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 56, { y = -38, line = true })
+    local btnY = -22
     buttons.attack    = makeActionButton(card, "attack", 110, 8, btnY)
     buttons.stop      = makeActionButton(card, "stop", 110, 126, btnY)
     buttons.interrupt = makeActionButton(card, "interrupt", 110, 244, btnY)
@@ -924,9 +929,11 @@ local function BuildEngageCard(parent, buttons)
 end
 
 local function BuildPullCard(parent, buttons)
-    -- Pull & Focus: pull, pullback with timers, focus skull, cc mark
-    local card = TB.UI.CreateCard(parent, "PULL & FOCUS", W - (C.PAD or 10) * 2, 76, { y = -102, line = true })
-    local btnY = -24
+    -- Pull & Focus: pull, pullback with timers, focus skull, cc mark cover
+    -- the button row; End pull sits in the timer row as the small
+    -- "stop pulling" escape next to the timing controls.
+    local card = TB.UI.CreateCard(parent, "PULL & FOCUS", W - (C.PAD or 10) * 2, 76, { y = -98, line = true })
+    local btnY = -22
     buttons.pull      = makeActionButton(card, "pull", 110, 8, btnY)
     buttons.pullback  = makeActionButton(card, "pullback", 110, 126, btnY)
 
@@ -974,6 +981,7 @@ local function BuildPullCard(parent, buttons)
 
     TB.pullTimers = { pull = buttons.pullTimer, pullback = buttons.pullbackTimer }
 
+    buttons.endPull = makeActionButton(card, "end pull", 110, 244, -48)
     buttons.focusSkull = makeActionButton(card, "focus skull", 110, 244, btnY)
     buttons.ccMoon     = makeActionButton(card, "cc moon", 110, 362, btnY)
     buttons.ccMoon:SetText("CC Mark")
@@ -984,25 +992,26 @@ local function BuildPullCard(parent, buttons)
 end
 
 local function BuildMoveCard(parent, buttons)
-    -- Move: four orders on row one; Free plus four combat-stance pills
-    -- (optimistic active, like formations) on row two.
+    -- Move: five orders plus stance pills inline on one row.
     local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_MOVE_H or 86, { y = -182, line = true })
     local btnY = -24
-    buttons.follow   = makeActionButton(card, "follow", 110, 8, btnY)
-    buttons.stay     = makeActionButton(card, "stay", 110, 126, btnY)
-    buttons.come     = makeActionButton(card, "come", 110, 244, btnY)
+    buttons.follow   = makeActionButton(card, "follow", 88, 8, btnY)
+    buttons.stay     = makeActionButton(card, "stay", 88, 100, btnY)
+    buttons.come     = makeActionButton(card, "come", 88, 192, btnY)
     buttons.hold     = buttons.come
-    buttons.guard    = makeActionButton(card, "guard", 110, 362, btnY)
-    buttons.free     = makeActionButton(card, "free", 110, 8, -52)
+    buttons.guard    = makeActionButton(card, "guard", 88, 284, btnY)
+    buttons.free     = makeActionButton(card, "free", 88, 376, btnY)
+    buttons.follow:SetHeight(20); buttons.stay:SetHeight(20); buttons.come:SetHeight(20)
+    buttons.guard:SetHeight(20); buttons.free:SetHeight(20)
     TB.stancePills = {}
     local stanceIds = { "near", "tank", "turnback", "behind" }
     local stanceLabels = { near = "Near", tank = "Tank", turnback = "Turnback", behind = "Behind" }
     for i, id in ipairs(stanceIds) do
         local def = TB.GetActionDefinition and TB.GetActionDefinition("stance " .. id)
         local label = stanceLabels[id] or id
-        local btn = TB.UI.CreateTogglePill(card, label, 74, 20, {
-            x = 122 + (i - 1) * 78,
-            y = -54,
+        local btn = TB.UI.CreateTogglePill(card, label, 104, 20, {
+            x = 8 + (i - 1) * 108,
+            y = -50,
             tip = (def and def.tip) or (TB.ActionTooltip and TB.ActionTooltip("stance " .. id)),
             tipTitle = (label .. " stance"),
             onClick = function()
@@ -1017,14 +1026,17 @@ end
 
 local function BuildSwitchesCard(parent, buttons)
     -- Party switches: state comes from the server (TBM:BOTSTATE), the lamp
-    -- shows it at a glance (green on, grey off, gold mixed/unknown).
-    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, 58, { y = -272, line = true })
-    local btnY = -24
+    -- shows it at a glance (green on, grey off, gold mixed/unknown). One
+    -- row of five compact buttons fits the content width; icons are left
+    -- off so the state words clear the lamp on the narrow buttons.
+    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_SWITCH_H or 54, { y = -262, line = true })
+    local btnY = -22
     TB.toggleButtons = {}
     local switchIdx = 1
     for _, def in ipairs(C.ACTION_DEFINITIONS or {}) do
         if def.section == "switch" then
-            local btn = makeActionButton(card, def.intent, 148, 8 + (switchIdx - 1) * 156, btnY)
+            local btn = makeActionButton(card, def.intent, 88, 8 + (switchIdx - 1) * 96, btnY)
+            if btn.icon then btn.icon:Hide() end
             btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
             btn.lamp = btn:CreateTexture(nil, "OVERLAY")
             btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
@@ -1038,6 +1050,23 @@ local function BuildSwitchesCard(parent, buttons)
     buttons.aoe = TB.toggleButtons.aoe
     buttons.autoCc = TB.toggleButtons.autocc
     buttons.loot = TB.toggleButtons.loot
+    buttons.sap = TB.toggleButtons.sap
+    buttons.spread = TB.toggleButtons.spread
+    return card
+end
+
+local function BuildTacticsCard(parent, buttons)
+    -- Combat tactics: one-shot strategy orders (kiting, auto-mark, focus
+    -- fire, fear). The server confirms each via "Strategy change" text.
+    local card = TB.UI.CreateCard(parent, "TACTICS", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_TACTIC_H or 46, { y = -288, line = true })
+    buttons.tacticKite = makeActionButton(card, "strategy ~kite", 110, 8, -22)
+    buttons.tacticMark = makeActionButton(card, "strategy ~mark rti", 110, 126, -22)
+    buttons.tacticFocus = makeActionButton(card, "strategy ~focus", 110, 244, -22)
+    buttons.tacticAoeFear = makeActionButton(card, "strategy ~aoe fear", 110, 362, -22)
+    buttons.tacticKite:SetHeight(22)
+    buttons.tacticMark:SetHeight(22)
+    buttons.tacticFocus:SetHeight(22)
+    buttons.tacticAoeFear:SetHeight(22)
     return card
 end
 
@@ -1102,6 +1131,7 @@ TB.UI.BuildEngageCard    = BuildEngageCard
 TB.UI.BuildPullCard      = BuildPullCard
 TB.UI.BuildMoveCard      = BuildMoveCard
 TB.UI.BuildSwitchesCard  = BuildSwitchesCard
+TB.UI.BuildTacticsCard   = BuildTacticsCard
 TB.UI.BuildRestCard      = BuildRestCard
 TB.UI.BuildFormationCard = BuildFormationCard
 
@@ -1133,6 +1163,7 @@ CreateActions = function(parent)
     BuildPullCard(frame, buttons)
     BuildMoveCard(frame, buttons)
     BuildSwitchesCard(frame, buttons)
+    BuildTacticsCard(frame, buttons)
 
     -- Build cards for Camp view
     BuildRestCard(campFrame, buttons)

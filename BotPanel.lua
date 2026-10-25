@@ -71,7 +71,12 @@ TB.toggleFallback = TB.toggleFallback or {}
 
 local toggleByIntent = {}
 for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
-    if def.toggle then toggleByIntent[def.intent] = def.toggle end
+    if def.toggle then
+        toggleByIntent[def.intent] = def.toggle
+        if def.send == "behavior" then
+            toggleByIntent["behavior " .. def.toggle] = def.toggle
+        end
+    end
 end
 
 function TB.PartyToggleKey(intent)
@@ -99,7 +104,16 @@ function TB.SendPartyToggle(key)
     TB.togglePending[key] = true
     if key == "aoe" then TB.aoePending = true end
     if TB.RefreshToggleButtons then TB.RefreshToggleButtons() end
+    if toggle.send == "behavior" then
+        return TB.SendBotCommand("behavior party " .. key .. " " .. nextState)
+    end
     return TB.SendActionIntent(toggle.intent .. " " .. nextState)
+end
+
+function TB.SendStrategy(change)
+    change = TB.Trim(change or "")
+    if change == "" then return false end
+    return TB.SendBotCommand("strategy " .. change)
 end
 
 -- value nil = the request failed: only the pending flag is cleared.
