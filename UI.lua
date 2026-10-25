@@ -1397,6 +1397,20 @@ function TB.InitUI()
         subtitle:SetPoint("LEFT", title, "RIGHT", 8, 0)
         subtitle:SetText("|cff888888(role buttons · bag = gear & bags · click a row to target)|r")
 
+        -- Dungeon run (Preview): opens the run leader window. The server
+        -- only advertises the feature while it is enabled, so the button
+        -- hides with it (see RefreshPartyView).
+        local runBtn = CreateFrame("Button", nil, partyFrame, "UIPanelButtonTemplate")
+        runBtn:SetWidth(104); runBtn:SetHeight(20)
+        runBtn:SetPoint("TOPRIGHT", partyFrame, "TOPRIGHT", -6, 0)
+        runBtn:SetText("Dungeon run")
+        setButtonTooltip(runBtn, "Your bots clear a dungeon plan by themselves (Preview). Needs the server's run leader.", "Dungeon run")
+        runBtn:SetScript("OnClick", function()
+            if TB.OpenRunWindow then TB.OpenRunWindow() end
+        end)
+        runBtn:Hide()
+        partyFrame.runButton = runBtn
+
         local emptyMsg = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         emptyMsg:SetPoint("CENTER", partyFrame, "CENTER", 0, -20)
         emptyMsg:SetWidth(380)
@@ -2098,6 +2112,11 @@ function TB.InitUI()
             TB.partyFrame.emptyMsg:Show()
         else
             TB.partyFrame.emptyMsg:Hide()
+        end
+        -- Dungeon run button: only while the server enables the feature.
+        if TB.partyFrame.runButton then
+            if serverHasCap("dungeon-run") then TB.partyFrame.runButton:Show()
+            else TB.partyFrame.runButton:Hide() end
         end
     end
 

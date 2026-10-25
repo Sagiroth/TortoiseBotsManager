@@ -1990,6 +1990,338 @@ local cases = {
             TB.CloseVault()
         end,
     },
+    -- -- P11: dungeon run (Preview) -------------------------------------
+    {
+        id = "run.gate.off",
+        expected = {},
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+            assert(TB.OpenRunWindow() == false, "no window without the capability")
+            assert(TB.runWindow == nil or not TB.runWindow:IsVisible(), "no window without the capability")
+            assert(TB.SendRunList() == false, "no sends without the capability")
+            assert(TB.SendRunStatus() == false, "no sends without the capability")
+            assert(TB.SendRunStart("uldaman") == false, "no sends without the capability")
+            assert(TB.SendRunPause() == false, "no sends without the capability")
+            assert(TB.SendRunResume() == false, "no sends without the capability")
+            assert(TB.SendRunSkip() == false, "no sends without the capability")
+            assert(TB.SendRunStop() == false, "no sends without the capability")
+            assert(TB.SendRunBind() == false, "no sends without the capability")
+            assert(TB.SendRunUnbind() == false, "no sends without the capability")
+            assert(TB.SendRunEnter() == false, "no sends without the capability")
+        end,
+    },
+    {
+        id = "run.open",
+        expected = { ".bot run list", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,dungeon-run")
+            TB.RefreshPartyView()
+            assert(TB.partyFrame.runButton:IsVisible(), "the Party tab shows Dungeon run")
+            assert(TB.OpenRunWindow() == true, "the window opens with the capability")
+            assert(TB.runWindow and TB.runWindow:IsVisible(), "the window is visible")
+            TB.CloseRunWindow()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+            TB.RefreshPartyView()
+            assert(not TB.partyFrame.runButton:IsVisible(), "losing the cap hides the button")
+        end,
+    },
+    {
+        id = "run.bind",
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            setTarget(true, "Alpha")
+            TB.OpenRunWindow()
+            this = TB.runWindow.bind
+            TB.runWindow.bind.scripts.OnClick(TB.runWindow.bind)
+            TB.CloseRunWindow()
+            setTarget(false, nil)
+        end,
+    },
+    {
+        id = "run.bind.group",
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha Delta Gamma" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+            TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|1|map:1,zone:2,area:3")
+            TB.OnSystemMessage("TBM:ROSTER|102|Gamma|11|online|1|map:4,zone:5,area:6")
+            TB.OnSystemMessage("TBM:ROSTER|103|Delta|5|online|1|map:4,zone:5,area:6")
+            TB.OnSystemMessage("TBM:ROSTER_END")
+            setParty({ "Alpha", "Gamma", "Delta" }, "Warrior")
+            local gw = frames["TortoiseBotsManagerGroupWatcher"]
+            if gw and gw.scripts and gw.scripts.OnEvent then
+                event, this = "PARTY_MEMBERS_CHANGED", gw
+                gw.scripts.OnEvent(gw)
+            end
+            setTarget(true, "Alpha")
+            TB.Refresh()
+            assert(TB.OpenRunWindow() == true, "the window opens with the capability")
+            this = TB.runWindow.bind
+            TB.runWindow.bind.scripts.OnClick(TB.runWindow.bind)
+            TB.CloseRunWindow()
+            setTarget(false, nil)
+            setParty({}, "Priest")
+            if gw and gw.scripts and gw.scripts.OnEvent then
+                event, this = "PARTY_MEMBERS_CHANGED", gw
+                gw.scripts.OnEvent(gw)
+            end
+        end,
+    },
+    {
+        id = "run.unbind",
+        expected = { ".bot run list", ".bot run status", ".bot commander unbind" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            this = TB.runWindow.unbind
+            TB.runWindow.unbind.scripts.OnClick(TB.runWindow.unbind)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.enter",
+        expected = { ".bot run list", ".bot run status", ".bot cmd enter near" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            this = TB.runWindow.enter
+            TB.runWindow.enter.scripts.OnClick(TB.runWindow.enter)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.cmdstatus",
+        expected = { ".bot run list", ".bot run status", ".bot commander status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            this = TB.runWindow.cmdStatus
+            TB.runWindow.cmdStatus.scripts.OnClick(TB.runWindow.cmdStatus)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.list",
+        expected = { ".bot run list", ".bot run status", ".bot run list" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            this = TB.runWindow.plans
+            TB.runWindow.plans.scripts.OnClick(TB.runWindow.plans)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.plans.parse",
+        expected = { ".bot run list", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet)")
+            local list = TB.GetRunPlans()
+            assert(table.getn(list) == 2, "both plan entries must parse")
+            assert(list[1].name == "uldaman" and list[1].map == 70 and list[1].steps == 41
+                and list[1].unsupported == 0, "first plan fields must parse")
+            assert(list[2].name == "ragefire_chasm" and list[2].unsupported == 3,
+                "the unsupported tail must parse")
+            assert(TB.runWindow.planRows[1].visible, "plan rows render")
+            assert(TB.ParseRunPlanList("Dungeon plans: none loaded") ~= nil
+                and table.getn(TB.ParseRunPlanList("Dungeon plans: none loaded")) == 0,
+                "an empty plan list parses")
+            assert(TB.ParseRunPlanList("someone: hello") == nil, "chat never parses as plans")
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.none",
+        expected = { ".bot run list", ".bot run status", ".bot run start" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.SetRunSelectedPlan(nil)
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.plan",
+        expected = { ".bot run list", ".bot run status", ".bot run start uldaman" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps)")
+            this = TB.runWindow.planRows[1]
+            TB.runWindow.planRows[1].scripts.OnClick(TB.runWindow.planRows[1])
+            assert(TB.GetRunSelectedPlan() == "uldaman", "clicking a plan picks it")
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.from",
+        expected = {},
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+            assert(TB.SendRunStart("uldaman", "leg", "baelog") == false,
+                "from-starts stay gated on the capability too")
+        end,
+    },
+    {
+        id = "run.pause",
+        expected = { ".bot run list", ".bot run status", ".bot run pause" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851")
+            this = TB.runWindow.pause
+            TB.runWindow.pause.scripts.OnClick(TB.runWindow.pause)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.resume",
+        expected = { ".bot run list", ".bot run status", ".bot run resume" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RUN|uldaman|paused|7/41|baelog|pull|pull|paused by .bot run pause")
+            this = TB.runWindow.resume
+            TB.runWindow.resume.scripts.OnClick(TB.runWindow.resume)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.skip",
+        expected = { ".bot run list", ".bot run status", ".bot run skip" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RUN|uldaman|paused|7/41|baelog|pull|pull|paused by .bot run pause")
+            this = TB.runWindow.skip
+            TB.runWindow.skip.scripts.OnClick(TB.runWindow.skip)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.stop",
+        expected = { ".bot run list", ".bot run status", ".bot run stop" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851")
+            TB.SetRunStopReason("")
+            this = TB.runWindow.stop
+            TB.runWindow.stop.scripts.OnClick(TB.runWindow.stop)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.stop.reason",
+        expected = { ".bot run list", ".bot run status", ".bot run stop time limit reached (3h)" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851")
+            TB.SetRunStopReason("time limit reached (3h)")
+            this = TB.runWindow.stop
+            TB.runWindow.stop.scripts.OnClick(TB.runWindow.stop)
+            TB.SetRunStopReason("")
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.status",
+        expected = { ".bot run list", ".bot run status", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.CloseRunWindow()
+            advanceTime(1)
+            assert(TB.SendRunStatus() == true, "status sends with the capability")
+        end,
+    },
+    {
+        id = "run.parse",
+        expected = { ".bot run list", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RUN|-|none|0/0|-|-|-|no run")
+            assert(TB.GetRun().state == "none", "'no run' parses")
+            assert(TB.runWindow.runState.text == "- · No run", "no run renders")
+            assert(not TB.runWindow.pause:IsVisible() and TB.runWindow.resume:IsVisible(),
+                "Resume shows, Pause hides with no run")
+            assert(not TB.runWindow.resume.enabled, "Resume waits with no run")
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851")
+            local r = TB.GetRun()
+            assert(r.plan == "uldaman" and r.state == "running" and r.step == 7 and r.steps == 41
+                and r.leg == "baelog" and r.kind == "pull" and r.phase == "pull"
+                and r.note == "pulling 4851", "the 8-field line parses")
+            assert(TB.runWindow.runStep.text == "Step 7 of 41", "step x/y renders")
+            assert(TB.runWindow.pause:IsVisible() and not TB.runWindow.resume:IsVisible(),
+                "Pause shows while running")
+            assert(not TB.runWindow.start.enabled, "Start waits while a run goes")
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|178/204|keepers|hold|fight 1/4 down|event: fighting (1 of 4 down, 1 awake)|left 2|speed 1x (test)")
+            r = TB.GetRun()
+            assert(r.phase == "fight 1/4 down", "event phases with spaces parse")
+            assert(r.note == "event: fighting (1 of 4 down, 1 awake)", "notes with spaces parse")
+            assert(r.left == 2, "'left K' parses")
+            assert(r.speed == "1x (test)", "speed extras parse")
+            assert(string.find(TB.runWindow.runPhase.text, "Left: 2", 1, true), "'left K' renders")
+            TB.OnSystemMessage("TBM:RUN|uldaman|paused|12/41|baelog|boss|begin|3 dead: regroup")
+            assert(TB.GetRun().state == "paused", "pause parses")
+            assert(not TB.runWindow.pause:IsVisible() and TB.runWindow.resume.enabled,
+                "Resume enables on pause")
+            assert(TB.ParseRunLine("TBM:RUN|short") == nil, "short lines never parse")
+            assert(TB.ParseRunLine("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|") ~= nil,
+                "an empty note parses as '-'")
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.pausewarn",
+        expected = { ".bot run list", ".bot run status", ".bot action stop" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851")
+            TB.CloseRunWindow()
+            assert(TB.WarnRunPause() == true, "a running run warns")
+            local warned = nil
+            local realSetStatus = TB.SetStatus
+            TB.SetStatus = function(msg) warned = msg end
+            TB.SendActionIntent("stop")
+            TB.SetStatus = realSetStatus
+            assert(warned == "That order pauses the dungeon run (Resume to go on).",
+                "gameplay clicks warn while a run is running")
+            TB.OnSystemMessage("TBM:RUN|uldaman|paused|7/41|baelog|pull|pull|paused by .bot run pause")
+            assert(TB.WarnRunPause() == false, "a paused run stays quiet")
+        end,
+    },
+    {
+        id = "run.exclusive",
+        expected = { ".bot inv Alpha", ".bot command Alpha bank", ".bot run list", ".bot run status", ".bot run list", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenBotPanel("Alpha")
+            TB.OpenVault("Alpha")
+            assert(TB.botVault:IsVisible(), "the vault opens first")
+            TB.OpenRunWindow()
+            assert(TB.runWindow:IsVisible() and not TB.botVault:IsVisible(),
+                "the run window closes the vault")
+            TB.OpenNpc("Alpha")
+            assert(TB.botNpc:IsVisible() and not TB.runWindow:IsVisible(),
+                "NPC closes the run window")
+            TB.OpenRunWindow()
+            TB.CloseBotPanel()
+            assert(not TB.runWindow:IsVisible(), "the run window closes with its parent")
+            TB.SetVaultPending("Alpha", false)
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+        end,
+    },
 }
 
 for _, tc in ipairs(cases) do

@@ -24,6 +24,7 @@ Actions use normal WoW targeting for gameplay intent. Roster is a server-owned l
 * **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available. A separate assignment snapshot supplies each live bot's current CC mark.
 * **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
 * **Party roles** — assign class roles to bots or set your own tank/healer/DPS role from the Party tab; player selections are saved locally and sent to the server.
+* **Dungeon run (Preview)** — while the server enables its run leader, the Party tab shows `Dungeon run`: bind a lead bot + its group, walk them through the nearest entrance, pick a dungeon plan, `Start` / `Pause` / `Resume` / `Skip` / `Stop`, and watch the live status (state lamp, step x/y progress, leg, phase, note). Any order you give the party pauses the run until `Resume`.
 * **Quiet transport** — UI commands travel as addon messages while the server advertises the addon command channel, so a button click prints nothing to chat for you or anyone nearby; `.bot` chat stays for ungrouped or battleground-group cases and for hand-typed commands. Gameplay requests return one compact structured result instead of per-bot chat.
 * **Compact UI** — `Fight` is the default tab; `Roster` has checkbox rows and no per-row combat controls. The draggable panel remembers position and supports `Esc` close, minimap toggle, search, and tooltips.
 * **Compatibility** — legacy `.bot` commands and `.bot command` remain available server-side; the primary UI does not expose the advanced command console.
@@ -100,6 +101,7 @@ Comms.lua       — addon command channel, structured `TBM:` responses plus lega
 UI.lua          — Fight/Camp/Party/Roster/Guild/Raid/Log tabs and contextual lifecycle bar
 BotPanel.lua    — per-bot state (TBM:BOTSTATE), party switches, gear/bags/behaviour panel
 BotNpc.lua      — per-bot NPC errands (talk, bind, learn, make leader, flights)
+BotRun.lua      — dungeon run window: commander bind/unbind, enter, plan picker, run controls, TBM:RUN status
 MiniBar.lua     — mini mode: small draggable bar of fight icons
 Minimap.lua     — draggable minimap button
 Bindings.lua    — keybinding handlers (same intents as the buttons; all bindings ship unbound)

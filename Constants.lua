@@ -453,6 +453,17 @@ TB.C.ACTION_LABELS = {
     ["strategy +grind"]    = "Grind",
     ["strategy -grind"]    = "Grind",
     ["strategy reset"]     = "Reset tactics",
+    ["commander bind"]     = "Bind party",
+    ["commander unbind"]   = "Unbind party",
+    ["commander status"]   = "Party status",
+    ["cmd enter"]          = "Enter dungeon",
+    ["run list"]           = "Dungeon plans",
+    ["run start"]          = "Run start",
+    ["run pause"]          = "Run pause",
+    ["run resume"]         = "Run resume",
+    ["run skip"]           = "Run skip",
+    ["run stop"]           = "Run stop",
+    ["run status"]         = "Run status",
 }
 for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
     TB.C.ACTION_LABELS[def.intent] = def.label

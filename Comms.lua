@@ -245,6 +245,9 @@ function TB.ParseActionMessage(msg)
             if TB.Refresh then TB.Refresh() end
             return true, "ack", packet
         end
+        -- Dungeon run: clears the model on the "no run" status ACK; the
+        -- generic text below still reports every run ACK/ERR.
+        if TB.OnRunAck then TB.OnRunAck(packet) end
         local scope = packet.scope == "party" and "party" or packet.scope
         local text = actionLabel(packet.intent) .. " accepted · " .. scope .. " · " .. packet.count
         if packet.executor ~= "-" then text = text .. " (" .. packet.executor .. ")" end
@@ -553,7 +556,11 @@ function TB.OnCommandSent(cmd)
     if TB.IsPanelVerb(verb) then return end
 
     if verb == "add" and name then TB.AddToRoster(name) end
-    if name and verb ~= "action" and verb ~= "strategy" and TB.BeginOperation then
+    -- commander / cmd / run take a lead bot or a plan, not a roster name:
+    -- no per-bot operation for them.
+    if name and verb ~= "action" and verb ~= "strategy"
+        and verb ~= "commander" and verb ~= "cmd" and verb ~= "run"
+        and TB.BeginOperation then
         TB.BeginOperation(name, verb, false)
     end
 
@@ -694,6 +701,10 @@ function TB.OnSystemMessage(msg)
                 serverCaps[string.lower(TB.Trim(item))] = true
             end
             TB._serverCaps = serverCaps
+            -- The run feature can vanish with a restart: re-gate the window
+            -- (and its button, via Refresh) on every CAPS line.
+            if TB.NoteRunCaps then TB.NoteRunCaps() end
+            if TB.Refresh then TB.Refresh() end
             TB.lastSystem = msg
             return
         end
@@ -732,6 +743,14 @@ function TB.OnSystemMessage(msg)
         end
         TB.lastSystem = msg
         return
+    end
+
+    if TB.ParseRunMessage then
+        local runHandled = TB.ParseRunMessage(msg)
+        if runHandled then
+            TB.lastSystem = msg
+            return
+        end
     end
 
     local actionHandled = TB.ParseActionMessage and TB.ParseActionMessage(msg)

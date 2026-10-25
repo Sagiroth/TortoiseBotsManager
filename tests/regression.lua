@@ -196,6 +196,7 @@ for _, file in ipairs({
     "BotPanel.lua",
     "BotNpc.lua",
     "BotVault.lua",
+    "BotRun.lua",
     "MiniBar.lua",
     "Minimap.lua",
     "Bindings.lua",
@@ -1856,8 +1857,80 @@ TB.OnSystemMessage("TBM:CAPS|inventory,behavior,claimed-roster")
 assert(TB.SendKeyIntent("flee") == false, "keybinding Flee must stay silent without the server cap")
 assert(table.getn(sent) == beforeKeys + 4, "keybindings must send exactly one intent per press")
 
-partyMembers = {}
+-- ── Dungeon run window (P11): capability-gated satellite ─────────────────
+TB.OnSystemMessage("TBM:TRANSPORT|party")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TB.RefreshPartyView()
+assert(not TB.partyFrame.runButton:IsVisible(), "no Dungeon run button without the capability")
+assert(TB.OpenRunWindow() == false, "the run window stays shut without the capability")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run")
+TB.RefreshPartyView()
+assert(TB.partyFrame.runButton:IsVisible(), "the capability shows the Dungeon run button")
+now = now + 1
+this = TB.partyFrame.runButton
+TB.partyFrame.runButton.scripts.OnClick(TB.partyFrame.runButton)
+assert(TB.runWindow and TB.runWindow:IsVisible(), "Dungeon run opens the window")
+local runQueue = frames["TortoiseBotsManagerQueueFrame"]
+for _ = 1, 30 do
+    if lastAddon() == "run status" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(lastAddon() == "run status", "opening asks for the run status")
+assert(TB.runWindow.point and TB.runWindow.point[2] == TB.frame, "the run window sits beside main")
+TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet)")
+assert(table.getn(TB.GetRunPlans()) == 2, "the plan list parses")
+assert(TB.runWindow.planRows[1].visible and TB.runWindow.planRows[1].planName == "uldaman",
+    "plan rows render the parsed plans")
+now = now + 1
+this = TB.runWindow.planRows[2]
+TB.runWindow.planRows[2].scripts.OnClick(TB.runWindow.planRows[2])
+assert(TB.GetRunSelectedPlan() == "ragefire_chasm", "clicking a plan picks it")
+now = now + 1
+this = TB.runWindow.start
+TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+assert(lastAddon() == "run start ragefire_chasm", "Start sends the picked plan")
+TB.OnSystemMessage("TBM:ACTION_ACK|run start|party|120|ragefire_chasm")
+TB.OnSystemMessage("TBM:RUN|ragefire_chasm|running|1/120|tunnel|move|walk|walking to tunnel")
+assert(TB.GetRun().state == "running", "the status line drives the model")
+assert(TB.runWindow.runStep.text == "Step 1 of 120", "step x/y renders")
+now = now + 1
+this = TB.runWindow.pause
+TB.runWindow.pause.scripts.OnClick(TB.runWindow.pause)
+assert(lastAddon() == "run pause", "Pause sends")
+TB.OnSystemMessage("TBM:RUN|ragefire_chasm|paused|1/120|tunnel|move|walk|paused by .bot run pause")
+assert(TB.runWindow.resume.enabled and not TB.runWindow.pause:IsVisible(), "pause swaps Pause for Resume")
+now = now + 1
+this = TB.runWindow.resume
+TB.runWindow.resume.scripts.OnClick(TB.runWindow.resume)
+assert(lastAddon() == "run resume", "Resume sends")
+now = now + 1
+this = TB.runWindow.skip
+TB.runWindow.skip.scripts.OnClick(TB.runWindow.skip)
+assert(lastAddon() == "run skip", "Skip sends")
+TB.SetRunStopReason("done for tonight")
+now = now + 1
+this = TB.runWindow.stop
+TB.runWindow.stop.scripts.OnClick(TB.runWindow.stop)
+assert(lastAddon() == "run stop done for tonight", "Stop sends the reason")
+TB.SetRunStopReason("")
+TB.OnSystemMessage("TBM:RUN|ragefire_chasm|done|5/120|tunnel|move|walk|stopped: done for tonight")
+assert(not TB.runWindow.stop.enabled, "Stop waits once the run is done")
+-- Mutual exclusion with the vault/NPC satellites.
+TB.OpenBotPanel("Alpha")
+TB.OpenVault("Alpha")
+assert(not TB.runWindow:IsVisible() and TB.botVault:IsVisible(), "the vault closes the run window")
+TB.OpenRunWindow()
+assert(TB.runWindow:IsVisible() and not TB.botVault:IsVisible(), "the run window closes the vault")
+TB.CloseBotPanel()
+assert(not TB.runWindow:IsVisible(), "the run window closes with its parent")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TB.RefreshPartyView()
+assert(not TB.partyFrame.runButton:IsVisible(), "losing the cap hides everything again")
+assert(TB.GetRun() == nil, "losing the cap drops the model")
 
+partyMembers = {}
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,

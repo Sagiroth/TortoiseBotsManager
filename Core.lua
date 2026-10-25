@@ -466,6 +466,8 @@ end
 function TB.SendActionIntent(intent)
     intent = TB.Trim(intent or "")
     if intent == "" then return false end
+    -- A player order pauses a running dungeon run: say so before it lands.
+    if TB.WarnRunPause then TB.WarnRunPause() end
     return TB.SendBotCommand("action " .. intent)
 end
 

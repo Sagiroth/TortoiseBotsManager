@@ -1280,6 +1280,7 @@ function TB.CloseBotPanel()
     hideMenu()
     if TB.CloseVault then TB.CloseVault() end
     if TB.CloseNpc then TB.CloseNpc() end
+    if TB.CloseRunWindow then TB.CloseRunWindow() end
     if panel then panel:Hide() end
 end
 

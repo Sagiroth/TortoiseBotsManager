@@ -504,6 +504,25 @@ return function()
                 noOverlaps("Party row " .. i .. " buttons", btnItems, cache)
             end
             noOverlaps("Party rows", rowItems, cache)
+            -- Dungeon run button (P11): inside the frame, clear of row 1.
+            if frame.runButton then
+                local btn = frame.runButton
+                local wasVisible = btn:IsVisible()
+                btn:Show()
+                local br = frameRect(btn, cache)
+                if not inside(br, fr, 2) then
+                    bad(string.format("Party: run button %s escapes the frame %s",
+                        fmt(br), fmt(fr)))
+                end
+                local row1 = frame.rows[1] and frameRect(frame.rows[1], cache)
+                if row1 and overlaps(br, row1) then
+                    bad("Party: run button overlaps row 1")
+                end
+                labelFits("Party run", btn, "Dungeon run", 6)
+                if not wasVisible then btn:Hide() end
+            else
+                bad("Party: run button missing")
+            end
         end
     end
 
@@ -1255,6 +1274,65 @@ return function()
         if TB.CloseNpc then TB.CloseNpc() end
     end
 
+    -- ── Dungeon run window (P11) ───────────────────────────────────────
+    do
+        local cache = {}
+        if not TB.OpenRunWindow then
+            bad("RunWindow: OpenRunWindow missing")
+        else
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet), deadmines (map 36, 90 steps), wailing_caverns (map 43, 100 steps)")
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851|left 2")
+            local win = TB.runWindow
+            if not win then
+                bad("RunWindow: did not open")
+            else
+                local wr = frameRect(win, cache)
+                local items = {}
+                for _, key in ipairs({ "bind", "unbind", "enter", "cmdStatus",
+                    "plans", "planPrev", "planNext", "start", "pause",
+                    "resume", "skip", "stop", "stopBox" }) do
+                    if win[key] then
+                        table.insert(items, { key, win[key] })
+                        if win[key].kind == "Button" then
+                            labelFits("RunWindow " .. key, win[key], nil, 6)
+                        end
+                    elseif key ~= "pause" and key ~= "resume" then
+                        bad("RunWindow: control " .. key .. " missing")
+                    end
+                end
+                -- Pause and Resume share one slot: exactly one shows.
+                local pauseShown = win.pause and win.pause:IsVisible()
+                local resumeShown = win.resume and win.resume:IsVisible()
+                if pauseShown and resumeShown then
+                    bad("RunWindow: Pause and Resume show at the same time")
+                end
+                childrenInside("RunWindow", win, wr, items, cache, 2)
+                local rows = {}
+                for i, row in ipairs(win.planRows or {}) do
+                    table.insert(rows, { "row" .. i, row })
+                end
+                childrenInside("RunWindow plans", win, wr, rows, cache, 2)
+                noOverlaps("RunWindow plan rows", rows, cache)
+                -- The window must not cover main: it docks beside it.
+                local main = TB.frame and frameRect(TB.frame, cache)
+                if main and overlaps(wr, main) then
+                    bad(string.format("RunWindow: %s covers the main window %s",
+                        fmt(wr), fmt(main)))
+                end
+                local status = {}
+                for _, key in ipairs({ "runBar", "runLeg", "runPhase",
+                    "runNote", "runStep", "runState" }) do
+                    if win[key] then table.insert(status, { key, win[key] }) end
+                end
+                childrenInside("RunWindow status", win, wr, status, cache, 2)
+            end
+            TB.CloseRunWindow()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+        end
+    end
+
     -- ── Satellite exclusivity ────────────────────────────────────────
     do
         if TB.OpenVault and TB.OpenNpc and TB.OpenBotPanel then
@@ -1266,14 +1344,37 @@ return function()
             if vaultOpen and npcOpen then
                 bad("Satellites: BotVault and BotNpc open at the same time (same anchor, stacked)")
             end
+            if TB.OpenRunWindow then
+                TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+                TB.OpenRunWindow()
+                local runOpen = TB.runWindow and TB.runWindow:IsVisible()
+                npcOpen = TB.botNpc and TB.botNpc:IsVisible()
+                if runOpen and npcOpen then
+                    bad("Satellites: RunWindow and BotNpc open at the same time (same anchor, stacked)")
+                end
+                TB.OpenVault("Alpha")
+                runOpen = TB.runWindow and TB.runWindow:IsVisible()
+                vaultOpen = TB.botVault and TB.botVault:IsVisible()
+                if runOpen and vaultOpen then
+                    bad("Satellites: RunWindow and BotVault open at the same time (same anchor, stacked)")
+                end
+                TB.OpenRunWindow()
+                TB.CloseBotPanel()
+                if TB.runWindow and TB.runWindow:IsVisible() then
+                    bad("Satellites: closing the BotPanel leaves the run window open")
+                end
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+            end
             TB.OpenVault("Alpha")
             TB.CloseBotPanel()
             if (TB.botVault and TB.botVault:IsVisible())
-                or (TB.botNpc and TB.botNpc:IsVisible()) then
+                or (TB.botNpc and TB.botNpc:IsVisible())
+                or (TB.runWindow and TB.runWindow:IsVisible()) then
                 bad("Satellites: closing the BotPanel leaves a satellite window open")
             end
             if TB.CloseVault then TB.CloseVault() end
             if TB.CloseNpc then TB.CloseNpc() end
+            if TB.CloseRunWindow then TB.CloseRunWindow() end
         end
     end
 

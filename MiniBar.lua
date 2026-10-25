@@ -208,6 +208,7 @@ function TB.SetMode(mode)
         if TB.CloseBotPanel then TB.CloseBotPanel() end
         if TB.CloseVault then TB.CloseVault() end
         if TB.CloseNpc then TB.CloseNpc() end
+        if TB.CloseRunWindow then TB.CloseRunWindow() end
         if TB.frame then TB.frame:Hide() end
         bar:Show()
         TB.RefreshMiniBar()
