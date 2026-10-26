@@ -2027,7 +2027,7 @@ local cases = {
     },
     {
         id = "run.bind",
-        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha" },
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha inparty" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|dungeon-run")
             setTarget(true, "Alpha")
@@ -2040,7 +2040,7 @@ local cases = {
     },
     {
         id = "run.bind.group",
-        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha Delta Gamma" },
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha Delta Gamma inparty" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|dungeon-run")
             TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
@@ -2143,6 +2143,42 @@ local cases = {
             this = TB.runWindow.start
             TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
             TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.player",
+        expected = { ".bot run list", ".bot run status", ".bot run start uldaman player" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            this = TB.runWindow.modeYou
+            TB.runWindow.modeYou.scripts.OnClick(TB.runWindow.modeYou)
+            assert(TB.GetRunMode() == "player", "I lead picks the player-led mode")
+            assert(not TB.runWindow.bind.enabled, "player-led needs no Bind")
+            TB.SetRunSelectedPlan("uldaman")
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|1/41|baelog|move|walk|walking")
+            assert(TB.WarnRunPause() == false, "player-led orders never pause the run")
+            TB.OnSystemMessage("TBM:RUN|-|none|0/0|-|-|-|no run")
+            TB.SetRunMode("bot")
+            TB.SetRunSelectedPlan(nil)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.player.tank",
+        expected = { ".bot run list", ".bot run status", ".bot run start player tank Alpha" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            setTarget(true, "Alpha")
+            TB.OpenRunWindow()
+            TB.SetRunMode("player")
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.SetRunMode("bot")
+            TB.CloseRunWindow()
+            setTarget(false, nil)
         end,
     },
     {

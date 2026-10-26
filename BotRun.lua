@@ -9,12 +9,14 @@
 -- feature hides everything again).
 --
 -- Sends (byte-exact, one per click; Commander.cpp):
---   "commander bind <LeadBot> [<Bot> ...]" (a party of up to five bots)
+--   "commander bind <LeadBot> [<Bot> ...] inparty" (bot-led: up to five
+--     bots, you stay in the party)
 --   "commander unbind" / "commander status"
 --   "cmd enter near" (nearest entrance trigger within ReactDistance)
 --   "run list" -> "Dungeon plans: <name> (map <m>, <s> steps[, <u> not
 --     supported yet])[, ...]" + TBM:ACTION_ACK|run list|plans|<n>|-
---   "run start [plan] [from leg|step N]" / pause / resume / skip /
+--   "run start [plan] [from leg|step N] [player [tank <Bot>]]" (player:
+--     you lead, the start binds your party itself) / pause / resume / skip /
 --     "stop [reason]" / status
 -- Inbound:
 --   TBM:RUN|<plan>|<state>|<step>/<steps>|<leg>|<kind>|<phase>|<note>
@@ -24,15 +26,16 @@
 --   TBM:ACTION_ACK/ERR for the commander / cmd / run intents (generic
 --   routing in Comms.lua; labels live in C.ACTION_LABELS).
 --
--- Any player order to the party (.bot action, .bot cmd, whispers) pauses a
--- running run until resume: the window says so, and SendActionIntent warns
--- on the status line when a run is running.
+-- Bot-led: any player order to the party (.bot action, .bot cmd, whispers)
+-- pauses a running run until resume: the window says so, and
+-- SendActionIntent warns on the status line when a run is running.
+-- Player-led: your orders are obeyed and never pause the run.
 
 local TB = TortoiseBots
 local C = TB.C or {}
 local COL = C.COLOR or {}
 local RW = 300
-local RWINDOW = 456
+local RWINDOW = 456 + 52
 local PROW = 3
 
 local CAP = "dungeon-run"
@@ -232,9 +235,9 @@ local function sendRun(cmd)
     return TB.SendBotCommand(cmd)
 end
 
--- Binds the targeted bot plus up to four grouped owned bots as its party:
--- the commander leaves its own party on bind, so the lead plus the bots
--- beside it are the party to be.
+-- Binds the targeted bot plus up to four grouped owned bots as its party.
+-- "inparty": you stay in the party (it needs you to lead it) and the lead
+-- bot takes the lead from you while the binding stands.
 function TB.SendRunBind()
     local lead
     if TB.GetTargetScope then
@@ -253,7 +256,7 @@ function TB.SendRunBind()
         if table.getn(names) >= 5 then break end
         if name ~= lead then table.insert(names, name) end
     end
-    return sendRun("commander bind " .. table.concat(names, " "))
+    return sendRun("commander bind " .. table.concat(names, " ") .. " inparty")
 end
 
 function TB.SendRunUnbind()
@@ -286,6 +289,15 @@ function TB.SendRunStart(plan, fromKind, fromValue)
     fromValue = TB.Trim(fromValue or "")
     if (fromKind == "leg" or fromKind == "step") and fromValue ~= "" then
         cmd = cmd .. " from " .. fromKind .. " " .. fromValue
+    end
+    if TB.GetRunMode() == "player" then
+        cmd = cmd .. " player"
+        -- A targeted bot is the run's puller; else the server takes the
+        -- party's first tank bot (a player tank needs one named).
+        if TB.GetTargetScope then
+            local _, bot = TB.GetTargetScope()
+            if bot then cmd = cmd .. " tank " .. bot end
+        end
     end
     return TB.SendBotCommand(cmd)
 end
@@ -321,7 +333,7 @@ end
 -- on a gameplay action while a run is running says so on the status line.
 -- Returns true when a running run was warned about.
 function TB.WarnRunPause()
-    if run and run.state == "running" then
+    if run and run.state == "running" and TB.GetRunMode() ~= "player" then
         if TB.SetStatus then
             TB.SetStatus("That order pauses the dungeon run (Resume to go on).", "warn")
         end
@@ -335,6 +347,17 @@ local win
 local selectedPlan = nil
 local planPage = 1
 local stopReason = ""
+-- "bot": a bot tank leads, you stay in the party; "player": you lead.
+local runMode = "bot"
+
+function TB.GetRunMode()
+    return runMode
+end
+
+function TB.SetRunMode(mode)
+    runMode = (mode == "player") and "player" or "bot"
+    if TB.RefreshRunWindow then TB.RefreshRunWindow() end
+end
 
 function TB.GetRunWindowOpen()
     return win and win:IsVisible() or false
@@ -419,36 +442,67 @@ local function createWindow()
     head:SetText("Your bots clear a dungeon plan by themselves.")
     TB.SetTextColor(head, color("muted"))
 
+    -- Mode: who leads the run (tooltips say which role each one suits).
+    local mode = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mode:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -56)
+    mode:SetText("MODE")
+    TB.SetTextColor(mode, color("gold"))
+    win.modeBot = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    win.modeBot:SetWidth(134); win.modeBot:SetHeight(22)
+    win.modeBot:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -74)
+    win.modeBot:SetScript("OnClick", function() TB.SetRunMode("bot") end)
+    setTooltip(win.modeBot, "Bots lead", {
+        "Suggested when you play healer or DPS.",
+        "A bot tank leads the way and pulls; you stay in the party and follow.",
+        "Bind first (target the tank bot), then Start.",
+        "Your own orders to the bots pause the run until Resume.",
+    })
+    win.modeYou = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    win.modeYou:SetWidth(134); win.modeYou:SetHeight(22)
+    win.modeYou:SetPoint("TOPLEFT", win, "TOPLEFT", 154, -74)
+    win.modeYou:SetScript("OnClick", function() TB.SetRunMode("player") end)
+    setTooltip(win.modeYou, "I lead", {
+        "Suggested when you play the tank.",
+        "You walk where you like; the bots pull the plan's packs near you,",
+        "mark, crowd-control, rest and revive. Your orders never pause it.",
+        "No Bind needed: Start binds your party. Target a bot to make it",
+        "the puller (needed when no bot in your party is a tank).",
+    })
+    win.modeHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.modeHint:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -100)
+    win.modeHint:SetWidth(RW - 24); win.modeHint:SetJustifyH("LEFT")
+    TB.SetTextColor(win.modeHint, color("muted"))
+
     -- Party: bind a lead bot + its group, enter the dungeon, status.
     local party = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    party:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -56)
+    party:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -108)
     party:SetText("PARTY")
     TB.SetTextColor(party, color("gold"))
-    win.bind = smallButton(win, "Bind", 88, 12, -74,
+    win.bind = smallButton(win, "Bind", 88, 12, -126,
         "Bind", "Bind your target as the lead bot, with its group beside it.",
         function() TB.SendRunBind() end)
-    win.unbind = smallButton(win, "Unbind", 88, 104, -74,
+    win.unbind = smallButton(win, "Unbind", 88, 104, -126,
         "Unbind", "Release the bound party (this ends a run).",
         function() TB.SendRunUnbind() end)
-    win.enter = smallButton(win, "Enter", 88, 196, -74,
+    win.enter = smallButton(win, "Enter", 88, 196, -126,
         "Enter", "The party walks through the nearest dungeon entrance.",
         function() TB.SendRunEnter() end)
-    win.cmdStatus = smallButton(win, "Status", 88, 12, -100,
+    win.cmdStatus = smallButton(win, "Status", 88, 12, -152,
         "Party status", "Ask who the bound party is.",
         function() TB.SendRunCommanderStatus() end)
     win.bindHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.bindHint:SetPoint("TOPLEFT", win, "TOPLEFT", 104, -104)
+    win.bindHint:SetPoint("TOPLEFT", win, "TOPLEFT", 104, -156)
     win.bindHint:SetWidth(RW - 116); win.bindHint:SetJustifyH("LEFT")
     win.bindHint:SetText("Target the lead bot, then Bind.")
     TB.SetTextColor(win.bindHint, color("muted"))
 
     -- Plan: paged list from "run list"; Start takes the picked plan.
     local plan = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    plan:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -128)
+    plan:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -180)
     plan:SetText("PLAN")
     TB.SetTextColor(plan, color("gold"))
     win.planHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.planHint:SetPoint("TOPLEFT", win, "TOPLEFT", 140, -128)
+    win.planHint:SetPoint("TOPLEFT", win, "TOPLEFT", 140, -180)
     win.planHint:SetWidth(RW - 152); win.planHint:SetJustifyH("RIGHT")
     win.planHint:SetText("Plans come from the server.")
     TB.SetTextColor(win.planHint, color("muted"))
@@ -456,37 +510,37 @@ local function createWindow()
     for i = 1, PROW do
         local row = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
         row:SetWidth(RW - 24); row:SetHeight(20)
-        row:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -144 - (i - 1) * 22)
+        row:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -196 - (i - 1) * 22)
         row:SetScript("OnClick", function()
             if this.planName then TB.SetRunSelectedPlan(this.planName) end
         end)
         table.insert(win.planRows, row)
     end
     win.planEmpty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.planEmpty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -168)
+    win.planEmpty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -220)
     win.planEmpty:SetWidth(RW - 24); win.planEmpty:SetJustifyH("CENTER")
     win.planEmpty:SetText("Click Plans to load the dungeon list.")
     TB.SetTextColor(win.planEmpty, color("muted"))
-    win.plans = smallButton(win, "Plans", 88, 12, -144 - PROW * 22,
+    win.plans = smallButton(win, "Plans", 88, 12, -196 - PROW * 22,
         "Plans", "Load the dungeon plans from the server.",
         function() TB.SendRunList() end)
     win.planPrev = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
     win.planPrev:SetWidth(26); win.planPrev:SetHeight(22)
-    win.planPrev:SetPoint("TOPLEFT", win, "TOPLEFT", 104, -144 - PROW * 22)
+    win.planPrev:SetPoint("TOPLEFT", win, "TOPLEFT", 104, -196 - PROW * 22)
     win.planPrev:SetText("<")
     win.planPrev:SetScript("OnClick", function() planPage = planPage - 1; TB.RefreshRunWindow() end)
     win.planNext = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
     win.planNext:SetWidth(26); win.planNext:SetHeight(22)
-    win.planNext:SetPoint("TOPLEFT", win, "TOPLEFT", 212, -144 - PROW * 22)
+    win.planNext:SetPoint("TOPLEFT", win, "TOPLEFT", 212, -196 - PROW * 22)
     win.planNext:SetText(">")
     win.planNext:SetScript("OnClick", function() planPage = planPage + 1; TB.RefreshRunWindow() end)
     win.planPageText = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.planPageText:SetPoint("TOPLEFT", win, "TOPLEFT", 132, -148 - PROW * 22)
+    win.planPageText:SetPoint("TOPLEFT", win, "TOPLEFT", 132, -200 - PROW * 22)
     win.planPageText:SetWidth(78); win.planPageText:SetJustifyH("CENTER")
     TB.SetTextColor(win.planPageText, color("muted"))
 
     -- Controls: Start / Pause-Resume / Skip / Stop + reason.
-    local ctlY = -144 - PROW * 22 - 28
+    local ctlY = -196 - PROW * 22 - 28
     local ctl = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     ctl:SetPoint("TOPLEFT", win, "TOPLEFT", 12, ctlY)
     ctl:SetText("CONTROLS")
@@ -655,6 +709,22 @@ function TB.RefreshRunWindow()
         if st.state == "paused" then win.resume:Enable() else win.resume:Disable() end
     end
     if live then win.skip:Enable() else win.skip:Disable() end
+    local playerLed = runMode == "player"
+    win.modeBot:SetText(playerLed and "Bots lead" or "|cffffd200Bots lead|r")
+    win.modeYou:SetText(playerLed and "|cffffd200I lead|r" or "I lead")
+    if live then win.modeBot:Disable(); win.modeYou:Disable()
+    else win.modeBot:Enable(); win.modeYou:Enable() end
+    if playerLed then
+        win.modeHint:SetText("You lead; bots pull near you. Best for tanks.")
+        win.bindHint:SetText("Start binds your party. Target = puller.")
+        win.bind:Disable()
+        win.warn:SetText("Your orders are obeyed; only Pause or Stop halt it.")
+    else
+        win.modeHint:SetText("A bot tank leads. Best for healers and DPS.")
+        win.bindHint:SetText("Target the lead bot, then Bind.")
+        win.bind:Enable()
+        win.warn:SetText("Any order you give the party pauses the run until Resume.")
+    end
     if live then win.stop:Enable() else win.stop:Disable() end
 end
 

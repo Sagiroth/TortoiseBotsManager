@@ -1307,7 +1307,7 @@ return function()
             else
                 local wr = frameRect(win, cache)
                 local items = {}
-                for _, key in ipairs({ "bind", "unbind", "enter", "cmdStatus",
+                for _, key in ipairs({ "modeBot", "modeYou", "bind", "unbind", "enter", "cmdStatus",
                     "plans", "planPrev", "planNext", "start", "pause",
                     "resume", "skip", "stop", "stopBox" }) do
                     if win[key] then
@@ -1369,7 +1369,7 @@ return function()
                 TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851|left 2")
                 local status = {}
                 for _, key in ipairs({ "runBar", "runLeg", "runPhase",
-                    "runNote", "runStep", "runState", "bindHint", "planHint",
+                    "runNote", "runStep", "runState", "bindHint", "planHint", "modeHint",
                     "stopHint", "warn" }) do
                     if win[key] then table.insert(status, { key, win[key] }) end
                 end
