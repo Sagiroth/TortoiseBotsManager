@@ -864,8 +864,7 @@ local function renderPlans()
 
     local nHere = table.getn(here)
     local picked = selectedPlan and findPlan(selectedPlan)
-    win.planPick:SetText(picked and (TB.RunPlanTitle(picked.name) .. " · " .. tostring(picked.steps or 0) .. " steps")
-        or "|cffff5050none|r")
+    win.planPick:SetText(picked and TB.RunPlanTitle(picked.name) or "|cffff5050none|r")
     win.planToggle:SetText(planPicker and "Done" or "Change")
     local listTop, bottom
     if planPicker then
