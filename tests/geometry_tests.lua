@@ -1332,7 +1332,7 @@ return function()
                 if win.planEmpty and not win.planEmpty:IsVisible() then
                     bad("RunWindow: empty-state text must show with no plans")
                 end
-                TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet), deadmines (map 36, 90 steps), wailing_caverns (map 43, 100 steps)")
+                TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet), deadmines (map 36, 90 steps), wailing_caverns (map 43, 100 steps), scarlet_library (map 189, 88 steps), lower_blackrock_spire (map 229, 491 steps)")
                 do
                     local filled = {}
                     for i, row in ipairs(win.planRows or {}) do
@@ -1357,7 +1357,7 @@ return function()
                     end
                     local pages = win.planPageText and win.planPageText:GetText() or ""
                     if pages ~= "1 / 2" then
-                        bad("RunWindow: 4 plans must page as '1 / 2', got '" .. pages .. "'")
+                        bad("RunWindow: 6 plans must page as '1 / 2', got '" .. pages .. "'")
                     end
                 end
                 -- Status shown: a running line paints state, step, bar and

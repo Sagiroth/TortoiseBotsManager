@@ -1917,6 +1917,30 @@ assert(lastAddon() == "run stop done for tonight", "Stop sends the reason")
 TB.SetRunStopReason("")
 TB.OnSystemMessage("TBM:RUN|ragefire_chasm|done|5/120|tunnel|move|walk|stopped: done for tonight")
 assert(not TB.runWindow.stop.enabled, "Stop waits once the run is done")
+-- Plan search and the zone's plans.
+TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), scarlet_library (map 189, 88 steps), scarlet_armory (map 189, 110 steps), stormwind_stockade (map 34, 95 steps), zulfarrak (map 209, 232 steps)")
+assert(TB.RunPlanTitle("scarlet_library") == "Scarlet Library" and TB.RunPlanTitle("zulfarrak") == "Zul'Farrak",
+    "plans show readable names")
+TB.SetRunSelectedPlan(nil)
+function GetRealZoneText() return "The Stockade" end
+TB.RefreshRunWindow()
+assert(TB.GetRunSelectedPlan() == "stormwind_stockade", "a dungeon with one plan picks it")
+assert(TB.runWindow.planRows[1].planName == "stormwind_stockade", "the zone's plan comes first")
+TB.SetRunSelectedPlan(nil)
+function GetRealZoneText() return "Scarlet Monastery" end
+TB.RefreshRunWindow()
+assert(TB.GetRunSelectedPlan() == nil, "a dungeon with several plans waits for a pick")
+assert(TB.runWindow.planRows[1].planName == "scarlet_library" and TB.runWindow.planRows[2].planName == "scarlet_armory",
+    "the wings come first")
+function GetRealZoneText() return "Stormwind City" end
+this = TB.runWindow.planSearch
+TB.runWindow.planSearch:SetText("ARMORY")
+TB.runWindow.planSearch.scripts.OnTextChanged(TB.runWindow.planSearch)
+assert(TB.runWindow.planRows[1].planName == "scarlet_armory" and not TB.runWindow.planRows[2]:IsVisible(),
+    "the search filters the list")
+TB.runWindow.planSearch:SetText("")
+TB.runWindow.planSearch.scripts.OnTextChanged(TB.runWindow.planSearch)
+GetRealZoneText = nil
 -- Mutual exclusion with the vault/NPC satellites.
 TB.OpenBotPanel("Alpha")
 TB.OpenVault("Alpha")
