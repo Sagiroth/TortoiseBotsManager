@@ -2,6 +2,15 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.3.3 (2026-10-26)
+
+### Documentation
+- README is now short and consistent with the TortoiseBots README: same headings, release badge, a "requires the TortoiseBots module" note, and proper install steps [#45](https://github.com/Sagiroth/TortoiseBotsManager/pull/45)
+- Tab overview is now a single accurate table — the Dungeon tab is finally documented, and the dungeon run is no longer misdescribed as a Party tab button [#45](https://github.com/Sagiroth/TortoiseBotsManager/pull/45)
+- New `docs` folder in the same knowledge-base format as TortoiseBots, covering getting started and a full feature catalog, with a documentation table linking it all from the README [#45](https://github.com/Sagiroth/TortoiseBotsManager/pull/45)
+
+---
+
 ## v1.3.2 (2026-10-26)
 
 ### UI & Controls
