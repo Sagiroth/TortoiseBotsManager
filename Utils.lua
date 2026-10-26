@@ -79,6 +79,7 @@ end
 -- A flat button's picked look (a mode switch): filled gold, bright frame.
 function TB.SetButtonActive(button, active)
     if not button or not button.SetBackdropColor then return end
+    button.isActive = active and true or false
     if active then paint(button, ACTIVE_FILL, ACTIVE_EDGE)
     else paint(button, BUTTON_FILL, BUTTON_EDGE) end
 end

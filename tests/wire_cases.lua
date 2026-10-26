@@ -496,7 +496,7 @@ local cases = {
             TB.grindState = nil
             TB.OnSystemMessage("Strategy change '+grind' applied to 2 bot(s).")
             assert(TB.GetGrindState() == "on", "grind reply must set grind state")
-            assert(TB.actionButtons.grind.text == "Grind On", "grind button must show On")
+            assert(TB.actionButtons.grind.isActive, "grind button must show On")
             TB.OnSystemMessage("Strategy change '-grind' applied to 2 bot(s).")
             assert(TB.GetGrindState() == "off", "grind off reply must clear grind state")
             TB.grindState = nil

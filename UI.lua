@@ -1140,10 +1140,9 @@ local function BuildMoveCard(parent, buttons)
 end
 
 local function BuildSwitchesCard(parent, buttons)
-    -- Party switches: state comes from the server (TBM:BOTSTATE), the lamp
-    -- shows it at a glance (green on, grey off, gold mixed/unknown). One
-    -- row of five compact buttons fits the content width; icons are left
-    -- off so the state words clear the lamp on the narrow buttons.
+    -- Party switches: state comes from the server (TBM:BOTSTATE) and shows
+    -- as the button's look: lit gold when on, dimmed when off, gold text
+    -- with "~" when the bots disagree. One row of five compact buttons.
     local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_SWITCH_H or 48, { y = -252, line = true })
     local btnY = -22
     TB.toggleButtons = {}
@@ -1154,13 +1153,6 @@ local function BuildSwitchesCard(parent, buttons)
             btn:SetHeight(22)
             if btn.icon then btn.icon:Hide() end
             btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
-            btn.lamp = btn:CreateTexture(nil, "OVERLAY")
-            btn.lamp:SetWidth(8); btn.lamp:SetHeight(8)
-            btn.lamp:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
-            -- Centered labels ("Auto CC Off" ~66px) would touch a -9 lamp; the
-            -- text nudges 4px left of center to clear the lamp at -6.
-            local fs = btn.GetFontString and btn:GetFontString()
-            if fs then fs:SetPoint("CENTER", btn, "CENTER", -4, 0) end
             setButtonTooltip(btn, def.tip .. " Click to switch for the whole party (or only the targeted bot).",
                 def.label)
             TB.toggleButtons[def.toggle] = btn
@@ -1273,9 +1265,6 @@ local function BuildQuestsCard(campFrame, buttons)
         end,
     })
     buttons.grind = makeActionButton(card, "strategy +grind", 150, 322, -24)
-    buttons.grind.lamp = buttons.grind:CreateTexture(nil, "OVERLAY")
-    buttons.grind.lamp:SetWidth(8); buttons.grind.lamp:SetHeight(8)
-    buttons.grind.lamp:SetPoint("RIGHT", buttons.grind, "RIGHT", -9, 0)
     return card
 end
 
@@ -2563,16 +2552,26 @@ function TB.RefreshActionControls()
     end
 end
 
--- Party switch buttons: "AoE On" / "AoE Off" / "AoE ~" (mixed), lamp colour.
+-- An on/off button's look: lit gold and white text when on, dimmed grey
+-- text when off, gold text with "~" when the bots disagree. Colour codes in
+-- the text hold through hover and press.
+local function paintSwitch(btn, label, state)
+    if state == "on" then
+        btn:SetText("|cffffffff" .. label .. "|r")
+    elseif state == "mixed" then
+        btn:SetText("|cffffd200" .. label .. " ~|r")
+    else
+        btn:SetText("|cff8a8a8a" .. label .. "|r")
+    end
+    TB.SetButtonActive(btn, state == "on")
+end
+
+-- Party switch buttons follow the server's state (TBM:BOTSTATE).
 function TB.RefreshToggleButtons()
     for key, btn in pairs(TB.toggleButtons or {}) do
         local state = TB.GetPartyToggleState and TB.GetPartyToggleState(key) or nil
         if key == "aoe" and not state and TB.aoeEnabled then state = "on" end
-        local word = state == "on" and "On" or (state == "mixed" and "~" or "Off")
-        btn:SetText(btn.toggle.label .. " " .. word)
-        if state == "on" then btn.lamp:SetTexture(0.30, 0.90, 0.45, 1)
-        elseif state == "off" then btn.lamp:SetTexture(0.45, 0.45, 0.45, 1)
-        else btn.lamp:SetTexture(0.95, 0.72, 0.28, 1) end
+        paintSwitch(btn, btn.toggle.label, state)
         if TB.togglePending and TB.togglePending[key] then btn:Disable() else btn:Enable() end
     end
 end
@@ -2582,12 +2581,7 @@ function TB.RefreshCampControls()
     if not TB.actionButtons then return end
     if TB.actionButtons.grind then
         local state = TB.GetGrindState and TB.GetGrindState() or nil
-        TB.actionButtons.grind:SetText(state == "on" and "Grind On" or "Grind Off")
-        local lamp = TB.actionButtons.grind.lamp
-        if lamp then
-            if state == "on" then lamp:SetTexture(0.30, 0.90, 0.45, 1)
-            else lamp:SetTexture(0.45, 0.45, 0.45, 1) end
-        end
+        paintSwitch(TB.actionButtons.grind, "Grind", state == "on" and "on" or "off")
     end
 end
 

@@ -580,7 +580,7 @@ TB.actionButtons.aoe.scripts.OnClick(TB.actionButtons.aoe)
 assert(table.getn(sent) == beforeAoeRetry + 1 and sent[table.getn(sent)] == ".bot action aoe on",
     "AoE retry must request the previous known state")
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|party|2|on")
-assert(TB.aoeEnabled and TB.actionButtons.aoe.text == "AoE On",
+assert(TB.aoeEnabled and TB.actionButtons.aoe.isActive,
     "accepted AoE state must be reflected by the ACK")
 
 -- Target/context feedback is descriptive, not a universal scope promise.
@@ -1029,7 +1029,7 @@ assert(TB.GetBotState("Alpha").move == "follow" and TB.GetBotState("gamma").save
     "BOTSTATE rows must be stored per bot")
 assert(TB.GetPartyToggleState("loot") == "mixed" and TB.GetPartyToggleState("aoe") == "off",
     "party switch state must aggregate the bots")
-assert(TB.toggleButtons.loot.text == "Loot ~" and TB.toggleButtons.autocc.text == "Auto CC Off",
+assert(TB.toggleButtons.loot.text == "|cffffd200Loot ~|r" and (not TB.toggleButtons.autocc.isActive),
     "switch labels must show the server state (~ for mixed)")
 assert(TB.MovementLabel("Gamma") == "Fleeing (passive)", "flee movement must be labelled")
 now = now + 1
@@ -1039,7 +1039,7 @@ assert(lastAddon() == "action loot on", "a mixed switch must turn on")
 assert(not TB.toggleButtons.loot.enabled, "a switch waits for the server while pending")
 TB.OnSystemMessage("TBM:ACTION_ACK|loot|party|2|on")
 assert(TB.GetPartyToggleState("loot") == "on" and TB.toggleButtons.loot.enabled
-    and TB.toggleButtons.loot.text == "Loot On", "the ACK must settle the switch")
+    and TB.toggleButtons.loot.isActive, "the ACK must settle the switch")
 now = now + 1
 this = TB.toggleButtons.autocc
 TB.toggleButtons.autocc.scripts.OnClick(TB.toggleButtons.autocc)
@@ -1050,7 +1050,7 @@ assert(TB.GetPartyToggleState("autocc") == "off" and TB.toggleButtons.autocc.ena
 -- A single-bot ACK only changes that bot.
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
 assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
-    and TB.toggleButtons.aoe.text == "AoE ~", "a targeted switch must only update that bot")
+    and TB.toggleButtons.aoe.text == "|cffffd200AoE ~|r", "a targeted switch must only update that bot")
 
 -- P2: sap joins the switch row, spread rides the behavior verb, and the
 -- row of five stays inside the 480-wide content.
@@ -1070,7 +1070,7 @@ TB.toggleButtons.sap.scripts.OnClick(TB.toggleButtons.sap)
 assert(lastAddon() == "action sap on", "Sap must send the sap intent")
 TB.OnSystemMessage("TBM:ACTION_ACK|sap|party|2|on")
 assert(TB.GetPartyToggleState("sap") == "on" and TB.toggleButtons.sap.enabled
-    and TB.toggleButtons.sap.text == "Sap On", "the sap ACK must settle the switch")
+    and TB.toggleButtons.sap.isActive, "the sap ACK must settle the switch")
 now = now + 1
 this = TB.toggleButtons.spread
 TB.toggleButtons.spread.scripts.OnClick(TB.toggleButtons.spread)
@@ -1078,7 +1078,7 @@ assert(lastAddon() == "behavior party spread on", "Spread must ride the behavior
 assert(not TB.toggleButtons.spread.enabled, "spread waits for the server while pending")
 TB.OnSystemMessage("TBM:ACTION_ACK|behavior spread|party|2|on")
 assert(TB.GetPartyToggleState("spread") == "on" and TB.toggleButtons.spread.enabled
-    and TB.toggleButtons.spread.text == "Spread On", "the spread ACK must settle the switch")
+    and TB.toggleButtons.spread.isActive, "the spread ACK must settle the switch")
 TB.OnSystemMessage("TBM:ACTION_ERR|behavior spread|failed|No scoped bot accepted")
 assert(TB.toggleButtons.spread.enabled, "a refused spread switch must not stick disabled")
 
