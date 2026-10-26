@@ -47,10 +47,24 @@ local BUTTON_FILL = { 0.12, 0.10, 0.08, 0.95 }
 local BUTTON_EDGE = { 0.55, 0.42, 0.18, 1 }
 local ACTIVE_FILL = { 0.62, 0.44, 0.12, 1 }
 local ACTIVE_EDGE = { 1, 0.84, 0.35, 1 }
+-- Modes (formations, stances, filters) are outlined; actions are solid.
+local MODE_FILL = { 0.04, 0.04, 0.04, 0.35 }
+local MODE_EDGE = { 0.45, 0.35, 0.15, 0.9 }
+local DISABLED_FILL = { 0.05, 0.05, 0.05, 0.75 }
+local DISABLED_EDGE = { 0.28, 0.28, 0.28, 0.9 }
 
 local function paint(button, fill, edge)
     button:SetBackdropColor(fill[1], fill[2], fill[3], fill[4])
     button:SetBackdropBorderColor(edge[1], edge[2], edge[3], edge[4])
+end
+
+-- Picked (gold), disabled (grey), else the kind's own look.
+function TB.PaintButton(button)
+    if not button or not button.SetBackdropColor then return end
+    if button.isActive then paint(button, ACTIVE_FILL, ACTIVE_EDGE)
+    elseif button.flatDisabled then paint(button, DISABLED_FILL, DISABLED_EDGE)
+    elseif button.flatKind == "mode" then paint(button, MODE_FILL, MODE_EDGE)
+    else paint(button, BUTTON_FILL, BUTTON_EDGE) end
 end
 
 function TB.StyleButton(button)
@@ -70,7 +84,12 @@ function TB.StyleButton(button)
         hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
     end
     button:SetBackdrop(FLAT_BACKDROP)
-    paint(button, BUTTON_FILL, BUTTON_EDGE)
+    button.flatKind = button.flatKind or "action"
+    -- Enable/Disable repaint, so a disabled action greys out its frame too.
+    local enable, disable = button.Enable, button.Disable
+    button.Enable = function(self) enable(self); self.flatDisabled = false; TB.PaintButton(self) end
+    button.Disable = function(self) disable(self); self.flatDisabled = true; TB.PaintButton(self) end
+    TB.PaintButton(button)
     if button.SetDisabledTextColor then button:SetDisabledTextColor(0.42, 0.42, 0.42) end
     if button.SetHighlightTextColor then button:SetHighlightTextColor(1, 1, 1) end
     return button
@@ -80,8 +99,7 @@ end
 function TB.SetButtonActive(button, active)
     if not button or not button.SetBackdropColor then return end
     button.isActive = active and true or false
-    if active then paint(button, ACTIVE_FILL, ACTIVE_EDGE)
-    else paint(button, BUTTON_FILL, BUTTON_EDGE) end
+    TB.PaintButton(button)
 end
 
 function TB.StatusColor(st)

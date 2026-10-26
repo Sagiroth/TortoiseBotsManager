@@ -273,12 +273,15 @@ end
 function TB.UI.CreateTogglePill(parent, label, width, height, opts)
     opts = opts or {}
     local pill = TB.UI.CreateButton(parent, label, width or 74, height or 20, opts)
+    -- A mode: outlined, and the picked one filled gold (still clickable,
+    -- so it never looks like a disabled action).
+    pill.flatKind = "mode"
+    pill.baseLabel = label
+    TB.PaintButton(pill)
     function pill:SetActive(active)
-        self.isActive = active and true or false
-        if active then
-            self:Disable()
-        else
-            self:Enable()
+        TB.SetButtonActive(self, active)
+        if self.baseLabel then
+            self:SetText(active and ("|cffffffff" .. self.baseLabel .. "|r") or self.baseLabel)
         end
     end
     return pill

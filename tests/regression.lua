@@ -395,27 +395,27 @@ assert(TB.actionButtons.ready and TB.actionButtons.ready.icon, "Ready check butt
 -- Formation pills
 assert(TB.formationPills and TB.formationPills.shield and TB.formationPills.near,
     "Formation pills must exist")
-assert(not TB.formationPills.shield.enabled, "Shield should start disabled (active)")
-assert(TB.formationPills.near.enabled, "Near should start enabled")
+assert(TB.formationPills.shield.isActive, "Shield should start picked")
+assert((not TB.formationPills.near.isActive), "Near should start unpicked")
 now = now + 1
 this = TB.formationPills.near
 TB.formationPills.near.scripts.OnClick(TB.formationPills.near)
 assert(TB.currentFormation == "near", "Clicking near pill must set current formation to near")
-assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
-    "Active formation pill must become disabled")
+assert(TB.formationPills.near.isActive and (not TB.formationPills.shield.isActive),
+    "the picked formation pill lights up")
 assert(table.getn(TB.C.FORMATIONS) == 10, "Camp must expose all ten server formations")
 assert(TB.formationPills.far and TB.formationPills.melee and TB.formationPills.chaos
     and TB.formationPills.default, "New formation pills must exist")
-assert(TB.formationPills.far.enabled, "Far should start enabled")
+assert((not TB.formationPills.far.isActive), "Far should start unpicked")
 now = now + 1
 this = TB.formationPills.far
 TB.formationPills.far.scripts.OnClick(TB.formationPills.far)
 assert(TB.currentFormation == "far", "Clicking far pill must set current formation to far")
-assert(not TB.formationPills.far.enabled and TB.formationPills.near.enabled,
-    "Active formation pill must become disabled, previous one re-enabled")
+assert(TB.formationPills.far.isActive and (not TB.formationPills.near.isActive),
+    "the picked formation pill lights up, the previous one goes back")
 now = now + 1
 TB.SetFormation("shield")
-assert(TB.currentFormation == "shield" and not TB.formationPills.shield.enabled,
+assert(TB.currentFormation == "shield" and TB.formationPills.shield.isActive,
     "Formation must reset to shield for later cases")
 assert(TB.actionButtons.rebuff and TB.actionButtons.resetTactics and TB.actionButtons.totem
     and TB.actionButtons.acceptQuest and TB.actionButtons.shareQuest and TB.actionButtons.grind,
@@ -734,7 +734,7 @@ now = now + 1
 this = TB.stancePills.tank
 TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
 assert(sent[table.getn(sent)] == ".bot action stance tank", "Tank stance pill must send stance tank")
-assert(TB.currentStance == "tank" and not TB.stancePills.tank.enabled and TB.stancePills.near.enabled,
+assert(TB.currentStance == "tank" and TB.stancePills.tank.isActive and not TB.stancePills.near.isActive,
     "Active stance pill must become disabled")
 TB.OnSystemMessage("TBM:ACTION_ACK|stance|party|2|tank")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "stance" and TB.lastActionAck.executor == "tank",
@@ -1835,7 +1835,7 @@ this = chipWarrior
 chipWarrior.scripts.OnClick(chipWarrior)
 assert(TB.classFilter == 1 and table.getn(TB.GetDisplayRows("")) == 1,
     "clicking the Warrior chip must filter the roster rows")
-assert(chipWarrior.enabled == false, "active filter chip must disable (pill pattern)")
+assert(chipWarrior.isActive, "the active filter chip is picked (pill pattern)")
 this = TB.classChips[1]
 TB.classChips[1].scripts.OnClick(TB.classChips[1])
 assert(TB.classFilter == nil and table.getn(TB.GetDisplayRows("")) == 3,
