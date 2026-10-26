@@ -1,5 +1,8 @@
 # TortoiseBots Manager
 
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/sagiroth)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/FT2rZcXm3)
+
 Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.18.1](https://github.com/tortoise-wow/tortoise-wow).
 
 Actions use normal WoW targeting for gameplay intent. Roster is a server-owned lifecycle list for logging bots in/out and managing group membership; no combat controls are attached to rows.
@@ -37,99 +40,11 @@ in-addon credit (window header, load message, `/tbm help`). Ready to paste:
 TortoiseBots + TBM addon by Sagiroth — https://github.com/Sagiroth/TortoiseBots
 ```
 
-## Companion Module
+### ☕ Support
 
-This addon is the in-game half of:
-
-**[Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots)** — optional native PlayerBots module for Tortoise WoW 1.18.1 (`tortoise-wow/tortoise-wow` + PR #438). It owns `BotManager`, bot records, `.bot` commands and class AI. The addon requires it.
-
-```
-Tortoise WoW core (Headless sessions #438 + addon message hooks #476)
-        │
-        │  addon command channel (prefix TBM) — ".bot" chat as fallback
-        ▼
-TortoiseBots module (server, authoritative)
-        │
-        │  addon replies or CHAT_MSG_SYSTEM, same transport as the request
-        ▼
-TortoiseBots Manager (in-game, /tbm, optimistic UI)
-```
-
-No module → addon loads but every action replies “TortoiseBots module not loaded” from the server.
-
-## Use
-
-* `/tbm` (primary) — toggle panel. Aliases `/tb` / `/tbot` / `/tortoise` still work.
-* `/tbm mini` / `/tbm full` — small fight bar or the full window.
-* `/tbm list` — force a server roster refresh. `/tbm bags [name]` opens a bot's gear & bags (the targeted bot when no name is given). `/tbm help` and `/tbm resetpos` remain available.
-* **Keybindings** — Esc menu keybindings panel, `TortoiseBots Manager` header: Attack, Stop, Interrupt, Flee, Pull, Pull back, Focus skull, Follow, Stay, Come and hold, window toggle, mini bar toggle. All ship unbound; they send the same intents as their buttons (respecting enemy-target gating, pull timers and the flee cap).
-* **Fight / Camp** — use normal WoW target selection. With an enemy target, `Attack`, `Interrupt`, `Pull`, and `Pullback` operate on the party; `Interrupt` chooses one capable bot server-side. With an owned bot target, dynamic actions such as `Stay` and `Follow` operate only on that bot.
-* **Flee** — bots drop the fight and follow you without attacking; `Attack`, `Pull`, `Follow` or `Stay` calls them back.
-* **Tooltips** — every button explains what it does; hover before you click.
-* **Pull timers** — small `− N s +` steppers under the `Pull` and `Pull back` buttons set the DPS delay before Pull (default 10 s) and the join delay before Pull back (default 3 s). Range 0–60 s, step 1 (shift-click = 5), persisted in SavedVariables. When the server advertises `pull-seconds` in its `TBM:CAPS|…` roster trailer the buttons send `pull <n>` / `pullback <n>`; older servers send no `CAPS` line and the buttons send the plain intents exactly as before.
-* **Roster** — select one or more rows, then use the bottom `Login`, `Logout`, `Invite`, `Kick`, or `Summon` action. Disabled actions have no eligible selected rows. A `Class` chip row filters by class (session-only, combines with search); `Fill` invites online bots until the party is full (5) with no selection needed.
-* **Guild** — invite any unguilded wandering bot with `/ginvite <BotName>` to claim it as your raid alt-bot. Manage claimed bots from the `Guild` tab: search, select, `Invite to Raid`, `Summon to Raid`, `Fill Raid` (invite claimed bots until the raid is full, 40), cycle combat roles, inspect gear & bags, or `Release` (confirmation popup, then `/gkick`) to return the bot to the wandering pool.
-* **Party** — use the player row's class-role buttons to tell bots whether you are tank, healer, or DPS. The selection sends `.bot role self <role>`; bot rows retain their existing role controls.
-* **Focus / CC** — mark enemies with normal raid icons. Open `CC Mark` for the Marks panel: 8 rows (one per raid icon) showing the current owner, a `Next` button assigning the mark to the next online bot by explicit name (`cc <mark> <Bot>`), a per-row `X` clearing that mark's owner (`cc clear <Owner>`), and `Clear all` (`cc clear`). Ownership is exclusive server-side (one mark = one bot); the Party tab shows each bot's current CC icon.
-* **Search** — filters the server snapshot by name.
-
-## How it works (edge cases)
-
-* `TBM:ROSTER_*` and `TBM:ACTION_*` system messages are parsed as structured state; legacy human-readable responses remain a compatibility fallback.
-* Server-side ownership, Headless lifecycle, target validation, executor selection, and mature PlayerbotAI behavior are authoritative. The addon only disables obviously unavailable controls.
-* Roster lifecycle operations remain individually acknowledged and time out instead of staying optimistic forever. Gameplay never loops over roster selection.
-* Multi-bot Invite advances only after each bot is a real group member, not merely after the server creates its pending invite. Full normal parties upgrade to a raid before another owned bot is invited.
-* Normal `.bot` command echoes and structured `TBM:` transport messages are hidden locally through the standard chat filter or the legacy chat dispatcher; critical system errors stay visible.
-* UI commands use the addon command channel only while the server says so: every roster reply ends with `TBM:TRANSPORT|party` or `|none`. A group change invalidates that verdict, so the next command falls back to `.bot` chat until the server restates it; a battleground group with no pre-battleground group reports `none`, because the core never dispatches those addon messages to the module.
-
-## Requirements
-
-* **Game:** Tortoise WoW English 1.18.1 (Interface 11200).
-* **Server:** TortoiseBots module built with `MODULE_TORTOISEBOTS=static` and core PR #438 (`SessionTransport::Headless`). Without it, `.bot` returns “unknown command”.
-
-## Files
-
-```
-TortoiseBotsManager.toc
-Constants.lua   — geometry, colors, delays, status
-Utils.lua       — Trim, NormalizeName, backdrop, Status helpers
-Core.lua        — slash commands, throttled transport (addon channel or `.bot` chat), roster polling, SavedVariables UI preferences
-Roster.lua      — authoritative snapshot, live state, group membership, CC assignments, claimed guild bots, checkbox eligibility
-Comms.lua       — addon command channel, structured `TBM:` responses plus legacy command parsing
-UI.lua          — Fight/Camp/Party/Roster/Guild/Raid/Log tabs and contextual lifecycle bar
-BotPanel.lua    — per-bot state (TBM:BOTSTATE), party switches, gear/bags/behaviour panel
-BotNpc.lua      — per-bot NPC errands (talk, bind, learn, make leader, flights)
-BotRun.lua      — dungeon run window: commander bind/unbind, enter, plan picker, run controls, TBM:RUN status
-MiniBar.lua     — mini mode: small draggable bar of fight icons
-Minimap.lua     — draggable minimap button
-Bindings.lua    — keybinding handlers (same intents as the buttons; all bindings ship unbound)
-Bindings.xml    — keybinding declarations for the Esc keybindings panel
-```
-
-## Versions (per-merge builds)
-
-Every merge to `main` stamps a build version `<UTC date>-v<N>` (e.g.
-`2026-09-25-v1` is the first real merge that UTC day; the counter resets to
-v1 daily and the workflow's own `[skip ci]` commits never count). It lives in
-`Constants.lua` (`TB.C.VERSION`) and the `.toc` `## Version:` line, and the
-workflow tags each merge commit (`git tag <version>`, lightweight, no
-release). The daily `vYYYY-MM-DD` release and Discord post stay, but the tag
-moves to the day's latest version commit and the notes open with the build
-range (e.g. `Builds 2026-09-25-v1 – v7`).
-
-In game: the addon prints its version on load, and the `/tbm` window header
-shows `TBM <addon version> · server <server version> · by Sagiroth` from the server's
-`TBM:VERSION|<version>` roster trailer (`.bot version` / `.bot help` answer it
-too). `server ?` means the server predates the version reply — everything
-else keeps working.
-
-## Development check
-
-Run the Vanilla-compatible regression harness from the addon root:
-
-```bash
-lua5.1 tests/regression.lua .
-```
+If you enjoy TortoiseBots and would like to support its development, you can
+buy me a coffee on [**Ko-fi**](https://ko-fi.com/sagiroth). It's completely
+optional: every feature stays free and open for everyone.
 
 ## Screenshots
 
