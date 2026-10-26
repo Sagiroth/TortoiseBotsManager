@@ -1599,6 +1599,11 @@ assert(bar.icons.rest and bar.icons.rest.visible, "right-click pins the action t
 this, arg1 = bar.icons.rest, "RightButton"
 bar.icons.rest.scripts.OnClick(bar.icons.rest)
 assert(not bar.icons.rest, "right-click on the bar unpins it")
+this, arg1 = TB.actionButtons.rest, "RightButton"
+TB.actionButtons.rest.scripts.OnClick(TB.actionButtons.rest)
+assert(bar.icons.rest, "right-click in the full window pins the action to the mini bar")
+TB.actionButtons.rest.scripts.OnClick(TB.actionButtons.rest)
+assert(not bar.icons.rest, "a second right-click drops it again")
 arg1 = nil
 TB.OpenMiniCategory("camp")
 assert(not fly.visible and TB.GetMiniCategory() == nil, "the same icon closes the flyout")

@@ -811,10 +811,19 @@ local function makeActionButton(parent, intent, width, x, y)
         intent = intent,
         icon = icon,
         raidIcon = raidIcon,
-        tip = (def and def.tip) or ACTION_TOOLTIPS[intent] or ("Send .bot action " .. intent),
+        tip = ((def and def.tip) or ACTION_TOOLTIPS[intent] or ("Send .bot action " .. intent))
+            .. (def and " Right-click: pin it to the mini bar." or ""),
         tipTitle = label,
-        onClick = function() TB.RunActionIntent(intent) end,
+        onClick = function()
+            if arg1 == "RightButton" and def and TB.ToggleMiniFavorite then
+                TB.ToggleMiniFavorite(intent)
+            else
+                TB.RunActionIntent(intent)
+            end
+        end,
     })
+    -- Right-click pins the action to the mini bar's favourites.
+    if def then button:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
     return button
 end
 
@@ -1112,12 +1121,18 @@ local function BuildMoveCard(parent, buttons)
         local btn = TB.UI.CreateTogglePill(card, label, 110, 20, {
             x = 8 + (i - 1) * 118,
             y = -46,
-            tip = (def and def.tip) or (TB.ActionTooltip and TB.ActionTooltip("stance " .. id)),
+            tip = ((def and def.tip) or (TB.ActionTooltip and TB.ActionTooltip("stance " .. id)) or "")
+                .. " Right-click: pin it to the mini bar.",
             tipTitle = (label .. " stance"),
             onClick = function()
-                TB.SetStance(id)
+                if arg1 == "RightButton" and TB.ToggleMiniFavorite then
+                    TB.ToggleMiniFavorite("stance " .. id)
+                else
+                    TB.SetStance(id)
+                end
             end,
         })
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         TB.stancePills[id] = btn
     end
     TB.UpdateStancePills()

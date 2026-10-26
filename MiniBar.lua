@@ -144,10 +144,13 @@ end
 
 function TB.ToggleMiniFavorite(intent)
     local favs = TB.GetMiniFavorites()
+    local def = defByIntent(intent)
+    local name = def and def.label or intent
     for i, fav in ipairs(favs) do
         if fav == intent then
             table.remove(favs, i)
             if TB.LayoutMiniBar then TB.LayoutMiniBar() end
+            if TB.SetStatus then TB.SetStatus(name .. " dropped from the mini bar.", "ok") end
             return false
         end
     end
@@ -157,6 +160,7 @@ function TB.ToggleMiniFavorite(intent)
     end
     table.insert(favs, intent)
     if TB.LayoutMiniBar then TB.LayoutMiniBar() end
+    if TB.SetStatus then TB.SetStatus(name .. " pinned to the mini bar.", "ok") end
     return true
 end
 
