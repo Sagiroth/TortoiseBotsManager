@@ -19,12 +19,12 @@ return function()
 
     -- Verify class roles
     local warRoles = TB.Roles.GetClassRoles("WARRIOR")
-    assert(table.getn(warRoles) == 2 and warRoles[1].id == "tank" and warRoles[2].id == "dps",
-        "Warrior must offer tank and dps")
+    assert(table.getn(warRoles) == 3 and warRoles[1].id == "tank" and warRoles[2].id == "dps" and warRoles[3].id == "fury",
+        "Warrior must offer protection, arms and fury")
 
     local priestRoles = TB.Roles.GetClassRoles("PRIEST")
-    assert(table.getn(priestRoles) == 3 and priestRoles[1].id == "heal" and priestRoles[2].id == "hybrid" and priestRoles[3].id == "dps",
-        "Priest must offer heal, hybrid and dps")
+    assert(table.getn(priestRoles) == 3 and priestRoles[1].id == "heal" and priestRoles[2].id == "disc" and priestRoles[3].id == "dps",
+        "Priest must offer holy, discipline and shadow")
 
     local palRoles = TB.Roles.GetClassRoles("PALADIN")
     assert(table.getn(palRoles) == 3 and palRoles[1].id == "tank" and palRoles[2].id == "heal" and palRoles[3].id == "dps",
@@ -36,20 +36,20 @@ return function()
 
     -- Numeric class ID support
     local warById = TB.Roles.GetClassRoles(1)
-    assert(table.getn(warById) == 2 and warById[1].id == "tank",
+    assert(table.getn(warById) == 3 and warById[1].id == "tank",
         "Class ID 1 (Warrior) must return warrior roles")
 
     -- FindRole and labels
     local tankRole = TB.Roles.FindRole("tank")
-    assert(tankRole and tankRole.id == "tank" and tankRole.label == "Tank",
+    assert(tankRole and tankRole.id == "tank",
         "FindRole must find tank by id")
-    local dpsRole = TB.Roles.FindRole("DPS")
-    assert(dpsRole and dpsRole.id == "dps" and dpsRole.label == "DPS",
-        "FindRole must find dps case-insensitively by label")
+    local dpsRole = TB.Roles.FindRole(1, "ARMS")
+    assert(dpsRole and dpsRole.id == "dps" and dpsRole.label == "Arms",
+        "FindRole must find a role case-insensitively by label")
     assert(TB.Roles.FindRole("nonexistent") == nil,
         "FindRole on invalid role must return nil")
-    assert(TB.Roles.GetRoleLabel("heal") == "Healer",
-        "GetRoleLabel('heal') must return 'Healer'")
+    assert(TB.Roles.GetRoleLabel(5, "heal") == "Holy",
+        "GetRoleLabel(priest, 'heal') must return 'Holy'")
     assert(TB.Roles.GetRoleLabel("custom") == "custom",
         "GetRoleLabel fallback must return token string")
 
@@ -65,9 +65,10 @@ return function()
     local cycled1 = TB.Roles.CycleBotRole("TestBot", "WARRIOR")
     assert(cycled1 and cycled1.id == "dps" and TB.Roles.GetBotRole("TestBot", 1) == "dps",
         "Warrior bot role must cycle from tank to dps")
+    TB.Roles.CycleBotRole("TestBot", "WARRIOR")
     local cycled2 = TB.Roles.CycleBotRole("TestBot", "WARRIOR")
     assert(cycled2 and cycled2.id == "tank" and TB.Roles.GetBotRole("TestBot", 1) == "tank",
-        "Warrior bot role must cycle from dps back to tank")
+        "Warrior bot role must cycle through fury back to tank")
 
     -- ──────────────────────────────────────────────────────────────────────────
     -- 2. TB.C.ACTION_DEFINITIONS

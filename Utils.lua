@@ -196,13 +196,14 @@ TB.Roles = {}
 
 TB.Roles.CLASS_ROLES = {
     [1] = { -- Warrior
-        { id = "tank", label = "Tank", strat = "+protection,-arms,-fury" },
-        { id = "dps", label = "DPS", strat = "+arms,-protection" },
+        { id = "tank", label = "Protection", strat = "+protection,-arms,-fury" },
+        { id = "dps", label = "Arms", strat = "+arms,-protection,-fury" },
+        { id = "fury", label = "Fury", strat = "+fury,-protection,-arms" },
     },
     [2] = { -- Paladin
-        { id = "tank", label = "Tank", strat = "+protection,-holy,-retribution" },
-        { id = "heal", label = "Healer", strat = "+holy,-protection,-retribution" },
-        { id = "dps", label = "DPS", strat = "+retribution,-protection,-holy" },
+        { id = "tank", label = "Protection", strat = "+protection,-holy,-retribution" },
+        { id = "heal", label = "Holy", strat = "+holy,-protection,-retribution" },
+        { id = "dps", label = "Retribution", strat = "+retribution,-protection,-holy" },
     },
     [3] = { -- Hunter
         { id = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
@@ -215,14 +216,15 @@ TB.Roles.CLASS_ROLES = {
         { id = "subtlety", label = "Subtlety", strat = "+subtlety,-combat,-assassination" },
     },
     [5] = { -- Priest
-        { id = "heal", label = "Healer", strat = "+holy,-shadow,-offdps" },
-        { id = "hybrid", label = "Hybrid", strat = "+holy,+offdps,-shadow" },
-        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline" },
+        { id = "heal", label = "Holy", strat = "+holy,-discipline,-shadow" },
+        { id = "disc", label = "Discipline", strat = "+discipline,-holy,-shadow" },
+        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
     },
     [7] = { -- Shaman
-        { id = "heal", label = "Healer", strat = "+restoration,-elemental,-enhancement,-offdps" },
-        { id = "ele", label = "Ele DPS", strat = "+elemental,-restoration,-enhancement" },
-        { id = "enh", label = "Enh DPS", strat = "+enhancement,-restoration,-elemental" },
+        { id = "heal", label = "Restoration", strat = "+restoration,-elemental,-enhancement" },
+        { id = "ele", label = "Elemental", strat = "+elemental,-restoration,-enhancement" },
+        { id = "enh", label = "Enhancement", strat = "+enhancement,-restoration,-elemental" },
+        { id = "tank", label = "Enh Tank", strat = "+tank shaman,-restoration,-elemental,-enhancement" },
     },
     [8] = { -- Mage
         { id = "frost", label = "Frost", strat = "+frost,-fire,-arcane" },
@@ -235,10 +237,10 @@ TB.Roles.CLASS_ROLES = {
         { id = "destruction", label = "Destruction", strat = "+destruction,-affliction,-demonology" },
     },
     [11] = { -- Druid
-        { id = "tank", label = "Bear Tank", strat = "+tank feral,-dps feral,-restoration,-balance" },
-        { id = "cat", label = "Cat DPS", strat = "+dps feral,-tank feral,-restoration,-balance" },
-        { id = "heal", label = "Resto Heal", strat = "+restoration,-tank feral,-dps feral,-balance,-offdps" },
-        { id = "boomkin", label = "Boomkin", strat = "+balance,-tank feral,-dps feral,-restoration" },
+        { id = "tank", label = "Feral Bear", strat = "+tank feral,-dps feral,-restoration,-balance" },
+        { id = "cat", label = "Feral Cat", strat = "+dps feral,-tank feral,-restoration,-balance" },
+        { id = "heal", label = "Restoration", strat = "+restoration,-tank feral,-dps feral,-balance" },
+        { id = "boomkin", label = "Balance", strat = "+balance,-tank feral,-dps feral,-restoration" },
     },
 }
 
@@ -354,7 +356,14 @@ local SHORT_ROLE_LABELS = {
     ["Assassination"] = "Assassin",
     ["Beastmaster"] = "BM",
     ["Destruction"] = "Destro",
-    ["Resto Heal"] = "Resto",
+    ["Protection"] = "Prot",
+    ["Retribution"] = "Ret",
+    ["Restoration"] = "Resto",
+    ["Discipline"] = "Disc",
+    ["Elemental"] = "Ele",
+    ["Enhancement"] = "Enh",
+    ["Feral Bear"] = "Bear",
+    ["Feral Cat"] = "Cat",
 }
 function TB.Roles.ShortLabel(label)
     return SHORT_ROLE_LABELS[label] or label
