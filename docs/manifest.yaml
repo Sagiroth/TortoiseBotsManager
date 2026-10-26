@@ -1,0 +1,64 @@
+bundle: TortoiseBotsManager Knowledge Base
+version: 1.0.0
+format: open-knowledge-format/v1
+description: >-
+  Player and developer documentation for the TortoiseBotsManager (/tbm) addon:
+  what every tab and button does, which TortoiseBots module command it sends,
+  and the addon protocol it reads.
+
+module_docs: https://github.com/Sagiroth/TortoiseBots/tree/main/docs
+
+entrypoints:
+  human_quickstart: play/getting-started.md
+  features: play/features.md
+  developer_protocol: developers/protocol.md
+
+categories:
+  play:
+    description: "Using the addon in game: tabs, buttons, bot panel, dungeon runs, mini bar and keys."
+  developers:
+    description: "How the addon talks to the module, file map, tests and releases."
+  reference:
+    description: "Start page and navigation."
+
+nodes:
+  - id: docs-index
+    path: README.md
+    category: reference
+    summary: Start page and task finder for the addon documentation.
+  - id: play-getting-started
+    path: play/getting-started.md
+    category: play
+    summary: Requirements, install, first login of a bot and how orders are scoped.
+  - id: play-features
+    path: play/features.md
+    category: play
+    summary: Catalog of every addon feature, where it lives, what the server must enable, and the module docs behind it.
+  - id: play-fight-camp
+    path: play/fight-and-camp.md
+    category: play
+    summary: Every Fight and Camp tab button, what it does, and the .bot command it sends.
+  - id: play-party-roster
+    path: play/party-roster-guild.md
+    category: play
+    summary: Party roles, Roster lifecycle, claimed Guild bots and the Raid tab.
+  - id: play-bot-panel
+    path: play/bot-panel.md
+    category: play
+    summary: The per-bot window for gear, bags, behaviour switches, spells, NPC errands, bank and mail.
+  - id: play-dungeon-run
+    path: play/dungeon-run.md
+    category: play
+    summary: The Dungeon tab and run window that drive the module's run leader.
+  - id: play-controls
+    path: play/controls.md
+    category: play
+    summary: Mini bar and favourites, key bindings, slash commands, minimap button, Info window and Log tab.
+  - id: developers-protocol
+    path: developers/protocol.md
+    category: developers
+    summary: Addon command transport, capability gating and the TBM protocol lines the addon reads.
+  - id: developers-development
+    path: developers/development.md
+    category: developers
+    summary: File map, tests, packaging, releases and keeping the addon in step with the module.

@@ -1,40 +1,65 @@
 # TortoiseBots Manager
 
+[![Latest release](https://img.shields.io/github/v/release/Sagiroth/TortoiseBotsManager?label=release&logo=github)](https://github.com/Sagiroth/TortoiseBotsManager/releases/latest)
 [![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/sagiroth)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/FT2rZcXm3)
 
-Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.18.1](https://github.com/tortoise-wow/tortoise-wow).
+The in-game control panel (`/tbm`) for [TortoiseBots](https://github.com/Sagiroth/TortoiseBots), the PlayerBots module for **Tortoise WoW 1.18.1**. A Vanilla 1.12 (11200) addon: log your alts in as bots, group them, and command them with buttons instead of typing `.bot` commands. This is an unofficial, community-driven project, not affiliated with Turtle WoW or Blizzard Entertainment.
 
-Actions use normal WoW targeting for gameplay intent. Roster is a server-owned lifecycle list for logging bots in/out and managing group membership; no combat controls are attached to rows.
+> [!IMPORTANT]
+> The addon only works on a server running the [TortoiseBots](https://github.com/Sagiroth/TortoiseBots) module. New to TortoiseBots? Start with its [Getting Started](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/getting-started.md) guide.
 
-> **Requires the server-side module:** [Sagiroth/TortoiseBots](https://github.com/Sagiroth/TortoiseBots) (`modules/TortoiseBots`). The addon sends its UI commands over the addon command channel while the server advertises it, falls back to `.bot` chat, and consumes structured `TBM:` replies on the transport that carried the request.
+## 📦 Install
 
+1. Download `TortoiseBotsManager.zip` from the [latest release](https://github.com/Sagiroth/TortoiseBotsManager/releases/latest).
+2. Extract it into `World of Warcraft/Interface/AddOns/`, so the folder is `Interface/AddOns/TortoiseBotsManager` (not nested twice).
+3. Start the game and type `/tbm`.
 
----
+After an update, restart the game client fully: WoW loads new addon files only on a restart, not on `/reload`.
 
-## Features
+## ✨ What's inside
 
-* **Tabs by kind of work** — `Fight` (during a pull), `Camp` (between pulls), `Party`, `Roster`, `Guild` (claimed guild bots), `Raid` (only in a raid) and `Log`.
-* **Fight** — `Attack`, `Stop`, `Interrupt`, `Flee`; `Pull` / `Pullback` with timers, `End pull`, `Focus Skull`, `CC Mark` (Marks panel); `Follow`, `Stay`, `Come & Hold`, `Guard`, `Free` plus combat-stance pills (`Near`, `Tank`, `Turnback`, `Behind`); party switches `AoE`, `Auto CC`, `Loot`, `Sap` and `Spread` that show the party's real state from the server (On / Off / Mixed, with a lamp); combat tactics `Kite`, `Auto Mark`, `Focus Fire` and `AoE Fear`.
-* **Camp** — `Rest`, `Ready Check`, `Repair`, `Sell junk`, `Train` (at a targeted class trainer), a `Release` button that turns into `Corpse run` once your dead bots are ghosts, `Rebuff`, `Reset tactics`, `Drop totems`, all ten formations in two pill rows with a one-line description of the active one, and a `Quests` card (`Accept` / `Share` loop over grouped bots, `Grind` toggles autonomous grinding).
-* **Mini mode** — the `Mini` button (or `/tbm mini`) swaps the window for a small draggable bar of fight icons; its `+` brings the window back. The mode survives a reload.
-* **Bot panel (gear & bags)** — opened from the bag icon on a Party row, the `Gear & bags` button while a bot is targeted, or `/tbm bags <name>`. Paper doll with the bot's 3D model and durability, a bag grid with upgrade markers, one-click `Equip` / `Unequip` / `Give to me` (the item goes straight into a trade window) / `Use` (the bot uses food, drink or a potion) / `Disenchant` / `Send by mail` / `Put to bank` / `Destroy` (asks first, cannot be undone), an `Equip upgrades` sweep, `Trade`, `Upkeep` (restock) and `Gear up` (re-gear from bags), a `Behaviour` tab with per-bot switches (loot, AoE, auto CC, save mana, cooldowns, threat, potions, mimic, spread out), a `Spells` tab listing what the bot can cast — click a spell to cast it, and `NPC` errands (`Talk`, `Bind home`, `Learn`, `Make leader`, flights list-and-pick). `Bank / mail` opens the vault: read-only bank and mailbox lists for that bot, click a row to take it.
-* **Raid tab** — appears only while you are in a raid: `Tank face away`, `Douse runes`, Turtle custom raid tactics on/off, and a per-bot list of loaded boss tactics.
-* **Guild tab** — wandering bots you claimed into your guild via `/ginvite` as personal raid alt-bots. Level 60 bots show a `[Locked]` gear badge (they never self-equip or auto-vendor — you gear them), leveling bots show `[Leveling]` (they equip upgrades but keep blues/epics). Checkbox multi-select with `Invite to Raid` / `Summon to Raid`, per-row role cycler (`.bot role`), backpack button opening that bot's gear & bags paperdoll, and a `Release` button that unclaims the bot back to the wandering pool via `/gkick`.
-* **Target-derived scope** — party bots by default; targeting a controllable owned bot narrows dynamic actions to that bot. The server remains authoritative.
-* **Server-owned roster** — online and offline owned characters arrive from `.bot roster`, with class, lifecycle status, group membership, and reliable last-location metadata when available. A separate assignment snapshot supplies each live bot's current CC mark.
-* **Lifecycle bar** — select multiple roster rows and use `Login`, `Logout`, `Invite`, `Kick`, or `Summon`; mixed selections execute only eligible rows.
-* **Party roles** — assign class roles to bots or set your own tank/healer/DPS role from the Party tab; player selections are saved locally and sent to the server.
-* **Dungeon run (Preview)** — while the server enables its run leader, the Party tab shows `Dungeon run`: bind a lead bot + its group, walk them through the nearest entrance, pick a dungeon plan, `Start` / `Pause` / `Resume` / `Skip` / `Stop`, and watch the live status (state lamp, step x/y progress, leg, phase, note). Any order you give the party pauses the run until `Resume`.
-* **Quiet transport** — UI commands travel as addon messages while the server advertises the addon command channel, so a button click prints nothing to chat for you or anyone nearby; `.bot` chat stays for ungrouped or battleground-group cases and for hand-typed commands. Gameplay requests return one compact structured result instead of per-bot chat.
-* **Compact UI** — `Fight` is the default tab; `Roster` has checkbox rows and no per-row combat controls. The draggable panel remembers position and supports `Esc` close, minimap toggle, search, and tooltips.
-* **Compatibility** — legacy `.bot` commands and `.bot command` remain available server-side; the primary UI does not expose the advanced command console.
+| Tab | What it's for |
+| :--- | :--- |
+| **Fight** | Attack, stop, interrupt, flee, pull and pull back, focus and CC marks, movement orders, party switches (AoE, auto CC, loot, sap, spread) and tactics. |
+| **Camp** | Between pulls: rest, ready check, repair, sell junk, train, release and corpse run, rebuff, formations, quests and grinding. |
+| **Party** | Your group and its roles; opens each bot's gear and bags. |
+| **Guild** | Bots you claimed into your guild as raid alts. |
+| **Roster** | Your account's characters: log in, log out, invite, kick, summon; fill party or raid. |
+| **Raid** | Shown only in a raid: raid tactics and loaded boss tactics. |
+| **Dungeon** | Shown only when the server enables it: let your bots run a dungeon, with bots or you leading. |
+| **Log** | Recent bot messages and server replies. |
 
-## Credit
+- **Bot panel** — paper doll, bags with upgrade markers, equip, trade, use, mail or bank items, per-bot behaviour switches, spells, NPC errands and flights. Open it from a Party row, the `Gear & bags` button, or `/tbm bags <name>`.
+- **Mini mode** — `Mini` (or `/tbm mini`) swaps the window for a small bar of fight buttons and favourites.
+- **Quiet** — button clicks travel as addon messages, so nothing shows up in chat for you or anyone nearby.
 
-TortoiseBots Manager and the TortoiseBots module are made by **Sagiroth**.
-Forks, repacks, bundles and videos are welcome — please credit them and keep the
-in-addon credit (window header, load message, `/tbm help`). Ready to paste:
+Targeting one of your bots narrows the orders to that bot; otherwise they go to the whole party.
+
+## 📚 Documentation
+
+| Guide | Description |
+| :--- | :--- |
+| **[Getting Started](docs/play/getting-started.md)** | **Start here:** install, first bot, who an order goes to |
+| [What the Addon Can Do](docs/play/features.md) | Every feature, where it is, what the server must enable |
+| [Fight and Camp](docs/play/fight-and-camp.md) | Every button and the `.bot` command it sends |
+| [Party, Roster, Guild, Raid](docs/play/party-roster-guild.md) | Roles, logging bots in, claimed guild bots, raid helpers |
+| [Bot Panel](docs/play/bot-panel.md) | Gear, bags, behaviour, spells, NPC errands, bank and mail |
+| [Dungeon Run](docs/play/dungeon-run.md) | Let your bots clear a dungeon |
+| [Mini Bar, Keys and Commands](docs/play/controls.md) | Mini bar, key bindings, slash commands, Info and Log |
+| [Addon Protocol](docs/developers/protocol.md), [Development](docs/developers/development.md) | How the addon talks to the module; tests and releases |
+
+What the bots do with each order is documented in the [TortoiseBots docs](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/README.md).
+
+## 🖼️ Screenshots
+
+<img width="485" height="166" alt="TortoiseBots Manager screenshot" src="https://github.com/user-attachments/assets/4f4c7ce6-9f06-4423-81e4-229134ffbdb3" />
+<img width="413" height="371" alt="TortoiseBots Manager screenshot" src="https://github.com/user-attachments/assets/aff0f250-4760-4f2c-9b43-8d7ef89f023c" />
+<img width="653" height="400" alt="TortoiseBots Manager screenshot" src="https://github.com/user-attachments/assets/ead1050e-9b3d-4e15-9fa1-5868cb3c0da0" />
+
+## 🙏 Credit
+
+TortoiseBots Manager and the TortoiseBots module are made by **Sagiroth**. Forks, repacks, bundles and videos are welcome — please credit them and keep the in-addon credit (window header, load message, `/tbm help`). Ready to paste:
 
 ```text
 TortoiseBots + TBM addon by Sagiroth — https://github.com/Sagiroth/TortoiseBots
@@ -42,31 +67,10 @@ TortoiseBots + TBM addon by Sagiroth — https://github.com/Sagiroth/TortoiseBot
 
 ### ☕ Support
 
-If you enjoy TortoiseBots and would like to support its development, you can
-buy me a coffee on [**Ko-fi**](https://ko-fi.com/sagiroth). It's completely
-optional: every feature stays free and open for everyone.
+If you enjoy TortoiseBots and would like to support its development, you can buy me a coffee on [**Ko-fi**](https://ko-fi.com/sagiroth). It's completely optional: every feature stays free and open for everyone.
 
-## Screenshots
+## 📜 License
 
-<img width="485" height="166" alt="image" src="https://github.com/user-attachments/assets/4f4c7ce6-9f06-4423-81e4-229134ffbdb3" />
-<img width="413" height="371" alt="2" src="https://github.com/user-attachments/assets/aff0f250-4760-4f2c-9b43-8d7ef89f023c" />
-<img width="653" height="400" alt="3" src="https://github.com/user-attachments/assets/ead1050e-9b3d-4e15-9fa1-5868cb3c0da0" />
+MIT — see [LICENSE](LICENSE). Bugs and ideas: [issues](https://github.com/Sagiroth/TortoiseBotsManager/issues) or [Discord](https://discord.gg/FT2rZcXm3).
 
-## Project scope and affiliation
-
-This repository contains addon source code only. It does not distribute
-game binaries or extracted game data/assets, provide hosting, or operate
-a game service. It is not affiliated with or endorsed by Blizzard Entertainment
-or Tortoise WoW. World of Warcraft and related marks belong to their respective
-owners.
-
-## Licence
-
-MIT — see [LICENSE](LICENSE). The game is proprietary; this addon only
-uses the standard addon interface.
-
-## Links
-
-* Module: https://github.com/Sagiroth/TortoiseBots
-* Core: https://github.com/tortoise-wow/tortoise-wow
-* Issues: https://github.com/Sagiroth/TortoiseBotsManager/issues
+**Disclaimer:** This repository contains addon source code only; it ships no game files and runs no game service. It is not affiliated with Turtle WoW or Tortoise WoW. World of Warcraft is a trademark of Blizzard Entertainment; this project is not affiliated with Blizzard.
