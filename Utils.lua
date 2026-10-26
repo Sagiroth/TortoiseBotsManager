@@ -34,6 +34,43 @@ function TB.ApplyBackdrop(frame, alpha, borderA)
     frame:SetBackdropBorderColor(0.48, 0.36, 0.15, borderA or 0.90)
 end
 
+-- Flat buttons: the panel template keeps its behaviour (text, clicks,
+-- enable/disable); its red art gives way to the tabs' dark backdrop.
+function TB.StyleButton(button)
+    if not button or not button.GetNormalTexture then return button end
+    local c = C.COLOR
+    for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetDisabledTexture" }) do
+        local tex = button[get](button)
+        if tex then tex:SetTexture(nil) end
+    end
+    local pushed = button:GetPushedTexture()
+    if pushed then pushed:SetTexture(0, 0, 0, 0.30) end
+    local hl = button:GetHighlightTexture()
+    if hl then
+        hl:SetTexture(c.accent[1], c.accent[2], c.accent[3], 0.16)
+        hl:ClearAllPoints()
+        hl:SetPoint("TOPLEFT", button, "TOPLEFT", 3, -3)
+        hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -3, 3)
+    end
+    TB.ApplyBackdrop(button, 0.92, 0.85)
+    if button.SetDisabledTextColor then button:SetDisabledTextColor(0.42, 0.42, 0.42) end
+    if button.SetHighlightTextColor then button:SetHighlightTextColor(1, 1, 1) end
+    return button
+end
+
+-- A flat button's picked look (a mode switch): brighter frame and fill.
+function TB.SetButtonActive(button, active)
+    if not button or not button.SetBackdropColor then return end
+    local c = C.COLOR
+    if active then
+        button:SetBackdropColor(c.accent[1] * 0.35, c.accent[2] * 0.35, c.accent[3] * 0.35, 0.95)
+        button:SetBackdropBorderColor(1, 0.82, 0.2, 1)
+    else
+        button:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 0.92)
+        button:SetBackdropBorderColor(0.48, 0.36, 0.15, 0.85)
+    end
+end
+
 function TB.StatusColor(st)
     local c = C.COLOR
     if not st then return c.muted end

@@ -438,7 +438,7 @@ local function setTooltip(button, title, lines)
 end
 
 local function smallButton(parent, label, width, x, y, tipTitle, tip, onClick)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(width); b:SetHeight(22)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     b:SetText(label)
@@ -498,7 +498,7 @@ local function createWindow()
     mode:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -56)
     mode:SetText("MODE")
     TB.SetTextColor(mode, color("gold"))
-    win.modeBot = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    win.modeBot = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     win.modeBot:SetWidth(134); win.modeBot:SetHeight(22)
     win.modeBot:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -74)
     win.modeBot:SetScript("OnClick", function() TB.SetRunMode("bot") end)
@@ -508,7 +508,7 @@ local function createWindow()
         "Bind first (target the tank bot), then Start.",
         "Your own orders to the bots pause the run until Resume.",
     })
-    win.modeYou = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    win.modeYou = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     win.modeYou:SetWidth(134); win.modeYou:SetHeight(22)
     win.modeYou:SetPoint("TOPLEFT", win, "TOPLEFT", 154, -74)
     win.modeYou:SetScript("OnClick", function() TB.SetRunMode("player") end)
@@ -572,7 +572,7 @@ local function createWindow()
     TB.SetTextColor(win.planHint, color("muted"))
     win.planRows = {}
     for i = 1, PROW do
-        local row = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+        local row = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
         row:SetWidth(RW - 24); row:SetHeight(20)
         row:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -232 - (i - 1) * 22)
         row:SetScript("OnClick", function()
@@ -588,12 +588,12 @@ local function createWindow()
     win.plans = smallButton(win, "Plans", 88, 12, -232 - PROW * 22,
         "Plans", "Load the dungeon plans from the server.",
         function() TB.SendRunList() end)
-    win.planPrev = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    win.planPrev = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     win.planPrev:SetWidth(26); win.planPrev:SetHeight(22)
     win.planPrev:SetPoint("TOPLEFT", win, "TOPLEFT", 104, -232 - PROW * 22)
     win.planPrev:SetText("<")
     win.planPrev:SetScript("OnClick", function() planPage = planPage - 1; TB.RefreshRunWindow() end)
-    win.planNext = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    win.planNext = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     win.planNext:SetWidth(26); win.planNext:SetHeight(22)
     win.planNext:SetPoint("TOPLEFT", win, "TOPLEFT", 212, -232 - PROW * 22)
     win.planNext:SetText(">")
@@ -845,7 +845,7 @@ function TB.CreateRunTab(parent)
     line("GameFontNormalSmall", -158, "RUN", "gold")
     tab.state = line("GameFontHighlightSmall", -174, "No run.")
     tab.note = line("GameFontHighlightSmall", -190, "", "muted")
-    tab.open = CreateFrame("Button", nil, tab, "UIPanelButtonTemplate")
+    tab.open = TB.StyleButton(CreateFrame("Button", nil, tab, "UIPanelButtonTemplate"))
     tab.open:SetWidth(160); tab.open:SetHeight(22)
     tab.open:SetPoint("TOPLEFT", tab, "TOPLEFT", 6, -222)
     tab.open:SetText("Open run window")
@@ -914,13 +914,11 @@ function TB.RefreshRunWindow()
     if live then win.skip:Enable() else win.skip:Disable() end
     win.feedback:SetText(feedback and feedback.text or "|cff9d9d9dClick a button: the server's answer shows here.|r")
     local playerLed = runMode == "player"
-    -- Radio look: the picked mode is lit with a dot, the other one dimmed.
-    win.modeBot:SetText(playerLed and "|cff9d9d9dBots lead|r" or "|cffffd200> Bots lead <|r")
-    win.modeYou:SetText(playerLed and "|cffffd200> I lead <|r" or "|cff9d9d9dI lead|r")
-    if win.modeBot.LockHighlight then
-        if playerLed then win.modeBot:UnlockHighlight(); win.modeYou:LockHighlight()
-        else win.modeYou:UnlockHighlight(); win.modeBot:LockHighlight() end
-    end
+    -- Switch look: the picked mode is framed and lit, the other one dimmed.
+    win.modeBot:SetText(playerLed and "|cff9d9d9dBots lead|r" or "|cffffd200Bots lead|r")
+    win.modeYou:SetText(playerLed and "|cffffd200I lead|r" or "|cff9d9d9dI lead|r")
+    TB.SetButtonActive(win.modeBot, not playerLed)
+    TB.SetButtonActive(win.modeYou, playerLed)
     if live then win.modeBot:Disable(); win.modeYou:Disable()
     else win.modeBot:Enable(); win.modeYou:Enable() end
     if playerLed then

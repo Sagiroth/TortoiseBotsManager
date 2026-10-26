@@ -152,7 +152,7 @@ local function createBar()
         bar.icons[item.intent] = makeIcon(bar, item, i)
     end
 
-    local expand = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+    local expand = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
     expand:SetWidth(22); expand:SetHeight(22)
     expand:SetPoint("RIGHT", bar, "RIGHT", -6, 0)
     expand:SetText("+")

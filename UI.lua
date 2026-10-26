@@ -221,6 +221,7 @@ end
 function TB.UI.CreateButton(parent, label, width, height, opts)
     opts = opts or {}
     local button = CreateFrame("Button", nil, parent, opts.template or "UIPanelButtonTemplate")
+    if not opts.template then TB.StyleButton(button) end
     button:SetWidth(width or 110)
     button:SetHeight(height or 26)
     if opts.x or opts.y or opts.point or opts.relTo then
@@ -292,7 +293,7 @@ function TB.UI.CreateStepper(parent, opts)
     row:SetWidth(opts.width or 108)
     row:SetHeight(opts.height or 18)
 
-    local minus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    local minus = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
     minus:SetWidth(22); minus:SetHeight(opts.height or 18)
     minus:SetPoint("LEFT", row, "LEFT", 0, 0)
     minus:SetText("-")
@@ -302,7 +303,7 @@ function TB.UI.CreateStepper(parent, opts)
     label:SetWidth(opts.labelWidth or 60)
     label:SetJustifyH("CENTER")
 
-    local plus = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    local plus = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
     plus:SetWidth(22); plus:SetHeight(opts.height or 18)
     plus:SetPoint("LEFT", label, "RIGHT", 2, 0)
     plus:SetText("+")
@@ -492,7 +493,7 @@ CreateHeader = function(parent)
     close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -2, -2)
 
     -- Mini mode: swap this window for the small fight bar.
-    local mini = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local mini = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     mini:SetWidth(44); mini:SetHeight(20)
     mini:SetPoint("RIGHT", close, "LEFT", -2, 0)
     mini:SetText("Mini")
@@ -569,7 +570,7 @@ CreateFilterRow = function(parent)
     end)
     TB.searchBox = search
 
-    local clear = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local clear = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     clear:SetWidth(42); clear:SetHeight(18)
     clear:SetPoint("LEFT", search, "RIGHT", 4, 0)
     clear:SetText("Clear")
@@ -1483,7 +1484,7 @@ function TB.InitUI()
 
             local roleButtons = {}
             for b = 1, 4 do
-                local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                local btn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
                 btn:SetWidth(78)
                 btn:SetHeight(22)
                 btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * 82, 8)
@@ -1611,7 +1612,7 @@ function TB.InitUI()
         end)
         guildFrame.searchBox = search
 
-        local clear = CreateFrame("Button", nil, guildFrame, "UIPanelButtonTemplate")
+        local clear = TB.StyleButton(CreateFrame("Button", nil, guildFrame, "UIPanelButtonTemplate"))
         clear:SetWidth(42); clear:SetHeight(18)
         clear:SetPoint("LEFT", search, "RIGHT", 4, 0)
         clear:SetText("Clear")
@@ -1733,7 +1734,7 @@ function TB.InitUI()
             })
             row.bagBtn = bagBtn
 
-            local roleBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            local roleBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             roleBtn:SetWidth(76); roleBtn:SetHeight(20)
             roleBtn:SetPoint("LEFT", row, "LEFT", 344, 0)
             roleBtn:SetText("Role")
@@ -1758,7 +1759,7 @@ function TB.InitUI()
             row.roleBtn = roleBtn
 
 
-            local relBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             relBtn:SetWidth(34); relBtn:SetHeight(20)
             relBtn:SetPoint("LEFT", row, "LEFT", 424, 0)
             relBtn:SetText("Rel")
@@ -1818,7 +1819,7 @@ function TB.InitUI()
         TB.SetTextColor(selection, color("muted"))
         guildFrame.selectionLabel = selection
 
-        local inviteBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        local inviteBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
         inviteBtn:SetWidth(110); inviteBtn:SetHeight(22)
         inviteBtn:SetPoint("LEFT", selection, "RIGHT", 4, 0)
         inviteBtn:SetText("Invite to Raid")
@@ -1837,7 +1838,7 @@ function TB.InitUI()
         end)
         guildFrame.inviteBtn = inviteBtn
 
-        local summonBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        local summonBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
         summonBtn:SetWidth(110); summonBtn:SetHeight(22)
         summonBtn:SetPoint("LEFT", inviteBtn, "RIGHT", 4, 0)
         summonBtn:SetText("Summon to Raid")
@@ -1852,7 +1853,7 @@ function TB.InitUI()
         end)
         guildFrame.summonBtn = summonBtn
 
-        local syncBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        local syncBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
         syncBtn:SetWidth(56); syncBtn:SetHeight(22)
         syncBtn:SetPoint("LEFT", summonBtn, "RIGHT", 4, 0)
         syncBtn:SetText("Sync")
@@ -1862,7 +1863,7 @@ function TB.InitUI()
         end)
         guildFrame.syncBtn = syncBtn
 
-        local fillBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+        local fillBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
         fillBtn:SetWidth(72); fillBtn:SetHeight(22)
         fillBtn:SetPoint("LEFT", syncBtn, "RIGHT", 4, 0)
         fillBtn:SetText("Fill Raid")
@@ -1897,7 +1898,7 @@ function TB.InitUI()
         title:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 6, 0)
         title:SetText("|cffd8a657Bot activity log|r")
 
-        local clearBtn = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
+        local clearBtn = TB.StyleButton(CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate"))
         clearBtn:SetWidth(65); clearBtn:SetHeight(18)
         clearBtn:SetPoint("TOPRIGHT", logFrame, "TOPRIGHT", -24, 2)
         clearBtn:SetText("Clear")

@@ -197,7 +197,7 @@ local function setTooltip(button, title, lines)
 end
 
 local function orderButton(parent, label, x, y, tip, tipTitle, onClick)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(134); b:SetHeight(22)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     b:SetText(label)
@@ -271,7 +271,7 @@ local function createNpc()
 
     npc.rows = {}
     for i = 1, ROWS do
-        local row = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
+        local row = TB.StyleButton(CreateFrame("Button", nil, npc, "UIPanelButtonTemplate"))
         row:SetWidth(NW - 24); row:SetHeight(20)
         row:SetPoint("TOPLEFT", npc, "TOPLEFT", 12, -108 - (i - 1) * 22)
         row:SetScript("OnClick", function()
@@ -287,7 +287,7 @@ local function createNpc()
     npc.flightEmpty = flightEmpty
 
 
-    npc.ask = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
+    npc.ask = TB.StyleButton(CreateFrame("Button", nil, npc, "UIPanelButtonTemplate"))
     npc.ask:SetWidth(134); npc.ask:SetHeight(22)
     npc.ask:SetPoint("TOPLEFT", npc, "TOPLEFT", 12, -108 - ROWS * 22)
     npc.ask:SetText("Find flights")
@@ -296,13 +296,13 @@ local function createNpc()
     end)
     setTooltip(npc.ask, "Find flights", { "Lists this flight master's routes, then pick one." })
 
-    local prev = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
+    local prev = TB.StyleButton(CreateFrame("Button", nil, npc, "UIPanelButtonTemplate"))
     prev:SetWidth(26); prev:SetHeight(22)
     prev:SetPoint("TOPLEFT", npc, "TOPLEFT", 154, -108 - ROWS * 22)
     prev:SetText("<")
     prev:SetScript("OnClick", function() page = page - 1; TB.RefreshNpc() end)
     npc.prevPage = prev
-    local nextBtn = CreateFrame("Button", nil, npc, "UIPanelButtonTemplate")
+    local nextBtn = TB.StyleButton(CreateFrame("Button", nil, npc, "UIPanelButtonTemplate"))
     nextBtn:SetWidth(26); nextBtn:SetHeight(22)
     nextBtn:SetPoint("TOPLEFT", npc, "TOPLEFT", 262, -108 - ROWS * 22)
     nextBtn:SetText(">")
