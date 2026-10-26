@@ -820,8 +820,8 @@ assert(playerRow.roleButtons[1].isActive and playerRow.roleButtons[1].text:find(
     "Selected player role button must be highlighted gold")
 assert(TB.partyFrame.rows[2]:IsVisible(), "Priestbot party row must be visible")
 assert(TB.partyFrame.rows[2].nameText.text == "Priestbot", "Party row 2 must display Priestbot")
-assert(TB.partyFrame.rows[2].roleButtons[1]:IsVisible() and TB.partyFrame.rows[2].roleButtons[1].text:find("Healer"),
-    "Priestbot must have Healer role button")
+assert(TB.partyFrame.rows[2].roleButtons[1]:IsVisible() and TB.partyFrame.rows[2].roleButtons[1].text:find("Holy"),
+    "Priestbot must have Holy role button")
 assert(TB.partyFrame.rows[2].roleButtons[3]:IsVisible() and TB.partyFrame.rows[2].roleButtons[3].text:find("Shadow"),
     "Priestbot must have Shadow role button")
 
@@ -830,7 +830,7 @@ now = now + 1
 local beforeRoleCmd = table.getn(sent)
 TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be stored as dps")
-assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot strategy +shadow,-holy,-discipline Priestbot",
+assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot strategy +shadow,-holy,-discipline,-offdps Priestbot",
     "Clicking Shadow role must send Playerbot strategy command")
 assert(TB.partyFrame.rows[2].roleButtons[3].isActive, "Selected Shadow button must be filled gold")
 
@@ -839,8 +839,8 @@ partyClassName = "Warrior"
 partyMembers = { "Tankbot" }
 TB.RefreshPartyView()
 assert(TB.partyFrame.rows[2].nameText.text == "Tankbot", "Party row 2 must display Tankbot")
-assert(TB.partyFrame.rows[2].roleButtons[1]:IsVisible() and TB.partyFrame.rows[2].roleButtons[1].text:find("Tank"),
-    "Tankbot must have Tank role button")
+assert(TB.partyFrame.rows[2].roleButtons[1]:IsVisible() and TB.partyFrame.rows[2].roleButtons[1].text:find("Prot"),
+    "Tankbot must have Protection role button")
 now = now + 1
 local beforeTankCmd = table.getn(sent)
 TB.partyFrame.rows[2].roleButtons[1].scripts.OnClick()
@@ -862,7 +862,7 @@ assert(queueFrame, "demotion spec strategy must queue behind the throttle")
 this, arg1 = queueFrame, 0.1
 queueFrame.scripts.OnUpdate(queueFrame)
 assert(table.getn(sent) == beforeDemoteCmd + 2
-    and sent[table.getn(sent)] == ".bot strategy +arms,-protection Tankbot",
+    and sent[table.getn(sent)] == ".bot strategy +arms,-protection,-fury Tankbot",
     "Demotion spec strategy must follow after the throttle clears")
 partyClassName = "Priest"
 partyMembers = { "Priestbot" }
@@ -1020,17 +1020,21 @@ assert(not TB.actionButtons.flee.enabled, "Flee must be disabled on servers with
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
 
 -- Live specs pick the shown role (a hire has no saved role); values may hold spaces.
-TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|5")
+TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|7")
 TB.OnSystemMessage("TBM:BOTSTATE|Rista|move=follow,specs=retribution")
 TB.OnSystemMessage("TBM:BOTSTATE|Feyrielle|move=follow,specs=balance")
-TB.OnSystemMessage("TBM:BOTSTATE|Hybridbot|move=follow,specs=holy+offdps")
+TB.OnSystemMessage("TBM:BOTSTATE|Holybot|move=follow,specs=holy+offdps")
+TB.OnSystemMessage("TBM:BOTSTATE|Discbot|move=follow,specs=discipline")
+TB.OnSystemMessage("TBM:BOTSTATE|Shamtank|move=follow,specs=tank shaman")
 TB.OnSystemMessage("TBM:BOTSTATE|Furybot|move=follow,specs=fury")
 TB.OnSystemMessage("TBM:BOTSTATE|Catbot|move=follow,specs=dps feral")
 TB.OnSystemMessage("TBM:BOTSTATE_END")
 assert(TB.Roles.GetBotRole("Rista", 2) == "dps", "retribution specs must show the paladin DPS role")
-assert(TB.Roles.GetBotRole("Feyrielle", 11) == "boomkin", "balance specs must show Boomkin")
-assert(TB.Roles.GetBotRole("Hybridbot", 5) == "hybrid", "holy+offdps specs must show Hybrid, not Healer")
-assert(TB.Roles.GetBotRole("Furybot", 1) == "dps", "fury specs must show the warrior DPS role")
+assert(TB.Roles.GetBotRole("Feyrielle", 11) == "boomkin", "balance specs must show Balance")
+assert(TB.Roles.GetBotRole("Holybot", 5) == "heal", "a holy hire (holy+offdps) must show Holy")
+assert(TB.Roles.GetBotRole("Discbot", 5) == "disc", "discipline specs must show Discipline")
+assert(TB.Roles.GetBotRole("Shamtank", 7) == "tank", "the shaman tank kit must show Enh Tank")
+assert(TB.Roles.GetBotRole("Furybot", 1) == "fury", "fury specs must show Fury")
 assert(TB.Roles.GetBotRole("Catbot", 11) == "cat", "a spec with a space must parse")
 
 -- Move modes: the shared mode lights up, an ACK moves it, Come waits for the poll.
