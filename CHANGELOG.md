@@ -2,6 +2,15 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.3.2 (2026-10-26)
+
+### UI & Controls
+- Party tab role buttons now use the same spec names as the recruiter, so what you hired is exactly what you see. [#44](https://github.com/Sagiroth/TortoiseBotsManager/pull/44)
+- Warrior gains a Fury role button; Priests now show Holy / Discipline / Shadow instead of a vague Hybrid; Shaman gets its missing tank option. [#44](https://github.com/Sagiroth/TortoiseBotsManager/pull/44)
+- No more guessing which spec a bot was recruited as — role labels are consistent across every class. [#44](https://github.com/Sagiroth/TortoiseBotsManager/pull/44)
+
+---
+
 ## v1.3.1 (2026-10-26)
 
 ### Tactical & Roles
