@@ -1,100 +1,295 @@
 -- TortoiseBotsManager/MiniBar.lua
--- Minimal mode: a small, draggable bar with the fight buttons as icons.
--- The full window and the bar are two views of the same controls: every
--- icon sends the same intent as its Fight-tab button and follows the same
--- enable rules (enemy-target actions grey out without an enemy target).
+-- Minimal mode: a small, draggable bar instead of the full window.
+--   [turtle] [category icons] | [favourites ...] [+]
+-- A category icon opens a flyout above the bar with that category's actions
+-- (the same ones as the Fight and Camp tabs). Right-click an action there to
+-- add it to the favourites, or a favourite on the bar to drop it. Every
+-- action runs through TB.RunActionIntent, as the full window's buttons do,
+-- and follows the same enable rules (enemy-target actions grey out without
+-- an enemy target).
 --
 -- TortoiseBotsDB.mode = "full" | "mini"; the bar stays on screen in "mini".
+-- TortoiseBotsDB.miniFavorites = { intent, ... } (default: the old bar's icons).
 
 local TB = TortoiseBots
 local C = TB.C or {}
+local COL = C.COLOR or {}
 
 local ICON = 28
 local STEP = 30
+local MAX_FAVORITES = 12
+local FLY_COLS = 3
+local FLY_W = 132
+local FLY_ROWS = 4
 
--- Drive MiniBar from the unified action definitions table.
-local function getMiniBarItems()
+local CATEGORIES = {
+    { key = "engage", label = "Engage", sections = { "engage" } },
+    { key = "pull", label = "Pull & Focus", sections = { "pull" } },
+    { key = "move", label = "Move", sections = { "move", "stance" } },
+    { key = "switch", label = "Party switches", sections = { "switch" } },
+    { key = "tactic", label = "Tactics", sections = { "tactic" } },
+    { key = "camp", label = "Camp", sections = { "rest", "quests" } },
+}
+
+local STANCE_ICON = "Interface\\Icons\\Ability_Warrior_DefensiveStance"
+
+local function color(name) return COL[name] or { 1, 1, 1 } end
+
+local function defsOf(category)
+    local out = {}
+    for _, section in ipairs(category.sections) do
+        for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
+            if def.section == section and def.intent then table.insert(out, def) end
+        end
+    end
+    return out
+end
+
+local function defByIntent(intent)
+    for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
+        if def.intent == intent then return def end
+    end
+    return nil
+end
+
+-- The old bar's icons, in its order: the favourites a player starts with.
+local function defaultFavorites()
     local items = {}
     for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
-        if def.mini then
-            table.insert(items, def)
-        end
+        if def.mini then table.insert(items, def) end
     end
     table.sort(items, function(a, b)
         local orderA = type(a.mini) == "number" and a.mini or 999
         local orderB = type(b.mini) == "number" and b.mini or 999
         return orderA < orderB
     end)
-    return items
+    local out = {}
+    for _, def in ipairs(items) do table.insert(out, def.intent) end
+    return out
 end
 
-local ITEMS = getMiniBarItems()
+function TB.GetMiniFavorites()
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    if not TortoiseBotsDB.miniFavorites then TortoiseBotsDB.miniFavorites = defaultFavorites() end
+    return TortoiseBotsDB.miniFavorites
+end
 
-local bar
+local function isFavorite(intent)
+    for _, fav in ipairs(TB.GetMiniFavorites()) do
+        if fav == intent then return true end
+    end
+    return false
+end
 
-local function tooltipFor(item)
-    local title = item.label or item.intent
-    local text = item.tip or (TB.ActionTooltip and TB.ActionTooltip(item.intent)) or ""
-    if item.pull then
+local bar, flyout
+
+local function setIcon(texture, def)
+    if def.raidIcon then
+        texture:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. def.raidIcon)
+        texture:SetTexCoord(0, 1, 0, 1)
+    else
+        texture:SetTexture(def.icon or (def.section == "stance" and STANCE_ICON)
+            or "Interface\\Icons\\INV_Misc_QuestionMark")
+        texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+end
+
+local function tooltipFor(def)
+    local title = def.label or def.intent
+    local text = def.tip or (TB.ActionTooltip and TB.ActionTooltip(def.intent)) or ""
+    if def.pull then
         local db = TortoiseBotsDB or {}
-        local seconds = item.intent == "pullback" and db.pullbackDelay or db.pullDelay
+        local seconds = def.intent == "pullback" and db.pullbackDelay or db.pullDelay
         text = text .. " Timer: " .. TB.ClampPullSeconds(seconds) .. " s (set it in the full window)."
     end
     return title, text
 end
 
-local function makeIcon(parent, item, index)
+local function showTooltip(owner, def, hint)
+    local title, text = tooltipFor(def)
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:SetText(title)
+    if text ~= "" then GameTooltip:AddLine(text, 0.9, 0.9, 0.9, 1) end
+    if TB.GetActionScopeHint then GameTooltip:AddLine(TB.GetActionScopeHint(), 0.62, 0.60, 0.56) end
+    if hint then GameTooltip:AddLine(hint, 0.95, 0.72, 0.28) end
+    GameTooltip:Show()
+end
+
+local function usable(def)
+    if def.needsEnemy and not (TB.HasEnemyTarget and TB.HasEnemyTarget()) then return false end
+    if def.cap and not (TB.HasServerCapability and TB.HasServerCapability(def.cap)) then return false end
+    if def.toggle and TB.togglePending and TB.togglePending[def.toggle] then return false end
+    return true
+end
+
+local function paintLamp(lamp, def)
+    if not lamp then return end
+    if not def.toggle then lamp:Hide(); return end
+    local state = TB.GetPartyToggleState and TB.GetPartyToggleState(def.toggle)
+    if state == "on" then lamp:SetTexture(0.30, 0.90, 0.45, 1)
+    elseif state == "off" then lamp:SetTexture(0.45, 0.45, 0.45, 1)
+    else lamp:SetTexture(0.95, 0.72, 0.28, 1) end
+    lamp:Show()
+end
+
+local function setUsable(b, on)
+    if on then
+        b:Enable()
+        if b.icon.SetVertexColor then b.icon:SetVertexColor(1, 1, 1) end
+    else
+        b:Disable()
+        if b.icon.SetVertexColor then b.icon:SetVertexColor(0.35, 0.35, 0.35) end
+    end
+end
+
+function TB.ToggleMiniFavorite(intent)
+    local favs = TB.GetMiniFavorites()
+    for i, fav in ipairs(favs) do
+        if fav == intent then
+            table.remove(favs, i)
+            if TB.LayoutMiniBar then TB.LayoutMiniBar() end
+            return false
+        end
+    end
+    if table.getn(favs) >= MAX_FAVORITES then
+        if TB.SetStatus then TB.SetStatus("The mini bar holds " .. MAX_FAVORITES .. " favourites: drop one first.", "warn") end
+        return false
+    end
+    table.insert(favs, intent)
+    if TB.LayoutMiniBar then TB.LayoutMiniBar() end
+    return true
+end
+
+-- ── icon buttons ─────────────────────────────────────────────────────────
+local function iconButton(parent, size)
     local b = CreateFrame("Button", nil, parent)
-    b:SetWidth(ICON); b:SetHeight(ICON)
-    -- Visual groups: engage (1-4), pull/focus (5-7), move (8-10), AoE (11).
-    local gap = 0
-    if index > 4 then gap = gap + 6 end
-    if index > 7 then gap = gap + 6 end
-    if index > 10 then gap = gap + 6 end
-    b:SetPoint("LEFT", parent, "LEFT", 34 + (index - 1) * STEP + gap, 0)
-    b:RegisterForClicks("LeftButtonUp")
+    b:SetWidth(size); b:SetHeight(size)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints(b)
-    if item.raidIcon then
-        b.icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. item.raidIcon)
-    else
-        b.icon:SetTexture(item.icon)
-        b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    end
-
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints(b)
     hl:SetTexture(1, 1, 1, 0.18)
-    if item.toggle then
-        b.lamp = b:CreateTexture(nil, "OVERLAY")
-        b.lamp:SetWidth(8); b.lamp:SetHeight(8)
-        b.lamp:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
-    end
-    b.item = item
-    b:SetScript("OnEnter", function()
-        local title, text = tooltipFor(this.item)
-        GameTooltip:SetOwner(this, "ANCHOR_TOP")
-        GameTooltip:SetText(title)
-        if text ~= "" then GameTooltip:AddLine(text, 0.9, 0.9, 0.9, 1) end
-        if TB.GetActionScopeHint then
-            GameTooltip:AddLine(TB.GetActionScopeHint(), 0.62, 0.60, 0.56)
-        end
-        GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    b:SetScript("OnClick", function()
-        local it = this.item
-        if it.toggle then
-            TB.SendPartyToggle(it.toggle)
-        elseif it.pull then
-            TB.SendActionIntent(TB.PullIntent and TB.PullIntent(it.intent) or it.intent)
-        else
-            TB.SendActionIntent(it.intent)
-        end
-    end)
+    b.lamp = b:CreateTexture(nil, "OVERLAY")
+    b.lamp:SetWidth(8); b.lamp:SetHeight(8)
+    b.lamp:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
+    b.lamp:Hide()
     return b
 end
 
+-- ── flyout ───────────────────────────────────────────────────────────────
+local openCategory = nil
+
+local function createFlyout()
+    flyout = CreateFrame("Frame", "TortoiseBotsManagerMiniFlyout", UIParent)
+    flyout:SetFrameStrata("DIALOG")
+    flyout:SetWidth(FLY_COLS * FLY_W + 16)
+    flyout:EnableMouse(true)
+    TB.ApplyBackdrop(flyout, 0.95, 0.95)
+    flyout.title = flyout:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    flyout.title:SetPoint("TOPLEFT", flyout, "TOPLEFT", 10, -8)
+    TB.SetTextColor(flyout.title, color("gold"))
+    local close = CreateFrame("Button", nil, flyout, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", flyout, "TOPRIGHT", 0, 0)
+    close:SetScript("OnClick", function() TB.OpenMiniCategory(nil) end)
+    flyout.hint = flyout:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    flyout.hint:SetPoint("BOTTOMLEFT", flyout, "BOTTOMLEFT", 10, 7)
+    flyout.hint:SetText("Right-click: add to or drop from the favourites.")
+    TB.SetTextColor(flyout.hint, color("muted"))
+    flyout.entries = {}
+    for i = 1, FLY_COLS * FLY_ROWS do
+        local e = CreateFrame("Button", nil, flyout)
+        e:SetWidth(FLY_W - 4); e:SetHeight(22)
+        local col = math.mod(i - 1, FLY_COLS)
+        local row = math.floor((i - 1) / FLY_COLS)
+        e:SetPoint("TOPLEFT", flyout, "TOPLEFT", 8 + col * FLY_W, -30 - row * 26)
+        e:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        e.icon = e:CreateTexture(nil, "ARTWORK")
+        e.icon:SetWidth(20); e.icon:SetHeight(20)
+        e.icon:SetPoint("LEFT", e, "LEFT", 0, 0)
+        e.lamp = e:CreateTexture(nil, "OVERLAY")
+        e.lamp:SetWidth(7); e.lamp:SetHeight(7)
+        e.lamp:SetPoint("BOTTOMRIGHT", e.icon, "BOTTOMRIGHT", 0, 0)
+        e.lamp:Hide()
+        e.label = e:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        e.label:SetPoint("LEFT", e.icon, "RIGHT", 6, 0)
+        e.label:SetWidth(FLY_W - 32); e.label:SetJustifyH("LEFT")
+        local hl = e:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints(e)
+        hl:SetTexture(1, 1, 1, 0.10)
+        e:SetScript("OnClick", function()
+            local def = this.def
+            if not def then return end
+            if arg1 == "RightButton" then
+                TB.ToggleMiniFavorite(def.intent)
+            else
+                TB.RunActionIntent(def.intent)
+            end
+            TB.RefreshMiniBar()
+        end)
+        e:SetScript("OnEnter", function()
+            if this.def then
+                showTooltip(this, this.def, isFavorite(this.def.intent)
+                    and "In your favourites (right-click drops it)." or "Right-click: add to your favourites.")
+            end
+        end)
+        e:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        e:Hide()
+        table.insert(flyout.entries, e)
+    end
+    flyout:Hide()
+    TB.miniFlyout = flyout
+end
+
+local function renderFlyout()
+    if not flyout or not openCategory then return end
+    local defs = defsOf(openCategory)
+    flyout.title:SetText(openCategory.label)
+    for i, e in ipairs(flyout.entries) do
+        local def = defs[i]
+        e.def = def
+        if def then
+            setIcon(e.icon, def)
+            e.label:SetText(def.label or def.intent)
+            if isFavorite(def.intent) then TB.SetTextColor(e.label, color("gold"))
+            else e.label:SetTextColor(0.92, 0.92, 0.92) end
+            paintLamp(e.lamp, def)
+            setUsable(e, usable(def))
+            e:Show()
+        else
+            e:Hide()
+        end
+    end
+    local rows = math.ceil(table.getn(defs) / FLY_COLS)
+    if rows > FLY_ROWS then rows = FLY_ROWS end
+    flyout:SetHeight(30 + rows * 26 + 22)
+end
+
+-- Opens a category's flyout above the bar; the same category (or nil) closes it.
+function TB.OpenMiniCategory(key)
+    if not flyout then createFlyout() end
+    local wanted = nil
+    for _, cat in ipairs(CATEGORIES) do
+        if cat.key == key then wanted = cat end
+    end
+    if not wanted or wanted == openCategory then
+        openCategory = nil
+        flyout:Hide()
+    else
+        openCategory = wanted
+        flyout:ClearAllPoints()
+        flyout:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, 4)
+        flyout:Show()
+        renderFlyout()
+    end
+    if TB.RefreshMiniBar then TB.RefreshMiniBar() end
+end
+
+function TB.GetMiniCategory()
+    return openCategory and openCategory.key or nil
+end
+
+-- ── bar ──────────────────────────────────────────────────────────────────
 local function savePosition()
     local left, top = bar:GetLeft(), bar:GetTop()
     if not left or not top then return end
@@ -104,9 +299,47 @@ local function savePosition()
     TortoiseBotsDB.miniBar = { x = left, y = top }
 end
 
+local function categoryIcon(category)
+    for _, def in ipairs(defsOf(category)) do
+        if def.icon then return def.icon end
+    end
+    return "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+-- Places the favourites after the categories and sizes the bar to fit.
+function TB.LayoutMiniBar()
+    if not bar then return end
+    local favs = TB.GetMiniFavorites()
+    local x0 = 34 + table.getn(CATEGORIES) * STEP + 12
+    bar.divider:ClearAllPoints()
+    bar.divider:SetPoint("LEFT", bar, "LEFT", x0 - 7, 0)
+    bar.icons = {}
+    local shown = 0
+    for i, b in ipairs(bar.favButtons) do
+        local def = favs[i] and defByIntent(favs[i])
+        b.def = def
+        if def then
+            shown = shown + 1
+            setIcon(b.icon, def)
+            b:ClearAllPoints()
+            b:SetPoint("LEFT", bar, "LEFT", x0 + (shown - 1) * STEP, 0)
+            b:Show()
+            bar.icons[def.intent] = b
+        else
+            b:Hide()
+        end
+    end
+    bar.empty:ClearAllPoints()
+    bar.empty:SetPoint("LEFT", bar, "LEFT", x0, 0)
+    if shown == 0 then bar.empty:Show() else bar.empty:Hide() end
+    local favW = shown > 0 and shown * STEP or 110
+    bar:SetWidth(x0 + favW + 6 + 28)
+    if TB.RefreshMiniBar then TB.RefreshMiniBar() end
+    renderFlyout()
+end
+
 local function createBar()
     bar = CreateFrame("Frame", "TortoiseBotsManagerMiniBar", UIParent)
-    bar:SetWidth(34 + table.getn(ITEMS) * STEP + 18 + 32)
     bar:SetHeight(ICON + 10)
     bar:SetFrameStrata("DIALOG")
     bar:SetMovable(true)
@@ -142,15 +375,59 @@ local function createBar()
     handle:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_TOP")
         GameTooltip:SetText("TortoiseBots - mini mode")
-        GameTooltip:AddLine("Drag to move. The + button opens the full window.", 0.9, 0.9, 0.9, 1)
+        GameTooltip:AddLine("Drag to move. Category icons open their actions; right-click one to keep it on the bar. The + button opens the full window.", 0.9, 0.9, 0.9, 1)
         GameTooltip:Show()
     end)
     handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    bar.icons = {}
-    for i, item in ipairs(ITEMS) do
-        bar.icons[item.intent] = makeIcon(bar, item, i)
+    bar.categories = {}
+    for i, cat in ipairs(CATEGORIES) do
+        local b = iconButton(bar, ICON)
+        b:SetPoint("LEFT", bar, "LEFT", 34 + (i - 1) * STEP, 0)
+        b.icon:SetTexture(categoryIcon(cat))
+        b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        b.arrow = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        b.arrow:SetPoint("TOP", b, "TOP", 0, 9)
+        b.arrow:SetText("^")
+        b.category = cat
+        b:SetScript("OnClick", function() TB.OpenMiniCategory(this.category.key) end)
+        b:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_TOP")
+            GameTooltip:SetText(this.category.label)
+            GameTooltip:AddLine("Click: show its actions.", 0.9, 0.9, 0.9, 1)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        bar.categories[cat.key] = b
     end
+
+    bar.divider = bar:CreateTexture(nil, "ARTWORK")
+    bar.divider:SetWidth(1); bar.divider:SetHeight(ICON)
+    bar.divider:SetTexture(0.48, 0.36, 0.15, 0.8)
+
+    bar.favButtons = {}
+    for i = 1, MAX_FAVORITES do
+        local b = iconButton(bar, ICON)
+        b:SetScript("OnClick", function()
+            local def = this.def
+            if not def then return end
+            if arg1 == "RightButton" then
+                TB.ToggleMiniFavorite(def.intent)
+            else
+                TB.RunActionIntent(def.intent)
+            end
+        end)
+        b:SetScript("OnEnter", function()
+            if this.def then showTooltip(this, this.def, "Right-click: drop it from the bar.") end
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        b:Hide()
+        bar.favButtons[i] = b
+    end
+    bar.empty = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    bar.empty:SetWidth(110); bar.empty:SetJustifyH("LEFT")
+    bar.empty:SetText("Right-click actions to pin them.")
+    TB.SetTextColor(bar.empty, color("muted"))
 
     local expand = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
     expand:SetWidth(22); expand:SetHeight(22)
@@ -167,35 +444,22 @@ local function createBar()
     bar.expand = expand
     bar:Hide()
     TB.miniBar = bar
-end
-
-local function setUsable(b, usable)
-    if usable then
-        b:Enable()
-        if b.icon.SetVertexColor then b.icon:SetVertexColor(1, 1, 1) end
-    else
-        b:Disable()
-        if b.icon.SetVertexColor then b.icon:SetVertexColor(0.35, 0.35, 0.35) end
-    end
+    TB.LayoutMiniBar()
 end
 
 function TB.RefreshMiniBar()
     if not bar or not bar:IsVisible() then return end
-    local enemy = TB.HasEnemyTarget and TB.HasEnemyTarget() or false
-    for _, item in ipairs(ITEMS) do
-        local b = bar.icons[item.intent]
-        local usable = true
-        if item.needsEnemy and not enemy then usable = false end
-        if item.cap and not (TB.HasServerCapability and TB.HasServerCapability(item.cap)) then usable = false end
-        if item.toggle then
-            local state = TB.GetPartyToggleState and TB.GetPartyToggleState(item.toggle)
-            if state == "on" then b.lamp:SetTexture(0.30, 0.90, 0.45, 1)
-            elseif state == "off" then b.lamp:SetTexture(0.45, 0.45, 0.45, 1)
-            else b.lamp:SetTexture(0.95, 0.72, 0.28, 1) end
-            if TB.togglePending and TB.togglePending[item.toggle] then usable = false end
+    for _, b in ipairs(bar.favButtons) do
+        if b.def then
+            paintLamp(b.lamp, b.def)
+            setUsable(b, usable(b.def))
         end
-        setUsable(b, usable)
     end
+    for key, b in pairs(bar.categories) do
+        if openCategory and openCategory.key == key then TB.SetTextColor(b.arrow, color("gold"))
+        else b.arrow:SetTextColor(0.6, 0.6, 0.6) end
+    end
+    renderFlyout()
 end
 
 -- "mini": hide the window, show the bar. "full": the other way round.
@@ -209,10 +473,12 @@ function TB.SetMode(mode)
         if TB.CloseVault then TB.CloseVault() end
         if TB.CloseNpc then TB.CloseNpc() end
         if TB.CloseRunWindow then TB.CloseRunWindow() end
+        if TB.CloseServerInfo then TB.CloseServerInfo() end
         if TB.frame then TB.frame:Hide() end
         bar:Show()
         TB.RefreshMiniBar()
     else
+        if openCategory then TB.OpenMiniCategory(nil) end
         bar:Hide()
         if TB.frame and not TB.frame:IsVisible() then
             TB.frame:Show()
@@ -229,7 +495,12 @@ end
 -- Minimap button and /tbm: show or hide whichever view the mode uses.
 function TB.ToggleMiniBar()
     if not bar then createBar() end
-    if bar:IsVisible() then bar:Hide() else bar:Show(); TB.RefreshMiniBar() end
+    if bar:IsVisible() then
+        if openCategory then TB.OpenMiniCategory(nil) end
+        bar:Hide()
+    else
+        bar:Show(); TB.RefreshMiniBar()
+    end
 end
 
 -- Target changes decide which icons are usable.

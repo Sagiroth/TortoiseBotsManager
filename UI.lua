@@ -771,6 +771,32 @@ CreateRosterBar = function(parent)
     return bar
 end
 
+-- One click, whatever the view (Fight/Camp buttons, the mini bar): toggles,
+-- strategies, timed pulls and the other special intents go their own way.
+function TB.RunActionIntent(intent)
+    if TB.PartyToggleKey and TB.PartyToggleKey(intent) then
+        TB.SendPartyToggle(TB.PartyToggleKey(intent))
+    elseif intent == "strategy +grind" or intent == "strategy -grind" then
+        TB.SendGrindToggle()
+    elseif intent == "strategy reset" then
+        TB.SendStrategyCommand("reset")
+    elseif string.sub(intent, 1, 9) == "strategy " and TB.SendStrategy then
+        TB.SendStrategy(string.sub(intent, 10))
+    elseif intent == "release" then
+        TB.SendActionIntent(TB.DeathIntent and TB.DeathIntent() or "release")
+    elseif intent == "pull" or intent == "pullback" then
+        TB.SendActionIntent(TB.PullIntent and TB.PullIntent(intent) or intent)
+    elseif string.sub(intent, 1, 7) == "stance " then
+        TB.SetStance(string.sub(intent, 8))
+    elseif intent == "ready" then
+        TB.SendReadyCheck()
+    elseif intent == "totem party drop" then
+        TB.SendTotemDrop()
+    else
+        TB.SendActionIntent(intent)
+    end
+end
+
 local function makeActionButton(parent, intent, width, x, y)
     local def = TB.GetActionDefinition and (TB.GetActionDefinition(intent) or (TB.C and TB.C.ACTIONS_BY_INTENT and TB.C.ACTIONS_BY_INTENT[intent]))
     local labels = C.ACTION_LABELS or {}
@@ -787,27 +813,7 @@ local function makeActionButton(parent, intent, width, x, y)
         raidIcon = raidIcon,
         tip = (def and def.tip) or ACTION_TOOLTIPS[intent] or ("Send .bot action " .. intent),
         tipTitle = label,
-        onClick = function()
-            if TB.PartyToggleKey and TB.PartyToggleKey(intent) then
-                TB.SendPartyToggle(TB.PartyToggleKey(intent))
-            elseif intent == "strategy +grind" or intent == "strategy -grind" then
-                TB.SendGrindToggle()
-            elseif intent == "strategy reset" then
-                TB.SendStrategyCommand("reset")
-            elseif string.sub(intent, 1, 9) == "strategy " and TB.SendStrategy then
-                TB.SendStrategy(string.sub(intent, 10))
-            elseif intent == "release" then
-                TB.SendActionIntent(TB.DeathIntent and TB.DeathIntent() or "release")
-            elseif intent == "pull" or intent == "pullback" then
-                TB.SendActionIntent(TB.PullIntent and TB.PullIntent(intent) or intent)
-            elseif intent == "ready" then
-                TB.SendReadyCheck()
-            elseif intent == "totem party drop" then
-                TB.SendTotemDrop()
-            else
-                TB.SendActionIntent(intent)
-            end
-        end,
+        onClick = function() TB.RunActionIntent(intent) end,
     })
     return button
 end

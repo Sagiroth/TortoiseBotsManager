@@ -1583,6 +1583,25 @@ now = now + 1
 this = bar.icons.stop
 bar.icons.stop.scripts.OnClick(bar.icons.stop)
 assert(lastAddon() == "action stop", "mini icons send the same intents")
+-- Category flyout and favourites.
+TB.OpenMiniCategory("camp")
+local fly = frames["TortoiseBotsManagerMiniFlyout"]
+assert(fly.visible and TB.GetMiniCategory() == "camp", "a category icon opens its flyout")
+local restEntry = fly.entries[1]
+assert(restEntry.def and restEntry.def.intent == "rest", "the flyout lists the category's actions")
+now = now + 1
+this, arg1 = restEntry, "LeftButton"
+restEntry.scripts.OnClick(restEntry)
+assert(lastAddon() == "action rest", "a flyout click runs the action")
+this, arg1 = restEntry, "RightButton"
+restEntry.scripts.OnClick(restEntry)
+assert(bar.icons.rest and bar.icons.rest.visible, "right-click pins the action to the bar")
+this, arg1 = bar.icons.rest, "RightButton"
+bar.icons.rest.scripts.OnClick(bar.icons.rest)
+assert(not bar.icons.rest, "right-click on the bar unpins it")
+arg1 = nil
+TB.OpenMiniCategory("camp")
+assert(not fly.visible and TB.GetMiniCategory() == nil, "the same icon closes the flyout")
 TB.Toggle()
 assert(not bar.visible and not TB.frame.visible, "/tbm hides the bar in mini mode")
 TB.Toggle()
