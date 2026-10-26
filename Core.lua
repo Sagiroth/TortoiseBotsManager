@@ -159,7 +159,7 @@ local function isBotCommandMessage(message)
     end
     -- The run window reads these replies itself (plan list, run mode).
     if string.find(message, "^Dungeon plans:") or string.find(message, "^Run mode:")
-        or string.find(message, "^Server features:") then
+        or string.find(message, "^Server features:") or string.find(message, "^Config: %d+ keys match") then
         return true
     end
     if string.find(message, "^Bot commands:") then

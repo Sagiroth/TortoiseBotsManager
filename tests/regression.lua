@@ -816,7 +816,7 @@ assert(TortoiseBotsDB.playerRole == "tank",
     "Clicking the player Tank role must persist the selected role")
 assert(table.getn(sent) == beforePlayerRole + 1 and sent[table.getn(sent)] == ".bot role self tank",
     "Clicking the player Tank role must send the self role command")
-assert(playerRow.roleButtons[1].text:find("|cffffd200Tank|r"),
+assert(playerRow.roleButtons[1].isActive and playerRow.roleButtons[1].text:find("Tank"),
     "Selected player role button must be highlighted gold")
 assert(TB.partyFrame.rows[2]:IsVisible(), "Priestbot party row must be visible")
 assert(TB.partyFrame.rows[2].nameText.text == "Priestbot", "Party row 2 must display Priestbot")
@@ -832,7 +832,7 @@ TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be stored as dps")
 assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot strategy +shadow,-holy,-discipline Priestbot",
     "Clicking Shadow role must send Playerbot strategy command")
-assert(TB.partyFrame.rows[2].roleButtons[3].text:find("|cffffd200Shadow|r"), "Selected Shadow button must be highlighted gold")
+assert(TB.partyFrame.rows[2].roleButtons[3].isActive, "Selected Shadow button must be filled gold")
 
 -- Tank designation uses the explicit role command (forced role + pull kit).
 partyClassName = "Warrior"
@@ -2003,6 +2003,27 @@ assert(TB.infoWindow.rows[1].label.text == "Dungeon runs" and TB.infoWindow.rows
     "the switches render")
 assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Server features: dungeon-run on") == true,
     "the summary stays out of the chat")
+-- All settings: a search asks the server, the answer lists key and value.
+TB.SetServerInfoTab("all")
+assert(TB.infoWindow.search:IsVisible() and not TB.infoWindow.refresh:IsVisible(), "the All tab shows the search")
+TB.SearchServerConfig("hire")
+for _ = 1, 30 do
+    if lastAddon() == "features all hire" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(lastAddon() == "features all hire", "a search sends .bot features all <text>")
+TB.OnSystemMessage("Config: 2 keys match 'hire'.")
+TB.OnSystemMessage("TBM:CONFIG_BEGIN|2")
+TB.OnSystemMessage("TBM:CONFIG|HireEnabled|1")
+TB.OnSystemMessage("TBM:CONFIG|HireMaxBotsPerPlayer|4")
+TB.OnSystemMessage("TBM:CONFIG_END|2|2")
+assert(TB.infoWindow.rows[2].label.text == "HireMaxBotsPerPlayer" and TB.infoWindow.rows[2].value.text == "4",
+    "the settings render")
+assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Config: 2 keys match 'hire'.") == true,
+    "the search summary stays out of the chat")
+TB.SetServerInfoTab("main")
 TB.CloseServerInfo()
 TB.OpenRunWindow()
 -- Mutual exclusion with the vault/NPC satellites.

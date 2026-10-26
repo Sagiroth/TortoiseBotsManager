@@ -1510,6 +1510,9 @@ function TB.InitUI()
                 btn:SetWidth(78)
                 btn:SetHeight(22)
                 btn:SetPoint("LEFT", row, "LEFT", 150 + (b - 1) * 82, 8)
+                -- Roles are a choice: outlined, the picked one filled gold.
+                btn.flatKind = "mode"
+                TB.PaintButton(btn)
                 roleButtons[b] = btn
             end
             row.roleButtons = roleButtons
@@ -2081,10 +2084,11 @@ function TB.InitUI()
                         local isSelected = currentRole == role.id
                         local shown = TB.Roles.ShortLabel and TB.Roles.ShortLabel(role.label) or role.label
                         if isSelected then
-                            btn:SetText("|cffffd200" .. shown .. "|r")
+                            btn:SetText("|cffffffff" .. shown .. "|r")
                         else
                             btn:SetText("|cffa0a0a0" .. shown .. "|r")
                         end
+                        TB.SetButtonActive(btn, isSelected)
 
                         local capturedRole = role
                         local capturedName = name
