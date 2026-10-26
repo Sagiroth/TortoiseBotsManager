@@ -448,7 +448,13 @@ local function createBar()
     local expand = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
     expand:SetWidth(22); expand:SetHeight(22)
     expand:SetPoint("RIGHT", bar, "RIGHT", -6, 0)
-    expand:SetText("+")
+    -- A drawn plus: the font's "+" glyph sits off the button's centre.
+    for _, size in ipairs({ { 10, 2 }, { 2, 10 } }) do
+        local line = expand:CreateTexture(nil, "OVERLAY")
+        line:SetWidth(size[1]); line:SetHeight(size[2])
+        line:SetPoint("CENTER", expand, "CENTER", 0, 0)
+        line:SetTexture(1, 0.82, 0.2, 1)
+    end
     expand:SetScript("OnClick", function() TB.SetMode("full") end)
     expand:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_TOP")
