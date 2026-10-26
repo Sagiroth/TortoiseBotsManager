@@ -770,7 +770,57 @@ local function renderPlans()
     end
 end
 
+-- ── Dungeon tab (main window): what the modes are, the run at a glance and
+-- the way into the run window, which is too tall for the tab itself.
+local tab
+
+function TB.CreateRunTab(parent)
+    tab = CreateFrame("Frame", nil, parent)
+    tab:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    local tw = (C.PANEL_W or 500) - (C.PAD or 10) * 2
+    tab:SetWidth(tw); tab:SetHeight(325)
+    local w = tw - 12
+    local function line(font, y, text, col)
+        local fs = tab:CreateFontString(nil, "OVERLAY", font)
+        fs:SetPoint("TOPLEFT", tab, "TOPLEFT", 6, y)
+        fs:SetWidth(w); fs:SetJustifyH("LEFT")
+        fs:SetText(text or "")
+        if col then TB.SetTextColor(fs, color(col)) end
+        return fs
+    end
+    line("GameFontNormal", -6, "Dungeon run", "gold")
+    line("GameFontHighlightSmall", -26, "Your bots clear a whole dungeon by its plan: pulls, crowd control, boss tactics, rests and revives.", "muted")
+    line("GameFontNormalSmall", -62, "BOTS LEAD", "gold")
+    line("GameFontHighlightSmall", -78, "A bot tank leads and pulls; you stay in the party. Best when you heal or deal damage.")
+    line("GameFontNormalSmall", -106, "I LEAD", "gold")
+    line("GameFontHighlightSmall", -122, "You walk where you like; the bots pull the packs near you. Best when you tank.")
+    line("GameFontNormalSmall", -158, "RUN", "gold")
+    tab.state = line("GameFontHighlightSmall", -174, "No run.")
+    tab.note = line("GameFontHighlightSmall", -190, "", "muted")
+    tab.open = CreateFrame("Button", nil, tab, "UIPanelButtonTemplate")
+    tab.open:SetWidth(160); tab.open:SetHeight(22)
+    tab.open:SetPoint("TOPLEFT", tab, "TOPLEFT", 6, -222)
+    tab.open:SetText("Open run window")
+    tab.open:SetScript("OnClick", function() TB.OpenRunWindow() end)
+    tab:Hide()
+    return tab
+end
+
+function TB.RefreshRunTab()
+    if not tab then return end
+    local st = run
+    if not st or st.state == "none" then
+        tab.state:SetText("No run.")
+        tab.note:SetText("Pick a mode and a plan in the run window, then Start.")
+        return
+    end
+    tab.state:SetText(TB.RunPlanTitle(st.plan) .. " · " .. string.gsub(st.state or "", "^%l", string.upper)
+        .. " · step " .. tostring(st.step or 0) .. " of " .. tostring(st.steps or 0))
+    tab.note:SetText(st.note or "")
+end
+
 function TB.RefreshRunWindow()
+    TB.RefreshRunTab()
     if not win or not win:IsVisible() then return end
     renderPlans()
     local st = run or { state = "none", plan = "-", step = 0, steps = 0,
@@ -895,6 +945,7 @@ end
 -- The capability can disappear mid-session (a restart with the feature
 -- off): close the window and drop the model so no stale state lingers.
 function TB.NoteRunCaps()
+    if TB.UpdateRaidTab then TB.UpdateRaidTab() end
     if TB.HasRunCapability() then
         if TB.RefreshRunWindow then TB.RefreshRunWindow() end
         return

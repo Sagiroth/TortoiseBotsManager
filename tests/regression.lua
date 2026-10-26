@@ -1860,16 +1860,15 @@ assert(table.getn(sent) == beforeKeys + 4, "keybindings must send exactly one in
 -- ── Dungeon run window (P11): capability-gated satellite ─────────────────
 TB.OnSystemMessage("TBM:TRANSPORT|party")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
-TB.RefreshPartyView()
-assert(not TB.partyFrame.runButton:IsVisible(), "no Dungeon run button without the capability")
+assert(not TB.tabDungeon:IsVisible(), "no Dungeon tab without the capability")
 assert(TB.OpenRunWindow() == false, "the run window stays shut without the capability")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run")
-TB.RefreshPartyView()
-assert(TB.partyFrame.runButton:IsVisible(), "the capability shows the Dungeon run button")
+assert(TB.tabDungeon:IsVisible(), "the capability shows the Dungeon tab")
 now = now + 1
-this = TB.partyFrame.runButton
-TB.partyFrame.runButton.scripts.OnClick(TB.partyFrame.runButton)
-assert(TB.runWindow and TB.runWindow:IsVisible(), "Dungeon run opens the window")
+this = TB.tabDungeon
+TB.tabDungeon.scripts.OnClick(TB.tabDungeon)
+assert(TB.dungeonFrame:IsVisible(), "the Dungeon tab shows its page")
+assert(TB.runWindow and TB.runWindow:IsVisible(), "the Dungeon tab opens the run window")
 local runQueue = frames["TortoiseBotsManagerQueueFrame"]
 for _ = 1, 30 do
     if lastAddon() == "run status" then break end
@@ -1950,8 +1949,8 @@ assert(TB.runWindow:IsVisible() and not TB.botVault:IsVisible(), "the run window
 TB.CloseBotPanel()
 assert(not TB.runWindow:IsVisible(), "the run window closes with its parent")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
-TB.RefreshPartyView()
-assert(not TB.partyFrame.runButton:IsVisible(), "losing the cap hides everything again")
+assert(not TB.tabDungeon:IsVisible(), "losing the cap hides everything again")
+assert(not TB.dungeonFrame:IsVisible(), "losing the cap leaves the Dungeon tab")
 assert(TB.GetRun() == nil, "losing the cap drops the model")
 
 partyMembers = {}

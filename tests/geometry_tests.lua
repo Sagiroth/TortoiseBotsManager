@@ -507,38 +507,18 @@ return function()
                 noOverlaps("Party row " .. i .. " buttons", btnItems, cache)
             end
             noOverlaps("Party rows", rowItems, cache)
-            -- Dungeon run button (P11): inside the frame, clear of row 1.
-            if frame.runButton then
-                local btn = frame.runButton
-                local wasVisible = btn:IsVisible()
-                btn:Show()
-                local br = frameRect(btn, cache)
-                if not inside(br, fr, 2) then
-                    bad(string.format("Party: run button %s escapes the frame %s",
-                        fmt(br), fmt(fr)))
+            -- Dungeon tab (P11): with every tab shown (dungeon-run + a raid
+            -- would make 8) the Log tab still ends inside the main window.
+            if TB.tabDungeon then
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run")
+                local lr = frameRect(TB.tabLog, cache)
+                local mr = frameRect(TB.frame, cache)
+                if lr.right > mr.right then
+                    bad(string.format("Tabs: Log tab %s escapes the main window %s", fmt(lr), fmt(mr)))
                 end
-                local row1 = frame.rows[1] and frameRect(frame.rows[1], cache)
-                if row1 and overlaps(br, row1) then
-                    bad("Party: run button overlaps row 1")
-                end
-                -- With the button shown, the header subtitle must clear it:
-                -- subtitle starts at title.LEFT + rendered title + 8.
-                do
-                    local titleR = frameRect(frame.title, cache)
-                    local titleW = textWidth("Active Party Roles", 6)
-                    local subW = textWidth("(role buttons · bag = gear · click to target)", 6)
-                    local subRight = titleR.left + titleW + 8 + subW
-                    if subRight > br.left then
-                        bad(string.format("Party: subtitle ends at x=%d but run button starts at x=%d",
-                            subRight, br.left))
-                    end
-                end
-                labelFits("Party run", btn, "Dungeon run", 6)
-                if not wasVisible then btn:Hide() end
                 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
-                TB.RefreshPartyView()
             else
-                bad("Party: run button missing")
+                bad("Tabs: Dungeon tab missing")
             end
         end
     end

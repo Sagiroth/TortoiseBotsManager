@@ -1360,14 +1360,16 @@ function TB.InitUI()
     end
 
     -- Tabs by kind of work: Fight (in a pull), Camp (between pulls), Party
-    -- (who does what), Roster (who is logged in), Guild (claimed bots), Raid (raid only), Log.
+    -- (who does what), Roster (who is logged in), Guild (claimed bots), Raid (raid only),
+    -- Dungeon (only while the server runs the dungeon run leader), Log.
     local tabActions = makeTab("Fight", 0)
     local tabCamp = makeTab("Camp", 80)
     local tabParty = makeTab("Party", 160)
     local tabRoster = makeTab("Roster", 240)
     local tabGuild = makeTab("Guild", 320)
     local tabRaid = makeTab("Raid", 400)
-    local tabLog = makeTab("Log", 480)
+    local tabDungeon = makeTab("Dungeon", 480)
+    local tabLog = makeTab("Log", 560)
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
@@ -1398,20 +1400,6 @@ function TB.InitUI()
         subtitle:SetText("|cff888888(role buttons · bag = gear · click to target)|r")
         partyFrame.title = title
         partyFrame.subtitle = subtitle
-
-        -- Dungeon run (Preview): opens the run leader window. The server
-        -- only advertises the feature while it is enabled, so the button
-        -- hides with it (see RefreshPartyView).
-        local runBtn = CreateFrame("Button", nil, partyFrame, "UIPanelButtonTemplate")
-        runBtn:SetWidth(104); runBtn:SetHeight(20)
-        runBtn:SetPoint("TOPRIGHT", partyFrame, "TOPRIGHT", -6, 0)
-        runBtn:SetText("Dungeon run")
-        setButtonTooltip(runBtn, "Your bots clear a dungeon plan by themselves (Preview). Needs the server's run leader.", "Dungeon run")
-        runBtn:SetScript("OnClick", function()
-            if TB.OpenRunWindow then TB.OpenRunWindow() end
-        end)
-        runBtn:Hide()
-        partyFrame.runButton = runBtn
 
         local emptyMsg = partyFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         emptyMsg:SetPoint("CENTER", partyFrame, "CENTER", 0, -20)
@@ -1966,6 +1954,7 @@ function TB.InitUI()
     end
 
     local logFrame = CreateLogView(content)
+    local dungeonFrame = TB.CreateRunTab(content)
 
     function TB.RefreshLogView()
         if not TB.logScroll or not TB.logRows then return end
@@ -2115,11 +2104,6 @@ function TB.InitUI()
         else
             TB.partyFrame.emptyMsg:Hide()
         end
-        -- Dungeon run button: only while the server enables the feature.
-        if TB.partyFrame.runButton then
-            if serverHasCap("dungeon-run") then TB.partyFrame.runButton:Show()
-            else TB.partyFrame.runButton:Hide() end
-        end
     end
 
     function TB.RefreshGuildView()
@@ -2225,6 +2209,7 @@ function TB.InitUI()
         { name = "roster",  tab = tabRoster,  frame = rosterFrame },
         { name = "guild",   tab = tabGuild,   frame = guildFrame },
         { name = "raid",    tab = tabRaid,    frame = raidFrame },
+        { name = "dungeon", tab = tabDungeon, frame = dungeonFrame },
         { name = "log",     tab = tabLog,     frame = logFrame },
     }
 
@@ -2232,19 +2217,25 @@ function TB.InitUI()
         return ((GetNumRaidMembers and GetNumRaidMembers()) or 0) > 0
     end
 
-    -- Responsive tab bar layout: adjusts width and stride to fit 6 or 7 tabs.
+    local function tabShown(name)
+        if name == "raid" then return inRaid() end
+        if name == "dungeon" then return serverHasCap("dungeon-run") end
+        return true
+    end
+
+    -- Responsive tab bar layout: adjusts width and stride to fit 6 to 8 tabs.
     local function layoutTabs()
         local visibleCount = 0
         for _, t in ipairs(tabs) do
-            if t.name ~= "raid" or inRaid() then
+            if tabShown(t.name) then
                 visibleCount = visibleCount + 1
             end
         end
-        local tabW = (visibleCount > 6) and 66 or 76
-        local step = (visibleCount > 6) and 68 or 80
+        local tabW = (visibleCount > 7) and 58 or ((visibleCount > 6) and 66 or 76)
+        local step = (visibleCount > 7) and 60 or ((visibleCount > 6) and 68 or 80)
         local x = 0
         for _, t in ipairs(tabs) do
-            if t.name ~= "raid" or inRaid() then
+            if tabShown(t.name) then
                 t.tab:ClearAllPoints()
                 t.tab:SetPoint("LEFT", tabBar, "LEFT", x, 0)
                 t.tab:SetWidth(tabW)
@@ -2257,7 +2248,7 @@ function TB.InitUI()
     end
 
     local function showTab(name)
-        if name == "raid" and not inRaid() then name = "actions" end
+        if not tabShown(name) then name = "actions" end
         local known = false
         for _, t in ipairs(tabs) do
             if t.name == name then known = true end
@@ -2293,6 +2284,9 @@ function TB.InitUI()
             if TB.RefreshLogView then TB.RefreshLogView() end
         elseif name == "raid" then
             if TB.RefreshRaidView then TB.RefreshRaidView() end
+        elseif name == "dungeon" then
+            if TB.RefreshRunTab then TB.RefreshRunTab() end
+            if TB.OpenRunWindow then TB.OpenRunWindow() end
         else
             TB.Refresh()
         end
@@ -2306,10 +2300,11 @@ function TB.InitUI()
         t.tab:SetScript("OnClick", function() showTab(tabName) end)
     end
 
-    -- Joining or leaving a raid adds or removes the Raid tab.
+    -- Joining or leaving a raid adds or removes the Raid tab; the server's
+    -- dungeon-run capability does the same for the Dungeon tab.
     TB.UpdateRaidTab = function()
         local current = TortoiseBotsDB and TortoiseBotsDB.activeTab
-        if current == "raid" and not inRaid() then
+        if current and not tabShown(current) then
             showTab("actions")
         else
             layoutTabs()
@@ -2318,6 +2313,7 @@ function TB.InitUI()
 
     TB.ShowTab = showTab
     TB.tabActions, TB.tabParty, TB.tabRoster, TB.tabLog = tabActions, tabParty, tabRoster, tabLog
+    TB.tabDungeon, TB.dungeonFrame = tabDungeon, dungeonFrame
     TB.tabGuild, TB.guildFrame = tabGuild, guildFrame
     TB.tabRaid, TB.raidFrame = tabRaid, raidFrame
     TB.tabCamp = tabCamp

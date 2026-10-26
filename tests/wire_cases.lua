@@ -2015,14 +2015,12 @@ local cases = {
         expected = { ".bot run list", ".bot run status" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,dungeon-run")
-            TB.RefreshPartyView()
-            assert(TB.partyFrame.runButton:IsVisible(), "the Party tab shows Dungeon run")
+            assert(TB.tabDungeon:IsVisible(), "the Dungeon tab shows")
             assert(TB.OpenRunWindow() == true, "the window opens with the capability")
             assert(TB.runWindow and TB.runWindow:IsVisible(), "the window is visible")
             TB.CloseRunWindow()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
-            TB.RefreshPartyView()
-            assert(not TB.partyFrame.runButton:IsVisible(), "losing the cap hides the button")
+            assert(not TB.tabDungeon:IsVisible(), "losing the cap hides the tab")
         end,
     },
     {
