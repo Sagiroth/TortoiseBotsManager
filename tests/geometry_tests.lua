@@ -1350,7 +1350,7 @@ return function()
                 local status = {}
                 for _, key in ipairs({ "runBar", "runLeg", "runPhase",
                     "runNote", "runStep", "runState", "bindHint", "planHint", "modeHint",
-                    "stopHint", "warn" }) do
+                    "feedback", "warn" }) do
                     if win[key] then table.insert(status, { key, win[key] }) end
                 end
                 childrenInside("RunWindow status", win, wr, status, cache, 2)

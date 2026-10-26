@@ -35,7 +35,7 @@ local TB = TortoiseBots
 local C = TB.C or {}
 local COL = C.COLOR or {}
 local RW = 300
-local RWINDOW = 600
+local RWINDOW = 614
 local PROW = 5
 
 local CAP = "dungeon-run"
@@ -211,12 +211,60 @@ function TB.ParseRunMessage(msg)
     return false
 end
 
+-- ── feedback ──────────────────────────────────────────────────────────────
+-- The window's answer line: what was sent, then the server's ACK or ERR.
+local feedback = nil
+
+local function setFeedback(text, kind)
+    feedback = { text = text, kind = kind }
+    if TB.RefreshRunWindow then TB.RefreshRunWindow() end
+end
+
+function TB.GetRunFeedback()
+    return feedback
+end
+
+local FEEDBACK_LABEL = {
+    ["commander bind"] = "Bind", ["commander unbind"] = "Unbind", ["commander status"] = "Party status",
+    ["cmd enter"] = "Enter", ["run list"] = "Plans", ["run start"] = "Start", ["run pause"] = "Pause",
+    ["run resume"] = "Resume", ["run skip"] = "Skip", ["run stop"] = "Stop", ["run status"] = "Status",
+}
+
+local function feedbackLabel(intent)
+    for prefix, label in pairs(FEEDBACK_LABEL) do
+        if string.sub(intent or "", 1, string.len(prefix)) == prefix then return label end
+    end
+    return nil
+end
+
+local function sent(cmd, ok)
+    local label = feedbackLabel(cmd)
+    if ok and label then setFeedback(label .. " sent, waiting for the server...", "pending") end
+    return ok
+end
+
+function TB.OnRunError(packet)
+    local label = packet and feedbackLabel(packet.intent)
+    if not label then return false end
+    local message = packet.message ~= "" and packet.message or packet.code
+    if string.len(message) > 120 then message = string.sub(message, 1, 117) .. "..." end
+    setFeedback("|cffff5050" .. label .. " refused:|r " .. message, "err")
+    return false
+end
+
 -- ACK/ERR routing for the run intents (called from ParseActionMessage):
 -- "run status" with no run answers "no run" plus this ACK, so clear the
 -- model; every other ACK/ERR keeps the generic status text.
 function TB.OnRunAck(packet)
     if not packet then return false end
     local intent = packet.intent or ""
+    local label = feedbackLabel(intent)
+    if label then
+        local text = "|cff40ff40" .. label .. " done.|r"
+        if intent == "run list" then text = "|cff40ff40" .. packet.count .. " plans loaded.|r"
+        elseif packet.executor ~= "-" then text = "|cff40ff40" .. label .. " done:|r " .. packet.executor end
+        setFeedback(text, "ok")
+    end
     if intent == "run status" and packet.executor == "-"
         and (packet.count or 0) == 0 then
         run = { plan = "-", state = "none", step = 0, steps = 0, leg = "-",
@@ -232,7 +280,7 @@ local function sendRun(cmd)
     if not TB.HasRunCapability() then return false end
     cmd = TB.Trim(cmd or "")
     if cmd == "" then return false end
-    return TB.SendBotCommand(cmd)
+    return sent(cmd, TB.SendBotCommand(cmd))
 end
 
 -- Binds the targeted bot plus up to four grouped owned bots as its party.
@@ -248,6 +296,7 @@ function TB.SendRunBind()
         if TB.SetStatus then
             TB.SetStatus("Target a bot first: it leads the bound party.", "warn")
         end
+        setFeedback("|cffff5050Bind:|r target your tank bot first; it leads the party.", "err")
         return false
     end
     local names = { lead }
@@ -277,7 +326,7 @@ function TB.SendRunList()
     if not TB.HasRunCapability() then return false end
     plansPending = true
     if TB.RefreshRunWindow then TB.RefreshRunWindow() end
-    return TB.SendBotCommand("run list")
+    return sent("run list", TB.SendBotCommand("run list"))
 end
 
 function TB.SendRunStart(plan, fromKind, fromValue)
@@ -299,7 +348,7 @@ function TB.SendRunStart(plan, fromKind, fromValue)
             if bot then cmd = cmd .. " tank " .. bot end
         end
     end
-    return TB.SendBotCommand(cmd)
+    return sent(cmd, TB.SendBotCommand(cmd))
 end
 
 function TB.SendRunPause()
@@ -321,8 +370,8 @@ function TB.SendRunStop(reason)
     reason = string.gsub(reason, "[%c|]", "")
     if string.len(reason) > 80 then reason = string.sub(reason, 1, 80) end
     reason = TB.Trim(reason)
-    if reason == "" then return TB.SendBotCommand("run stop") end
-    return TB.SendBotCommand("run stop " .. reason)
+    if reason == "" then return sent("run stop", TB.SendBotCommand("run stop")) end
+    return sent("run stop", TB.SendBotCommand("run stop " .. reason))
 end
 
 function TB.SendRunStatus()
@@ -587,15 +636,14 @@ local function createWindow()
         stopReason = this:GetText() or ""
     end)
     setTooltip(win.stopBox, "Stop reason", { "Optional: why the run ends (shown in the note)." })
-    local stopHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    stopHint:SetPoint("TOPLEFT", win, "TOPLEFT", 108, ctlY - 66)
-    stopHint:SetWidth(168); stopHint:SetJustifyH("LEFT")
-    stopHint:SetText("Stop reason (optional).")
-    TB.SetTextColor(stopHint, color("muted"))
-    win.stopHint = stopHint
+    -- What the last click did: sent, then the server's answer.
+    win.feedback = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.feedback:SetPoint("TOPLEFT", win, "TOPLEFT", 12, ctlY - 70)
+    win.feedback:SetWidth(RW - 24); win.feedback:SetJustifyH("LEFT")
+    win.feedback:SetText("")
 
     -- Status: plan, state lamp, step x/y progress, leg, phase, note.
-    local stY = ctlY - 88
+    local stY = ctlY - 102
     local st = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     st:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY)
     st:SetText("STATUS")
@@ -864,9 +912,15 @@ function TB.RefreshRunWindow()
         if st.state == "paused" then win.resume:Enable() else win.resume:Disable() end
     end
     if live then win.skip:Enable() else win.skip:Disable() end
+    win.feedback:SetText(feedback and feedback.text or "|cff9d9d9dClick a button: the server's answer shows here.|r")
     local playerLed = runMode == "player"
-    win.modeBot:SetText(playerLed and "Bots lead" or "|cffffd200Bots lead|r")
-    win.modeYou:SetText(playerLed and "|cffffd200I lead|r" or "I lead")
+    -- Radio look: the picked mode is lit with a dot, the other one dimmed.
+    win.modeBot:SetText(playerLed and "|cff9d9d9dBots lead|r" or "|cffffd200> Bots lead <|r")
+    win.modeYou:SetText(playerLed and "|cffffd200> I lead <|r" or "|cff9d9d9dI lead|r")
+    if win.modeBot.LockHighlight then
+        if playerLed then win.modeBot:UnlockHighlight(); win.modeYou:LockHighlight()
+        else win.modeYou:UnlockHighlight(); win.modeBot:LockHighlight() end
+    end
     if live then win.modeBot:Disable(); win.modeYou:Disable()
     else win.modeBot:Enable(); win.modeYou:Enable() end
     if playerLed then

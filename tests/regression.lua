@@ -1890,7 +1890,14 @@ now = now + 1
 this = TB.runWindow.start
 TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
 assert(lastAddon() == "run start ragefire_chasm", "Start sends the picked plan")
+assert(string.find(TB.GetRunFeedback().text, "Start sent"), "a click says it was sent")
+TB.OnSystemMessage("TBM:ACTION_ERR|run start|not-bound|You command no group.")
+assert(string.find(TB.GetRunFeedback().text, "Start refused") and string.find(TB.runWindow.feedback.text, "You command no group"),
+    "a refusal shows in the run window")
+TB.OnSystemMessage("TBM:ACTION_ACK|run list|plans|36|-")
+assert(string.find(TB.GetRunFeedback().text, "36 plans loaded"), "the plans ACK is understood, not malformed")
 TB.OnSystemMessage("TBM:ACTION_ACK|run start|party|120|ragefire_chasm")
+assert(string.find(TB.GetRunFeedback().text, "Start done"), "an ACK shows in the run window")
 TB.OnSystemMessage("TBM:RUN|ragefire_chasm|running|1/120|tunnel|move|walk|walking to tunnel")
 assert(TB.GetRun().state == "running", "the status line drives the model")
 assert(TB.runWindow.runStep.text == "Step 1 of 120", "step x/y renders")

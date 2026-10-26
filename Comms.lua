@@ -172,7 +172,7 @@ end
 local function setActionAck(fields)
     if table.getn(fields) ~= 4 then return nil end
     local intent, scope, count, executor = fields[1], fields[2], fields[3], fields[4]
-    if TB.Trim(intent) == "" or (scope ~= "party" and string.sub(scope, 1, 4) ~= "bot:")
+    if TB.Trim(intent) == "" or TB.Trim(scope) == ""
         or not string.find(count, "^%d+$") or TB.Trim(executor) == "" then
         return nil
     end
@@ -269,6 +269,7 @@ function TB.ParseActionMessage(msg)
             TB.OnPartyToggleResult(toggleKey, nil, nil)
         end
         if TB.OnBotPanelError then TB.OnBotPanelError(packet) end
+        if TB.OnRunError then TB.OnRunError(packet) end
         local text = actionLabel(packet.intent) .. ": " .. packet.code
         if packet.message ~= "" then text = text .. " — " .. packet.message end
         if TB.SetStatus then TB.SetStatus(text, "warn") end
