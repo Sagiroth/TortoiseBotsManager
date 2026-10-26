@@ -65,6 +65,40 @@ function TB.MovementLabel(name)
     return move and C.MOVEMENT_LABELS and C.MOVEMENT_LABELS[move] or nil
 end
 
+-- ── movement modes (Actions tab MOVE card) ──────────────────────────────────
+local MOVE_MODES = { follow = true, stay = true, guard = true, free = true }
+
+-- The mode every live bot shares, "mixed" when they differ, nil = unknown.
+function TB.GetPartyMoveMode()
+    local mode
+    for _, st in pairs(botStates) do
+        if st.move then
+            if mode and mode ~= st.move then return "mixed" end
+            mode = st.move
+        end
+    end
+    return mode
+end
+
+-- A confirmed order shows at once; Come ends in stay or follow, so it
+-- waits for the next roster snapshot.
+function TB.OnMoveModeAck(packet)
+    if not packet or (packet.count or 0) == 0 then return end
+    if packet.intent == "come" then
+        if TB.RequestPollSoon then TB.RequestPollSoon() end
+        return
+    end
+    if not MOVE_MODES[packet.intent] then return end
+    local _, _, botName = string.find(packet.scope or "", "^bot:(.+)$")
+    local st = botName and botStates[norm(botName)]
+    if st then
+        st.move = packet.intent
+    elseif not botName then
+        for _, other in pairs(botStates) do other.move = packet.intent end
+    end
+    TB.RefreshBotViews()
+end
+
 -- ── party toggles (Actions tab: AoE, Auto CC, Loot) ─────────────────────────
 -- Autonomous grind reply state for the Camp quests card.
 TB.grindState = TB.grindState or nil

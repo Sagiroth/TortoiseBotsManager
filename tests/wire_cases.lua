@@ -968,8 +968,8 @@ local cases = {
             setParty({ "Alpha" }, "Warrior")
             TB.ShowTab("party")
             TB.RefreshPartyView()
-            this = TB.partyFrame.rows[1].roleButtons[2]
-            TB.partyFrame.rows[1].roleButtons[2].scripts.OnClick()
+            this = TB.partyFrame.rows[1].roleButtons[3]
+            TB.partyFrame.rows[1].roleButtons[3].scripts.OnClick()
         end,
     },
     {

@@ -2061,10 +2061,10 @@ function TB.InitUI()
                     row.playerLabel:Hide()
                 end
 
-                local roles = TB.Roles.GetClassRoles(classId)
+                local roles = isPlayer and TB.Roles.PLAYER_ROLES or TB.Roles.GetClassRoles(classId)
                 local currentRole
                 if isPlayer then
-                    currentRole = TB.Roles.GetPlayerRole(classId)
+                    currentRole = TB.Roles.GetPlayerRole()
                 else
                     currentRole = TB.Roles.GetBotRole(name, classId)
                 end
@@ -2095,7 +2095,7 @@ function TB.InitUI()
                         local playerRoleToken = TB.Roles.GetPlayerRoleToken(capturedRole.id)
                         btn:SetScript("OnClick", function()
                             if isPlayer then
-                                TB.Roles.SetPlayerRole(capturedRole, classId)
+                                TB.Roles.SetPlayerRole(capturedRole)
                             else
                                 TB.Roles.SetBotRole(capturedName, capturedRole, classId)
                             end
@@ -2103,8 +2103,8 @@ function TB.InitUI()
                         end)
 
                         if isPlayer then
-                            setButtonTooltip(btn, "Set your role to " .. capturedRole.label ..
-                                " (bots use " .. playerRoleToken .. ").")
+                            setButtonTooltip(btn, "Tell your bots you play as " .. capturedRole.label ..
+                                " (bots use " .. playerRoleToken .. "). Your own spec does not change.")
                         else
                             setButtonTooltip(btn, "Set " .. capturedName .. " role to " .. capturedRole.label ..
                                 (capturedRole.strat ~= "" and (" (" .. capturedRole.strat .. ")") or ""))
@@ -2580,6 +2580,11 @@ function TB.RefreshToggleButtons()
         if key == "aoe" and not state and TB.aoeEnabled then state = "on" end
         paintSwitch(btn, btn.toggle.label, state)
         if TB.togglePending and TB.togglePending[key] then btn:Disable() else btn:Enable() end
+    end
+    local moveMode = TB.GetPartyMoveMode and TB.GetPartyMoveMode() or nil
+    for _, mode in ipairs({ "follow", "stay", "guard", "free" }) do
+        local btn = TB.actionButtons and TB.actionButtons[mode]
+        if btn then TB.SetButtonActive(btn, moveMode == mode) end
     end
 end
 
