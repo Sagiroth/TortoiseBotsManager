@@ -34,18 +34,22 @@ After an update, restart the game client fully: WoW loads new addon files only o
 - **Mini mode** — `Mini` (or `/tbm mini`) swaps the window for a small bar of fight buttons and favourites.
 - **Quiet** — button clicks travel as addon messages, so nothing shows up in chat for you or anyone nearby.
 
-Targeting one of your bots narrows the orders to that bot; otherwise they go to the whole party. Full guide: [TortoiseBotsManager addon](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/addon.md) and [Bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md).
+Targeting one of your bots narrows the orders to that bot; otherwise they go to the whole party.
 
-### Slash commands
+## 📚 Documentation
 
-| Command | Does |
+| Guide | Description |
 | :--- | :--- |
-| `/tbm` | Open or close the window |
-| `/tbm mini` / `/tbm full` | Small fight bar / full window |
-| `/tbm bags [name]` | Gear and bags of a bot (or your target) |
-| `/tbm party`, `/tbm log` | Jump to that tab |
-| `/tbm resetpos` | Move the window back to the centre |
-| `/tbm help` | List the commands |
+| **[Getting Started](docs/play/getting-started.md)** | **Start here:** install, first bot, who an order goes to |
+| [What the Addon Can Do](docs/play/features.md) | Every feature, where it is, what the server must enable |
+| [Fight and Camp](docs/play/fight-and-camp.md) | Every button and the `.bot` command it sends |
+| [Party, Roster, Guild, Raid](docs/play/party-roster-guild.md) | Roles, logging bots in, claimed guild bots, raid helpers |
+| [Bot Panel](docs/play/bot-panel.md) | Gear, bags, behaviour, spells, NPC errands, bank and mail |
+| [Dungeon Run](docs/play/dungeon-run.md) | Let your bots clear a dungeon |
+| [Mini Bar, Keys and Commands](docs/play/controls.md) | Mini bar, key bindings, slash commands, Info and Log |
+| [Addon Protocol](docs/developers/protocol.md), [Development](docs/developers/development.md) | How the addon talks to the module; tests and releases |
+
+What the bots do with each order is documented in the [TortoiseBots docs](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/README.md).
 
 ## 🖼️ Screenshots
 

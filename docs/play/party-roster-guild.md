@@ -1,0 +1,75 @@
+---
+id: play-party-roster
+title: Party, Roster, Guild and Raid Tabs
+category: play
+summary: Party roles, Roster lifecycle, claimed Guild bots and the Raid tab.
+tags: [party, roster, guild, raid, roles, lifecycle]
+relates_to:
+  - play-getting-started
+  - play-bot-panel
+  - play-fight-camp
+---
+
+# Party, Roster, Guild and Raid Tabs
+
+## Party tab
+
+One row per party member: class colour, current CC mark, a bag icon that opens the [bot panel](bot-panel.md), and role buttons.
+
+**Bot roles** use the same spec names as the inn recruiter. The lit button is the bot's real spec as the server reports it.
+
+| Class | Roles |
+| :--- | :--- |
+| Warrior | Protection, Arms, Fury |
+| Paladin | Protection, Holy, Retribution |
+| Hunter | Beastmaster, Marksman, Survival |
+| Rogue | Combat, Assassination, Subtlety |
+| Priest | Holy, Discipline, Shadow |
+| Shaman | Restoration, Elemental, Enhancement, Enh Tank |
+| Mage | Frost, Fire, Arcane |
+| Warlock | Affliction, Demonology, Destruction |
+| Druid | Feral Bear, Feral Cat, Restoration, Balance |
+
+A tank pick sends `.bot role <bot> tank`; other picks send `.bot strategy <specs> <bot>` (and clear a previous tank role). Module: [`.bot role`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role).
+
+**Your own row** picks the role *you* fill for your bots (Tank, Healer, DPS), sent as `.bot role self <role>`. It does not change your spec.
+
+## Roster tab
+
+Every character on your account, from the server (`.bot roster`): class, status (offline, starting, online, removing), whether it is in your group, and last known location. Search box and class filter chips at the top.
+
+Tick rows and use the bar below. Mixed selections only act on the rows where the action makes sense.
+
+| Button | What it does | Sends | Module |
+| :--- | :--- | :--- | :--- |
+| Login | Log selected offline alts in as bots. On an alt-bot playing alone, take it back as your companion. | `.bot add <name>` | [add](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-add) |
+| Logout | Log selected bots out. | `.bot logout <name>` | [roster](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-roster) |
+| Invite | Invite selected online bots to your group. | `.bot invite <name>` | [invite](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-invite) |
+| Kick | Remove selected bots from your group. | `.bot uninvite <name>` | [uninvite](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-uninvite) |
+| Summon | Summon selected online bots to you. | `.bot summon <name>` | [summon](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-summon) |
+| Fill | Invite online bots until the party has 5. No selection needed. | `.bot invite <name>` per bot | |
+
+Alts that play on their own in the world are marked as alt-bots. Module: [alt-bots](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#alt-bots-autonomous-alts).
+
+## Guild tab
+
+Wandering bots you claimed into your guild with `/ginvite`, kept as raid alts. The list comes from the server's claimed-bot snapshot (needs the `claimed-roster` capability).
+
+- **Badges:** level 60 bots show `[Locked]` (they never equip or vendor on their own; you gear them). Levelling bots show `[Leveling]` (they equip upgrades but keep blues and epics).
+- **Per row:** role cycler (`.bot role`), backpack button for the [bot panel](bot-panel.md), **Rel** to release the bot back to the wandering pool (`/gkick`).
+- **Bar:** tick rows, then **Invite to Raid** or **Summon to Raid**. **Fill Raid** invites online claimed bots until the raid has 40. **Sync** refreshes the list.
+
+Module: [autonomous guilds](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/world/social.md#autonomous-guild-formation).
+
+## Raid tab
+
+Shown only while you are in a raid. Orders go to your bots in the raid, or to your targeted bot.
+
+| Button | What it does | Sends |
+| :--- | :--- | :--- |
+| Tank face away | Target a dragon (Onyxia and others): tank bots turn it so breath and cleave miss the raid. | `.bot action raid tankface` |
+| Douse runes | Molten Core: bots douse nearby runes (they must carry Aqual or Eternal Quintessence). | `.bot action raid douse` |
+| Custom tactics on/off | Scripted boss moves for Emerald Sanctum, Lower Karazhan and Karazhan Crypt. Turn off to steer the bots yourself. | `.bot action raid custom on\|off` |
+| Check | Ask every bot whether custom tactics are on. | `.bot action raid custom status` |
+
+The tab also lists the boss tactics each bot has loaded. Bots switch to boss tactics on their own in supported raids; these buttons are the manual extras. Module: [raid actions](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-raid-tankface), [raid tactics](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/dungeons-and-raids.md#raid-tactics--boss-mechanics).
