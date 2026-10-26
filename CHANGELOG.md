@@ -2,6 +2,17 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.3.1 (2026-10-26)
+
+### Tactical & Roles
+- Party tab role buttons now reflect each bot's real server-reported spec — fresh Retribution and Balance hires show as DPS, and holy priests who also deal damage correctly read as Hybrid [#43](https://github.com/Sagiroth/TortoiseBotsManager/pull/43)
+- Your own row in the Party tab is now clearly a "role you fill for your bots" selector, not a spec swap — no more confusion about accidentally respeccing yourself [#43](https://github.com/Sagiroth/TortoiseBotsManager/pull/43)
+
+### UI & Controls
+- Follow, Stay, Guard, and Free now stay visibly lit in the party panel, so you can always tell which lasting move mode your party is in at a glance [#43](https://github.com/Sagiroth/TortoiseBotsManager/pull/43)
+
+---
+
 ## v1.3.0 (2026-10-26)
 
 ### Dungeon Runs
