@@ -246,8 +246,15 @@ end
 function TB.OnRunError(packet)
     local label = packet and feedbackLabel(packet.intent)
     if not label then return false end
+    -- The window's own status ask with no run is no refusal: just no run.
+    if packet.intent == "run status" and packet.code == "not-bound" then
+        run = { plan = "-", state = "none", step = 0, steps = 0, leg = "-",
+            kind = "-", phase = "-", note = "no run" }
+        if TB.RefreshRunWindow then TB.RefreshRunWindow() end
+        return false
+    end
     local message = packet.message ~= "" and packet.message or packet.code
-    if string.len(message) > 120 then message = string.sub(message, 1, 117) .. "..." end
+    if string.len(message) > 80 then message = string.sub(message, 1, 77) .. "..." end
     setFeedback("|cffff5050" .. label .. " refused:|r " .. message, "err")
     return false
 end
@@ -499,8 +506,9 @@ local function createWindow()
     mode:SetText("MODE")
     TB.SetTextColor(mode, color("gold"))
     win.modeBot = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
-    win.modeBot:SetWidth(134); win.modeBot:SetHeight(22)
-    win.modeBot:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -74)
+    -- A segmented switch: the two halves touch, the picked one is filled.
+    win.modeBot:SetWidth(139); win.modeBot:SetHeight(24)
+    win.modeBot:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -73)
     win.modeBot:SetScript("OnClick", function() TB.SetRunMode("bot") end)
     setTooltip(win.modeBot, "Bots lead", {
         "Suggested when you play healer or DPS.",
@@ -509,8 +517,8 @@ local function createWindow()
         "Your own orders to the bots pause the run until Resume.",
     })
     win.modeYou = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
-    win.modeYou:SetWidth(134); win.modeYou:SetHeight(22)
-    win.modeYou:SetPoint("TOPLEFT", win, "TOPLEFT", 154, -74)
+    win.modeYou:SetWidth(139); win.modeYou:SetHeight(24)
+    win.modeYou:SetPoint("TOPLEFT", win, "TOPLEFT", 149, -73)
     win.modeYou:SetScript("OnClick", function() TB.SetRunMode("player") end)
     setTooltip(win.modeYou, "I lead", {
         "Suggested when you play the tank.",
@@ -679,7 +687,7 @@ local function createWindow()
     win.warn = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.warn:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 108)
     win.warn:SetWidth(RW - 24); win.warn:SetJustifyH("LEFT")
-    win.warn:SetText("Any order you give the party pauses the run until Resume.")
+    win.warn:SetText("Your orders pause the run until Resume.")
     TB.SetTextColor(win.warn, color("muted"))
 
     win:Hide()
@@ -915,8 +923,8 @@ function TB.RefreshRunWindow()
     win.feedback:SetText(feedback and feedback.text or "|cff9d9d9dClick a button: the server's answer shows here.|r")
     local playerLed = runMode == "player"
     -- Switch look: the picked mode is framed and lit, the other one dimmed.
-    win.modeBot:SetText(playerLed and "|cff9d9d9dBots lead|r" or "|cffffd200Bots lead|r")
-    win.modeYou:SetText(playerLed and "|cffffd200I lead|r" or "|cff9d9d9dI lead|r")
+    win.modeBot:SetText(playerLed and "|cff8a8a8aBots lead|r" or "|cffffffffBots lead|r")
+    win.modeYou:SetText(playerLed and "|cffffffffI lead|r" or "|cff8a8a8aI lead|r")
     TB.SetButtonActive(win.modeBot, not playerLed)
     TB.SetButtonActive(win.modeYou, playerLed)
     if live then win.modeBot:Disable(); win.modeYou:Disable()
@@ -925,12 +933,12 @@ function TB.RefreshRunWindow()
         win.modeHint:SetText("You lead; bots pull near you. Best for tanks.")
         win.bindHint:SetText("Start binds your party. Target = puller.")
         win.bind:Disable()
-        win.warn:SetText("Your orders are obeyed; only Pause or Stop halt it.")
+        win.warn:SetText("Your orders never pause the run.")
     else
         win.modeHint:SetText("A bot tank leads. Best for healers and DPS.")
         win.bindHint:SetText("Target the lead bot, then Bind.")
         win.bind:Enable()
-        win.warn:SetText("Any order you give the party pauses the run until Resume.")
+        win.warn:SetText("Your orders pause the run until Resume.")
     end
     if live then win.stop:Enable() else win.stop:Disable() end
 end

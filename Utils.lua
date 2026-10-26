@@ -35,7 +35,11 @@ function TB.ApplyBackdrop(frame, alpha, borderA)
 end
 
 -- Flat buttons: the panel template keeps its behaviour (text, clicks,
--- enable/disable); its red art gives way to the tabs' dark backdrop.
+-- enable/disable); its red art gives way to a solid warm fill that stands
+-- out from the near-black window, with the tabs' gold frame.
+local BUTTON_FILL = { 0.20, 0.15, 0.09 }
+local BUTTON_EDGE = { 0.62, 0.46, 0.18 }
+
 function TB.StyleButton(button)
     if not button or not button.GetNormalTexture then return button end
     local c = C.COLOR
@@ -52,7 +56,9 @@ function TB.StyleButton(button)
         hl:SetPoint("TOPLEFT", button, "TOPLEFT", 3, -3)
         hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -3, 3)
     end
-    TB.ApplyBackdrop(button, 0.92, 0.85)
+    TB.ApplyBackdrop(button)
+    button:SetBackdropColor(BUTTON_FILL[1], BUTTON_FILL[2], BUTTON_FILL[3], 1)
+    button:SetBackdropBorderColor(BUTTON_EDGE[1], BUTTON_EDGE[2], BUTTON_EDGE[3], 1)
     if button.SetDisabledTextColor then button:SetDisabledTextColor(0.42, 0.42, 0.42) end
     if button.SetHighlightTextColor then button:SetHighlightTextColor(1, 1, 1) end
     return button
@@ -63,11 +69,11 @@ function TB.SetButtonActive(button, active)
     if not button or not button.SetBackdropColor then return end
     local c = C.COLOR
     if active then
-        button:SetBackdropColor(c.accent[1] * 0.35, c.accent[2] * 0.35, c.accent[3] * 0.35, 0.95)
+        button:SetBackdropColor(c.accent[1] * 0.75, c.accent[2] * 0.75, c.accent[3] * 0.75, 1)
         button:SetBackdropBorderColor(1, 0.82, 0.2, 1)
     else
-        button:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 0.92)
-        button:SetBackdropBorderColor(0.48, 0.36, 0.15, 0.85)
+        button:SetBackdropColor(BUTTON_FILL[1], BUTTON_FILL[2], BUTTON_FILL[3], 1)
+        button:SetBackdropBorderColor(BUTTON_EDGE[1], BUTTON_EDGE[2], BUTTON_EDGE[3], 1)
     end
 end
 
