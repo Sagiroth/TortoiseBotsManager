@@ -2,6 +2,27 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.3.0 (2026-10-26)
+
+### Dungeon Runs
+- New **Dungeon** tab in the main window, shown only when your server has the dungeon run enabled — no more dead tab on servers without it. [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+- Both run modes are spelled out in plain words, with a run-at-a-glance summary and the run window opening straight from the tab. [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+- The run window now handles **who leads**: pick *Bots lead* for a bot tank to take point while you stay in the party (healers and damage), or *I lead* to walk the route while bots pull nearby packs (tanks). [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+- A switch on the run window always shows the currently picked lead mode, so nobody has to guess mid-run. [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+- The old dungeon button on the Party tab is gone — dungeon controls all live in one place now. [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+
+### UI & Controls
+- Flat button styling across the addon for a cleaner, less noisy look. [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+- Mini bar favourites: keep your most-used actions one click away. [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+- Server info surfaced in the UI so you can see what the connected server actually supports before you plan a run. [#42](https://github.com/Sagiroth/TortoiseBotsManager/pull/42)
+
+### Docs & Release Comms
+- v1.2.0 changelog is complete again: bot panel, Dungeon run (Preview), fixes and the required server are all listed, and the stray "Unreleased" section is gone. [#41](https://github.com/Sagiroth/TortoiseBotsManager/pull/41)
+- New manual **"Re-post Discord changelog"** workflow to push a single release's changelog section to the changelog thread when the automatic post misses. [#41](https://github.com/Sagiroth/TortoiseBotsManager/pull/41)
+- Releases now post the full changelog to the changelog thread, matching TortoiseBots — the short release announcement links there instead of repeating half the notes. [#40](https://github.com/Sagiroth/TortoiseBotsManager/pull/40)
+
+---
+
 ## v1.2.0 (2026-10-25)
 
 ### Tactical & Actions
