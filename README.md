@@ -1,6 +1,8 @@
 # TortoiseBots Manager
-<img width="365" height="311" alt="2" src="https://github.com/user-attachments/assets/d35eaf72-9b88-462f-8f9a-7aa7051257e6" />
-<img width="368" height="310" alt="1" src="https://github.com/user-attachments/assets/16607951-fdcf-4496-a752-cde89e25096d" />
+<img width="485" height="166" alt="image" src="https://github.com/user-attachments/assets/4f4c7ce6-9f06-4423-81e4-229134ffbdb3" />
+<img width="653" height="400" alt="3" src="https://github.com/user-attachments/assets/ead1050e-9b3d-4e15-9fa1-5868cb3c0da0" />
+<img width="413" height="371" alt="2" src="https://github.com/user-attachments/assets/aff0f250-4760-4f2c-9b43-8d7ef89f023c" />
+
 
 Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.18.1](https://github.com/tortoise-wow/tortoise-wow).
 
