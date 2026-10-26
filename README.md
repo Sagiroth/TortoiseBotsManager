@@ -1,8 +1,4 @@
 # TortoiseBots Manager
-<img width="485" height="166" alt="image" src="https://github.com/user-attachments/assets/4f4c7ce6-9f06-4423-81e4-229134ffbdb3" />
-<img width="413" height="371" alt="2" src="https://github.com/user-attachments/assets/aff0f250-4760-4f2c-9b43-8d7ef89f023c" />
-<img width="653" height="400" alt="3" src="https://github.com/user-attachments/assets/ead1050e-9b3d-4e15-9fa1-5868cb3c0da0" />
-
 
 Lightweight, **Vanilla 1.12 (11200)** addon to manage your bots [Tortoise WoW 1.18.1](https://github.com/tortoise-wow/tortoise-wow).
 
@@ -135,9 +131,11 @@ Run the Vanilla-compatible regression harness from the addon root:
 lua5.1 tests/regression.lua .
 ```
 
-## Roadmap
+## Screenshots
 
-* Future — role-aware filters after dungeon playtest.
+<img width="485" height="166" alt="image" src="https://github.com/user-attachments/assets/4f4c7ce6-9f06-4423-81e4-229134ffbdb3" />
+<img width="413" height="371" alt="2" src="https://github.com/user-attachments/assets/aff0f250-4760-4f2c-9b43-8d7ef89f023c" />
+<img width="653" height="400" alt="3" src="https://github.com/user-attachments/assets/ead1050e-9b3d-4e15-9fa1-5868cb3c0da0" />
 
 ## Project scope and affiliation
 
