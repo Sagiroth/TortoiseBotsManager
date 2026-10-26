@@ -9,7 +9,8 @@
 -- an enemy target).
 --
 -- TortoiseBotsDB.mode = "full" | "mini"; the bar stays on screen in "mini".
--- TortoiseBotsDB.miniFavorites = { intent, ... } (default: the old bar's icons).
+-- TortoiseBotsDB.miniFavorites = { intent, ... } (empty at first: the bar says
+-- how to pin one).
 
 local TB = TortoiseBots
 local C = TB.C or {}
@@ -52,8 +53,9 @@ local function defByIntent(intent)
     return nil
 end
 
--- The old bar's icons, in its order: the favourites a player starts with.
-local function defaultFavorites()
+-- The old bar's icons, in its order: the favourites a 1.2 addon saved for
+-- every player. They are cleared once, so the bar starts empty.
+local function oldDefaultFavorites()
     local items = {}
     for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
         if def.mini then table.insert(items, def) end
@@ -70,8 +72,19 @@ end
 
 function TB.GetMiniFavorites()
     TortoiseBotsDB = TortoiseBotsDB or {}
-    if not TortoiseBotsDB.miniFavorites then TortoiseBotsDB.miniFavorites = defaultFavorites() end
-    return TortoiseBotsDB.miniFavorites
+    local favs = TortoiseBotsDB.miniFavorites
+    if favs and not TortoiseBotsDB.miniFavoritesOwn then
+        local old = oldDefaultFavorites()
+        local same = table.getn(favs) == table.getn(old)
+        for i = 1, table.getn(old) do
+            if favs[i] ~= old[i] then same = false end
+        end
+        if same then favs = nil end
+    end
+    TortoiseBotsDB.miniFavoritesOwn = true
+    if not favs then favs = {} end
+    TortoiseBotsDB.miniFavorites = favs
+    return favs
 end
 
 local function isFavorite(intent)
@@ -132,13 +145,12 @@ local function paintLamp(lamp, def)
     lamp:Show()
 end
 
+-- An unusable action greys out but stays clickable: a right-click still
+-- pins or drops it; its left-click checks usable() again and does nothing.
 local function setUsable(b, on)
-    if on then
-        b:Enable()
-        if b.icon.SetVertexColor then b.icon:SetVertexColor(1, 1, 1) end
-    else
-        b:Disable()
-        if b.icon.SetVertexColor then b.icon:SetVertexColor(0.35, 0.35, 0.35) end
+    b.usable = on and true or false
+    if b.icon.SetVertexColor then
+        if on then b.icon:SetVertexColor(1, 1, 1) else b.icon:SetVertexColor(0.35, 0.35, 0.35) end
     end
 end
 
@@ -226,7 +238,7 @@ local function createFlyout()
             if not def then return end
             if arg1 == "RightButton" then
                 TB.ToggleMiniFavorite(def.intent)
-            else
+            elseif usable(def) then
                 TB.RunActionIntent(def.intent)
             end
             TB.RefreshMiniBar()
@@ -336,7 +348,7 @@ function TB.LayoutMiniBar()
     bar.empty:ClearAllPoints()
     bar.empty:SetPoint("LEFT", bar, "LEFT", x0, 0)
     if shown == 0 then bar.empty:Show() else bar.empty:Hide() end
-    local favW = shown > 0 and shown * STEP or 110
+    local favW = shown > 0 and shown * STEP or 180
     bar:SetWidth(x0 + favW + 6 + 28)
     if TB.RefreshMiniBar then TB.RefreshMiniBar() end
     renderFlyout()
@@ -417,7 +429,7 @@ local function createBar()
             if not def then return end
             if arg1 == "RightButton" then
                 TB.ToggleMiniFavorite(def.intent)
-            else
+            elseif usable(def) then
                 TB.RunActionIntent(def.intent)
             end
         end)
@@ -429,8 +441,8 @@ local function createBar()
         bar.favButtons[i] = b
     end
     bar.empty = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    bar.empty:SetWidth(110); bar.empty:SetJustifyH("LEFT")
-    bar.empty:SetText("Right-click actions to pin them.")
+    bar.empty:SetWidth(180); bar.empty:SetJustifyH("LEFT")
+    bar.empty:SetText("No favourites yet: right-click an action to pin it here.")
     TB.SetTextColor(bar.empty, color("muted"))
 
     local expand = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))

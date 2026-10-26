@@ -1571,14 +1571,29 @@ assert(TB.actionButtons.rest.parent.parent == TB.campFrame and TB.actionButtons.
 TB.ShowTab("actions")
 assert(TB.actionsFrame.visible and not TB.campFrame.visible, "Fight hides Camp")
 
+-- A fresh bar has no favourites, only the hint; a 1.2 save of the old
+-- default icons is cleared once.
+TortoiseBotsDB.miniFavorites = { "attack", "stop", "interrupt", "flee", "pull", "pullback", "focus skull",
+    "follow", "stay", "come", "aoe" }
+TortoiseBotsDB.miniFavoritesOwn = nil
+assert(table.getn(TB.GetMiniFavorites()) == 0, "the old default favourites are cleared once")
+TortoiseBotsDB.miniFavorites = { "attack", "stop", "interrupt", "flee", "pull", "pullback", "focus skull",
+    "follow", "stay", "come", "aoe" }
+assert(table.getn(TB.GetMiniFavorites()) == 11, "favourites the player kept stay")
 TB.frame:Show()
 TB.miniButton.scripts.OnClick(TB.miniButton)
 local bar = frames["TortoiseBotsManagerMiniBar"]
+TB.LayoutMiniBar()
 assert(TB.GetMode() == "mini" and bar.visible and not TB.frame.visible, "Mini swaps the window for the bar")
 targetExists, targetNameValue = false, nil
 TB.Refresh()
-assert(not bar.icons.attack.enabled and bar.icons.stop.enabled and bar.icons.flee.enabled,
+assert(bar.icons.attack.usable == false and bar.icons.stop.usable and bar.icons.flee.usable,
     "mini icons follow the target rules")
+this, arg1 = bar.icons.attack, "RightButton"
+bar.icons.attack.scripts.OnClick(bar.icons.attack)
+assert(not bar.icons.attack, "a greyed-out favourite still drops on right-click")
+TB.ToggleMiniFavorite("attack")
+arg1 = nil
 now = now + 1
 this = bar.icons.stop
 bar.icons.stop.scripts.OnClick(bar.icons.stop)

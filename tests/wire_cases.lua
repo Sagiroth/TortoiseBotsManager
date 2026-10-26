@@ -820,6 +820,7 @@ local cases = {
         id = "minibar.attack",
         expected = { ".bot action attack" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.attack
             bar.icons.attack.scripts.OnClick(bar.icons.attack)
@@ -829,6 +830,7 @@ local cases = {
         id = "minibar.stop",
         expected = { ".bot action stop" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.stop
             bar.icons.stop.scripts.OnClick(bar.icons.stop)
@@ -838,6 +840,7 @@ local cases = {
         id = "minibar.interrupt",
         expected = { ".bot action interrupt" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.interrupt
             bar.icons.interrupt.scripts.OnClick(bar.icons.interrupt)
@@ -847,6 +850,7 @@ local cases = {
         id = "minibar.flee",
         expected = { ".bot action flee" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.flee
             bar.icons.flee.scripts.OnClick(bar.icons.flee)
@@ -858,6 +862,7 @@ local cases = {
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
             TortoiseBotsDB.pullDelay = 10
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.pull
             bar.icons.pull.scripts.OnClick(bar.icons.pull)
@@ -869,6 +874,7 @@ local cases = {
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
             TortoiseBotsDB.pullbackDelay = 3
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.pullback
             bar.icons.pullback.scripts.OnClick(bar.icons.pullback)
@@ -878,6 +884,7 @@ local cases = {
         id = "minibar.focusSkull",
         expected = { ".bot action focus skull" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons["focus skull"]
             bar.icons["focus skull"].scripts.OnClick(bar.icons["focus skull"])
@@ -887,6 +894,7 @@ local cases = {
         id = "minibar.follow",
         expected = { ".bot action follow" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.follow
             bar.icons.follow.scripts.OnClick(bar.icons.follow)
@@ -896,6 +904,7 @@ local cases = {
         id = "minibar.stay",
         expected = { ".bot action stay" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.stay
             bar.icons.stay.scripts.OnClick(bar.icons.stay)
@@ -905,6 +914,7 @@ local cases = {
         id = "minibar.come",
         expected = { ".bot action come" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.come
             bar.icons.come.scripts.OnClick(bar.icons.come)
@@ -918,6 +928,7 @@ local cases = {
             TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
             TB.OnSystemMessage("TBM:BOTSTATE|Alpha|aoe=off")
             TB.OnSystemMessage("TBM:BOTSTATE_END")
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.aoe
             bar.icons.aoe.scripts.OnClick(bar.icons.aoe)
@@ -931,6 +942,7 @@ local cases = {
             TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
             TB.OnSystemMessage("TBM:BOTSTATE|Alpha|aoe=on")
             TB.OnSystemMessage("TBM:BOTSTATE_END")
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.aoe
             bar.icons.aoe.scripts.OnClick(bar.icons.aoe)
