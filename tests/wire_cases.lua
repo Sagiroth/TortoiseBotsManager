@@ -2123,7 +2123,9 @@ local cases = {
                 and list[1].unsupported == 0, "first plan fields must parse")
             assert(list[2].name == "ragefire_chasm" and list[2].unsupported == 3,
                 "the unsupported tail must parse")
+            TB.SetRunPlanPicker(true)
             assert(TB.runWindow.planRows[1].visible, "plan rows render")
+            TB.SetRunPlanPicker(false)
             assert(TB.ParseRunPlanList("Dungeon plans: none loaded") ~= nil
                 and table.getn(TB.ParseRunPlanList("Dungeon plans: none loaded")) == 0,
                 "an empty plan list parses")
@@ -2186,6 +2188,7 @@ local cases = {
             TB.OnSystemMessage("TBM:CAPS|dungeon-run")
             TB.OpenRunWindow()
             TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps)")
+            TB.SetRunPlanPicker(true)
             this = TB.runWindow.planRows[1]
             TB.runWindow.planRows[1].scripts.OnClick(TB.runWindow.planRows[1])
             assert(TB.GetRunSelectedPlan() == "uldaman", "clicking a plan picks it")

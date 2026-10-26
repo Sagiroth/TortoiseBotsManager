@@ -35,10 +35,23 @@ function TB.ApplyBackdrop(frame, alpha, borderA)
 end
 
 -- Flat buttons: the panel template keeps its behaviour (text, clicks,
--- enable/disable); its red art gives way to a solid warm fill that stands
--- out from the near-black window, with the tabs' gold frame.
-local BUTTON_FILL = { 0.20, 0.15, 0.09 }
-local BUTTON_EDGE = { 0.62, 0.46, 0.18 }
+-- enable/disable); its red art gives way to a solid fill with a 1 px frame
+-- (the WHITE8X8 look of modern 1.12 addons), which reads on any background.
+local FLAT_BACKDROP = {
+    bgFile = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+    insets = { left = 1, right = 1, top = 1, bottom = 1 },
+}
+local BUTTON_FILL = { 0.12, 0.10, 0.08, 0.95 }
+local BUTTON_EDGE = { 0.55, 0.42, 0.18, 1 }
+local ACTIVE_FILL = { 0.62, 0.44, 0.12, 1 }
+local ACTIVE_EDGE = { 1, 0.84, 0.35, 1 }
+
+local function paint(button, fill, edge)
+    button:SetBackdropColor(fill[1], fill[2], fill[3], fill[4])
+    button:SetBackdropBorderColor(edge[1], edge[2], edge[3], edge[4])
+end
 
 function TB.StyleButton(button)
     if not button or not button.GetNormalTexture then return button end
@@ -48,33 +61,26 @@ function TB.StyleButton(button)
         if tex then tex:SetTexture(nil) end
     end
     local pushed = button:GetPushedTexture()
-    if pushed then pushed:SetTexture(0, 0, 0, 0.30) end
+    if pushed then pushed:SetTexture(0, 0, 0, 0.35) end
     local hl = button:GetHighlightTexture()
     if hl then
-        hl:SetTexture(c.accent[1], c.accent[2], c.accent[3], 0.16)
+        hl:SetTexture(c.accent[1], c.accent[2], c.accent[3], 0.25)
         hl:ClearAllPoints()
-        hl:SetPoint("TOPLEFT", button, "TOPLEFT", 3, -3)
-        hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -3, 3)
+        hl:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+        hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
     end
-    TB.ApplyBackdrop(button)
-    button:SetBackdropColor(BUTTON_FILL[1], BUTTON_FILL[2], BUTTON_FILL[3], 1)
-    button:SetBackdropBorderColor(BUTTON_EDGE[1], BUTTON_EDGE[2], BUTTON_EDGE[3], 1)
+    button:SetBackdrop(FLAT_BACKDROP)
+    paint(button, BUTTON_FILL, BUTTON_EDGE)
     if button.SetDisabledTextColor then button:SetDisabledTextColor(0.42, 0.42, 0.42) end
     if button.SetHighlightTextColor then button:SetHighlightTextColor(1, 1, 1) end
     return button
 end
 
--- A flat button's picked look (a mode switch): brighter frame and fill.
+-- A flat button's picked look (a mode switch): filled gold, bright frame.
 function TB.SetButtonActive(button, active)
     if not button or not button.SetBackdropColor then return end
-    local c = C.COLOR
-    if active then
-        button:SetBackdropColor(c.accent[1] * 0.75, c.accent[2] * 0.75, c.accent[3] * 0.75, 1)
-        button:SetBackdropBorderColor(1, 0.82, 0.2, 1)
-    else
-        button:SetBackdropColor(BUTTON_FILL[1], BUTTON_FILL[2], BUTTON_FILL[3], 1)
-        button:SetBackdropBorderColor(BUTTON_EDGE[1], BUTTON_EDGE[2], BUTTON_EDGE[3], 1)
-    end
+    if active then paint(button, ACTIVE_FILL, ACTIVE_EDGE)
+    else paint(button, BUTTON_FILL, BUTTON_EDGE) end
 end
 
 function TB.StatusColor(st)

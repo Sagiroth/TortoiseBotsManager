@@ -1285,9 +1285,11 @@ return function()
             if not win then
                 bad("RunWindow: did not open")
             else
+                -- The open search list is the tallest layout: check that one.
+                TB.SetRunPlanPicker(true)
                 local wr = frameRect(win, cache)
                 local items = {}
-                for _, key in ipairs({ "modeBot", "modeYou", "bind", "unbind", "enter", "cmdStatus",
+                for _, key in ipairs({ "modeBot", "modeYou", "planToggle", "bind", "unbind", "enter", "cmdStatus",
                     "plans", "planPrev", "planNext", "start", "pause",
                     "resume", "skip", "stop", "stopBox" }) do
                     if win[key] then

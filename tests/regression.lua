@@ -1880,6 +1880,9 @@ assert(lastAddon() == "run status", "opening asks for the run status")
 assert(TB.runWindow.point and (TB.runWindow.point[2] == TB.frame or TB.runWindow.point[2] == TB.botPanel), "the run window sits beside main")
 TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet)")
 assert(table.getn(TB.GetRunPlans()) == 2, "the plan list parses")
+assert(not TB.runWindow.planRows[1]:IsVisible(), "outside a dungeon the list stays closed")
+this = TB.runWindow.planToggle
+TB.runWindow.planToggle.scripts.OnClick(TB.runWindow.planToggle)
 assert(TB.runWindow.planRows[1].visible and TB.runWindow.planRows[1].planName == "uldaman",
     "plan rows render the parsed plans")
 now = now + 1
@@ -1931,7 +1934,7 @@ TB.SetRunSelectedPlan(nil)
 function GetRealZoneText() return "The Stockade" end
 TB.RefreshRunWindow()
 assert(TB.GetRunSelectedPlan() == "stormwind_stockade", "a dungeon with one plan picks it")
-assert(TB.runWindow.planRows[1].planName == "stormwind_stockade", "the zone's plan comes first")
+assert(string.find(TB.runWindow.planPick.text, "Stormwind Stockade"), "the picked plan shows by name")
 TB.SetRunSelectedPlan(nil)
 function GetRealZoneText() return "Scarlet Monastery" end
 TB.RefreshRunWindow()
@@ -1939,6 +1942,7 @@ assert(TB.GetRunSelectedPlan() == nil, "a dungeon with several plans waits for a
 assert(TB.runWindow.planRows[1].planName == "scarlet_library" and TB.runWindow.planRows[2].planName == "scarlet_armory",
     "the wings come first")
 function GetRealZoneText() return "Stormwind City" end
+TB.SetRunPlanPicker(true)
 this = TB.runWindow.planSearch
 TB.runWindow.planSearch:SetText("ARMORY")
 TB.runWindow.planSearch.scripts.OnTextChanged(TB.runWindow.planSearch)
@@ -1947,6 +1951,9 @@ assert(TB.runWindow.planRows[1].planName == "scarlet_armory" and not TB.runWindo
 TB.runWindow.planSearch:SetText("")
 TB.runWindow.planSearch.scripts.OnTextChanged(TB.runWindow.planSearch)
 GetRealZoneText = nil
+this = TB.runWindow.planRows[1]
+TB.runWindow.planRows[1].scripts.OnClick(TB.runWindow.planRows[1])
+assert(not TB.runWindow.planSearch:IsVisible(), "a pick closes the search list")
 -- Mutual exclusion with the vault/NPC satellites.
 TB.OpenBotPanel("Alpha")
 TB.OpenVault("Alpha")

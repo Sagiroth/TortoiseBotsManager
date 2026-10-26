@@ -35,7 +35,6 @@ local TB = TortoiseBots
 local C = TB.C or {}
 local COL = C.COLOR or {}
 local RW = 300
-local RWINDOW = 614
 local PROW = 5
 
 local CAP = "dungeon-run"
@@ -404,6 +403,8 @@ local selectedPlan = nil
 local planPage = 1
 local planSearch = ""
 local planZone = nil
+-- The search list is open (Change) or closed (the zone's plan only).
+local planPicker = false
 local stopReason = ""
 -- "bot": a bot tank leads, you stay in the party; "player": you lead.
 local runMode = "bot"
@@ -463,7 +464,7 @@ end
 
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerRunWindow", TB.frame or UIParent)
-    win:SetWidth(RW); win:SetHeight(RWINDOW)
+    win:SetWidth(RW); win:SetHeight(500)
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
@@ -555,15 +556,25 @@ local function createWindow()
     win.bindHint:SetText("Target the lead bot, then Bind.")
     TB.SetTextColor(win.bindHint, color("muted"))
 
-    -- Plan: searchable, paged list from "run list"; inside a dungeon its
-    -- plans come first and a single one is picked. Start takes the pick.
+    -- Plan: the dungeon the player stands in picks its plan (or lists its
+    -- wings); Change opens a search over every plan. Start takes the pick.
     local plan = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     plan:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -198)
     plan:SetText("PLAN")
     TB.SetTextColor(plan, color("gold"))
+    win.planPick = win:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    win.planPick:SetPoint("TOPLEFT", win, "TOPLEFT", 52, -197)
+    win.planPick:SetWidth(156); win.planPick:SetJustifyH("LEFT")
+    win.planToggle = smallButton(win, "Change", 76, 212, -192,
+        "Change plan", "Search every plan and pick another one.",
+        function() TB.SetRunPlanPicker(not planPicker) end)
+    win.planHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.planHint:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -218)
+    win.planHint:SetWidth(RW - 24); win.planHint:SetJustifyH("LEFT")
+    TB.SetTextColor(win.planHint, color("muted"))
     win.planSearch = CreateFrame("EditBox", "TortoiseBotsManagerRunPlanSearch", win, "InputBoxTemplate")
-    win.planSearch:SetWidth(206); win.planSearch:SetHeight(20)
-    win.planSearch:SetPoint("TOPLEFT", win, "TOPLEFT", 78, -192)
+    win.planSearch:SetWidth(RW - 34); win.planSearch:SetHeight(20)
+    win.planSearch:SetPoint("TOPLEFT", win, "TOPLEFT", 18, -234)
     win.planSearch:SetAutoFocus(false)
     win.planSearch:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     win.planSearch:SetScript("OnEnterPressed", function() this:ClearFocus() end)
@@ -573,70 +584,73 @@ local function createWindow()
         TB.RefreshRunWindow()
     end)
     setTooltip(win.planSearch, "Search plans", { "Type part of a dungeon name, e.g. scarlet or kraul." })
-    win.planHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.planHint:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -216)
-    win.planHint:SetWidth(RW - 24); win.planHint:SetJustifyH("LEFT")
-    win.planHint:SetText("Type to search the plans.")
-    TB.SetTextColor(win.planHint, color("muted"))
     win.planRows = {}
     for i = 1, PROW do
         local row = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
         row:SetWidth(RW - 24); row:SetHeight(20)
-        row:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -232 - (i - 1) * 22)
+        row:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -260 - (i - 1) * 22)
         row:SetScript("OnClick", function()
-            if this.planName then TB.SetRunSelectedPlan(this.planName) end
+            if this.planName then
+                planPicker = false
+                TB.SetRunSelectedPlan(this.planName)
+            end
         end)
         table.insert(win.planRows, row)
     end
     win.planEmpty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.planEmpty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -256)
+    win.planEmpty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -284)
     win.planEmpty:SetWidth(RW - 24); win.planEmpty:SetJustifyH("CENTER")
-    win.planEmpty:SetText("Click Plans to load the dungeon list.")
     TB.SetTextColor(win.planEmpty, color("muted"))
-    win.plans = smallButton(win, "Plans", 88, 12, -232 - PROW * 22,
-        "Plans", "Load the dungeon plans from the server.",
+    win.plans = smallButton(win, "Reload", 88, 12, -262 - PROW * 22,
+        "Reload plans", "Load the dungeon plans from the server again.",
         function() TB.SendRunList() end)
     win.planPrev = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     win.planPrev:SetWidth(26); win.planPrev:SetHeight(22)
-    win.planPrev:SetPoint("TOPLEFT", win, "TOPLEFT", 104, -232 - PROW * 22)
+    win.planPrev:SetPoint("TOPLEFT", win, "TOPLEFT", 104, -262 - PROW * 22)
     win.planPrev:SetText("<")
     win.planPrev:SetScript("OnClick", function() planPage = planPage - 1; TB.RefreshRunWindow() end)
     win.planNext = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     win.planNext:SetWidth(26); win.planNext:SetHeight(22)
-    win.planNext:SetPoint("TOPLEFT", win, "TOPLEFT", 212, -232 - PROW * 22)
+    win.planNext:SetPoint("TOPLEFT", win, "TOPLEFT", 212, -262 - PROW * 22)
     win.planNext:SetText(">")
     win.planNext:SetScript("OnClick", function() planPage = planPage + 1; TB.RefreshRunWindow() end)
     win.planPageText = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.planPageText:SetPoint("TOPLEFT", win, "TOPLEFT", 132, -236 - PROW * 22)
+    win.planPageText:SetPoint("TOPLEFT", win, "TOPLEFT", 132, -266 - PROW * 22)
     win.planPageText:SetWidth(78); win.planPageText:SetJustifyH("CENTER")
     TB.SetTextColor(win.planPageText, color("muted"))
     win:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     win:SetScript("OnEvent", function() TB.RefreshRunWindow() end)
 
     -- Controls: Start / Pause-Resume / Skip / Stop + reason.
-    local ctlY = -232 - PROW * 22 - 28
+    -- Everything below the plan hangs off win.lower, which the plan section
+    -- moves down when it opens its list (layoutPlanSection).
+    win.lower = CreateFrame("Frame", nil, win)
+    win.lower:SetWidth(RW); win.lower:SetHeight(1)
+    win.lower:SetPoint("TOPLEFT", lower, "TOPLEFT", 0, -240)
+    local lower = win.lower
+    local ctlY = 0
     local ctl = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ctl:SetPoint("TOPLEFT", win, "TOPLEFT", 12, ctlY)
+    ctl:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, ctlY)
     ctl:SetText("CONTROLS")
     TB.SetTextColor(ctl, color("gold"))
-    win.start = smallButton(win, "Start", 88, 12, ctlY - 18,
+    win.start = smallButton(lower, "Start", 88, 12, ctlY - 18,
         "Start", "Start the picked plan (or the plan of the lead bot's map).",
         function() TB.SendRunStart(selectedPlan) end)
-    win.pause = smallButton(win, "Pause", 88, 104, ctlY - 18,
+    win.pause = smallButton(lower, "Pause", 88, 104, ctlY - 18,
         "Pause", "Pause the run; the bots hold what they do.",
         function() TB.SendRunPause() end)
-    win.resume = smallButton(win, "Resume", 88, 104, ctlY - 18,
+    win.resume = smallButton(lower, "Resume", 88, 104, ctlY - 18,
         "Resume", "Go on with the paused run (regroups first).",
         function() TB.SendRunResume() end)
-    win.skip = smallButton(win, "Skip", 88, 196, ctlY - 18,
+    win.skip = smallButton(lower, "Skip", 88, 196, ctlY - 18,
         "Skip", "Leave out the current step and go on.",
         function() TB.SendRunSkip() end)
-    win.stop = smallButton(win, "Stop", 88, 12, ctlY - 44,
+    win.stop = smallButton(lower, "Stop", 88, 12, ctlY - 44,
         "Stop", "End the run; the bots stay where they are, still bound.",
         function() TB.SendRunStop(stopReason) end)
     win.stopBox = CreateFrame("EditBox", "TortoiseBotsManagerRunStopBox", win, "InputBoxTemplate")
     win.stopBox:SetWidth(168); win.stopBox:SetHeight(20)
-    win.stopBox:SetPoint("TOPLEFT", win, "TOPLEFT", 108, ctlY - 44)
+    win.stopBox:SetPoint("TOPLEFT", lower, "TOPLEFT", 108, ctlY - 44)
     win.stopBox:SetAutoFocus(false)
     win.stopBox:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     win.stopBox:SetScript("OnEnterPressed", function() this:ClearFocus() end)
@@ -646,28 +660,28 @@ local function createWindow()
     setTooltip(win.stopBox, "Stop reason", { "Optional: why the run ends (shown in the note)." })
     -- What the last click did: sent, then the server's answer.
     win.feedback = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.feedback:SetPoint("TOPLEFT", win, "TOPLEFT", 12, ctlY - 70)
+    win.feedback:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, ctlY - 70)
     win.feedback:SetWidth(RW - 24); win.feedback:SetJustifyH("LEFT")
     win.feedback:SetText("")
 
     -- Status: plan, state lamp, step x/y progress, leg, phase, note.
     local stY = ctlY - 102
     local st = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    st:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY)
+    st:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, stY)
     st:SetText("STATUS")
     TB.SetTextColor(st, color("gold"))
     win.runLamp = win:CreateTexture(nil, "OVERLAY")
     win.runLamp:SetWidth(8); win.runLamp:SetHeight(8)
-    win.runLamp:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 22)
+    win.runLamp:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, stY - 22)
     win.runState = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.runState:SetPoint("LEFT", win.runLamp, "RIGHT", 4, 0)
     win.runState:SetWidth(112); win.runState:SetJustifyH("LEFT")
     win.runStep = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.runStep:SetPoint("TOPLEFT", win, "TOPLEFT", 140, stY - 21)
+    win.runStep:SetPoint("TOPLEFT", lower, "TOPLEFT", 140, stY - 21)
     win.runStep:SetWidth(RW - 152); win.runStep:SetJustifyH("RIGHT")
     win.runBar = CreateFrame("Frame", nil, win)
     win.runBar:SetWidth(RW - 24); win.runBar:SetHeight(10)
-    win.runBar:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 38)
+    win.runBar:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, stY - 38)
     -- A 10px bar is thinner than the 11px tooltip border edgeSize, so a
     -- plain dark backing replaces the tooltip backdrop here.
     local barBg = win.runBar:CreateTexture(nil, "BACKGROUND")
@@ -675,17 +689,17 @@ local function createWindow()
     win.runFill = win.runBar:CreateTexture(nil, "ARTWORK")
     win.runFill:SetHeight(6)
     win.runLeg = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.runLeg:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 52)
+    win.runLeg:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, stY - 52)
     win.runLeg:SetWidth(RW - 24); win.runLeg:SetJustifyH("LEFT")
     win.runPhase = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.runPhase:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 66)
+    win.runPhase:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, stY - 66)
     win.runPhase:SetWidth(RW - 24); win.runPhase:SetJustifyH("LEFT")
     win.runNote = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.runNote:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 80)
+    win.runNote:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, stY - 80)
     win.runNote:SetWidth(RW - 24); win.runNote:SetJustifyH("LEFT")
     TB.SetTextColor(win.runNote, color("muted"))
     win.warn = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.warn:SetPoint("TOPLEFT", win, "TOPLEFT", 12, stY - 108)
+    win.warn:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, stY - 108)
     win.warn:SetWidth(RW - 24); win.warn:SetJustifyH("LEFT")
     win.warn:SetText("Your orders pause the run until Resume.")
     TB.SetTextColor(win.warn, color("muted"))
@@ -751,6 +765,45 @@ local function visiblePlans()
     return out, here, zone
 end
 
+-- Height of everything hung off win.lower (controls, answer, status).
+local LOWER_H = 236
+
+local function placeRows(top, count)
+    for i, row in ipairs(win.planRows) do
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", win, "TOPLEFT", 12, top - (i - 1) * 22)
+        if i > count then
+            row.planName = nil
+            row:Hide()
+        end
+    end
+end
+
+local function fillRow(row, plan)
+    row.planName = plan.name
+    -- One line per row: name + steps (+ unsupported tail). The map
+    -- lives in the tooltip: even the longest plan name must fit.
+    local text = TB.RunPlanTitle(plan.name) .. " · " .. tostring(plan.steps or 0) .. " steps"
+    if (plan.unsupported or 0) > 0 then
+        text = text .. " · " .. plan.unsupported .. " unsupported"
+    end
+    if plan.name == selectedPlan then text = "|cffffd200" .. text .. "|r" end
+    row:SetText(text)
+    setTooltip(row, TB.RunPlanTitle(plan.name), {
+        plan.name .. " · map " .. tostring(plan.map or "?") .. " · " .. tostring(plan.steps or 0) .. " steps.",
+        "Click: pick this plan for Start.",
+    })
+    row:Show()
+    row:Enable()
+end
+
+local function findPlan(name)
+    for _, plan in ipairs(plans) do
+        if plan.name == name then return plan end
+    end
+    return nil
+end
+
 local function renderPlans()
     local shown, here, zone = visiblePlans()
     -- On entering a zone with plans: its one plan is picked, or a pick from
@@ -763,59 +816,38 @@ local function renderPlans()
         if not keep then selectedPlan = table.getn(here) == 1 and here[1].name or nil end
     end
     if table.getn(plans) > 0 then planZone = zone end
-    local count = table.getn(shown)
-    local pages = math.max(1, math.ceil(count / PROW))
-    if planPage > pages then planPage = pages end
-    if planPage < 1 then planPage = 1 end
-    for i, row in ipairs(win.planRows) do
-        local plan = shown[(planPage - 1) * PROW + i]
-        if plan then
-            row.planName = plan.name
-            -- One line per row: name + steps (+ unsupported tail). The map
-            -- lives in the tooltip: even the longest plan name must fit.
-            local text = TB.RunPlanTitle(plan.name) .. " · " .. tostring(plan.steps or 0) .. " steps"
-            if (plan.unsupported or 0) > 0 then
-                text = text .. " · " .. plan.unsupported .. " unsupported"
-            end
-            if plan.name == selectedPlan then text = "|cffffd200" .. text .. "|r" end
-            row:SetText(text)
-            setTooltip(row, TB.RunPlanTitle(plan.name), {
-                plan.name .. " · map " .. tostring(plan.map or "?") .. " · " .. tostring(plan.steps or 0) .. " steps.",
-                "Click: pick this plan for Start.",
-            })
-            row:Show()
-            row:Enable()
-        else
-            row.planName = nil
-            row:SetText("")
-            row:Hide()
-        end
-    end
-    win.planPageText:SetText(planPage .. " / " .. pages)
-    if planPage > 1 then win.planPrev:Enable() else win.planPrev:Disable() end
-    if planPage < pages then win.planNext:Enable() else win.planNext:Disable() end
-    if plansPending then
-        win.plans:SetText("Asking…")
-        win.plans:Disable()
-    else
-        win.plans:SetText("Plans")
-        win.plans:Enable()
-    end
+
     local nHere = table.getn(here)
-    if table.getn(plans) == 0 then
-        win.planHint:SetText("Type to search the plans.")
-    elseif planKey(planSearch) ~= "" then
-        win.planHint:SetText(count .. " of " .. table.getn(plans) .. " plans match.")
-    elseif nHere == 1 then
-        win.planHint:SetText("|cff40ff40In " .. zone .. ":|r its plan is picked.")
-    elseif nHere > 1 then
-        win.planHint:SetText("|cff40ff40In " .. zone .. ":|r " .. nHere .. " plans, pick one.")
-    else
-        win.planHint:SetText("Type to search, or enter a dungeon.")
-    end
-    if win.planEmpty then
+    local picked = selectedPlan and findPlan(selectedPlan)
+    win.planPick:SetText(picked and (TB.RunPlanTitle(picked.name) .. " · " .. tostring(picked.steps or 0) .. " steps")
+        or "|cff9d9d9dnone|r")
+    win.planToggle:SetText(planPicker and "Done" or "Change")
+    local listTop, bottom
+    if planPicker then
+        win.planSearch:Show()
+        listTop = -260
+        local count = table.getn(shown)
+        local pages = math.max(1, math.ceil(count / PROW))
+        if planPage > pages then planPage = pages end
+        if planPage < 1 then planPage = 1 end
+        placeRows(listTop, PROW)
+        for i, row in ipairs(win.planRows) do
+            local plan = shown[(planPage - 1) * PROW + i]
+            if plan then fillRow(row, plan) else row.planName = nil; row:SetText(""); row:Hide() end
+        end
+        win.planPageText:SetText(planPage .. " / " .. pages)
+        win.planPageText:Show(); win.planPrev:Show(); win.planNext:Show(); win.plans:Show()
+        if planPage > 1 then win.planPrev:Enable() else win.planPrev:Disable() end
+        if planPage < pages then win.planNext:Enable() else win.planNext:Disable() end
+        if plansPending then
+            win.plans:SetText("Asking…")
+            win.plans:Disable()
+        else
+            win.plans:SetText("Reload")
+            win.plans:Enable()
+        end
         if table.getn(plans) == 0 then
-            win.planEmpty:SetText("Click Plans to load the dungeon list.")
+            win.planEmpty:SetText("No plans yet: Reload asks the server.")
             win.planEmpty:Show()
         elseif count == 0 then
             win.planEmpty:SetText("No plan matches the search.")
@@ -823,7 +855,43 @@ local function renderPlans()
         else
             win.planEmpty:Hide()
         end
+        if planKey(planSearch) ~= "" then
+            win.planHint:SetText(count .. " of " .. table.getn(plans) .. " plans match.")
+        else
+            win.planHint:SetText("Type part of a name, then click a plan.")
+        end
+        bottom = listTop - PROW * 22 - 26
+    else
+        win.planSearch:Hide()
+        win.planPageText:Hide(); win.planPrev:Hide(); win.planNext:Hide(); win.plans:Hide()
+        win.planEmpty:Hide()
+        listTop = -234
+        -- A dungeon with wings lists just its plans to pick from.
+        local wings = nHere > 1 and nHere or 0
+        if wings > PROW then wings = PROW end
+        placeRows(listTop, wings)
+        for i = 1, wings do fillRow(win.planRows[i], here[i]) end
+        if table.getn(plans) == 0 then
+            win.planHint:SetText(plansPending and "Loading the plans..." or "No plans loaded: Change, then Reload.")
+        elseif nHere == 1 then
+            win.planHint:SetText("|cff40ff40In " .. zone .. ".|r Wrong plan? Change.")
+        elseif nHere > 1 then
+            win.planHint:SetText("|cff40ff40In " .. zone .. ":|r pick a wing.")
+        elseif picked then
+            win.planHint:SetText("Picked from the list. Change to pick another.")
+        else
+            win.planHint:SetText("No dungeon here: Start uses the lead bot's dungeon.")
+        end
+        bottom = wings > 0 and (listTop - wings * 22 - 4) or -230
     end
+    win.lower:ClearAllPoints()
+    win.lower:SetPoint("TOPLEFT", win, "TOPLEFT", 0, bottom - 10)
+    win:SetHeight(-(bottom - 10) + LOWER_H)
+end
+
+function TB.SetRunPlanPicker(open)
+    planPicker = open and true or false
+    if TB.RefreshRunWindow then TB.RefreshRunWindow() end
 end
 
 -- ── Dungeon tab (main window): what the modes are, the run at a glance and
