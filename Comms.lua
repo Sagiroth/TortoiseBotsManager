@@ -236,6 +236,7 @@ function TB.ParseActionMessage(msg)
         if packet.intent == "stance" and TB.currentStance and TB.UpdateStancePills then
             TB.UpdateStancePills()
         end
+        if TB.OnMoveModeAck then TB.OnMoveModeAck(packet) end
         -- Bot panel and raid replies render their own text.
         if TB.OnBotPanelAck and TB.OnBotPanelAck(packet) then
             if TB.Refresh then TB.Refresh() end
@@ -294,7 +295,8 @@ local inventoryReceiving = nil
 local function parseStateFields(text)
     local state = {}
     for pair in string.gfind(text or "", "[^,]+") do
-        local _, _, key, value = string.find(pair, "^%s*([%w_]+)=(%S*)%s*$")
+        -- Values may hold spaces: specs=tank feral+offdps.
+        local _, _, key, value = string.find(pair, "^%s*([%w_]+)=(.-)%s*$")
         if key then state[string.lower(key)] = string.lower(value) end
     end
     return state

@@ -1019,8 +1019,38 @@ TB.Refresh()
 assert(not TB.actionButtons.flee.enabled, "Flee must be disabled on servers without the capability")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
 
--- BOTSTATE drives the switches; a mixed party shows "~" and turns on.
+-- Live specs pick the shown role (a hire has no saved role); values may hold spaces.
+TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|5")
+TB.OnSystemMessage("TBM:BOTSTATE|Rista|move=follow,specs=retribution")
+TB.OnSystemMessage("TBM:BOTSTATE|Feyrielle|move=follow,specs=balance")
+TB.OnSystemMessage("TBM:BOTSTATE|Hybridbot|move=follow,specs=holy+offdps")
+TB.OnSystemMessage("TBM:BOTSTATE|Furybot|move=follow,specs=fury")
+TB.OnSystemMessage("TBM:BOTSTATE|Catbot|move=follow,specs=dps feral")
+TB.OnSystemMessage("TBM:BOTSTATE_END")
+assert(TB.Roles.GetBotRole("Rista", 2) == "dps", "retribution specs must show the paladin DPS role")
+assert(TB.Roles.GetBotRole("Feyrielle", 11) == "boomkin", "balance specs must show Boomkin")
+assert(TB.Roles.GetBotRole("Hybridbot", 5) == "hybrid", "holy+offdps specs must show Hybrid, not Healer")
+assert(TB.Roles.GetBotRole("Furybot", 1) == "dps", "fury specs must show the warrior DPS role")
+assert(TB.Roles.GetBotRole("Catbot", 11) == "cat", "a spec with a space must parse")
+
+-- Move modes: the shared mode lights up, an ACK moves it, Come waits for the poll.
 partyMembers = { "Alpha", "Gamma" }
+TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|2")
+TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow")
+TB.OnSystemMessage("TBM:BOTSTATE|Gamma|move=follow")
+TB.OnSystemMessage("TBM:BOTSTATE_END")
+assert(TB.actionButtons.follow.isActive and not TB.actionButtons.guard.isActive,
+    "the shared move mode must be highlighted")
+TB.OnSystemMessage("TBM:ACTION_ACK|guard|party|2|-")
+assert(TB.actionButtons.guard.isActive and not TB.actionButtons.follow.isActive,
+    "a guard ACK must move the highlight")
+TB.OnSystemMessage("TBM:ACTION_ACK|stay|bot:Alpha|1|-")
+assert(not TB.actionButtons.guard.isActive and not TB.actionButtons.stay.isActive,
+    "a mixed party highlights no mode")
+TB.OnSystemMessage("TBM:ACTION_ACK|come|party|2|-")
+assert(TB.GetBotState("Gamma").move == "guard", "Come must not guess the end mode")
+
+-- BOTSTATE drives the switches; a mixed party shows "~" and turns on.
 TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|2")
 TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,aoe=off,autocc=off,savemana=off,boost=on,threat=on,potions=on")
 TB.OnSystemMessage("TBM:BOTSTATE|Gamma|move=flee,loot=off,aoe=off,autocc=off,savemana=on,boost=on,threat=on,potions=on")

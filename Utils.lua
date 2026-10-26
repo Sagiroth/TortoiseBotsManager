@@ -280,23 +280,62 @@ function TB.Roles.FindRole(classId, roleId)
     return nil
 end
 
+-- The role whose strategies match the bot's live specs (BOTSTATE specs=):
+-- every "+" strategy present and no "-" one; failing that, the first role
+-- none of whose "-" strategies is present (a fury warrior is DPS).
+local function roleFromSpecs(roles, specs)
+    local have = {}
+    for spec in string.gfind(specs, "[^+]+") do have[spec] = true end
+    for pass = 1, 2 do
+        for _, role in ipairs(roles) do
+            local matches = true
+            for sign, strat in string.gfind(role.strat or "", "([+-])([^,]+)") do
+                if (sign == "-" or pass == 1) and (sign == "+") ~= (have[strat] == true) then
+                    matches = false
+                    break
+                end
+            end
+            if matches then return role.id end
+        end
+    end
+    return nil
+end
+
 function TB.Roles.GetBotRole(botName, classId)
-    local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
-    local currentId = dbRoles[botName]
     local roles = TB.Roles.GetClassRoles(classId)
+    local state = TB.GetBotState and TB.GetBotState(botName)
+    local currentId = state and state.specs and roleFromSpecs(roles, state.specs)
+    if not currentId then
+        local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
+        currentId = dbRoles[botName]
+    end
     if not currentId and roles[1] then
         currentId = roles[1].id
     end
     return currentId, TB.Roles.FindRole(classId, currentId)
 end
 
-function TB.Roles.GetPlayerRole(classId)
-    local roleId = TortoiseBotsDB and TortoiseBotsDB.playerRole
-    local roles = TB.Roles.GetClassRoles(classId)
-    if not roleId and roles[1] then
-        roleId = roles[1].id
+-- The player's spec is theirs; bots only need to know which role they fill.
+TB.Roles.PLAYER_ROLES = {
+    { id = "tank", label = "Tank" },
+    { id = "heal", label = "Healer" },
+    { id = "dps", label = "DPS" },
+}
+
+local function findPlayerRole(roleId)
+    for _, r in ipairs(TB.Roles.PLAYER_ROLES) do
+        if r.id == roleId then return r end
     end
-    return roleId, TB.Roles.FindRole(classId, roleId)
+    return nil
+end
+
+function TB.Roles.GetPlayerRole()
+    local roleId = TortoiseBotsDB and TortoiseBotsDB.playerRole
+    -- Older saves stored a class spec id (e.g. "boomkin").
+    if roleId and not findPlayerRole(roleId) then
+        roleId = TB.Roles.GetPlayerRoleToken(roleId) == "healer" and "heal" or TB.Roles.GetPlayerRoleToken(roleId)
+    end
+    return roleId, findPlayerRole(roleId)
 end
 
 function TB.Roles.GetRoleLabel(classId, roleId, fallback)
@@ -327,8 +366,8 @@ function TB.Roles.GetPlayerRoleToken(roleId)
     return "dps"
 end
 
-function TB.Roles.SetPlayerRole(role, classId)
-    local roleDef = type(role) == "table" and role or TB.Roles.FindRole(classId, role)
+function TB.Roles.SetPlayerRole(role)
+    local roleDef = type(role) == "table" and role or findPlayerRole(role)
     if not roleDef then return false end
     TortoiseBotsDB = TortoiseBotsDB or {}
     TortoiseBotsDB.playerRole = roleDef.id
@@ -343,8 +382,12 @@ function TB.Roles.SetBotRole(botName, role, classId)
     if not roleDef or not botName then return false end
     TortoiseBotsDB = TortoiseBotsDB or {}
     TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
-    local previousRole = TortoiseBotsDB.botRoles[botName]
+    local state = TB.GetBotState and TB.GetBotState(botName)
+    local previousRole = (state and state.specs and roleFromSpecs(TB.Roles.GetClassRoles(classId), state.specs))
+        or TortoiseBotsDB.botRoles[botName]
     TortoiseBotsDB.botRoles[botName] = roleDef.id
+    -- Show the pick until the next roster snapshot reports the new specs.
+    if state then state.specs = nil end
 
     if roleDef.id == "tank" then
         TB.SendBotCommand("role " .. botName .. " tank")
