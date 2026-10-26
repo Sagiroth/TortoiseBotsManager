@@ -185,6 +185,11 @@ TB.ParseRunLine = parseRunLine
 -- status line and the "run list" plan reply.
 function TB.ParseRunMessage(msg)
     if not msg or msg == "" then return false end
+    local _, _, here = string.find(msg, "^TBM:RUN_HERE|([^|]+)|")
+    if here then
+        if TB.NoteRunHere then TB.NoteRunHere(here ~= "-" and here or nil) end
+        return true, "here", here
+    end
     if string.sub(msg, 1, 8) == "TBM:RUN|" then
         local parsed = parseRunLine(msg)
         if not parsed then return false end
@@ -412,6 +417,16 @@ local selectedPlan = nil
 local planPage = 1
 local planSearch = ""
 local planZone = nil
+-- In a dungeon with one plan per wing the zone name cannot tell the wing;
+-- the server answers "run here" with the plan nearest the player.
+local herePlan = nil
+local hereAsked = false
+
+function TB.NoteRunHere(plan)
+    herePlan = plan
+    if plan then selectedPlan = plan end
+    if TB.RefreshRunWindow then TB.RefreshRunWindow() end
+end
 -- The search list is open (Change) or closed (the zone's plan only).
 local planPicker = false
 local stopReason = ""
@@ -628,7 +643,11 @@ local function createWindow()
     win.planPageText:SetWidth(78); win.planPageText:SetJustifyH("CENTER")
     TB.SetTextColor(win.planPageText, color("muted"))
     win:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-    win:SetScript("OnEvent", function() TB.RefreshRunWindow() end)
+    win:SetScript("OnEvent", function()
+        herePlan = nil
+        hereAsked = false
+        TB.RefreshRunWindow()
+    end)
 
     -- Controls: Start / Pause-Resume / Skip / Stop + reason.
     -- Everything below the plan hangs off win.lower, which the plan section
@@ -817,6 +836,23 @@ local function renderPlans()
     local shown, here, zone = visiblePlans()
     -- On entering a zone with plans: its one plan is picked, or a pick from
     -- elsewhere is dropped so Start never runs another dungeon's plan.
+    if zone ~= planZone then
+        herePlan = nil
+        hereAsked = false
+    end
+    -- Inside an instance (or with several plans for the zone: wings) the
+    -- server says which plan the player stands in; the zone name may not
+    -- match a plan name, and one zone can hold several wings.
+    local inInstance = IsInInstance and IsInInstance()
+    if (inInstance or table.getn(here) > 1) and table.getn(plans) > 0 and not herePlan and not hereAsked
+        and TB.HasRunCapability() then
+        hereAsked = true
+        TB.SendBotCommand("run here")
+    end
+    if herePlan then
+        local one = findPlan(herePlan)
+        if one then here = { one } end
+    end
     if zone ~= planZone and table.getn(here) > 0 then
         local keep = false
         for _, plan in ipairs(here) do
@@ -829,7 +865,7 @@ local function renderPlans()
     local nHere = table.getn(here)
     local picked = selectedPlan and findPlan(selectedPlan)
     win.planPick:SetText(picked and (TB.RunPlanTitle(picked.name) .. " · " .. tostring(picked.steps or 0) .. " steps")
-        or "|cff9d9d9dnone|r")
+        or "|cffff5050none|r")
     win.planToggle:SetText(planPicker and "Done" or "Change")
     local listTop, bottom
     if planPicker then
@@ -882,10 +918,12 @@ local function renderPlans()
         for i = 1, wings do fillRow(win.planRows[i], here[i]) end
         if table.getn(plans) == 0 then
             win.planHint:SetText(plansPending and "Loading the plans..." or "No plans loaded: Change, then Reload.")
+        elseif nHere == 1 and herePlan then
+            win.planHint:SetText("|cff40ff40Detected from where you stand.|r Wrong? Change.")
         elseif nHere == 1 then
             win.planHint:SetText("|cff40ff40In " .. zone .. ".|r Wrong plan? Change.")
         elseif nHere > 1 then
-            win.planHint:SetText("|cff40ff40In " .. zone .. ":|r pick a wing.")
+            win.planHint:SetText("|cff40ff40In " .. zone .. ":|r pick a wing" .. (hereAsked and " (asking the server...)" or "."))
         elseif picked then
             win.planHint:SetText("Picked from the list. Change to pick another.")
         else
@@ -895,7 +933,9 @@ local function renderPlans()
     end
     win.lower:ClearAllPoints()
     win.lower:SetPoint("TOPLEFT", win, "TOPLEFT", 0, bottom - 10)
-    win:SetHeight(-(bottom - 10) + LOWER_H)
+    -- At least as tall as the main window, so it reads as its extension.
+    local mainH = TB.frame and TB.frame.GetHeight and TB.frame:GetHeight() or 0
+    win:SetHeight(math.max(-(bottom - 10) + LOWER_H, mainH or 0))
 end
 
 function TB.SetRunPlanPicker(open)
@@ -1070,6 +1110,8 @@ function TB.OpenRunWindow()
     end
     win:Show()
     TB.RefreshRunWindow()
+    herePlan = nil
+    hereAsked = false
     TB.SendRunList()
     TB.SendRunStatus()
     return true

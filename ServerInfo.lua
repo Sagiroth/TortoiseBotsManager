@@ -310,6 +310,9 @@ function TB.OpenServerInfo()
     else
         win:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
+    -- The main window's height, so it reads as its extension.
+    local mainH = frame and frame.GetHeight and frame:GetHeight()
+    if mainH and mainH > 0 then win:SetHeight(mainH) end
     win:Show()
     TB.RequestServerFeatures()
     return true

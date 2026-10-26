@@ -1968,8 +1968,18 @@ TB.SetRunSelectedPlan(nil)
 function GetRealZoneText() return "Scarlet Monastery" end
 TB.RefreshRunWindow()
 assert(TB.GetRunSelectedPlan() == nil, "a dungeon with several plans waits for a pick")
+for _ = 1, 30 do
+    if lastAddon() == "run here" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(lastAddon() == "run here", "a dungeon with wings asks the server which one")
 assert(TB.runWindow.planRows[1].planName == "scarlet_library" and TB.runWindow.planRows[2].planName == "scarlet_armory",
     "the wings come first")
+TB.OnSystemMessage("TBM:RUN_HERE|scarlet_armory|12")
+assert(TB.GetRunSelectedPlan() == "scarlet_armory" and string.find(TB.runWindow.planPick.text, "Scarlet Armory"),
+    "the server's answer picks the wing the player stands in")
 function GetRealZoneText() return "Stormwind City" end
 TB.SetRunPlanPicker(true)
 this = TB.runWindow.planSearch
