@@ -1016,6 +1016,7 @@ function TB.OpenRunWindow()
     if not win then createWindow() end
     if TB.CloseVault then TB.CloseVault() end
     if TB.CloseNpc then TB.CloseNpc() end
+    if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.SetMode then TB.SetMode("full") end
     win:ClearAllPoints()
     local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame

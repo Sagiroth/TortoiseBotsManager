@@ -197,6 +197,7 @@ for _, file in ipairs({
     "BotNpc.lua",
     "BotVault.lua",
     "BotRun.lua",
+    "ServerInfo.lua",
     "MiniBar.lua",
     "Minimap.lua",
     "Bindings.lua",
@@ -994,8 +995,10 @@ assert(TortoiseBotsDB.frame and TortoiseBotsDB.frame.point == "TOPLEFT",
 -- both header buttons must sit above it, or the bar eats Mini clicks in 1.12.
 assert(TB.dragHeader:GetNumPoints() == 2, "drag bar must keep two anchors after the Mini fix")
 local barRight, barAnchor = TB.dragHeader:GetPoint(2)
-assert(barRight == "BOTTOMRIGHT" and barAnchor == TB.miniButton,
-    "drag bar must end at the Mini button instead of spanning the header corner")
+assert(barRight == "BOTTOMRIGHT" and barAnchor == TB.infoButton,
+    "drag bar must end at the Info button instead of spanning the header corner")
+assert(TB.infoButton:GetFrameLevel() > TB.dragHeader:GetFrameLevel(),
+    "Info must sit above the drag bar to receive clicks")
 assert(TB.miniButton:GetFrameLevel() > TB.dragHeader:GetFrameLevel(),
     "Mini must sit above the drag bar to receive clicks")
 
@@ -1956,6 +1959,28 @@ GetRealZoneText = nil
 this = TB.runWindow.planRows[1]
 TB.runWindow.planRows[1].scripts.OnClick(TB.runWindow.planRows[1])
 assert(not TB.runWindow.planSearch:IsVisible(), "a pick closes the search list")
+-- Server info window: ".bot features" fills the switch list.
+assert(TB.infoButton, "the header has an Info button")
+this = TB.infoButton
+TB.infoButton.scripts.OnClick(TB.infoButton)
+for _ = 1, 30 do
+    if lastAddon() == "features" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(TB.infoWindow:IsVisible() and lastAddon() == "features", "Info opens the window and asks the server")
+assert(not TB.runWindow:IsVisible(), "Info closes the run window beside main")
+TB.OnSystemMessage("Server features: dungeon-run on, hire-max 4")
+TB.OnSystemMessage("TBM:FEATURE|dungeon-run|on|Dungeon runs")
+TB.OnSystemMessage("TBM:FEATURE|hire-max|4|Hires per player")
+assert(table.getn(TB.GetServerFeatures()) == 2, "the switches parse")
+assert(TB.infoWindow.rows[1].label.text == "Dungeon runs" and TB.infoWindow.rows[2].value.text == "4",
+    "the switches render")
+assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Server features: dungeon-run on") == true,
+    "the summary stays out of the chat")
+TB.CloseServerInfo()
+TB.OpenRunWindow()
 -- Mutual exclusion with the vault/NPC satellites.
 TB.OpenBotPanel("Alpha")
 TB.OpenVault("Alpha")

@@ -746,6 +746,11 @@ function TB.OnSystemMessage(msg)
         return
     end
 
+    if TB.ParseFeatureMessage and TB.ParseFeatureMessage(msg) then
+        TB.lastSystem = msg
+        return
+    end
+
     if TB.ParseRunMessage then
         local runHandled = TB.ParseRunMessage(msg)
         if runHandled then
