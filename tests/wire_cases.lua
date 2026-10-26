@@ -2134,6 +2134,23 @@ local cases = {
         end,
     },
     {
+        id = "run.bind.hire",
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha Hirey inparty" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            setParty({ "Hirey" })
+            TB.OnSystemMessage("TBM:BOTSTATE|Hirey|move=follow")
+            setTarget(true, "Alpha")
+            TB.OpenRunWindow()
+            this, arg1 = TB.runWindow.bind, "LeftButton"
+            TB.runWindow.bind.scripts.OnClick(TB.runWindow.bind)
+            TB.CloseRunWindow()
+            setTarget(false, nil)
+            setParty({})
+            arg1 = nil
+        end,
+    },
+    {
         id = "run.start.none",
         expected = { ".bot run list", ".bot run status", ".bot run start" },
         trigger = function()

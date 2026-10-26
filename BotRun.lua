@@ -305,12 +305,21 @@ function TB.SendRunBind()
         setFeedback("|cffff5050Bind:|r target your tank bot first; it leads the party.", "err")
         return false
     end
+    -- Every bot of the party must be named: the roster's own bots and the
+    -- party members the server reports as controllable bots (hires too).
     local names = { lead }
-    local grouped = TB.GetGroupedBotNames and TB.GetGroupedBotNames() or {}
-    for _, name in ipairs(grouped) do
-        if table.getn(names) >= 5 then break end
-        if name ~= lead then table.insert(names, name) end
+    local seen = { [string.lower(lead)] = true }
+    local function add(name)
+        if name and name ~= "" and not seen[string.lower(name)] and table.getn(names) < 5 then
+            seen[string.lower(name)] = true
+            table.insert(names, name)
+        end
     end
+    for i = 1, (GetNumPartyMembers and GetNumPartyMembers() or 0) do
+        local name = UnitName and UnitName("party" .. i)
+        if name and TB.GetBotState and TB.GetBotState(name) then add(name) end
+    end
+    for _, name in ipairs(TB.GetGroupedBotNames and TB.GetGroupedBotNames() or {}) do add(name) end
     return sendRun("commander bind " .. table.concat(names, " ") .. " inparty")
 end
 
