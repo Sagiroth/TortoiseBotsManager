@@ -637,7 +637,7 @@ local function createMenu(parent)
     menu:EnableMouse(true)
     TB.ApplyBackdrop(menu, 0.98, 1.0)
     local function button(label, y, tip)
-        local btn = CreateFrame("Button", nil, menu, "UIPanelButtonTemplate")
+        local btn = TB.StyleButton(CreateFrame("Button", nil, menu, "UIPanelButtonTemplate"))
         btn:SetWidth(106); btn:SetHeight(22)
         btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, y)
         btn:SetText(label)
@@ -752,7 +752,7 @@ local function createMenu(parent)
 end
 
 local function makeTab(parent, label, x, width, view)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(width); b:SetHeight(20)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -46)
     b:SetText(label)
@@ -844,7 +844,7 @@ local function createPanel()
     bagSummary:SetWidth(196); bagSummary:SetJustifyH("LEFT")
     TB.SetTextColor(bagSummary, color("muted"))
     panel.bagSummary = bagSummary
-    local sweep = CreateFrame("Button", nil, bags, "UIPanelButtonTemplate")
+    local sweep = TB.StyleButton(CreateFrame("Button", nil, bags, "UIPanelButtonTemplate"))
     sweep:SetWidth(110); sweep:SetHeight(20)
     sweep:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -72)
     sweep:SetText("Equip upgrades")
@@ -862,12 +862,12 @@ local function createPanel()
             table.insert(panel.bagButtons, b)
         end
     end
-    local prev = CreateFrame("Button", nil, bags, "UIPanelButtonTemplate")
+    local prev = TB.StyleButton(CreateFrame("Button", nil, bags, "UIPanelButtonTemplate"))
     prev:SetWidth(26); prev:SetHeight(20)
     prev:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
     prev:SetText("<")
     prev:SetScript("OnClick", function() bagPage = bagPage - 1; hideMenu(); TB.RefreshBotPanel() end)
-    local nextBtn = CreateFrame("Button", nil, bags, "UIPanelButtonTemplate")
+    local nextBtn = TB.StyleButton(CreateFrame("Button", nil, bags, "UIPanelButtonTemplate"))
     nextBtn:SetWidth(26); nextBtn:SetHeight(20)
     nextBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 100, -366)
     nextBtn:SetText(">")
@@ -892,7 +892,7 @@ local function createPanel()
     TB.SetTextColor(bhTitle, color("gold"))
     panel.behaviorChips = {}
     for i, def in ipairs(C.BEHAVIORS or {}) do
-        local chip = CreateFrame("Button", nil, behavior, "UIPanelButtonTemplate")
+        local chip = TB.StyleButton(CreateFrame("Button", nil, behavior, "UIPanelButtonTemplate"))
         chip:SetWidth(150); chip:SetHeight(24)
         chip.def = def
         chip.lamp = chip:CreateTexture(nil, "OVERLAY")
@@ -920,7 +920,7 @@ local function createPanel()
     TB.SetTextColor(spTitle, color("gold"))
     panel.spellRows = {}
     for i = 1, SPELL_ROWS do
-        local row = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+        local row = TB.StyleButton(CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate"))
         row:SetWidth(PW - 24); row:SetHeight(20)
         row:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -98 - (i - 1) * 22)
         row.spellId = 0
@@ -938,7 +938,7 @@ local function createPanel()
     TB.SetTextColor(spellEmpty, color("muted"))
     panel.spellEmpty = spellEmpty
 
-    local ask = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    local ask = TB.StyleButton(CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate"))
     ask:SetWidth(150); ask:SetHeight(22)
     ask:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
     ask:SetText("Ask for spellbook")
@@ -947,7 +947,7 @@ local function createPanel()
         if currentBot then TB.RequestSpells(currentBot) end
     end)
     panel.spellAsk = ask
-    local prev = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    local prev = TB.StyleButton(CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate"))
     prev:SetWidth(26); prev:SetHeight(20)
     prev:SetPoint("LEFT", ask, "RIGHT", 6, 0)
     prev:SetText("<")
@@ -957,7 +957,7 @@ local function createPanel()
     pageText:SetPoint("LEFT", prev, "RIGHT", 2, 0)
     pageText:SetWidth(52); pageText:SetJustifyH("CENTER")
     panel.spellPageText = pageText
-    local nextBtn = CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate")
+    local nextBtn = TB.StyleButton(CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate"))
     nextBtn:SetWidth(26); nextBtn:SetHeight(20)
     nextBtn:SetPoint("LEFT", pageText, "RIGHT", 2, 0)
     nextBtn:SetText(">")
@@ -965,7 +965,7 @@ local function createPanel()
     panel.spellNext = nextBtn
 
     -- Footer: trade, refresh, NPC errands, vault, upkeep, gear-up, every view.
-    local trade = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local trade = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     trade:SetWidth(44); trade:SetHeight(22)
     trade:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 28)
     trade:SetText("Trade")
@@ -977,7 +977,7 @@ local function createPanel()
     trade:SetScript("OnClick", function() TB.SendItemOrder("trade") end)
     panel.tradeButton = trade
 
-    local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local refresh = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     refresh:SetWidth(56); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 3, 0)
     refresh:SetText("Refresh")
@@ -988,7 +988,7 @@ local function createPanel()
     end)
     panel.refreshButton = refresh
 
-    local npcLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local npcLink = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     npcLink:SetWidth(38); npcLink:SetHeight(22)
     npcLink:SetPoint("LEFT", refresh, "RIGHT", 3, 0)
     npcLink:SetText("NPC")
@@ -998,7 +998,7 @@ local function createPanel()
     end)
     panel.npcButton = npcLink
 
-    local vaultLink = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local vaultLink = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     vaultLink:SetWidth(44); vaultLink:SetHeight(22)
     vaultLink:SetPoint("LEFT", npcLink, "RIGHT", 3, 0)
     vaultLink:SetText("Bank")
@@ -1008,7 +1008,7 @@ local function createPanel()
     end)
     panel.vaultButton = vaultLink
 
-    local upkeep = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local upkeep = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     upkeep:SetWidth(50); upkeep:SetHeight(22)
     upkeep:SetPoint("LEFT", vaultLink, "RIGHT", 3, 0)
     upkeep:SetText("Upkeep")
@@ -1019,7 +1019,7 @@ local function createPanel()
     end)
     panel.upkeepButton = upkeep
 
-    local gearup = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local gearup = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     gearup:SetWidth(63); gearup:SetHeight(22)
     gearup:SetPoint("LEFT", upkeep, "RIGHT", 3, 0)
     gearup:SetText("AutoGear")

@@ -496,7 +496,7 @@ local cases = {
             TB.grindState = nil
             TB.OnSystemMessage("Strategy change '+grind' applied to 2 bot(s).")
             assert(TB.GetGrindState() == "on", "grind reply must set grind state")
-            assert(TB.actionButtons.grind.text == "Grind On", "grind button must show On")
+            assert(TB.actionButtons.grind.isActive, "grind button must show On")
             TB.OnSystemMessage("Strategy change '-grind' applied to 2 bot(s).")
             assert(TB.GetGrindState() == "off", "grind off reply must clear grind state")
             TB.grindState = nil
@@ -820,6 +820,7 @@ local cases = {
         id = "minibar.attack",
         expected = { ".bot action attack" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.attack
             bar.icons.attack.scripts.OnClick(bar.icons.attack)
@@ -829,6 +830,7 @@ local cases = {
         id = "minibar.stop",
         expected = { ".bot action stop" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.stop
             bar.icons.stop.scripts.OnClick(bar.icons.stop)
@@ -838,6 +840,7 @@ local cases = {
         id = "minibar.interrupt",
         expected = { ".bot action interrupt" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.interrupt
             bar.icons.interrupt.scripts.OnClick(bar.icons.interrupt)
@@ -847,6 +850,7 @@ local cases = {
         id = "minibar.flee",
         expected = { ".bot action flee" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.flee
             bar.icons.flee.scripts.OnClick(bar.icons.flee)
@@ -858,6 +862,7 @@ local cases = {
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
             TortoiseBotsDB.pullDelay = 10
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.pull
             bar.icons.pull.scripts.OnClick(bar.icons.pull)
@@ -869,6 +874,7 @@ local cases = {
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
             TortoiseBotsDB.pullbackDelay = 3
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.pullback
             bar.icons.pullback.scripts.OnClick(bar.icons.pullback)
@@ -878,6 +884,7 @@ local cases = {
         id = "minibar.focusSkull",
         expected = { ".bot action focus skull" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons["focus skull"]
             bar.icons["focus skull"].scripts.OnClick(bar.icons["focus skull"])
@@ -887,6 +894,7 @@ local cases = {
         id = "minibar.follow",
         expected = { ".bot action follow" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.follow
             bar.icons.follow.scripts.OnClick(bar.icons.follow)
@@ -896,6 +904,7 @@ local cases = {
         id = "minibar.stay",
         expected = { ".bot action stay" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.stay
             bar.icons.stay.scripts.OnClick(bar.icons.stay)
@@ -905,6 +914,7 @@ local cases = {
         id = "minibar.come",
         expected = { ".bot action come" },
         trigger = function()
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.come
             bar.icons.come.scripts.OnClick(bar.icons.come)
@@ -918,6 +928,7 @@ local cases = {
             TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
             TB.OnSystemMessage("TBM:BOTSTATE|Alpha|aoe=off")
             TB.OnSystemMessage("TBM:BOTSTATE_END")
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.aoe
             bar.icons.aoe.scripts.OnClick(bar.icons.aoe)
@@ -931,6 +942,7 @@ local cases = {
             TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|1")
             TB.OnSystemMessage("TBM:BOTSTATE|Alpha|aoe=on")
             TB.OnSystemMessage("TBM:BOTSTATE_END")
+            setTarget(true, "Enemy")
             local bar = TB.miniBar or frames["TortoiseBotsManagerMiniBar"]
             this = bar.icons.aoe
             bar.icons.aoe.scripts.OnClick(bar.icons.aoe)
@@ -2015,19 +2027,17 @@ local cases = {
         expected = { ".bot run list", ".bot run status" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,dungeon-run")
-            TB.RefreshPartyView()
-            assert(TB.partyFrame.runButton:IsVisible(), "the Party tab shows Dungeon run")
+            assert(TB.tabDungeon:IsVisible(), "the Dungeon tab shows")
             assert(TB.OpenRunWindow() == true, "the window opens with the capability")
             assert(TB.runWindow and TB.runWindow:IsVisible(), "the window is visible")
             TB.CloseRunWindow()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
-            TB.RefreshPartyView()
-            assert(not TB.partyFrame.runButton:IsVisible(), "losing the cap hides the button")
+            assert(not TB.tabDungeon:IsVisible(), "losing the cap hides the tab")
         end,
     },
     {
         id = "run.bind",
-        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha" },
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha inparty" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|dungeon-run")
             setTarget(true, "Alpha")
@@ -2040,7 +2050,7 @@ local cases = {
     },
     {
         id = "run.bind.group",
-        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha Delta Gamma" },
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha Delta Gamma inparty" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|dungeon-run")
             TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
@@ -2125,12 +2135,31 @@ local cases = {
                 and list[1].unsupported == 0, "first plan fields must parse")
             assert(list[2].name == "ragefire_chasm" and list[2].unsupported == 3,
                 "the unsupported tail must parse")
+            TB.SetRunPlanPicker(true)
             assert(TB.runWindow.planRows[1].visible, "plan rows render")
+            TB.SetRunPlanPicker(false)
             assert(TB.ParseRunPlanList("Dungeon plans: none loaded") ~= nil
                 and table.getn(TB.ParseRunPlanList("Dungeon plans: none loaded")) == 0,
                 "an empty plan list parses")
             assert(TB.ParseRunPlanList("someone: hello") == nil, "chat never parses as plans")
             TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.bind.hire",
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha Hirey inparty" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            setParty({ "Hirey" })
+            TB.OnSystemMessage("TBM:BOTSTATE|Hirey|move=follow")
+            setTarget(true, "Alpha")
+            TB.OpenRunWindow()
+            this, arg1 = TB.runWindow.bind, "LeftButton"
+            TB.runWindow.bind.scripts.OnClick(TB.runWindow.bind)
+            TB.CloseRunWindow()
+            setTarget(false, nil)
+            setParty({})
+            arg1 = nil
         end,
     },
     {
@@ -2146,12 +2175,49 @@ local cases = {
         end,
     },
     {
+        id = "run.start.player",
+        expected = { ".bot run list", ".bot run status", ".bot run start uldaman player" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            this = TB.runWindow.modeYou
+            TB.runWindow.modeYou.scripts.OnClick(TB.runWindow.modeYou)
+            assert(TB.GetRunMode() == "player", "I lead picks the player-led mode")
+            assert(not TB.runWindow.bind.enabled, "player-led needs no Bind")
+            TB.SetRunSelectedPlan("uldaman")
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.OnSystemMessage("TBM:RUN|uldaman|running|1/41|baelog|move|walk|walking")
+            assert(TB.WarnRunPause() == false, "player-led orders never pause the run")
+            TB.OnSystemMessage("TBM:RUN|-|none|0/0|-|-|-|no run")
+            TB.SetRunMode("bot")
+            TB.SetRunSelectedPlan(nil)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.player.tank",
+        expected = { ".bot run list", ".bot run status", ".bot run start player tank Alpha" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            setTarget(true, "Alpha")
+            TB.OpenRunWindow()
+            TB.SetRunMode("player")
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.SetRunMode("bot")
+            TB.CloseRunWindow()
+            setTarget(false, nil)
+        end,
+    },
+    {
         id = "run.start.plan",
         expected = { ".bot run list", ".bot run status", ".bot run start uldaman" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|dungeon-run")
             TB.OpenRunWindow()
             TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps)")
+            TB.SetRunPlanPicker(true)
             this = TB.runWindow.planRows[1]
             TB.runWindow.planRows[1].scripts.OnClick(TB.runWindow.planRows[1])
             assert(TB.GetRunSelectedPlan() == "uldaman", "clicking a plan picks it")

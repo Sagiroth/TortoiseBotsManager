@@ -197,6 +197,7 @@ for _, file in ipairs({
     "BotNpc.lua",
     "BotVault.lua",
     "BotRun.lua",
+    "ServerInfo.lua",
     "MiniBar.lua",
     "Minimap.lua",
     "Bindings.lua",
@@ -394,27 +395,27 @@ assert(TB.actionButtons.ready and TB.actionButtons.ready.icon, "Ready check butt
 -- Formation pills
 assert(TB.formationPills and TB.formationPills.shield and TB.formationPills.near,
     "Formation pills must exist")
-assert(not TB.formationPills.shield.enabled, "Shield should start disabled (active)")
-assert(TB.formationPills.near.enabled, "Near should start enabled")
+assert(TB.formationPills.shield.isActive, "Shield should start picked")
+assert((not TB.formationPills.near.isActive), "Near should start unpicked")
 now = now + 1
 this = TB.formationPills.near
 TB.formationPills.near.scripts.OnClick(TB.formationPills.near)
 assert(TB.currentFormation == "near", "Clicking near pill must set current formation to near")
-assert(not TB.formationPills.near.enabled and TB.formationPills.shield.enabled,
-    "Active formation pill must become disabled")
+assert(TB.formationPills.near.isActive and (not TB.formationPills.shield.isActive),
+    "the picked formation pill lights up")
 assert(table.getn(TB.C.FORMATIONS) == 10, "Camp must expose all ten server formations")
 assert(TB.formationPills.far and TB.formationPills.melee and TB.formationPills.chaos
     and TB.formationPills.default, "New formation pills must exist")
-assert(TB.formationPills.far.enabled, "Far should start enabled")
+assert((not TB.formationPills.far.isActive), "Far should start unpicked")
 now = now + 1
 this = TB.formationPills.far
 TB.formationPills.far.scripts.OnClick(TB.formationPills.far)
 assert(TB.currentFormation == "far", "Clicking far pill must set current formation to far")
-assert(not TB.formationPills.far.enabled and TB.formationPills.near.enabled,
-    "Active formation pill must become disabled, previous one re-enabled")
+assert(TB.formationPills.far.isActive and (not TB.formationPills.near.isActive),
+    "the picked formation pill lights up, the previous one goes back")
 now = now + 1
 TB.SetFormation("shield")
-assert(TB.currentFormation == "shield" and not TB.formationPills.shield.enabled,
+assert(TB.currentFormation == "shield" and TB.formationPills.shield.isActive,
     "Formation must reset to shield for later cases")
 assert(TB.actionButtons.rebuff and TB.actionButtons.resetTactics and TB.actionButtons.totem
     and TB.actionButtons.acceptQuest and TB.actionButtons.shareQuest and TB.actionButtons.grind,
@@ -579,7 +580,7 @@ TB.actionButtons.aoe.scripts.OnClick(TB.actionButtons.aoe)
 assert(table.getn(sent) == beforeAoeRetry + 1 and sent[table.getn(sent)] == ".bot action aoe on",
     "AoE retry must request the previous known state")
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|party|2|on")
-assert(TB.aoeEnabled and TB.actionButtons.aoe.text == "AoE On",
+assert(TB.aoeEnabled and TB.actionButtons.aoe.isActive,
     "accepted AoE state must be reflected by the ACK")
 
 -- Target/context feedback is descriptive, not a universal scope promise.
@@ -733,7 +734,7 @@ now = now + 1
 this = TB.stancePills.tank
 TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
 assert(sent[table.getn(sent)] == ".bot action stance tank", "Tank stance pill must send stance tank")
-assert(TB.currentStance == "tank" and not TB.stancePills.tank.enabled and TB.stancePills.near.enabled,
+assert(TB.currentStance == "tank" and TB.stancePills.tank.isActive and not TB.stancePills.near.isActive,
     "Active stance pill must become disabled")
 TB.OnSystemMessage("TBM:ACTION_ACK|stance|party|2|tank")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "stance" and TB.lastActionAck.executor == "tank",
@@ -815,7 +816,7 @@ assert(TortoiseBotsDB.playerRole == "tank",
     "Clicking the player Tank role must persist the selected role")
 assert(table.getn(sent) == beforePlayerRole + 1 and sent[table.getn(sent)] == ".bot role self tank",
     "Clicking the player Tank role must send the self role command")
-assert(playerRow.roleButtons[1].text:find("|cffffd200Tank|r"),
+assert(playerRow.roleButtons[1].isActive and playerRow.roleButtons[1].text:find("Tank"),
     "Selected player role button must be highlighted gold")
 assert(TB.partyFrame.rows[2]:IsVisible(), "Priestbot party row must be visible")
 assert(TB.partyFrame.rows[2].nameText.text == "Priestbot", "Party row 2 must display Priestbot")
@@ -831,7 +832,7 @@ TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be stored as dps")
 assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot strategy +shadow,-holy,-discipline Priestbot",
     "Clicking Shadow role must send Playerbot strategy command")
-assert(TB.partyFrame.rows[2].roleButtons[3].text:find("|cffffd200Shadow|r"), "Selected Shadow button must be highlighted gold")
+assert(TB.partyFrame.rows[2].roleButtons[3].isActive, "Selected Shadow button must be filled gold")
 
 -- Tank designation uses the explicit role command (forced role + pull kit).
 partyClassName = "Warrior"
@@ -994,8 +995,10 @@ assert(TortoiseBotsDB.frame and TortoiseBotsDB.frame.point == "TOPLEFT",
 -- both header buttons must sit above it, or the bar eats Mini clicks in 1.12.
 assert(TB.dragHeader:GetNumPoints() == 2, "drag bar must keep two anchors after the Mini fix")
 local barRight, barAnchor = TB.dragHeader:GetPoint(2)
-assert(barRight == "BOTTOMRIGHT" and barAnchor == TB.miniButton,
-    "drag bar must end at the Mini button instead of spanning the header corner")
+assert(barRight == "BOTTOMRIGHT" and barAnchor == TB.infoButton,
+    "drag bar must end at the Info button instead of spanning the header corner")
+assert(TB.infoButton:GetFrameLevel() > TB.dragHeader:GetFrameLevel(),
+    "Info must sit above the drag bar to receive clicks")
 assert(TB.miniButton:GetFrameLevel() > TB.dragHeader:GetFrameLevel(),
     "Mini must sit above the drag bar to receive clicks")
 
@@ -1026,7 +1029,7 @@ assert(TB.GetBotState("Alpha").move == "follow" and TB.GetBotState("gamma").save
     "BOTSTATE rows must be stored per bot")
 assert(TB.GetPartyToggleState("loot") == "mixed" and TB.GetPartyToggleState("aoe") == "off",
     "party switch state must aggregate the bots")
-assert(TB.toggleButtons.loot.text == "Loot ~" and TB.toggleButtons.autocc.text == "Auto CC Off",
+assert(TB.toggleButtons.loot.text == "|cffffd200Loot ~|r" and (not TB.toggleButtons.autocc.isActive),
     "switch labels must show the server state (~ for mixed)")
 assert(TB.MovementLabel("Gamma") == "Fleeing (passive)", "flee movement must be labelled")
 now = now + 1
@@ -1036,7 +1039,7 @@ assert(lastAddon() == "action loot on", "a mixed switch must turn on")
 assert(not TB.toggleButtons.loot.enabled, "a switch waits for the server while pending")
 TB.OnSystemMessage("TBM:ACTION_ACK|loot|party|2|on")
 assert(TB.GetPartyToggleState("loot") == "on" and TB.toggleButtons.loot.enabled
-    and TB.toggleButtons.loot.text == "Loot On", "the ACK must settle the switch")
+    and TB.toggleButtons.loot.isActive, "the ACK must settle the switch")
 now = now + 1
 this = TB.toggleButtons.autocc
 TB.toggleButtons.autocc.scripts.OnClick(TB.toggleButtons.autocc)
@@ -1047,7 +1050,7 @@ assert(TB.GetPartyToggleState("autocc") == "off" and TB.toggleButtons.autocc.ena
 -- A single-bot ACK only changes that bot.
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
 assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
-    and TB.toggleButtons.aoe.text == "AoE ~", "a targeted switch must only update that bot")
+    and TB.toggleButtons.aoe.text == "|cffffd200AoE ~|r", "a targeted switch must only update that bot")
 
 -- P2: sap joins the switch row, spread rides the behavior verb, and the
 -- row of five stays inside the 480-wide content.
@@ -1067,7 +1070,7 @@ TB.toggleButtons.sap.scripts.OnClick(TB.toggleButtons.sap)
 assert(lastAddon() == "action sap on", "Sap must send the sap intent")
 TB.OnSystemMessage("TBM:ACTION_ACK|sap|party|2|on")
 assert(TB.GetPartyToggleState("sap") == "on" and TB.toggleButtons.sap.enabled
-    and TB.toggleButtons.sap.text == "Sap On", "the sap ACK must settle the switch")
+    and TB.toggleButtons.sap.isActive, "the sap ACK must settle the switch")
 now = now + 1
 this = TB.toggleButtons.spread
 TB.toggleButtons.spread.scripts.OnClick(TB.toggleButtons.spread)
@@ -1075,7 +1078,7 @@ assert(lastAddon() == "behavior party spread on", "Spread must ride the behavior
 assert(not TB.toggleButtons.spread.enabled, "spread waits for the server while pending")
 TB.OnSystemMessage("TBM:ACTION_ACK|behavior spread|party|2|on")
 assert(TB.GetPartyToggleState("spread") == "on" and TB.toggleButtons.spread.enabled
-    and TB.toggleButtons.spread.text == "Spread On", "the spread ACK must settle the switch")
+    and TB.toggleButtons.spread.isActive, "the spread ACK must settle the switch")
 TB.OnSystemMessage("TBM:ACTION_ERR|behavior spread|failed|No scoped bot accepted")
 assert(TB.toggleButtons.spread.enabled, "a refused spread switch must not stick disabled")
 
@@ -1105,9 +1108,9 @@ end
 assert(afterStrategyOps == beforeStrategyOps, "a strategy reply must not start roster operations")
 
 -- Layout: every Fight card keeps its re-stacked slot (no overlaps) and every
--- control fits the 330px content frame.
+-- control fits the 360px content frame, with 8 px between cards.
 local fightOrder = { "engage", "pull", "move", "switches", "tactics" }
-local fightTops = { engage = -35, pull = -86, move = -157, switches = -232, tactics = -282 }
+local fightTops = { engage = -40, pull = -96, move = -172, switches = -252, tactics = -308 }
 local fightHeights = { engage = 48, pull = 68, move = 72, switches = 48, tactics = 48 }
 local fightBottom = { engage = 0, pull = 0, move = 0, switches = 0, tactics = 0 }
 for _, id in ipairs(fightOrder) do
@@ -1115,7 +1118,7 @@ for _, id in ipairs(fightOrder) do
     local _, _, _, _, top = card:GetPoint(1)
     assert(top == fightTops[id] and card.height == fightHeights[id],
         "fight card " .. id .. " must keep its integrated slot")
-    assert(top <= 0 and -(top - card.height) <= 330, "fight card " .. id .. " must fit the 330px content")
+    assert(top <= 0 and -(top - card.height) <= 360, "fight card " .. id .. " must fit the 360px content")
     fightBottom[id] = top - card.height
 end
 for i = 2, table.getn(fightOrder) do
@@ -1129,23 +1132,23 @@ end
 local moveIds = { "follow", "stay", "come", "guard", "free" }
 for _, id in ipairs(moveIds) do
     local btn = TB.actionButtons[id]
-    assert(cardBottom(btn, fightTops.move) >= -330, "move control " .. id .. " must fit the 330px content")
+    assert(cardBottom(btn, fightTops.move) >= -360, "move control " .. id .. " must fit the 360px content")
 end
 for id, pill in pairs(TB.stancePills) do
-    assert(cardBottom(pill, fightTops.move) >= -330, "stance pill " .. id .. " must fit the 330px content")
+    assert(cardBottom(pill, fightTops.move) >= -360, "stance pill " .. id .. " must fit the 360px content")
 end
 for key, btn in pairs(TB.toggleButtons) do
-    assert(cardBottom(btn, fightTops.switches) >= -330, "switch " .. key .. " must fit the 330px content")
+    assert(cardBottom(btn, fightTops.switches) >= -360, "switch " .. key .. " must fit the 360px content")
 end
 for _, id in ipairs({ "tacticKite", "tacticMark", "tacticFocus", "tacticAoeFear" }) do
-    assert(cardBottom(TB.actionButtons[id], fightTops.tactics) >= -330,
-        "tactic " .. id .. " must fit the 330px content")
+    assert(cardBottom(TB.actionButtons[id], fightTops.tactics) >= -360,
+        "tactic " .. id .. " must fit the 360px content")
 end
 for _, id in ipairs({ "attack", "stop", "interrupt", "flee" }) do
-    assert(cardBottom(TB.actionButtons[id], fightTops.engage) >= -330,
-        "engage control " .. id .. " must fit the 330px content")
+    assert(cardBottom(TB.actionButtons[id], fightTops.engage) >= -360,
+        "engage control " .. id .. " must fit the 360px content")
 end
-assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -330, "end pull must fit the 330px content")
+assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -360, "end pull must fit the 360px content")
 -- Release follows the party's death state.
 TB.Refresh()
 assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")
@@ -1568,18 +1571,57 @@ assert(TB.actionButtons.rest.parent.parent == TB.campFrame and TB.actionButtons.
 TB.ShowTab("actions")
 assert(TB.actionsFrame.visible and not TB.campFrame.visible, "Fight hides Camp")
 
+-- A fresh bar has no favourites, only the hint; a 1.2 save of the old
+-- default icons is cleared once.
+TortoiseBotsDB.miniFavorites = { "attack", "stop", "interrupt", "flee", "pull", "pullback", "focus skull",
+    "follow", "stay", "come", "aoe" }
+TortoiseBotsDB.miniFavoritesOwn = nil
+assert(table.getn(TB.GetMiniFavorites()) == 0, "the old default favourites are cleared once")
+TortoiseBotsDB.miniFavorites = { "attack", "stop", "interrupt", "flee", "pull", "pullback", "focus skull",
+    "follow", "stay", "come", "aoe" }
+assert(table.getn(TB.GetMiniFavorites()) == 11, "favourites the player kept stay")
 TB.frame:Show()
 TB.miniButton.scripts.OnClick(TB.miniButton)
 local bar = frames["TortoiseBotsManagerMiniBar"]
+TB.LayoutMiniBar()
 assert(TB.GetMode() == "mini" and bar.visible and not TB.frame.visible, "Mini swaps the window for the bar")
 targetExists, targetNameValue = false, nil
 TB.Refresh()
-assert(not bar.icons.attack.enabled and bar.icons.stop.enabled and bar.icons.flee.enabled,
+assert(bar.icons.attack.usable == false and bar.icons.stop.usable and bar.icons.flee.usable,
     "mini icons follow the target rules")
+this, arg1 = bar.icons.attack, "RightButton"
+bar.icons.attack.scripts.OnClick(bar.icons.attack)
+assert(not bar.icons.attack, "a greyed-out favourite still drops on right-click")
+TB.ToggleMiniFavorite("attack")
+arg1 = nil
 now = now + 1
 this = bar.icons.stop
 bar.icons.stop.scripts.OnClick(bar.icons.stop)
 assert(lastAddon() == "action stop", "mini icons send the same intents")
+-- Category flyout and favourites.
+TB.OpenMiniCategory("camp")
+local fly = frames["TortoiseBotsManagerMiniFlyout"]
+assert(fly.visible and TB.GetMiniCategory() == "camp", "a category icon opens its flyout")
+local restEntry = fly.entries[1]
+assert(restEntry.def and restEntry.def.intent == "rest", "the flyout lists the category's actions")
+now = now + 1
+this, arg1 = restEntry, "LeftButton"
+restEntry.scripts.OnClick(restEntry)
+assert(lastAddon() == "action rest", "a flyout click runs the action")
+this, arg1 = restEntry, "RightButton"
+restEntry.scripts.OnClick(restEntry)
+assert(bar.icons.rest and bar.icons.rest.visible, "right-click pins the action to the bar")
+this, arg1 = bar.icons.rest, "RightButton"
+bar.icons.rest.scripts.OnClick(bar.icons.rest)
+assert(not bar.icons.rest, "right-click on the bar unpins it")
+this, arg1 = TB.actionButtons.rest, "RightButton"
+TB.actionButtons.rest.scripts.OnClick(TB.actionButtons.rest)
+assert(bar.icons.rest, "right-click in the full window pins the action to the mini bar")
+TB.actionButtons.rest.scripts.OnClick(TB.actionButtons.rest)
+assert(not bar.icons.rest, "a second right-click drops it again")
+arg1 = nil
+TB.OpenMiniCategory("camp")
+assert(not fly.visible and TB.GetMiniCategory() == nil, "the same icon closes the flyout")
 TB.Toggle()
 assert(not bar.visible and not TB.frame.visible, "/tbm hides the bar in mini mode")
 TB.Toggle()
@@ -1808,7 +1850,7 @@ this = chipWarrior
 chipWarrior.scripts.OnClick(chipWarrior)
 assert(TB.classFilter == 1 and table.getn(TB.GetDisplayRows("")) == 1,
     "clicking the Warrior chip must filter the roster rows")
-assert(chipWarrior.enabled == false, "active filter chip must disable (pill pattern)")
+assert(chipWarrior.isActive, "the active filter chip is picked (pill pattern)")
 this = TB.classChips[1]
 TB.classChips[1].scripts.OnClick(TB.classChips[1])
 assert(TB.classFilter == nil and table.getn(TB.GetDisplayRows("")) == 3,
@@ -1860,16 +1902,15 @@ assert(table.getn(sent) == beforeKeys + 4, "keybindings must send exactly one in
 -- ── Dungeon run window (P11): capability-gated satellite ─────────────────
 TB.OnSystemMessage("TBM:TRANSPORT|party")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
-TB.RefreshPartyView()
-assert(not TB.partyFrame.runButton:IsVisible(), "no Dungeon run button without the capability")
+assert(not TB.tabDungeon:IsVisible(), "no Dungeon tab without the capability")
 assert(TB.OpenRunWindow() == false, "the run window stays shut without the capability")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run")
-TB.RefreshPartyView()
-assert(TB.partyFrame.runButton:IsVisible(), "the capability shows the Dungeon run button")
+assert(TB.tabDungeon:IsVisible(), "the capability shows the Dungeon tab")
 now = now + 1
-this = TB.partyFrame.runButton
-TB.partyFrame.runButton.scripts.OnClick(TB.partyFrame.runButton)
-assert(TB.runWindow and TB.runWindow:IsVisible(), "Dungeon run opens the window")
+this = TB.tabDungeon
+TB.tabDungeon.scripts.OnClick(TB.tabDungeon)
+assert(TB.dungeonFrame:IsVisible(), "the Dungeon tab shows its page")
+assert(TB.runWindow and TB.runWindow:IsVisible(), "the Dungeon tab opens the run window")
 local runQueue = frames["TortoiseBotsManagerQueueFrame"]
 for _ = 1, 30 do
     if lastAddon() == "run status" then break end
@@ -1881,6 +1922,11 @@ assert(lastAddon() == "run status", "opening asks for the run status")
 assert(TB.runWindow.point and (TB.runWindow.point[2] == TB.frame or TB.runWindow.point[2] == TB.botPanel), "the run window sits beside main")
 TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet)")
 assert(table.getn(TB.GetRunPlans()) == 2, "the plan list parses")
+assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Dungeon plans: uldaman (map 70, 41 steps)") == true,
+    "the plan list stays out of the chat")
+assert(not TB.runWindow.planRows[1]:IsVisible(), "outside a dungeon the list stays closed")
+this = TB.runWindow.planToggle
+TB.runWindow.planToggle.scripts.OnClick(TB.runWindow.planToggle)
 assert(TB.runWindow.planRows[1].visible and TB.runWindow.planRows[1].planName == "uldaman",
     "plan rows render the parsed plans")
 now = now + 1
@@ -1891,7 +1937,14 @@ now = now + 1
 this = TB.runWindow.start
 TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
 assert(lastAddon() == "run start ragefire_chasm", "Start sends the picked plan")
+assert(string.find(TB.GetRunFeedback().text, "Start sent"), "a click says it was sent")
+TB.OnSystemMessage("TBM:ACTION_ERR|run start|not-bound|You command no group.")
+assert(string.find(TB.GetRunFeedback().text, "Start refused") and string.find(TB.runWindow.feedback.text, "You command no group"),
+    "a refusal shows in the run window")
+TB.OnSystemMessage("TBM:ACTION_ACK|run list|plans|36|-")
+assert(string.find(TB.GetRunFeedback().text, "36 plans loaded"), "the plans ACK is understood, not malformed")
 TB.OnSystemMessage("TBM:ACTION_ACK|run start|party|120|ragefire_chasm")
+assert(string.find(TB.GetRunFeedback().text, "Start done"), "an ACK shows in the run window")
 TB.OnSystemMessage("TBM:RUN|ragefire_chasm|running|1/120|tunnel|move|walk|walking to tunnel")
 assert(TB.GetRun().state == "running", "the status line drives the model")
 assert(TB.runWindow.runStep.text == "Step 1 of 120", "step x/y renders")
@@ -1917,6 +1970,87 @@ assert(lastAddon() == "run stop done for tonight", "Stop sends the reason")
 TB.SetRunStopReason("")
 TB.OnSystemMessage("TBM:RUN|ragefire_chasm|done|5/120|tunnel|move|walk|stopped: done for tonight")
 assert(not TB.runWindow.stop.enabled, "Stop waits once the run is done")
+-- Plan search and the zone's plans.
+TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), scarlet_library (map 189, 88 steps), scarlet_armory (map 189, 110 steps), stormwind_stockade (map 34, 95 steps), zulfarrak (map 209, 232 steps)")
+assert(TB.RunPlanTitle("scarlet_library") == "Scarlet Library" and TB.RunPlanTitle("zulfarrak") == "Zul'Farrak",
+    "plans show readable names")
+TB.SetRunSelectedPlan(nil)
+function GetRealZoneText() return "The Stockade" end
+TB.RefreshRunWindow()
+assert(TB.GetRunSelectedPlan() == "stormwind_stockade", "a dungeon with one plan picks it")
+assert(string.find(TB.runWindow.planPick.text, "Stormwind Stockade"), "the picked plan shows by name")
+TB.SetRunSelectedPlan(nil)
+function GetRealZoneText() return "Scarlet Monastery" end
+TB.RefreshRunWindow()
+assert(TB.GetRunSelectedPlan() == nil, "a dungeon with several plans waits for a pick")
+for _ = 1, 30 do
+    if lastAddon() == "run here" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(lastAddon() == "run here", "a dungeon with wings asks the server which one")
+assert(TB.runWindow.planRows[1].planName == "scarlet_library" and TB.runWindow.planRows[2].planName == "scarlet_armory",
+    "the wings come first")
+TB.OnSystemMessage("TBM:RUN_HERE|scarlet_armory|12")
+assert(TB.GetRunSelectedPlan() == "scarlet_armory" and string.find(TB.runWindow.planPick.text, "Scarlet Armory"),
+    "the server's answer picks the wing the player stands in")
+function GetRealZoneText() return "Stormwind City" end
+TB.SetRunPlanPicker(true)
+this = TB.runWindow.planSearch
+TB.runWindow.planSearch:SetText("ARMORY")
+TB.runWindow.planSearch.scripts.OnTextChanged(TB.runWindow.planSearch)
+assert(TB.runWindow.planRows[1].planName == "scarlet_armory" and not TB.runWindow.planRows[2]:IsVisible(),
+    "the search filters the list")
+TB.runWindow.planSearch:SetText("")
+TB.runWindow.planSearch.scripts.OnTextChanged(TB.runWindow.planSearch)
+GetRealZoneText = nil
+this = TB.runWindow.planRows[1]
+TB.runWindow.planRows[1].scripts.OnClick(TB.runWindow.planRows[1])
+assert(not TB.runWindow.planSearch:IsVisible(), "a pick closes the search list")
+-- Server info window: ".bot features" fills the switch list.
+assert(TB.infoButton, "the header has an Info button")
+this = TB.infoButton
+TB.infoButton.scripts.OnClick(TB.infoButton)
+for _ = 1, 30 do
+    if lastAddon() == "features" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(TB.infoWindow:IsVisible() and lastAddon() == "features", "Info opens the window and asks the server")
+assert(not TB.runWindow:IsVisible(), "Info closes the run window beside main")
+TB.OnSystemMessage("Server features: dungeon-run on, hire-max 4")
+TB.OnSystemMessage("TBM:FEATURE|dungeon-run|on|Dungeon runs")
+TB.OnSystemMessage("TBM:FEATURE|hire-max|4|Hires per player")
+assert(table.getn(TB.GetServerFeatures()) == 2, "the switches parse")
+assert(TB.infoWindow.rows[1].label.text == "Dungeon runs" and TB.infoWindow.rows[2].value.text == "4",
+    "the switches render")
+assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Server features: dungeon-run on") == true,
+    "the summary stays out of the chat")
+-- All settings: a search asks the server, the answer lists key and value.
+TB.SetServerInfoTab("all")
+assert(TB.infoWindow.search:IsVisible() and not TB.infoWindow.refresh:IsVisible(), "the All tab shows the search")
+TB.SearchServerConfig("hire")
+for _ = 1, 30 do
+    if lastAddon() == "features all hire" then break end
+    now = now + 1
+    this, arg1 = runQueue, 0.5
+    runQueue.scripts.OnUpdate(runQueue)
+end
+assert(lastAddon() == "features all hire", "a search sends .bot features all <text>")
+TB.OnSystemMessage("Config: 2 keys match 'hire'.")
+TB.OnSystemMessage("TBM:CONFIG_BEGIN|2")
+TB.OnSystemMessage("TBM:CONFIG|HireEnabled|1")
+TB.OnSystemMessage("TBM:CONFIG|HireMaxBotsPerPlayer|4")
+TB.OnSystemMessage("TBM:CONFIG_END|2|2")
+assert(TB.infoWindow.rows[2].label.text == "HireMaxBotsPerPlayer" and TB.infoWindow.rows[2].value.text == "4",
+    "the settings render")
+assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Config: 2 keys match 'hire'.") == true,
+    "the search summary stays out of the chat")
+TB.SetServerInfoTab("main")
+TB.CloseServerInfo()
+TB.OpenRunWindow()
 -- Mutual exclusion with the vault/NPC satellites.
 TB.OpenBotPanel("Alpha")
 TB.OpenVault("Alpha")
@@ -1926,8 +2060,8 @@ assert(TB.runWindow:IsVisible() and not TB.botVault:IsVisible(), "the run window
 TB.CloseBotPanel()
 assert(not TB.runWindow:IsVisible(), "the run window closes with its parent")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
-TB.RefreshPartyView()
-assert(not TB.partyFrame.runButton:IsVisible(), "losing the cap hides everything again")
+assert(not TB.tabDungeon:IsVisible(), "losing the cap hides everything again")
+assert(not TB.dungeonFrame:IsVisible(), "losing the cap leaves the Dungeon tab")
 assert(TB.GetRun() == nil, "losing the cap drops the model")
 
 partyMembers = {}

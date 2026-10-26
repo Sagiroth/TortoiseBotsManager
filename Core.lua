@@ -157,6 +157,12 @@ local function isBotCommandMessage(message)
     if string.find(message, "^%.bot$") or string.find(message, "^%.bot%s") or string.find(message, "^TBM:") then
         return true
     end
+    -- The run window reads these replies itself (plan list, run mode).
+    if string.find(message, "^Dungeon plans:") or string.find(message, "^Run mode:")
+        or string.find(message, "^Server features:") or string.find(message, "^Config: %d+ keys match")
+        or string.find(message, "^Run plan here:") then
+        return true
+    end
     if string.find(message, "^Bot commands:") then
         local now = (GetTime and GetTime()) or 0
         if now - (TB._lastEnabledPrint or 0) > 1 then

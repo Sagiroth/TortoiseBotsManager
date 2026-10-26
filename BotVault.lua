@@ -193,7 +193,7 @@ local function setTooltip(button, title, lines)
 end
 
 local function makeTab(parent, label, x, width, view)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(width); b:SetHeight(20)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -36)
     b:SetText(label)
@@ -250,7 +250,7 @@ local function createVault()
 
     vault.rows = {}
     for i = 1, ROWS do
-        local row = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
+        local row = TB.StyleButton(CreateFrame("Button", nil, vault, "UIPanelButtonTemplate"))
         row:SetWidth(VW - 24); row:SetHeight(20)
         row:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -80 - (i - 1) * 22)
         row:SetScript("OnClick", function()
@@ -263,7 +263,7 @@ local function createVault()
         table.insert(vault.rows, row)
     end
 
-    local ask = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
+    local ask = TB.StyleButton(CreateFrame("Button", nil, vault, "UIPanelButtonTemplate"))
     ask:SetWidth(134); ask:SetHeight(22)
     ask:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -80 - ROWS * 22)
     ask:SetText("Ask again")
@@ -274,13 +274,13 @@ local function createVault()
     setTooltip(ask, "Ask again", { "Reloads this list from the bot." })
     vault.ask = ask
 
-    local prev = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
+    local prev = TB.StyleButton(CreateFrame("Button", nil, vault, "UIPanelButtonTemplate"))
     prev:SetWidth(26); prev:SetHeight(22)
     prev:SetPoint("TOPLEFT", vault, "TOPLEFT", 154, -80 - ROWS * 22)
     prev:SetText("<")
     prev:SetScript("OnClick", function() page = page - 1; TB.RefreshVault() end)
     vault.prevPage = prev
-    local nextBtn = CreateFrame("Button", nil, vault, "UIPanelButtonTemplate")
+    local nextBtn = TB.StyleButton(CreateFrame("Button", nil, vault, "UIPanelButtonTemplate"))
     nextBtn:SetWidth(26); nextBtn:SetHeight(22)
     nextBtn:SetPoint("TOPLEFT", vault, "TOPLEFT", 262, -80 - ROWS * 22)
     nextBtn:SetText(">")

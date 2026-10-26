@@ -507,38 +507,18 @@ return function()
                 noOverlaps("Party row " .. i .. " buttons", btnItems, cache)
             end
             noOverlaps("Party rows", rowItems, cache)
-            -- Dungeon run button (P11): inside the frame, clear of row 1.
-            if frame.runButton then
-                local btn = frame.runButton
-                local wasVisible = btn:IsVisible()
-                btn:Show()
-                local br = frameRect(btn, cache)
-                if not inside(br, fr, 2) then
-                    bad(string.format("Party: run button %s escapes the frame %s",
-                        fmt(br), fmt(fr)))
+            -- Dungeon tab (P11): with every tab shown (dungeon-run + a raid
+            -- would make 8) the Log tab still ends inside the main window.
+            if TB.tabDungeon then
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run")
+                local lr = frameRect(TB.tabLog, cache)
+                local mr = frameRect(TB.frame, cache)
+                if lr.right > mr.right then
+                    bad(string.format("Tabs: Log tab %s escapes the main window %s", fmt(lr), fmt(mr)))
                 end
-                local row1 = frame.rows[1] and frameRect(frame.rows[1], cache)
-                if row1 and overlaps(br, row1) then
-                    bad("Party: run button overlaps row 1")
-                end
-                -- With the button shown, the header subtitle must clear it:
-                -- subtitle starts at title.LEFT + rendered title + 8.
-                do
-                    local titleR = frameRect(frame.title, cache)
-                    local titleW = textWidth("Active Party Roles", 6)
-                    local subW = textWidth("(role buttons · bag = gear · click to target)", 6)
-                    local subRight = titleR.left + titleW + 8 + subW
-                    if subRight > br.left then
-                        bad(string.format("Party: subtitle ends at x=%d but run button starts at x=%d",
-                            subRight, br.left))
-                    end
-                end
-                labelFits("Party run", btn, "Dungeon run", 6)
-                if not wasVisible then btn:Hide() end
                 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
-                TB.RefreshPartyView()
             else
-                bad("Party: run button missing")
+                bad("Tabs: Dungeon tab missing")
             end
         end
     end
@@ -1305,9 +1285,11 @@ return function()
             if not win then
                 bad("RunWindow: did not open")
             else
+                -- The open search list is the tallest layout: check that one.
+                TB.SetRunPlanPicker(true)
                 local wr = frameRect(win, cache)
                 local items = {}
-                for _, key in ipairs({ "bind", "unbind", "enter", "cmdStatus",
+                for _, key in ipairs({ "modeBot", "modeYou", "planToggle", "bind", "unbind", "enter", "cmdStatus",
                     "plans", "planPrev", "planNext", "start", "pause",
                     "resume", "skip", "stop", "stopBox" }) do
                     if win[key] then
@@ -1332,7 +1314,7 @@ return function()
                 if win.planEmpty and not win.planEmpty:IsVisible() then
                     bad("RunWindow: empty-state text must show with no plans")
                 end
-                TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet), deadmines (map 36, 90 steps), wailing_caverns (map 43, 100 steps)")
+                TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet), deadmines (map 36, 90 steps), wailing_caverns (map 43, 100 steps), scarlet_library (map 189, 88 steps), lower_blackrock_spire (map 229, 491 steps)")
                 do
                     local filled = {}
                     for i, row in ipairs(win.planRows or {}) do
@@ -1357,7 +1339,7 @@ return function()
                     end
                     local pages = win.planPageText and win.planPageText:GetText() or ""
                     if pages ~= "1 / 2" then
-                        bad("RunWindow: 4 plans must page as '1 / 2', got '" .. pages .. "'")
+                        bad("RunWindow: 6 plans must page as '1 / 2', got '" .. pages .. "'")
                     end
                 end
                 -- Status shown: a running line paints state, step, bar and
@@ -1369,8 +1351,8 @@ return function()
                 TB.OnSystemMessage("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|pulling 4851|left 2")
                 local status = {}
                 for _, key in ipairs({ "runBar", "runLeg", "runPhase",
-                    "runNote", "runStep", "runState", "bindHint", "planHint",
-                    "stopHint", "warn" }) do
+                    "runNote", "runStep", "runState", "bindHint", "planHint", "modeHint",
+                    "feedback", "warn" }) do
                     if win[key] then table.insert(status, { key, win[key] }) end
                 end
                 childrenInside("RunWindow status", win, wr, status, cache, 2)

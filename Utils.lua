@@ -34,6 +34,74 @@ function TB.ApplyBackdrop(frame, alpha, borderA)
     frame:SetBackdropBorderColor(0.48, 0.36, 0.15, borderA or 0.90)
 end
 
+-- Flat buttons: the panel template keeps its behaviour (text, clicks,
+-- enable/disable); its red art gives way to a solid fill with a 1 px frame
+-- (the WHITE8X8 look of modern 1.12 addons), which reads on any background.
+local FLAT_BACKDROP = {
+    bgFile = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+    insets = { left = 1, right = 1, top = 1, bottom = 1 },
+}
+local BUTTON_FILL = { 0.12, 0.10, 0.08, 0.95 }
+local BUTTON_EDGE = { 0.55, 0.42, 0.18, 1 }
+local ACTIVE_FILL = { 0.62, 0.44, 0.12, 1 }
+local ACTIVE_EDGE = { 1, 0.84, 0.35, 1 }
+-- Modes (formations, stances, filters) are outlined; actions are solid.
+local MODE_FILL = { 0.04, 0.04, 0.04, 0.35 }
+local MODE_EDGE = { 0.45, 0.35, 0.15, 0.9 }
+local DISABLED_FILL = { 0.05, 0.05, 0.05, 0.75 }
+local DISABLED_EDGE = { 0.28, 0.28, 0.28, 0.9 }
+
+local function paint(button, fill, edge)
+    button:SetBackdropColor(fill[1], fill[2], fill[3], fill[4])
+    button:SetBackdropBorderColor(edge[1], edge[2], edge[3], edge[4])
+end
+
+-- Picked (gold), disabled (grey), else the kind's own look.
+function TB.PaintButton(button)
+    if not button or not button.SetBackdropColor then return end
+    if button.isActive then paint(button, ACTIVE_FILL, ACTIVE_EDGE)
+    elseif button.flatDisabled then paint(button, DISABLED_FILL, DISABLED_EDGE)
+    elseif button.flatKind == "mode" then paint(button, MODE_FILL, MODE_EDGE)
+    else paint(button, BUTTON_FILL, BUTTON_EDGE) end
+end
+
+function TB.StyleButton(button)
+    if not button or not button.GetNormalTexture then return button end
+    local c = C.COLOR
+    for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetDisabledTexture" }) do
+        local tex = button[get](button)
+        if tex then tex:SetTexture(nil) end
+    end
+    local pushed = button:GetPushedTexture()
+    if pushed then pushed:SetTexture(0, 0, 0, 0.35) end
+    local hl = button:GetHighlightTexture()
+    if hl then
+        hl:SetTexture(c.accent[1], c.accent[2], c.accent[3], 0.25)
+        hl:ClearAllPoints()
+        hl:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+        hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+    end
+    button:SetBackdrop(FLAT_BACKDROP)
+    button.flatKind = button.flatKind or "action"
+    -- Enable/Disable repaint, so a disabled action greys out its frame too.
+    local enable, disable = button.Enable, button.Disable
+    button.Enable = function(self) enable(self); self.flatDisabled = false; TB.PaintButton(self) end
+    button.Disable = function(self) disable(self); self.flatDisabled = true; TB.PaintButton(self) end
+    TB.PaintButton(button)
+    if button.SetDisabledTextColor then button:SetDisabledTextColor(0.42, 0.42, 0.42) end
+    if button.SetHighlightTextColor then button:SetHighlightTextColor(1, 1, 1) end
+    return button
+end
+
+-- A flat button's picked look (a mode switch): filled gold, bright frame.
+function TB.SetButtonActive(button, active)
+    if not button or not button.SetBackdropColor then return end
+    button.isActive = active and true or false
+    TB.PaintButton(button)
+end
+
 function TB.StatusColor(st)
     local c = C.COLOR
     if not st then return c.muted end

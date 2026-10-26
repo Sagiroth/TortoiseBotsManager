@@ -15,7 +15,7 @@ TB.C.SOURCE_URL = "https://github.com/Sagiroth/TortoiseBotsManager"
 
 -- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
-TB.C.PANEL_H = 430
+TB.C.PANEL_H = 460
 TB.C.ROW_H   = 28
 TB.C.ROW_N   = 7
 TB.C.PAD     = 10  -- outer margin
