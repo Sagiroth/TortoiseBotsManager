@@ -46,8 +46,8 @@ def package_addon(repo_root, output_path):
 
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(repo_root):
-            # Exclude version control, CI, dev tooling, and tests
-            dirs[:] = [d for d in dirs if d not in {".git", ".github", "tools", "tests", "__pycache__"}]
+            # Exclude version control, CI, dev tooling, tests, and docs
+            dirs[:] = [d for d in dirs if d not in {".git", ".github", "tools", "tests", "docs", "__pycache__"}]
 
             for filename in sorted(files):
                 # Only include designated runtime files or general lua/toc/xml/tga/blp assets
