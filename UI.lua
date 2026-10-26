@@ -994,7 +994,7 @@ end
 
 local function BuildEngageCard(parent, buttons)
     -- Fight: Engage (attack, stop, interrupt, flee)
-    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 48, { y = -35, line = true })
+    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 48, { y = -40, line = true })
     local btnY = -22
     buttons.attack    = makeActionButton(card, "attack", 110, 8, btnY)
     buttons.stop      = makeActionButton(card, "stop", 110, 126, btnY)
@@ -1009,7 +1009,7 @@ local function BuildPullCard(parent, buttons)
     -- Pull & Focus: pull, pullback with timers, focus skull, cc mark cover
     -- the button row; End pull sits in the timer row as the small
     -- "stop pulling" escape next to the timing controls.
-    local card = TB.UI.CreateCard(parent, "PULL & FOCUS", W - (C.PAD or 10) * 2, 68, { y = -86, line = true })
+    local card = TB.UI.CreateCard(parent, "PULL & FOCUS", W - (C.PAD or 10) * 2, 68, { y = -96, line = true })
     local btnY = -22
     buttons.pull      = makeActionButton(card, "pull", 110, 8, btnY)
     buttons.pullback  = makeActionButton(card, "pullback", 110, 126, btnY)
@@ -1078,7 +1078,7 @@ end
 
 local function BuildMoveCard(parent, buttons)
     -- Move: five orders plus stance pills inline on one row.
-    local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_MOVE_H or 76, { y = -157, line = true })
+    local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_MOVE_H or 76, { y = -172, line = true })
     local btnY = -24
     buttons.follow   = makeActionButton(card, "follow", 89, 8, btnY)
     buttons.stay     = makeActionButton(card, "stay", 89, 101, btnY)
@@ -1114,7 +1114,7 @@ local function BuildSwitchesCard(parent, buttons)
     -- shows it at a glance (green on, grey off, gold mixed/unknown). One
     -- row of five compact buttons fits the content width; icons are left
     -- off so the state words clear the lamp on the narrow buttons.
-    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_SWITCH_H or 48, { y = -232, line = true })
+    local card = TB.UI.CreateCard(parent, "PARTY SWITCHES", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_SWITCH_H or 48, { y = -252, line = true })
     local btnY = -22
     TB.toggleButtons = {}
     local switchIdx = 1
@@ -1148,7 +1148,7 @@ end
 local function BuildTacticsCard(parent, buttons)
     -- Combat tactics: one-shot strategy orders (kiting, auto-mark, focus
     -- fire, fear). The server confirms each via "Strategy change" text.
-    local card = TB.UI.CreateCard(parent, "TACTICS", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_TACTIC_H or 48, { y = -282, line = true })
+    local card = TB.UI.CreateCard(parent, "TACTICS", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_TACTIC_H or 48, { y = -308, line = true })
     buttons.tacticKite = makeActionButton(card, "strategy ~kite", 110, 8, -22)
     buttons.tacticMark = makeActionButton(card, "strategy ~mark rti", 110, 126, -22)
     buttons.tacticFocus = makeActionButton(card, "strategy ~focus", 110, 244, -22)
@@ -1366,15 +1366,15 @@ function TB.InitUI()
     local tabActions = makeTab("Fight", 0)
     local tabCamp = makeTab("Camp", 80)
     local tabParty = makeTab("Party", 160)
-    local tabRoster = makeTab("Roster", 240)
-    local tabGuild = makeTab("Guild", 320)
+    local tabGuild = makeTab("Guild", 240)
+    local tabRoster = makeTab("Roster", 320)
     local tabRaid = makeTab("Raid", 400)
     local tabDungeon = makeTab("Dungeon", 480)
     local tabLog = makeTab("Log", 560)
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
-    content:SetHeight(330)
+    content:SetHeight(360)
 
     local actionsFrame = CreateActions(content)
     local campFrame = TB.campFrame
@@ -2207,8 +2207,8 @@ function TB.InitUI()
         { name = "actions", tab = tabActions, frame = actionsFrame },
         { name = "camp",    tab = tabCamp,    frame = campFrame },
         { name = "party",   tab = tabParty,   frame = partyFrame },
-        { name = "roster",  tab = tabRoster,  frame = rosterFrame },
         { name = "guild",   tab = tabGuild,   frame = guildFrame },
+        { name = "roster",  tab = tabRoster,  frame = rosterFrame },
         { name = "raid",    tab = tabRaid,    frame = raidFrame },
         { name = "dungeon", tab = tabDungeon, frame = dungeonFrame },
         { name = "log",     tab = tabLog,     frame = logFrame },

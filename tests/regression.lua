@@ -1105,9 +1105,9 @@ end
 assert(afterStrategyOps == beforeStrategyOps, "a strategy reply must not start roster operations")
 
 -- Layout: every Fight card keeps its re-stacked slot (no overlaps) and every
--- control fits the 330px content frame.
+-- control fits the 360px content frame, with 8 px between cards.
 local fightOrder = { "engage", "pull", "move", "switches", "tactics" }
-local fightTops = { engage = -35, pull = -86, move = -157, switches = -232, tactics = -282 }
+local fightTops = { engage = -40, pull = -96, move = -172, switches = -252, tactics = -308 }
 local fightHeights = { engage = 48, pull = 68, move = 72, switches = 48, tactics = 48 }
 local fightBottom = { engage = 0, pull = 0, move = 0, switches = 0, tactics = 0 }
 for _, id in ipairs(fightOrder) do
@@ -1115,7 +1115,7 @@ for _, id in ipairs(fightOrder) do
     local _, _, _, _, top = card:GetPoint(1)
     assert(top == fightTops[id] and card.height == fightHeights[id],
         "fight card " .. id .. " must keep its integrated slot")
-    assert(top <= 0 and -(top - card.height) <= 330, "fight card " .. id .. " must fit the 330px content")
+    assert(top <= 0 and -(top - card.height) <= 360, "fight card " .. id .. " must fit the 360px content")
     fightBottom[id] = top - card.height
 end
 for i = 2, table.getn(fightOrder) do
@@ -1129,23 +1129,23 @@ end
 local moveIds = { "follow", "stay", "come", "guard", "free" }
 for _, id in ipairs(moveIds) do
     local btn = TB.actionButtons[id]
-    assert(cardBottom(btn, fightTops.move) >= -330, "move control " .. id .. " must fit the 330px content")
+    assert(cardBottom(btn, fightTops.move) >= -360, "move control " .. id .. " must fit the 360px content")
 end
 for id, pill in pairs(TB.stancePills) do
-    assert(cardBottom(pill, fightTops.move) >= -330, "stance pill " .. id .. " must fit the 330px content")
+    assert(cardBottom(pill, fightTops.move) >= -360, "stance pill " .. id .. " must fit the 360px content")
 end
 for key, btn in pairs(TB.toggleButtons) do
-    assert(cardBottom(btn, fightTops.switches) >= -330, "switch " .. key .. " must fit the 330px content")
+    assert(cardBottom(btn, fightTops.switches) >= -360, "switch " .. key .. " must fit the 360px content")
 end
 for _, id in ipairs({ "tacticKite", "tacticMark", "tacticFocus", "tacticAoeFear" }) do
-    assert(cardBottom(TB.actionButtons[id], fightTops.tactics) >= -330,
-        "tactic " .. id .. " must fit the 330px content")
+    assert(cardBottom(TB.actionButtons[id], fightTops.tactics) >= -360,
+        "tactic " .. id .. " must fit the 360px content")
 end
 for _, id in ipairs({ "attack", "stop", "interrupt", "flee" }) do
-    assert(cardBottom(TB.actionButtons[id], fightTops.engage) >= -330,
-        "engage control " .. id .. " must fit the 330px content")
+    assert(cardBottom(TB.actionButtons[id], fightTops.engage) >= -360,
+        "engage control " .. id .. " must fit the 360px content")
 end
-assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -330, "end pull must fit the 330px content")
+assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -360, "end pull must fit the 360px content")
 -- Release follows the party's death state.
 TB.Refresh()
 assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")
@@ -1880,6 +1880,8 @@ assert(lastAddon() == "run status", "opening asks for the run status")
 assert(TB.runWindow.point and (TB.runWindow.point[2] == TB.frame or TB.runWindow.point[2] == TB.botPanel), "the run window sits beside main")
 TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), ragefire_chasm (map 389, 120 steps, 3 not supported yet)")
 assert(table.getn(TB.GetRunPlans()) == 2, "the plan list parses")
+assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Dungeon plans: uldaman (map 70, 41 steps)") == true,
+    "the plan list stays out of the chat")
 assert(not TB.runWindow.planRows[1]:IsVisible(), "outside a dungeon the list stays closed")
 this = TB.runWindow.planToggle
 TB.runWindow.planToggle.scripts.OnClick(TB.runWindow.planToggle)
