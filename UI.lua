@@ -1507,11 +1507,11 @@ function TB.InitUI()
             row.bagButton = bagButton
 
             local summonButton = TB.UI.CreateButton(row, "Summon", 60, 18, {
-                point = "TOPRIGHT",
+                point = "BOTTOMRIGHT",
                 relTo = row,
-                relPoint = "TOPRIGHT",
-                x = -34,
-                y = -2,
+                relPoint = "BOTTOMRIGHT",
+                x = -56,
+                y = 5,
                 onClick = function()
                     if row.partyName and row.partyUnit ~= "player" then
                         TB.SendBotCommand(TB.BuildCommand("summon", row.partyName))
