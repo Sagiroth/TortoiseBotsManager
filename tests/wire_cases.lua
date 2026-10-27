@@ -2368,6 +2368,22 @@ local cases = {
         end,
     },
     {
+        id = "run.door-hint",
+        expected = { ".bot run list", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            local said = nil
+            local realSetStatus = TB.SetStatus
+            TB.SetStatus = function(msg) said = msg end
+            TB.OnSystemMessage("TBM:RUN|blackrock_depths|paused|12/90|1|pull|door|door to leg 1: the way is locked (object 170560): open it with Shadowforge Key (item 11000) or Lockpicking 250; the bots wait before it and go on by themselves once it reads open")
+            TB.SetStatus = realSetStatus
+            assert(said == "Paused at a locked door: open it with Shadowforge Key (item 11000) or Lockpicking 250, then Resume.",
+                "a run paused at a locked door names the key on the status line")
+            TB.CloseRunWindow()
+        end,
+    },
+    {
         id = "run.exclusive",
         expected = { ".bot inv Alpha", ".bot command Alpha bank", ".bot run list", ".bot run status", ".bot run list", ".bot run status" },
         trigger = function()
