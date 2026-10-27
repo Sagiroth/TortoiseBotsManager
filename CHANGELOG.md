@@ -2,6 +2,13 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.3.4 (2026-10-27)
+
+### Comms & Protocol
+- When a dungeon run pauses at a locked door, the status line now tells you exactly what opens it—e.g., "open with Shadowforge Key (item 11000) or Lockpicking 250"—so you can resume without guesswork. [#46](https://github.com/Sagiroth/TortoiseBotsManager/pull/46)
+
+---
+
 ## v1.3.3 (2026-10-26)
 
 ### Documentation

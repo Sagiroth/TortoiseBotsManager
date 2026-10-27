@@ -3,7 +3,7 @@
 ## Notes: Manager for your server-owned TortoiseBots — actions, lifecycle, and roster state.
 ## Author: Sagiroth
 ## X-Website: https://github.com/Sagiroth/TortoiseBotsManager
-## Version: 1.3.3
+## Version: 1.3.4
 ## SavedVariables: TortoiseBotsDB
 
 Constants.lua
