@@ -1506,12 +1506,12 @@ function TB.InitUI()
             bagButton:Hide()
             row.bagButton = bagButton
 
-            local summonButton = TB.UI.CreateButton(row, "Summon", 60, 18, {
-                point = "BOTTOMRIGHT",
+            local summonButton = TB.UI.CreateButton(row, "Summon", 56, 18, {
+                point = "TOPLEFT",
                 relTo = row,
-                relPoint = "BOTTOMRIGHT",
-                x = -56,
-                y = 5,
+                relPoint = "TOPLEFT",
+                x = 88,
+                y = -6,
                 onClick = function()
                     if row.partyName and row.partyUnit ~= "player" then
                         TB.SendBotCommand(TB.BuildCommand("summon", row.partyName))
