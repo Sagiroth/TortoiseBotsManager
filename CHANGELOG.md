@@ -2,6 +2,22 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.4.0 (2026-10-27)
+
+### Loot & History
+- New Loot tab with a 24-hour history of what your bots looted: every item, money amount and roll vote, each with the reason for the roll. [#47](https://github.com/Sagiroth/TortoiseBotsManager/pull/47)
+- Items are shown in their quality colour, with combinable filters for bot, item, quality, source and row type, plus a clear button and paging to reach older rows. [#47](https://github.com/Sagiroth/TortoiseBotsManager/pull/47)
+- History is stored locally per character, capped at 2000 rows; on login the addon asks the server for the last 24 hours and appends only rows it has not seen yet. [#47](https://github.com/Sagiroth/TortoiseBotsManager/pull/47)
+- Loot now lands in the tab live as the server reports it, so the list keeps up with the bots while you play. [#48](https://github.com/Sagiroth/TortoiseBotsManager/pull/48)
+
+### Party & Summoning
+- Summon button on every bot row in the Party tab, plus Summon Party and Summon Raid buttons to pull the whole group in one click. [#48](https://github.com/Sagiroth/TortoiseBotsManager/pull/48)
+
+### UI & Controls
+- Hovering a loot row now shows the item's full tooltip, so you can check stats without leaving the tab. [#48](https://github.com/Sagiroth/TortoiseBotsManager/pull/48)
+
+---
+
 ## v1.3.4 (2026-10-27)
 
 ### Comms & Protocol
