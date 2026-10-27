@@ -271,6 +271,10 @@ function TB.ParseActionMessage(msg)
         end
         if TB.OnBotPanelError then TB.OnBotPanelError(packet) end
         if TB.OnRunError then TB.OnRunError(packet) end
+        if TB.OnLootError and TB.OnLootError(packet) then
+            if TB.Refresh then TB.Refresh() end
+            return true, "error", packet
+        end
         local text = actionLabel(packet.intent) .. ": " .. packet.code
         if packet.message ~= "" then text = text .. " — " .. packet.message end
         if TB.SetStatus then TB.SetStatus(text, "warn") end
@@ -539,7 +543,7 @@ function TB.OnCommandQueued(cmd)
     local verb = string.lower(string.gsub(cmd or "", "%s+.*", ""))
     local name = commandTargetName(cmd)
     if name and verb ~= "list" and verb ~= "roster" and verb ~= "stats"
-        and verb ~= "help" and verb ~= "action" and verb ~= "strategy" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
+        and verb ~= "help" and verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
         if verb == "add" then TB.AddToRoster(name) end
         TB.BeginOperation(name, verb, true)
         if TB.Refresh then TB.Refresh() end
@@ -559,11 +563,11 @@ function TB.OnCommandSent(cmd)
     if TB.IsPanelVerb(verb) then return end
 
     if verb == "add" and name then TB.AddToRoster(name) end
-    -- commander / cmd / run take a lead bot or a plan, not a roster name:
-    -- no per-bot operation for them.
+    -- commander / cmd / run / lootlog take a lead bot, a plan or a cursor,
+    -- not a roster name: no per-bot operation for them.
     if name and verb ~= "action" and verb ~= "strategy"
         and verb ~= "commander" and verb ~= "cmd" and verb ~= "run"
-        and TB.BeginOperation then
+        and verb ~= "lootlog" and TB.BeginOperation then
         TB.BeginOperation(name, verb, false)
     end
 
@@ -578,7 +582,7 @@ function TB.OnCommandSent(cmd)
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
     end
     if TB.Refresh then TB.Refresh() end
-    if verb ~= "action" and verb ~= "strategy" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
+    if verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
@@ -707,6 +711,7 @@ function TB.OnSystemMessage(msg)
             -- The run feature can vanish with a restart: re-gate the window
             -- (and its button, via Refresh) on every CAPS line.
             if TB.NoteRunCaps then TB.NoteRunCaps() end
+            if TB.NoteLootCaps then TB.NoteLootCaps() end
             if TB.Refresh then TB.Refresh() end
             TB.lastSystem = msg
             return
@@ -759,6 +764,11 @@ function TB.OnSystemMessage(msg)
             TB.lastSystem = msg
             return
         end
+    end
+
+    if TB.ParseLootMessage and TB.ParseLootMessage(msg) then
+        TB.lastSystem = msg
+        return
     end
 
     local actionHandled = TB.ParseActionMessage and TB.ParseActionMessage(msg)

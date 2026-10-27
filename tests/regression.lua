@@ -197,6 +197,7 @@ for _, file in ipairs({
     "BotNpc.lua",
     "BotVault.lua",
     "BotRun.lua",
+    "BotLoot.lua",
     "ServerInfo.lua",
     "MiniBar.lua",
     "Minimap.lua",
@@ -2097,6 +2098,164 @@ TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster
 assert(not TB.tabDungeon:IsVisible(), "losing the cap hides everything again")
 assert(not TB.dungeonFrame:IsVisible(), "losing the cap leaves the Dungeon tab")
 assert(TB.GetRun() == nil, "losing the cap drops the model")
+
+-- ── Loot history tab: capability-gated catch-up stream ─────────────────────
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+assert(not TB.tabLoot:IsVisible(), "no Loot tab without the capability")
+assert(TB.RequestLootPage() == false, "nothing is sent without the capability")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,loot-log")
+assert(TB.tabLoot:IsVisible(), "the capability shows the Loot tab")
+now = now + 1
+this = TB.tabLoot
+TB.tabLoot.scripts.OnClick(TB.tabLoot)
+assert(TB.lootFrame:IsVisible(), "the Loot tab shows its page")
+assert(TB.lootRows and table.getn(TB.lootRows) == 11, "the Loot tab owns its scroll rows")
+
+-- Catch-up on login starts from the stored cursor.
+event, arg1 = "PLAYER_LOGIN", nil
+coreFrame.scripts.OnEvent(coreFrame)
+local lootQueue = frames["TortoiseBotsManagerQueueFrame"]
+for _ = 1, 30 do
+    if lastAddon() == "lootlog" then break end
+    now = now + 1
+    this, arg1 = lootQueue, 0.5
+    lootQueue.scripts.OnUpdate(lootQueue)
+end
+assert(lastAddon() == "lootlog", "login asks for the first page without a cursor")
+TortoiseBotsDB.loot = { Tester = { cursor = "piece@10", rows = {} } }
+event, arg1 = "PLAYER_LOGIN", nil
+-- NoteLootLogin runs once per session; a second call stays silent.
+assert(TB.NoteLootLogin() == false, "login catch-up runs once per session")
+
+-- Parsing of a LOOT line: item, money and roll rows.
+local lootItem = TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:01|Alpha|StoreLootAction|2586|Gamemaster's Robe|corpse|Defias Thug|4")
+assert(lootItem and lootItem.bot == "Alpha" and lootItem.itemId == 2586 and lootItem.quality == 4
+    and lootItem.sourceType == "corpse" and lootItem.source == "Defias Thug", "item rows parse")
+local lootMoney = TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:02|Gamma|LootMoney|812|1550|corpse|Kobold Vermin|")
+assert(lootMoney and lootMoney.copper == 1550 and lootMoney.itemId == 812, "money rows carry copper and corpse entry")
+local lootRoll = TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:03|Alpha|LootRoll|need:2586:for equiping as upgrade.|Gamemaster's Robe|corpse|Defias Thug|")
+assert(lootRoll and lootRoll.vote == "need" and lootRoll.itemId == 2586 and lootRoll.item == "Gamemaster's Robe"
+    and lootRoll.reason == "for equiping as upgrade.", "roll rows carry vote, item and reason")
+local lootRollBare = TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:04|Alpha|LootRoll|pass:159:|Refreshing Spring Water|corpse|Murloc|")
+assert(lootRollBare and lootRollBare.vote == "pass" and lootRollBare.reason == nil, "a missing reason stays empty")
+assert(TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:05|Alpha|GatherLoot|7|8|corpse|X|") == nil,
+    "unknown events are dropped")
+assert(TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:06|Alpha|StoreLootAction|nope|Robe|corpse|X|4") == nil,
+    "a bad item id drops the row")
+assert(TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:07|Alpha|LootRoll|maybe:1:x|Robe|corpse|X|") == nil,
+    "a bad vote drops the row")
+
+-- Cursor handling: next page, empty end, expired restart.
+TortoiseBotsDB.loot = nil
+now = now + 1
+TB.OnSystemMessage("TBM:LOOT_BEGIN|2|piece@99")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:02|Gamma|LootMoney|812|1550|corpse|Kobold Vermin|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:01|Alpha|StoreLootAction|2586|Gamemaster's Robe|corpse|Defias Thug|4")
+TB.OnSystemMessage("TBM:LOOT_END|piece@99")
+assert(TB.GetLootCursor() == "piece@99", "a page end stores its cursor")
+assert(lastAddon() == "lootlog piece@99", "a page end asks for the next page")
+local beforeExpired = table.getn(addonSent)
+TB.OnSystemMessage("TBM:LOOT_BEGIN|1|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:03|Alpha|LootRoll|need:2586:for equiping as upgrade.|Gamemaster's Robe|corpse|Defias Thug|")
+TB.OnSystemMessage("TBM:LOOT_END|")
+assert(TB.GetLootCursor() == "", "an empty end clears the cursor")
+assert(table.getn(addonSent) == beforeExpired, "an empty end asks for nothing more")
+local history = TB.GetLootHistory()
+assert(table.getn(history) == 3 and history[1].ts == "2026-10-27 12:00:03"
+    and history[3].ts == "2026-10-27 12:00:01", "stored rows stay newest first")
+assert(string.find(TB.lootRows[1].line.text, "Gamemaster's Robe", 1, true)
+    and string.find(TB.lootRows[1].line.text, "Need", 1, true), "the newest row renders with its vote")
+assert(string.find(TB.lootRows[2].line.text, "15s", 1, true), "money rows render as coins")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|lootlog|expired|Cursor piece was pruned.")
+assert(TB.GetLootCursor() == "", "an expired cursor is dropped")
+assert(lastAddon() == "lootlog", "an expired cursor restarts from the top")
+now = now + 1
+TB.OnSystemMessage("TBM:LOOT_BEGIN|0|expired")
+TB.OnSystemMessage("TBM:LOOT_END|expired")
+assert(TB.GetLootCursor() == "", "an expired page cursor is dropped")
+assert(lastAddon() == "lootlog", "an expired page cursor restarts from the top")
+TB.OnSystemMessage("TBM:ACTION_ERR|lootlog|no-bot|No live owned party bots are controllable.")
+assert(TB.lastActionError and TB.lastActionError.code == "no-bot", "no-bot errors are reported")
+TB.OnSystemMessage("TBM:ACTION_ERR|lootlog|invalid|Usage: .bot lootlog [cursor]")
+assert(TB.lastActionError and TB.lastActionError.code == "invalid", "invalid errors are reported")
+
+-- Dedupe on catch-up: a re-sent page adds nothing twice.
+local beforeDedupe = table.getn(TB.GetLootHistory())
+TB.OnSystemMessage("TBM:LOOT_BEGIN|2|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:02|Gamma|LootMoney|812|1550|corpse|Kobold Vermin|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:01|Alpha|StoreLootAction|2586|Gamemaster's Robe|corpse|Defias Thug|4")
+TB.OnSystemMessage("TBM:LOOT_END|")
+assert(table.getn(TB.GetLootHistory()) == beforeDedupe, "catch-up pages add no duplicates")
+TB.OnSystemMessage("TBM:LOOT_BEGIN|1|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 11:00:00|Beta|StoreLootAction|1201|Old Sword|corpse|Old Mob|2")
+TB.OnSystemMessage("TBM:LOOT_END|")
+history = TB.GetLootHistory()
+assert(table.getn(history) == beforeDedupe + 1 and history[table.getn(history)].bot == "Beta",
+    "older catch-up rows slot into place, newest first")
+-- The 2000-entry cap: the oldest rows drop.
+local many = {}
+for i = 1, 2002 do
+    table.insert(many, { ts = "2026-10-27 12:" .. string.format("%02d", math.mod(i, 60)) .. ":00",
+        bot = "Alpha", event = "LootMoney", itemId = i, item = tostring(i), copper = i,
+        sourceType = "corpse", source = "Mob " .. i })
+end
+TB.ClearLootHistory()
+assert(TB.MergeLootRows(many) == 2002, "a fresh page merges in full")
+history = TB.GetLootHistory()
+assert(table.getn(history) == 2000 and history[1].itemId == 1 and history[2000].itemId == 2000,
+    "stored history caps at 2000 rows, oldest dropped")
+
+-- Filters: bot, item, quality, source, row type, combined.
+TB.ClearLootHistory()
+TB.OnSystemMessage("TBM:LOOT_BEGIN|3|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:03|Alpha|LootRoll|need:2586:for equiping as upgrade.|Gamemaster's Robe|corpse|Defias Thug|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:02|Gamma|LootMoney|812|1550|corpse|Kobold Vermin|")
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:01|Alpha|StoreLootAction|2586|Gamemaster's Robe|corpse|Defias Thug|4")
+TB.OnSystemMessage("TBM:LOOT_END|")
+TB.SetLootFilter("bot", "gamma")
+assert(table.getn(TB.GetFilteredLoot()) == 1, "the bot filter matches one bot")
+TB.SetLootFilter("bot", "")
+TB.SetLootFilter("item", "robe")
+assert(table.getn(TB.GetFilteredLoot()) == 2, "the item filter matches item and roll rows")
+TB.SetLootFilter("quality", 4)
+assert(table.getn(TB.GetFilteredLoot()) == 1, "the quality filter keeps only that quality")
+TB.SetLootFilter("quality", -1)
+TB.SetLootFilter("item", "")
+TB.SetLootFilter("source", "kobold")
+assert(table.getn(TB.GetFilteredLoot()) == 1, "the source filter matches corpse names")
+TB.SetLootFilter("source", "")
+TB.SetLootFilter("rowType", "rolls")
+assert(table.getn(TB.GetFilteredLoot()) == 1 and TB.GetFilteredLoot()[1].event == "LootRoll",
+    "the rolls filter keeps only votes")
+TB.SetLootFilter("rowType", "items")
+assert(table.getn(TB.GetFilteredLoot()) == 2, "the items filter drops votes")
+TB.SetLootFilter("bot", "alpha")
+assert(table.getn(TB.GetFilteredLoot()) == 1, "filters combine")
+TB.SetLootFilter("bot", "")
+TB.SetLootFilter("rowType", "all")
+TB.lootFrame.qualityStep.plus.scripts.OnClick(TB.lootFrame.qualityStep.plus)
+assert(TB.GetLootFilters().quality == 0 and TB.lootFrame.qualityStep.label.text == "Poor",
+    "the quality stepper cycles forward")
+TB.lootFrame.qualityStep.minus.scripts.OnClick(TB.lootFrame.qualityStep.minus)
+assert(TB.GetLootFilters().quality == -1 and TB.lootFrame.qualityStep.label.text == "Any",
+    "the quality stepper cycles back")
+TB.lootFrame.typeStep.plus.scripts.OnClick(TB.lootFrame.typeStep.plus)
+assert(TB.GetLootFilters().rowType == "items" and TB.lootFrame.typeStep.label.text == "Items",
+    "the row-type stepper cycles")
+TB.lootFrame.typeStep.plus.scripts.OnClick(TB.lootFrame.typeStep.plus)
+TB.lootFrame.typeStep.plus.scripts.OnClick(TB.lootFrame.typeStep.plus)
+assert(TB.GetLootFilters().rowType == "all", "the row-type stepper wraps around")
+-- The Clear button wipes this character's history.
+assert(table.getn(TB.GetLootHistory()) == 3, "three rows are stored before the wipe")
+TB.lootFrame.clearButton.scripts.OnClick(TB.lootFrame.clearButton)
+assert(table.getn(TB.GetLootHistory()) == 0 and TB.GetLootCursor() == "", "Clear wipes rows and cursor")
+assert(TB.lootFrame.emptyMsg:IsVisible(), "Clear shows the empty message")
+
+-- Losing the capability hides the tab and sends nothing more.
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+assert(not TB.tabLoot:IsVisible(), "losing the cap hides the Loot tab")
+assert(TB.RequestLootPage() == false, "losing the cap stops the sends")
 
 partyMembers = {}
 dofile(root .. "/tests/wire_cases.lua")({

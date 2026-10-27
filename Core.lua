@@ -65,7 +65,7 @@ local function initDB()
     if type(db.botRoles) ~= "table" then db.botRoles = {} end
     if db.activeTab ~= "actions" and db.activeTab ~= "party" and db.activeTab ~= "roster"
         and db.activeTab ~= "raid" and db.activeTab ~= "camp" and db.activeTab ~= "log"
-        and db.activeTab ~= "guild" then
+        and db.activeTab ~= "guild" and db.activeTab ~= "loot" then
         db.activeTab = "actions"
     end
 end
@@ -737,6 +737,7 @@ ef:SetScript("OnEvent", function()
     elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
         installBotCommandChatFilter()
         if TB.RequestServerCapabilities then TB.RequestServerCapabilities() end
+        if TB.NoteLootLogin then TB.NoteLootLogin() end
         TB.RequestPollSoon(3.5)
     end
 end)

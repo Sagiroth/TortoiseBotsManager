@@ -28,6 +28,7 @@ After an update, restart the game client fully: WoW loads new addon files only o
 | **Roster** | Your account's characters: log in, log out, invite, kick, summon; fill party or raid. |
 | **Raid** | Shown only in a raid: raid tactics and loaded boss tactics. |
 | **Dungeon** | Shown only when the server enables it: let your bots run a dungeon, with bots or you leading. |
+| **Loot** | Shown only when the server enables it: what your party bots looted or rolled. |
 | **Log** | Recent bot messages and server replies. |
 
 - **Bot panel** — paper doll, bags with upgrade markers, equip, trade, use, mail or bank items, per-bot behaviour switches, spells, NPC errands and flights. Open it from a Party row, the `Gear & bags` button, or `/tbm bags <name>`.
@@ -46,6 +47,7 @@ Targeting one of your bots narrows the orders to that bot; otherwise they go to 
 | [Party, Roster, Guild, Raid](docs/play/party-roster-guild.md) | Roles, logging bots in, claimed guild bots, raid helpers |
 | [Bot Panel](docs/play/bot-panel.md) | Gear, bags, behaviour, spells, NPC errands, bank and mail |
 | [Dungeon Run](docs/play/dungeon-run.md) | Let your bots clear a dungeon |
+| [Loot History](docs/play/loot-history.md) | What your party bots looted or rolled |
 | [Mini Bar, Keys and Commands](docs/play/controls.md) | Mini bar, key bindings, slash commands, Info and Log |
 | [Addon Protocol](docs/developers/protocol.md), [Development](docs/developers/development.md) | How the addon talks to the module; tests and releases |
 

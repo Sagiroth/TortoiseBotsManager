@@ -50,6 +50,10 @@ nodes:
     path: play/dungeon-run.md
     category: play
     summary: The Dungeon tab and run window that drive the module's run leader.
+  - id: play-loot-history
+    path: play/loot-history.md
+    category: play
+    summary: The Loot tab that shows what your party bots looted or rolled.
   - id: play-controls
     path: play/controls.md
     category: play
