@@ -355,6 +355,22 @@ function TB.NoteLootLogin()
     return TB.RequestLootPage(TB.GetLootCursor())
 end
 
+-- The server keeps no push stream for loot: rows written after login only
+-- arrive on the next catch-up. Re-read the newest page while logged in so a
+-- drop shows up in the tab within a poll interval. Pages overlap the stored
+-- history, so repeats are merged away; a page still in flight is left alone.
+local LOOT_POLL_SECONDS = 30
+local nextLootPoll = 0
+local lootPollFrame = CreateFrame("Frame")
+lootPollFrame:SetScript("OnUpdate", function()
+    local now = (GetTime and GetTime()) or 0
+    if now < nextLootPoll then return end
+    nextLootPoll = now + LOOT_POLL_SECONDS
+    if loginSynced and not receiving and TB.HasLootCapability() then
+        TB.RequestLootPage(nil)
+    end
+end)
+
 -- Lose the capability (a restart that drops the feature): forget the
 -- in-flight page and hide the tab again via the shared tab updater.
 function TB.NoteLootCaps()
