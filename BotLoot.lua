@@ -299,7 +299,13 @@ function TB.ParseLootMessage(msg)
     end
     if string.sub(msg, 1, 9) == "TBM:LOOT|" then
         local row = parseLootLine(msg)
-        if receiving and row then table.insert(receiving.rows, row) end
+        if receiving then
+            if row then table.insert(receiving.rows, row) end
+        elseif row then
+            -- Pushed live as a bot loots: file it outside any catch-up page.
+            mergeRows({ row })
+            if TB.RefreshLootView then TB.RefreshLootView() end
+        end
         return true
     end
     local _, _, endCursor = string.find(msg, "^TBM:LOOT_END|(.*)$")
