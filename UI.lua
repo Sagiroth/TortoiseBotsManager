@@ -1506,6 +1506,22 @@ function TB.InitUI()
             bagButton:Hide()
             row.bagButton = bagButton
 
+            local summonButton = TB.UI.CreateButton(row, "Summon", 56, 18, {
+                point = "TOPLEFT",
+                relTo = row,
+                relPoint = "TOPLEFT",
+                x = 88,
+                y = -6,
+                onClick = function()
+                    if row.partyName and row.partyUnit ~= "player" then
+                        TB.SendBotCommand(TB.BuildCommand("summon", row.partyName))
+                    end
+                end,
+                tip = "Summon this bot to you. Works out of combat and takes 3 seconds.",
+            })
+            summonButton:Hide()
+            row.summonButton = summonButton
+
             local roleButtons = {}
             for b = 1, 4 do
                 local btn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
@@ -1549,6 +1565,46 @@ function TB.InitUI()
             table.insert(rows, row)
         end
         partyFrame.rows = rows
+
+        partyFrame.summonPartyBtn = TB.UI.CreateButton(partyFrame, "Summon Party", 100, 22, {
+            point = "TOPLEFT",
+            x = 6,
+            y = -306,
+            onClick = function()
+                local names = {}
+                local count = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+                for i = 1, count do
+                    local name = UnitName and UnitName("party" .. i)
+                    if name then table.insert(names, name) end
+                end
+                if table.getn(names) > 0 and TB.QueueRosterBatch then
+                    TB.QueueRosterBatch("summon", names)
+                elseif TB.SetStatus then
+                    TB.SetStatus("No bots in your party to summon.", "muted")
+                end
+            end,
+            tip = "Summon every bot in your party to you. Works out of combat.",
+        })
+
+        partyFrame.summonRaidBtn = TB.UI.CreateButton(partyFrame, "Summon Raid", 100, 22, {
+            point = "TOPLEFT",
+            x = 112,
+            y = -306,
+            onClick = function()
+                local names = {}
+                local count = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+                for i = 1, count do
+                    local name = UnitName and UnitName("raid" .. i)
+                    if name and TB.GetBotState and TB.GetBotState(name) then table.insert(names, name) end
+                end
+                if table.getn(names) > 0 and TB.QueueRosterBatch then
+                    TB.QueueRosterBatch("summon", names)
+                elseif TB.SetStatus then
+                    TB.SetStatus("No bots in your raid to summon.", "muted")
+                end
+            end,
+            tip = "Summon every bot in your raid to you. Works out of combat.",
+        })
         return partyFrame
     end
 
@@ -2042,6 +2098,11 @@ function TB.InitUI()
                     row.bagButton:Show()
                 else
                     row.bagButton:Hide()
+                end
+                if unit ~= "player" then
+                    row.summonButton:Show()
+                else
+                    row.summonButton:Hide()
                 end
                 row.accent:SetTexture(col[1], col[2], col[3], 0.95)
 
