@@ -1384,7 +1384,8 @@ function TB.InitUI()
 
     -- Tabs by kind of work: Fight (in a pull), Camp (between pulls), Party
     -- (who does what), Roster (who is logged in), Guild (claimed bots), Raid (raid only),
-    -- Dungeon (only while the server runs the dungeon run leader), Log.
+    -- Dungeon (only while the server runs the dungeon run leader), Loot (only
+    -- while the server keeps loot history), Log.
     local tabActions = makeTab("Fight", 0)
     local tabCamp = makeTab("Camp", 80)
     local tabParty = makeTab("Party", 160)
@@ -1392,7 +1393,8 @@ function TB.InitUI()
     local tabRoster = makeTab("Roster", 320)
     local tabRaid = makeTab("Raid", 400)
     local tabDungeon = makeTab("Dungeon", 480)
-    local tabLog = makeTab("Log", 560)
+    local tabLoot = makeTab("Loot", 560)
+    local tabLog = makeTab("Log", 640)
     local content = CreateFrame("Frame", nil, main)
     content:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
     content:SetWidth(W - (C.PAD or 10) * 2)
@@ -1981,6 +1983,7 @@ function TB.InitUI()
 
     local logFrame = CreateLogView(content)
     local dungeonFrame = TB.CreateRunTab(content)
+    local lootFrame = TB.CreateLootTab and TB.CreateLootTab(content) or nil
 
     function TB.RefreshLogView()
         if not TB.logScroll or not TB.logRows then return end
@@ -2237,6 +2240,7 @@ function TB.InitUI()
         { name = "roster",  tab = tabRoster,  frame = rosterFrame },
         { name = "raid",    tab = tabRaid,    frame = raidFrame },
         { name = "dungeon", tab = tabDungeon, frame = dungeonFrame },
+        { name = "loot",    tab = tabLoot,    frame = lootFrame },
         { name = "log",     tab = tabLog,     frame = logFrame },
     }
 
@@ -2247,10 +2251,11 @@ function TB.InitUI()
     local function tabShown(name)
         if name == "raid" then return inRaid() end
         if name == "dungeon" then return serverHasCap("dungeon-run") end
+        if name == "loot" then return serverHasCap("loot-log") end
         return true
     end
 
-    -- Responsive tab bar layout: adjusts width and stride to fit 6 to 8 tabs.
+    -- Responsive tab bar layout: adjusts width and stride to fit 6 to 9 tabs.
     local function layoutTabs()
         local visibleCount = 0
         for _, t in ipairs(tabs) do
@@ -2258,8 +2263,8 @@ function TB.InitUI()
                 visibleCount = visibleCount + 1
             end
         end
-        local tabW = (visibleCount > 7) and 58 or ((visibleCount > 6) and 66 or 76)
-        local step = (visibleCount > 7) and 60 or ((visibleCount > 6) and 68 or 80)
+        local tabW = (visibleCount > 8) and 52 or ((visibleCount > 7) and 58 or ((visibleCount > 6) and 66 or 76))
+        local step = (visibleCount > 8) and 52 or ((visibleCount > 7) and 60 or ((visibleCount > 6) and 68 or 80))
         local x = 0
         for _, t in ipairs(tabs) do
             if tabShown(t.name) then
@@ -2309,6 +2314,8 @@ function TB.InitUI()
             if TB.RefreshPartyView then TB.RefreshPartyView() end
         elseif name == "log" then
             if TB.RefreshLogView then TB.RefreshLogView() end
+        elseif name == "loot" then
+            if TB.RefreshLootView then TB.RefreshLootView() end
         elseif name == "raid" then
             if TB.RefreshRaidView then TB.RefreshRaidView() end
         elseif name == "dungeon" then
@@ -2328,7 +2335,8 @@ function TB.InitUI()
     end
 
     -- Joining or leaving a raid adds or removes the Raid tab; the server's
-    -- dungeon-run capability does the same for the Dungeon tab.
+    -- dungeon-run and loot-log capabilities do the same for the Dungeon and
+    -- Loot tabs.
     TB.UpdateRaidTab = function()
         local current = TortoiseBotsDB and TortoiseBotsDB.activeTab
         if current and not tabShown(current) then
@@ -2341,6 +2349,7 @@ function TB.InitUI()
     TB.ShowTab = showTab
     TB.tabActions, TB.tabParty, TB.tabRoster, TB.tabLog = tabActions, tabParty, tabRoster, tabLog
     TB.tabDungeon, TB.dungeonFrame = tabDungeon, dungeonFrame
+    TB.tabLoot, TB.lootFrame = tabLoot, lootFrame
     TB.tabGuild, TB.guildFrame = tabGuild, guildFrame
     TB.tabRaid, TB.raidFrame = tabRaid, raidFrame
     TB.tabCamp = tabCamp

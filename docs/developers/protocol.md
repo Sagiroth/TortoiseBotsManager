@@ -32,6 +32,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `inventory` | Bag icons and the bot panel |
 | `claimed-roster` | Guild tab data |
 | `dungeon-run` | Dungeon tab and run window (server needs `DungeonSelfClear` and `RemoteCommander`) |
+| `loot-log` | Loot tab and the `.bot lootlog` catch-up |
 
 `behavior` is also advertised; the addon does not gate on it.
 
@@ -49,6 +50,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `TBM:INV_BEGIN` / `INV_EQ` / `INV_ITEM` / `INV_END` | [Bot panel](../play/bot-panel.md) gear and bags |
 | `TBM:ACTION_ACK`, `TBM:ACTION_ERR` | Status line and Log tab result of each order |
 | `TBM:RUN` | [Dungeon run](../play/dungeon-run.md) status |
+| `TBM:LOOT_BEGIN` / `LOOT` / `LOOT_END` | [Loot tab](../play/loot-history.md): 24 h catch-up pages of `.bot lootlog [cursor]`, newest first |
 | `TBM:FEATURE`, `TBM:CONFIG_BEGIN` / `CONFIG` / `CONFIG_END` | [Info window](../play/controls.md#info-window) |
 
 Some replies have no structured line and are parsed from the bot's whisper text: spell list (`=== Spells ===`), flights (`=== Taxi ===`), bank (`=== Bank ===`), mailbox (`=== Mailbox ===`), plus lifecycle chat replies for older servers. Those patterns live in `Comms.lua`, `BotPanel.lua`, `BotNpc.lua` and `BotVault.lua` and must follow the module's wording.

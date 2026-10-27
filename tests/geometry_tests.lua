@@ -520,6 +520,18 @@ return function()
             else
                 bad("Tabs: Dungeon tab missing")
             end
+            -- Loot tab: with loot-log too (9 tabs) the Log tab still fits.
+            if TB.tabLoot then
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,dungeon-run,loot-log")
+                local lr = frameRect(TB.tabLog, cache)
+                local mr = frameRect(TB.frame, cache)
+                if lr.right > mr.right then
+                    bad(string.format("Tabs: with Loot, Log tab %s escapes the main window %s", fmt(lr), fmt(mr)))
+                end
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+            else
+                bad("Tabs: Loot tab missing")
+            end
         end
     end
 
