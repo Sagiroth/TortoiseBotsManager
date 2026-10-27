@@ -573,6 +573,15 @@ function TB.CreateLootTab(parent)
         line:SetJustifyH("LEFT")
         line:SetHeight(14)
         row.line = line
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", function()
+            local entry = row.entry
+            if not entry or entry.event ~= "StoreLootAction" or not tonumber(entry.itemId) then return end
+            GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+            GameTooltip:SetHyperlink("item:" .. tostring(math.floor(tonumber(entry.itemId))) .. ":0:0:0")
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         table.insert(rows, row)
     end
     TB.lootRows = rows
@@ -599,6 +608,7 @@ function TB.RefreshLootView()
         local row = TB.lootRows[i]
         local entry = list[offset + i]
         if entry then
+            row.entry = entry
             row.line:SetText(rowText(entry))
             row:Show()
         else
