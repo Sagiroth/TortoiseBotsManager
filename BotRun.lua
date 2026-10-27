@@ -195,6 +195,11 @@ function TB.ParseRunMessage(msg)
         if not parsed then return false end
         run = parsed
         if TB.RefreshRunWindow then TB.RefreshRunWindow() end
+        -- The bots wait at a locked door for the player: say what opens it on the status line.
+        local _, _, ask = string.find(parsed.note, "the way is locked.-open it with ([^;]+)")
+        if parsed.state == "paused" and ask and TB.SetStatus then
+            TB.SetStatus("Paused at a locked door: open it with " .. ask .. ", then Resume.", "warn")
+        end
         return true, "run", parsed
     end
     local list = parsePlanList(msg)
