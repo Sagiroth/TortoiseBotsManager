@@ -55,8 +55,16 @@ Alts that play on their own in the world are marked as alt-bots. Module: [alt-bo
 
 Wandering bots you claimed into your guild with `/ginvite`, kept as raid alts. The list comes from the server's claimed-bot snapshot (needs the `claimed-roster` capability).
 
+### Guild orders
+
+Each bot row has an **Order** button (`Ord`) that opens a small window (needs the `guild-orders` capability). Search for an item by name (at least 3 letters), pick **Farm**, **Buy** or **Craft** and an amount (1-200), then **Send**. The list comes from the server, so only real, obtainable items show up; each result says where this bot would farm it and roughly how long it takes (`Ashenvale · about 20 kills`), or why it can't (`needs Skinning`, `no source near level 12`). Items you never saw show a `?` icon until the client has cached them.
+
+The row then shows the order and its progress live: `Light Leather 4/10 (Ashenvale)`, `Delivering`, `Done`, `Mailed to GM`, `No skill` or `Can't`, with the reason in the tooltip. **Can** removes the order. One order per bot; a new order replaces the old one. The list refreshes when the tab opens and every 30 seconds; progress lines from the server update the rows in between.
+
+Only guild ranks that may edit officer notes can give or cancel orders; without that right the buttons are greyed out. Without the addon the same orders work from chat: `.bot order <bot> farm <item link> 10`, `.bot order <bot> cancel`, `.bot order list`.
+
 - **Badges:** level 60 bots show `[Locked]` (they never equip or vendor on their own; you gear them). Levelling bots show `[Leveling]` (they equip upgrades but keep blues and epics).
-- **Per row:** role cycler (`.bot role`), backpack button for the [bot panel](bot-panel.md), **Rel** to release the bot back to the wandering pool (`/gkick`).
+- **Per row:** role cycler (`.bot role`), backpack button for the [bot panel](bot-panel.md), **Ord** for the [order window](#guild-orders), **Can** to remove the order, **Rel** to release the bot back to the wandering pool (`/gkick`).
 - **Bar:** tick rows, then **Invite to Raid** or **Summon to Raid**. **Fill Raid** invites online claimed bots until the raid has 40. **Sync** refreshes the list.
 
 Module: [autonomous guilds](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/world/social.md#autonomous-guild-formation).

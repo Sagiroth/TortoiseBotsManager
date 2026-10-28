@@ -17,6 +17,7 @@ BotNpc.lua
 BotVault.lua
 BotRun.lua
 BotLoot.lua
+BotOrder.lua
 ServerInfo.lua
 MiniBar.lua
 Minimap.lua

@@ -449,6 +449,7 @@ TB.C.ACTION_LABELS = {
     ["destroy"]            = "Destroy",
     inv                    = "Bags",
     lootlog                = "Loot history",
+    order                  = "Order",
     stance                 = "Stance",
     hold                   = "Come",
     ["strategy +grind"]    = "Grind",

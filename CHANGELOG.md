@@ -2,6 +2,14 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## Unreleased
+
+### Guild Orders
+- Guild tab: every claimed bot row has an Order button opening an order window — search a real item by name, pick Farm / Buy / Craft and an amount, and send it. Each result says where the bot would farm and roughly how long, or why it can't.
+- Guild bot rows show the live order (`Light Leather 4/10 (Ashenvale)`, `Delivering`, `Done`, `Mailed to GM`, `No skill`, `Can't`) with the reason in the tooltip; Cancel removes it. Needs the `guild-orders` server capability and a guild rank that may edit officer notes.
+
+---
+
 ## v1.4.1 (2026-10-28)
 
 ### Roster & Lifecycle

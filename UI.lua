@@ -1776,31 +1776,38 @@ function TB.InitUI()
             end)
 
             row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            row.name:SetPoint("LEFT", row, "LEFT", 28, 0)
+            row.name:SetPoint("LEFT", row, "LEFT", 28, 7)
             row.name:SetWidth(88)
             row.name:SetJustifyH("LEFT")
 
             row.lvlClass = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            row.lvlClass:SetPoint("LEFT", row, "LEFT", 118, 0)
+            row.lvlClass:SetPoint("LEFT", row, "LEFT", 118, 7)
             row.lvlClass:SetWidth(82)
             row.lvlClass:SetJustifyH("LEFT")
 
             row.gearBadge = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            row.gearBadge:SetPoint("LEFT", row, "LEFT", 202, 0)
+            row.gearBadge:SetPoint("LEFT", row, "LEFT", 202, 7)
             row.gearBadge:SetWidth(58)
             row.gearBadge:SetJustifyH("LEFT")
 
             row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            row.status:SetPoint("LEFT", row, "LEFT", 262, 0)
+            row.status:SetPoint("LEFT", row, "LEFT", 262, 7)
             row.status:SetWidth(56)
             row.status:SetJustifyH("LEFT")
+
+            -- Guild order line: the bot's current order and its progress
+            -- (TB.OrderRowText); the Order/Cancel buttons sit at its right.
+            row.orderLine = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.orderLine:SetPoint("LEFT", row, "LEFT", 28, -8)
+            row.orderLine:SetWidth(222)
+            row.orderLine:SetJustifyH("LEFT")
 
             local bagBtn = TB.UI.CreateIconButton(row, 20, {
                 point = "LEFT",
                 relTo = row,
                 relPoint = "LEFT",
                 x = 320,
-                y = 0,
+                y = 5,
                 icon = "Interface\\Buttons\\Button-Backpack-Up",
                 onClick = function()
                     local entry = this:GetParent().entry
@@ -1819,7 +1826,7 @@ function TB.InitUI()
 
             local roleBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             roleBtn:SetWidth(76); roleBtn:SetHeight(20)
-            roleBtn:SetPoint("LEFT", row, "LEFT", 344, 0)
+            roleBtn:SetPoint("LEFT", row, "LEFT", 344, 5)
             roleBtn:SetText("Role")
             roleBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -1841,6 +1848,27 @@ function TB.InitUI()
             roleBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.roleBtn = roleBtn
 
+            local ordBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+            ordBtn:SetWidth(30); ordBtn:SetHeight(16)
+            ordBtn:SetPoint("LEFT", row, "LEFT", 252, -7)
+            ordBtn:SetText("Ord")
+            ordBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.OpenOrderWindow then TB.OpenOrderWindow(entry.name) end
+            end)
+            setButtonTooltip(ordBtn, "Open the order window for this bot.", "Order")
+            row.ordBtn = ordBtn
+
+            local cancelBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+            cancelBtn:SetWidth(30); cancelBtn:SetHeight(16)
+            cancelBtn:SetPoint("LEFT", row, "LEFT", 284, -7)
+            cancelBtn:SetText("Can")
+            cancelBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.SendOrderCancel then TB.SendOrderCancel(entry.name) end
+            end)
+            setButtonTooltip(cancelBtn, "Remove this bot's current order.", "Cancel order")
+            row.cancelBtn = cancelBtn
 
             local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             relBtn:SetWidth(34); relBtn:SetHeight(20)
@@ -1872,6 +1900,13 @@ function TB.InitUI()
                     GameTooltip:AddLine("|cffffd200Gear Hard-Locked (Lvl 60)|r\nBot will never self-equip or auto-vendor gear. 100% player managed.", 1, 0.82, 0)
                 else
                     GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
+                end
+                if TB.GetBotOrder and TB.OrderTooltipText then
+                    local order = TB.GetBotOrder(entry.name)
+                    local orderText = order and TB.OrderTooltipText(order) or nil
+                    if orderText then
+                        GameTooltip:AddLine(orderText, 1, 1, 1)
+                    end
                 end
                 GameTooltip:Show()
             end)
@@ -2258,6 +2293,37 @@ function TB.InitUI()
                 if entry.group then statusStr = statusStr .. " (P)" end
                 row.status:SetText(statusColor .. statusStr .. "|r")
 
+                -- Guild order line: hidden with no capability, greyed with no
+                -- officer-note right (TB.CanGiveOrders), else order + buttons.
+                local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+                local order = orderCap and TB.GetBotOrder and TB.GetBotOrder(entry.name) or nil
+                local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+                if row.orderLine then
+                    if orderCap then
+                        row.orderLine:SetText((order and TB.OrderRowText)
+                            and TB.OrderRowText(order) or "|cff666666No order|r")
+                        row.orderLine:Show()
+                    else
+                        row.orderLine:Hide()
+                    end
+                end
+                if row.ordBtn then
+                    if orderCap then
+                        row.ordBtn:Show()
+                        if mayOrder then row.ordBtn:Enable() else row.ordBtn:Disable() end
+                    else
+                        row.ordBtn:Hide()
+                    end
+                end
+                if row.cancelBtn then
+                    if orderCap and order then
+                        row.cancelBtn:Show()
+                        if mayOrder then row.cancelBtn:Enable() else row.cancelBtn:Disable() end
+                    else
+                        row.cancelBtn:Hide()
+                    end
+                end
+
                 -- Role button label
                 local currentRoleId = dbRoles[entry.name]
                 local roleLabel = TB.Roles.GetRoleLabel(entry.classId, currentRoleId, "Role")
@@ -2265,7 +2331,6 @@ function TB.InitUI()
                     roleLabel = TB.Roles.GetClassRoles(entry.classId)[1].label
                 end
                 row.roleBtn:SetText(TB.Roles.ShortLabel and TB.Roles.ShortLabel(roleLabel) or roleLabel)
-
 
                 row:Show()
             else
@@ -2371,6 +2436,7 @@ function TB.InitUI()
             if not TB.claimedSnapshotReady then
                 TB.PollList(true)
             end
+            if TB.RequestOrderList then TB.RequestOrderList() end
         elseif name == "party" then
             if TB.RefreshPartyView then TB.RefreshPartyView() end
         elseif name == "log" then

@@ -1156,6 +1156,53 @@ local cases = {
             row1.roleBtn.scripts.OnClick(row1.roleBtn)
         end,
     },
+    {
+        id = "guild.order.list",
+        expected = { ".bot order list" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB._lastOrderListAt = 0
+            TB.ShowTab("guild")
+        end,
+    },
+    {
+        id = "guild.order.open",
+        expected = { ".bot order list" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.ShowTab("guild")
+            local row1 = TB.guildFrame.rows[1]
+            this = row1.ordBtn
+            row1.ordBtn.scripts.OnClick(row1.ordBtn)
+            TB.CloseOrderWindow()
+        end,
+    },
+    {
+        id = "guild.order.search",
+        expected = { ".bot order search Goldie farm leather" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.OpenOrderWindow("Goldie")
+            TB.SendOrderSearch("Goldie", "farm", "leather")
+            TB.CloseOrderWindow()
+        end,
+    },
+    {
+        id = "guild.order.give",
+        expected = { ".bot order Goldie farm 2318 10" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "farm", 2318, 10)
+        end,
+    },
+    {
+        id = "guild.order.cancel",
+        expected = { ".bot order Goldie cancel" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderCancel("Goldie")
+        end,
+    },
 
     -- ── Raid Tab ───────────────────────────────────────────────────────────
     {
@@ -1682,6 +1729,7 @@ local cases = {
         id = "guild.fill.raid",
         expected = { ".bot invite Goldie" },
         trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
             TB.ShowTab("guild")
             TB.ClearClaimedSelection()
             updateGroup({}, "Priest")

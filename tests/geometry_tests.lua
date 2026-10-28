@@ -624,6 +624,10 @@ return function()
                 end
                 if row.roleBtn then table.insert(cols, { "roleBtn", row.roleBtn }) end
                 if row.relBtn then table.insert(cols, { "relBtn", row.relBtn }) end
+                -- Order widgets share the row with the classic columns.
+                if row.orderLine then table.insert(cols, { "orderLine", row.orderLine }) end
+                if row.ordBtn then table.insert(cols, { "ordBtn", row.ordBtn }) end
+                if row.cancelBtn then table.insert(cols, { "cancelBtn", row.cancelBtn }) end
                 childrenInside("Guild row " .. i, row, r, cols, cache, 2)
                 noOverlaps("Guild row " .. i .. " columns", cols, cache)
                 if row.roleBtn and i == 1 then
@@ -1441,7 +1445,79 @@ return function()
         end
     end
 
-    -- ── Satellite exclusivity ────────────────────────────────────────
+    -- ── Guild order window (TBM#51) ────────────────────────────────────
+    do
+        local cache = {}
+        if not TB.OpenOrderWindow then
+            bad("OrderWindow: OpenOrderWindow missing")
+        else
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.OpenOrderWindow("Goldie")
+            local win = TB.orderWindow
+            if not win then
+                bad("OrderWindow: did not open")
+            else
+                local wr = frameRect(win, cache)
+                local items = {}
+                for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
+                    "sendBtn", "cancelBtn" }) do
+                    if win[key] then
+                        table.insert(items, { key, win[key] })
+                        if win[key].kind == "Button" then
+                            labelFits("OrderWindow " .. key, win[key], nil, 6)
+                        end
+                    else
+                        bad("OrderWindow: control " .. key .. " missing")
+                    end
+                end
+                for kind, pill in pairs(win.kindPills or {}) do
+                    table.insert(items, { "kind." .. kind, pill })
+                    labelFits("OrderWindow kind." .. kind, pill, nil, 6)
+                end
+                childrenInside("OrderWindow", win, wr, items, cache, 2)
+                noOverlaps("OrderWindow controls", items, cache)
+                -- Filled results: rows fit inside, clear each other and the
+                -- amount row below the scroll frame.
+                TB.SendOrderSearch("Goldie", "farm", "leather")
+                TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+                TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+                TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|ok|Ashenvale|50")
+                TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+                local filled = {}
+                for i, row in ipairs(win.resultRows or {}) do
+                    if row:IsVisible() then
+                        table.insert(filled, { "row" .. i, row })
+                        if row.name and row.detail then
+                            local nr = frameRect(row.name, cache)
+                            local dr = frameRect(row.detail, cache)
+                            if overlaps(nr, dr) then
+                                bad(string.format("OrderWindow: result %d name %s overlaps detail %s",
+                                    i, fmt(nr), fmt(dr)))
+                            end
+                        end
+                    end
+                end
+                if table.getn(filled) ~= 2 then
+                    bad("OrderWindow: 2 search rows must show, got " .. table.getn(filled))
+                end
+                childrenInside("OrderWindow results", win, wr, filled, cache, 2)
+                noOverlaps("OrderWindow filled results", filled, cache)
+                if win.amountMinus then
+                    local ar = frameRect(win.amountMinus, cache)
+                    for _, entry in ipairs(filled) do
+                        local r = frameRect(entry[2], cache)
+                        if overlaps(r, ar) then
+                            bad(string.format("OrderWindow: result '%s' %s overlaps the amount row %s",
+                                entry[1], fmt(r), fmt(ar)))
+                        end
+                    end
+                end
+            end
+            TB.CloseOrderWindow()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+        end
+    end
+
     do
         if TB.OpenVault and TB.OpenNpc and TB.OpenBotPanel then
             TB.OpenBotPanel("Alpha")
