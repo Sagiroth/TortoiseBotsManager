@@ -2533,6 +2533,82 @@ assert(TB.OrderPollTick() == false, "losing the cap stops the poll tick")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
 canEditOfficerNote = true
 
+-- Round 2: the amount box commits while typing, Send reads the box, and a
+-- refresh never wipes a valid typed number.
+assert(TB.OpenOrderWindow("Goldie"), "round 2 reopens the window")
+local amountBox = TB.orderWindow.amountBox
+amountBox.text = "50"
+this = amountBox
+amountBox.scripts.OnTextChanged(amountBox)
+assert(TB.GetOrderAmount() == 50, "typing commits the amount at once")
+assert(amountBox:GetText() == "50", "committing keeps the typed text")
+TB.RefreshOrderWindow()
+assert(amountBox:GetText() == "50" and TB.GetOrderAmount() == 50,
+    "a refresh keeps a valid typed number")
+TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|Ashenvale")
+assert(amountBox:GetText() == "50", "a live update keeps the typed number")
+amountBox.text = "abc"
+amountBox.scripts.OnTextChanged(amountBox)
+assert(TB.GetOrderAmount() == 50, "non-numeric text does not commit")
+TB.RefreshOrderWindow()
+assert(amountBox:GetText() == "abc", "a refresh keeps a half-typed edit")
+this = amountBox
+amountBox.scripts.OnEditFocusLost(amountBox)
+assert(amountBox:GetText() == "50", "focus loss restores the committed amount")
+amountBox.text = "25"
+amountBox.scripts.OnTextChanged(amountBox)
+assert(TB.GetOrderAmount() == 25, "typing again commits the new number")
+TB.SetOrderAmount(10)
+amountBox.text = "25"
+-- No OnTextChanged here: Send must read the box itself.
+now = now + 1
+TB.orderWindow.searchBox.text = "leather"
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.orderWindow.resultRows[1].item = nil
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+this = TB.orderWindow.resultRows[1]
+TB.orderWindow.resultRows[1].scripts.OnClick(TB.orderWindow.resultRows[1])
+assert(TB.GetOrderSelection() == 2318, "round 2 picks the item")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(TB.GetOrderAmount() == 25, "Send commits the box number")
+assert(lastAddon() == "order Goldie farm 2318 25", "Send sends the box number, not the stale amount")
+
+-- Round 2: unusable results carry no quality escape, so the grey sticks.
+TB.orderWindow.searchBox.text = "leather"
+now = now + 1
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+local goodRow, badRow = TB.orderWindow.resultRows[1], TB.orderWindow.resultRows[2]
+assert(string.find(goodRow.name:GetText(), "|cff", 1, true) ~= nil,
+    "a usable result keeps its quality colour")
+assert(badRow.name:GetText() == "Medium Leather", "an unusable result has no colour escape")
+assert(badRow.name.textColor[1] == 0.45, "an unusable result is greyed")
+
+-- Round 2: the order window and the other satellites exclude each other.
+assert(TB.orderWindow:IsVisible(), "the order window is open")
+TB.OpenBotPanel("Goldie")
+assert(not TB.orderWindow:IsVisible() and TB.botPanel:IsVisible(),
+    "the bot panel closes the order window")
+now = now + 1
+assert(TB.OpenOrderWindow("Goldie"), "the order window reopens")
+assert(TB.orderWindow:IsVisible() and not TB.botPanel:IsVisible(),
+    "the order window closes the bot panel")
+TB.OpenServerInfo()
+assert(not TB.orderWindow:IsVisible() and TB.infoWindow:IsVisible(),
+    "the info window closes the order window")
+assert(TB.OpenOrderWindow("Goldie"), "the order window reopens again")
+assert(TB.orderWindow:IsVisible() and not TB.infoWindow:IsVisible(),
+    "the order window closes the info window")
+TB.CloseOrderWindow()
+TB.CloseServerInfo()
+
 partyMembers = {}
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,

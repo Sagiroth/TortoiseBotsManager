@@ -372,6 +372,7 @@ function TB.OpenVault(name, view)
     if currentBot and currentBot ~= name then TB.SetVaultPending(currentBot, false) end
     if TB.CloseNpc then TB.CloseNpc() end
     if TB.CloseRunWindow then TB.CloseRunWindow() end
+    if TB.CloseOrderWindow then TB.CloseOrderWindow() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then page = 1 end
     currentBot = name

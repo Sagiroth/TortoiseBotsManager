@@ -518,7 +518,9 @@ end
 
 function TB.SetOrderAmount(amount)
     orderAmount = TB.ClampOrderAmount(amount)
-    if win and win.amountBox then win.amountBox:SetText(tostring(orderAmount)) end
+    if win and win.amountBox and win.amountBox:GetText() ~= tostring(orderAmount) then
+        win.amountBox:SetText(tostring(orderAmount))
+    end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     return orderAmount
 end
@@ -820,6 +822,17 @@ local function createWindow()
         TB.SetOrderAmount(tonumber(this:GetText()) or orderAmount)
         this:ClearFocus()
     end)
+    -- Commit while typing and on focus loss, so Send always uses the
+    -- shown number and the estimates follow without pressing Enter.
+    -- Non-numeric text is left alone until Escape or a valid edit. The
+    -- SetText below re-fires OnTextChanged, hence the differs guard.
+    amountBox:SetScript("OnTextChanged", function()
+        local n = tonumber(this:GetText() or "")
+        if n and TB.ClampOrderAmount(n) ~= orderAmount then TB.SetOrderAmount(n) end
+    end)
+    amountBox:SetScript("OnEditFocusLost", function()
+        this:SetText(tostring(orderAmount))
+    end)
     win.amountBox = amountBox
 
     local plus = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
@@ -838,6 +851,12 @@ local function createWindow()
     win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 2),
         "Send order", "Give this bot the order (replaces its old one).",
         function()
+            -- The box commits on change, but read it anyway: a valid
+            -- number must always win over a stale amount.
+            if win.amountBox then
+                local n = tonumber(win.amountBox:GetText() or "")
+                if n then TB.SetOrderAmount(n) end
+            end
             local item = nil
             for _, candidate in ipairs((TB.GetOrderSearch().items) or {}) do
                 if candidate.itemId == selectedItemId then item = candidate break end
@@ -907,7 +926,9 @@ function TB.RefreshOrderWindow()
             if item.itemId == selectedItemId then foundSelected = true end
             local cant = string.lower(trim(item.verdict or "")) ~= "ok"
             row.icon:SetTexture(itemTexture(item.itemId))
-            row.name:SetText(qualityHex(item.quality) .. item.item .. "|r")
+            -- No quality escape when greyed: inline |cff codes override
+            -- SetTextColor in the 1.12 client.
+            if cant then row.name:SetText(item.item) else row.name:SetText(qualityHex(item.quality) .. item.item .. "|r") end
             if cant then row.name:SetTextColor(0.45, 0.45, 0.45) else row.name:SetTextColor(1, 1, 1) end
             row.detail:SetText(TB.OrderItemDetail(item, orderKind, orderAmount, level))
             if cant then row.detail:SetTextColor(0.45, 0.45, 0.45)
@@ -938,14 +959,8 @@ function TB.RefreshOrderWindow()
             win.emptyMsg:Hide()
         end
     end
-    if win.amountBox and win.amountBox:GetText() ~= tostring(orderAmount) then
-        -- A re-render while typing must not steal the half-typed number, so
-        -- only fix the box when it drifted off the clamped amount.
-        local shown = tonumber(win.amountBox:GetText() or "")
-        if not shown or TB.ClampOrderAmount(shown) ~= shown or shown ~= orderAmount then
-            win.amountBox:SetText(tostring(orderAmount))
-        end
-    end
+    -- The box commits on change and every amount change syncs the box, so
+    -- a refresh never touches it: a typed number is never rewritten here.
     local order = windowBot and TB.GetBotOrder(windowBot) or nil
     if win.statusLine then
         if order then
@@ -975,6 +990,12 @@ function TB.OpenOrderWindow(bot)
     bot = norm(bot)
     if not bot then return false end
     if not win then createWindow() end
+    -- Same anchor as the other satellites: only one shows at a time.
+    if TB.CloseVault then TB.CloseVault() end
+    if TB.CloseNpc then TB.CloseNpc() end
+    if TB.CloseRunWindow then TB.CloseRunWindow() end
+    if TB.CloseServerInfo then TB.CloseServerInfo() end
+    if TB.CloseBotPanel then TB.CloseBotPanel() end
     local switched = windowBot ~= bot
     windowBot = bot
     if switched then

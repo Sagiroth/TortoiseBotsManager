@@ -1559,6 +1559,37 @@ return function()
             if TB.CloseVault then TB.CloseVault() end
             if TB.CloseNpc then TB.CloseNpc() end
             if TB.CloseRunWindow then TB.CloseRunWindow() end
+            -- The order window shares the same anchor: it closes the
+            -- panel and the satellites, and they close it.
+            if TB.OpenOrderWindow then
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+                TB.OpenBotPanel("Alpha")
+                TB.OpenOrderWindow("Goldie")
+                local orderOpen = TB.orderWindow and TB.orderWindow:IsVisible()
+                local panelOpen = TB.botPanel and TB.botPanel:IsVisible()
+                if orderOpen and panelOpen then
+                    bad("Satellites: OrderWindow and BotPanel open at the same time (same anchor, stacked)")
+                end
+                if not orderOpen then
+                    bad("Satellites: OrderWindow did not open over the BotPanel")
+                end
+                TB.OpenBotPanel("Alpha")
+                orderOpen = TB.orderWindow and TB.orderWindow:IsVisible()
+                panelOpen = TB.botPanel and TB.botPanel:IsVisible()
+                if orderOpen and panelOpen then
+                    bad("Satellites: BotPanel and OrderWindow open at the same time (same anchor, stacked)")
+                end
+                TB.OpenOrderWindow("Goldie")
+                TB.OpenNpc("Alpha")
+                orderOpen = TB.orderWindow and TB.orderWindow:IsVisible()
+                npcOpen = TB.botNpc and TB.botNpc:IsVisible()
+                if orderOpen and npcOpen then
+                    bad("Satellites: OrderWindow and BotNpc open at the same time (same anchor, stacked)")
+                end
+                TB.CloseBotPanel()
+                if TB.CloseOrderWindow then TB.CloseOrderWindow() end
+                TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+            end
         end
     end
 
