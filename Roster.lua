@@ -62,6 +62,9 @@ end
 
 local function clearTable(t)
     for key in pairs(t) do t[key] = nil end
+    -- The 1.12 client (Lua 5.0) keeps an explicit array size; without this
+    -- table.insert appends after stale nil slots. Lua 5.1 tests reject setn.
+    pcall(table.setn, t, 0)
 end
 
 local function isOfflineValue(value)
