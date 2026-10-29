@@ -419,6 +419,7 @@ TB.SetFormation("shield")
 assert(TB.currentFormation == "shield" and TB.formationPills.shield.isActive,
     "Formation must reset to shield for later cases")
 assert(TB.actionButtons.rebuff and TB.actionButtons.resetTactics and TB.actionButtons.totem
+    and TB.actionButtons.downtime
     and TB.actionButtons.acceptQuest and TB.actionButtons.shareQuest and TB.actionButtons.grind,
     "Camp chore buttons must exist")
 assert(TB.UI.Grid.CARD_REST_H == 116 and TB.UI.Grid.CARD_FORM_H == 100,
@@ -1019,6 +1020,27 @@ TB.OnSystemMessage("TBM:CAPS|pull-seconds")
 TB.Refresh()
 assert(not TB.actionButtons.flee.enabled, "Flee must be disabled on servers without the capability")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+
+-- Downtime: capability-gated direct command for own alts.
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime")
+TB.Refresh()
+assert(TB.actionButtons.downtime and TB.actionButtons.downtime.enabled, "Downtime must be enabled when advertised")
+now = now + 1
+this = TB.actionButtons.downtime
+TB.actionButtons.downtime.scripts.OnClick(TB.actionButtons.downtime)
+assert(lastAddon() == "downtime", "Downtime must send the direct downtime command")
+TB.OnSystemMessage("TBM:ACTION_ACK|downtime|party|2|-")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "downtime"
+    and TB.lastActionAck.scope == "party" and TB.lastActionAck.count == 2,
+    "downtime ACK must parse like other actions")
+TB.OnSystemMessage("TBM:ACTION_ERR|downtime|refused|Gamma is a hired companion, not one of your own alts.")
+assert(TB.lastActionError and TB.lastActionError.intent == "downtime"
+    and TB.lastActionError.code == "refused",
+    "downtime ERR must parse like other actions")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior")
+TB.Refresh()
+assert(not TB.actionButtons.downtime.enabled, "Downtime must be disabled on servers without the capability")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime")
 
 -- Live specs pick the shown role (a hire has no saved role); values may hold spaces.
 TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|7")

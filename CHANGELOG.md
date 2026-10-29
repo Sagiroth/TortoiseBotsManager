@@ -2,12 +2,18 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## Unreleased
+
+### Camp
+- New Downtime button sends your own alt to its class trainer, vendor and repair, then back to you. Shown only when the server advertises the `downtime` capability; hires and pool bots are refused by the server.
+
+---
+
 ## v1.4.1 (2026-10-28)
 
 ### Roster & Lifecycle
 - Guild tab claimed bot list now refreshes correctly on the 1.12 client instead of going blank after the first refresh. [#50](https://github.com/Sagiroth/TortoiseBotsManager/pull/50)
 - Clearing the claimed list now resets the client’s remembered list length, preventing empty-slot sorting failures and the “Roster.lua:278: attempt to index local 'b' (a nil value)” chat error every 8 seconds. [#50](https://github.com/Sagiroth/TortoiseBotsManager/pull/50)
-
 ---
 
 ## v1.4.0 (2026-10-27)

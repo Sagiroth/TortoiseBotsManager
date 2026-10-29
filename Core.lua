@@ -528,8 +528,8 @@ function TB.UpdateStancePills()
     end
 end
 
--- Camp chores with non-action verbs. Strategy and totem sends keep the exact
--- server wire from §4 (.bot strategy / .bot totem party drop).
+-- Camp chores with non-action verbs. Strategy, totem and downtime sends keep
+-- the exact server wire (.bot strategy / .bot totem party drop / .bot downtime).
 function TB.SendStrategyCommand(change)
     change = TB.Trim(change or "")
     if change == "" then return false end
@@ -538,6 +538,11 @@ end
 
 function TB.SendTotemDrop()
     return TB.SendBotCommand("totem party drop")
+end
+
+function TB.SendDowntime()
+    if TB.HasServerCapability and not TB.HasServerCapability("downtime") then return false end
+    return TB.SendBotCommand("downtime")
 end
 
 function TB.SendGrindToggle()

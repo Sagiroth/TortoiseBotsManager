@@ -411,7 +411,7 @@ return function()
         if rest then
             local list = {}
             for _, n in ipairs({ "rest", "ready", "repair", "sell", "learn",
-                "release", "rebuff", "resetTactics", "totem" }) do
+                "release", "rebuff", "resetTactics", "totem", "downtime" }) do
                 if B[n] then table.insert(list, { n, B[n] }) end
             end
             childrenInside("Camp rest", rest, frameRect(rest, cache), list, cache, 3)

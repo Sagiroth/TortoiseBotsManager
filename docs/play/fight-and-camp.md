@@ -12,7 +12,7 @@ relates_to:
 
 # Fight and Camp Tabs
 
-**Fight** holds what you use during a pull, **Camp** what you use between pulls. Each button sends one command to your party, or to your targeted bot (see [who an order goes to](getting-started.md#who-an-order-goes-to)). The last column links to the module page that explains how the bots carry it out.
+**Fight** holds what you use during a pull, **Camp** what you use between pulls. Each button sends one command to your party, or to your targeted bot (see [who an order goes to](getting-started.md#who-an-order-goes-to)). Downtime is the exception: it sends `.bot downtime`, a direct command for your own alts only. The last column links to the module page that explains how the bots carry it out.
 
 Module docs base: [party actions](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md).
 
@@ -94,10 +94,10 @@ The **Gear & bags** button opens the [bot panel](bot-panel.md) of your targeted 
 | Repair | Repair at a nearby vendor. | `.bot action repair` | [repair](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-repair) |
 | Sell junk | Sell grey items. | `.bot action sell` | [sell](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-sell) |
 | Train | Learn what the targeted class trainer offers. | `.bot action learn` | [learn](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-learn) |
+| Downtime | Own alt runs trainer, vendor and repair errands, then comes back. Needs the `downtime` capability; hires and pool bots are refused. | `.bot downtime` | [downtime](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-downtime) |
 | Release / Corpse run | Dead bots release spirit; once they are ghosts the button turns into Corpse run. | `.bot action release` / `corpse run` | [release](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-release), [corpse run](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-corpse-run) |
 | Rebuff | Re-cast missing group buffs. | `.bot action rebuff` | [rebuff](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-rebuff) |
 | Reset tactics | Clear your strategy changes back to defaults. | `.bot strategy reset` | [strategy](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-strategy) |
-| Drop totems | Shaman bots drop their configured totems now. | `.bot totem party drop` | [totem](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-totem) |
 
 ### Formations
 

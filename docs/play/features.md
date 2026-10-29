@@ -29,6 +29,7 @@ Every feature, where to find it, and what the server needs. "Always" means any T
 | Party switches (AoE, auto CC, sap, spread, loot) | Fight | Always | [Party switches](fight-and-camp.md#party-switches) | [party actions](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-aoe) |
 | Tactics (kite, auto mark, focus fire, AoE fear) | Fight | Always | [Tactics](fight-and-camp.md#tactics) | [strategy](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-strategy) |
 | Rest, ready check, repair, sell, train, release, rebuff, totems | Camp | Always | [Camp tab](fight-and-camp.md#camp-tab) | [party actions](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md) |
+| Downtime errands for own alts | Camp | `downtime` | [Camp tab](fight-and-camp.md#camp-tab) | [downtime](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-downtime) |
 | Ten formations | Camp | Always | [Formations](fight-and-camp.md#formations) | [formation](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-formation) |
 | Quest accept/share, grind | Camp | Always | [Quests](fight-and-camp.md#quests) | [commands](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/README.md) |
 | Bot roles by spec, your own role | Party | Always | [Party tab](party-roster-guild.md#party-tab) | [role](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role) |
