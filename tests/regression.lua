@@ -2559,12 +2559,43 @@ assert(lastAddon() == "order search Goldie farm light", "an invalid-arg reply re
 assert(string.find(TB.GetOrderFeedback().text, "retrying without the kind filter"),
     "the retry says the filter was dropped")
 assert(TB.SetOrderCat("all") and TB.GetOrderCat() == nil, "All clears the filter")
+assert(TB.OrderCatBrowsable("herb") and TB.OrderCatBrowsable("cloth")
+    and not TB.OrderCatBrowsable("drop") and not TB.OrderCatBrowsable("other")
+    and not TB.OrderCatBrowsable("-"), "only small kinds browse empty")
 
+-- Big kinds need text: picking Drops empty sends nothing and hints instead.
+TB.orderWindow.searchBox.text = ""
+now = now + 1
+local beforeBig = table.getn(addonSent)
+assert(TB.SetOrderCat("drop"), "the kind filter picks drops")
+assert(TB.GetOrderCat() == "drop", "the filter tracks the big kind")
+assert(table.getn(addonSent) == beforeBig, "an empty big-kind browse sends nothing")
+assert(string.find(TB.GetOrderFeedback().text, "Type at least 3 letters to search drops", 1, true),
+    "an empty big-kind browse hints at text")
+assert(TB.SendOrderSearch("Goldie", "farm", "", "drop") == false
+    and TB.SendOrderSearch("Goldie", "farm", "", "other") == false,
+    "empty big-kind searches are refused")
+assert(TB.SendOrderSearch("Goldie", "farm", "dr", "drop") == false,
+    "short text with a big kind still needs 3 letters")
+now = now + 1
+TB.orderWindow.searchBox.text = "dev"
+TB.orderWindow.searchBox.scripts.OnTextChanged(TB.orderWindow.searchBox)
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(lastAddon() == "order search Goldie farm cat=drop dev",
+    "text with a big kind sends the filtered search")
+-- A with-text filtered search still retries bare on an old-server invalid.
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order search Goldie farm dev", "an invalid-arg reply retries the search bare")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without the kind filter"),
+    "the retry says the filter was dropped")
+assert(TB.SetOrderCat("all") and TB.GetOrderCat() == nil, "All clears the big kind")
 now = now + 1
 local beforeKind = table.getn(addonSent)
 TB.SetOrderKind("buy")
 assert(TB.GetOrderKind() == "buy", "the kind switches")
-assert(table.getn(addonSent) == beforeKind + 1 and lastAddon() == "order search Goldie buy light",
+assert(table.getn(addonSent) == beforeKind + 1 and lastAddon() == "order search Goldie buy dev",
     "a kind switch re-runs a valid search")
 assert(TB.SetOrderKind("steal") == false and TB.GetOrderKind() == "buy",
     "an unknown kind is refused")

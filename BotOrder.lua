@@ -421,6 +421,17 @@ local ORDER_CAT_LABEL = {
     fish = "Fish", cloth = "Cloth", drop = "Drops", other = "Other",
 }
 
+-- The server refuses an empty-text browse for the two big kinds (drop,
+-- other): those need 3+ letters like a plain search. The small kinds
+-- (herb, ore, leather, fish, cloth) may browse with empty text.
+local ORDER_BROWSE_CATS = { herb = true, ore = true, leather = true, fish = true, cloth = true }
+
+function TB.OrderCatBrowsable(cat)
+    cat = string.lower(trim(cat or ""))
+    if cat == "" or cat == "-" then return false end
+    return ORDER_BROWSE_CATS[cat] and true or false
+end
+
 function TB.OrderCatLabel(cat)
     cat = string.lower(trim(cat or ""))
     if cat == "" or cat == "-" then return nil end
@@ -434,9 +445,11 @@ function TB.SendOrderSearch(bot, kind, text, cat)
     text = trim(text or "")
     cat = string.lower(trim(cat or ""))
     if cat == "all" or cat == "" then cat = nil end
-    if not bot or (kind ~= "farm" and kind ~= "buy" and kind ~= "craft") then return false end
     if cat and not ORDER_CAT_LABEL[cat] then return false end
-    if string.len(text) < SEARCH_MIN and not cat then return false end
+    if string.len(text) < SEARCH_MIN then
+        -- Big kinds need text too; small kinds may browse empty.
+        if not cat or not TB.OrderCatBrowsable(cat) then return false end
+    end
     searchBot, searchKind, searchText, searchCat = bot, kind, text, cat
     local line = "order search " .. bot .. " " .. kind
     if cat then line = line .. " cat=" .. cat end
@@ -534,6 +547,13 @@ function TB.OnOrderError(packet)
     if packet.code == "invalid" and pendingSearchCat then
         local search = pendingSearchCat
         pendingSearchCat = nil
+        -- An empty browse hits the size limit, not an old server: the bare
+        -- retry would fail the same way, so surface the hint instead.
+        if string.len(trim(search.text or "")) < SEARCH_MIN then
+            pendingGive = nil
+            TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
+            return false
+        end
         TB.SetOrderFeedback("Old server: retrying without the kind filter...", "pending")
         TB.SendOrderSearch(search.bot, search.kind, search.text)
         return false
@@ -619,10 +639,13 @@ function TB.SetOrderKind(kind)
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     -- A new kind re-runs a valid search at once: verdicts differ per kind
     -- (a craft search refuses unknown recipes, a farm search does not).
-    -- With a kind filter the text may be empty (browse that kind).
+    -- Small kinds may browse with empty text; big kinds need 3+ letters.
     if win and windowBot and win.searchBox then
         local text = trim(win.searchBox:GetText() or "")
-        if orderCat then
+        if orderCat and TB.OrderCatBrowsable(orderCat) then
+            searchPendingAt = nil
+            TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
+        elseif orderCat and string.len(text) >= SEARCH_MIN then
             searchPendingAt = nil
             TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
         elseif string.len(text) >= SEARCH_MIN then
@@ -649,10 +672,16 @@ function TB.SetOrderCat(cat)
     searchTouched = false
     if cat then
         searchPendingAt = nil
-        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         if win and win.searchBox and windowBot then
-            TB.SendOrderSearch(windowBot, orderKind, trim(win.searchBox:GetText() or ""), orderCat)
+            local browseText = trim(win.searchBox:GetText() or "")
+            if string.len(browseText) < SEARCH_MIN and not TB.OrderCatBrowsable(cat) then
+                TB.SetOrderFeedback("Type at least 3 letters to search "
+                    .. string.lower(TB.OrderCatLabel(cat) or "items") .. ".", "muted")
+            else
+                TB.SendOrderSearch(windowBot, orderKind, browseText, orderCat)
+            end
         end
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     else
         lastSearch = { bot = windowBot, kind = orderKind, text = "", cat = nil, items = {} }
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
@@ -808,10 +837,15 @@ local function firePendingSearch()
     if not searchPendingAt or now() < searchPendingAt then return end
     if not (win and windowBot and win.searchBox) then return end
     local text = trim(win.searchBox:GetText() or "")
-    if string.len(text) < SEARCH_MIN and not orderCat then
+    if string.len(text) < SEARCH_MIN and (not orderCat or not TB.OrderCatBrowsable(orderCat)) then
         lastSearch = { bot = windowBot, kind = orderKind, text = text, cat = nil, items = {} }
         selectedItemId = nil
-        TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
+        if orderCat then
+            TB.SetOrderFeedback("Type at least 3 letters to search "
+                .. string.lower(TB.OrderCatLabel(orderCat) or "items") .. ".", "muted")
+        else
+            TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
+        end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return
     end
@@ -864,8 +898,12 @@ local function createWindow()
         this:ClearFocus()
         if win and windowBot then
             local text = trim(this:GetText() or "")
-            if string.len(text) >= SEARCH_MIN or orderCat then
+            if string.len(text) >= SEARCH_MIN
+                or (orderCat and TB.OrderCatBrowsable(orderCat)) then
                 TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
+            elseif orderCat then
+                TB.SetOrderFeedback("Type at least 3 letters to search "
+                    .. string.lower(TB.OrderCatLabel(orderCat) or "items") .. ".", "muted")
             else
                 TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
             end
