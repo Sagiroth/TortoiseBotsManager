@@ -361,6 +361,15 @@ TB.C.ACTION_DEFINITIONS = {
         tip = "Bots learn available class spells and skills from your targeted trainer.",
     },
     {
+        id = "downtime",
+        intent = "downtime",
+        label = "Downtime",
+        section = "rest",
+        cap = "downtime",
+        icon = "Interface\\Icons\\INV_Misc_Rune_01",
+        tip = "Send this alt to its class trainer, vendor and repair, then back to you.",
+    },
+    {
         id = "release",
         intent = "release",
         label = "Release",

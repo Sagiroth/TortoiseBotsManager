@@ -129,6 +129,7 @@ local ACTION_TOOLTIPS = {
     release  = "Dead bots release their spirit; once they are ghosts this button turns into Corpse run.",
     rebuff   = "Bots re-cast missing group buffs.",
     ["totem party drop"] = "Shaman bots drop totems.",
+    downtime = "Send this alt to its class trainer, vendor and repair, then back to you.",
     ["strategy +grind"] = "Bots grind on their own.",
     ["strategy reset"] = "Strategy changes back to defaults.",
 }
@@ -795,6 +796,8 @@ function TB.RunActionIntent(intent)
         TB.SendReadyCheck()
     elseif intent == "totem party drop" then
         TB.SendTotemDrop()
+    elseif intent == "downtime" then
+        TB.SendDowntime()
     else
         TB.SendActionIntent(intent)
     end
@@ -1186,8 +1189,8 @@ local function BuildTacticsCard(parent, buttons)
 end
 
 local function BuildRestCard(campFrame, buttons)
-    -- Camp chores: Rest, ready, repair, sell, train, release, rebuff, reset.
-    local card = TB.UI.CreateCard(campFrame, "REST, REPAIR & TRAIN", W - (C.PAD or 10) * 2, 116, { y = -18, line = true })
+    -- Camp chores: Rest, ready, repair, sell, train, release, rebuff, reset, downtime.
+    local card = TB.UI.CreateCard(campFrame, "REST, REPAIR & TRAIN", W - (C.PAD or 10) * 2, 146, { y = -18, line = true })
     local btnY = -24
     buttons.rest    = makeActionButton(card, "rest", 150, 8, btnY)
     buttons.ready   = makeActionButton(card, "ready", 150, 165, btnY)
@@ -1204,12 +1207,13 @@ local function BuildRestCard(campFrame, buttons)
     buttons.rebuff = makeActionButton(card, "rebuff", 150, 8, -84)
     buttons.resetTactics = makeActionButton(card, "strategy reset", 150, 165, -84)
     buttons.totem = makeActionButton(card, "totem party drop", 150, 322, -84)
+    buttons.downtime = makeActionButton(card, "downtime", 150, 322, -114)
     return card
 end
 
 local function BuildFormationCard(campFrame)
     -- Formation pills with a line describing the active one, two rows of five.
-    local card = TB.UI.CreateCard(campFrame, "FORMATION", W - (C.PAD or 10) * 2, 100, { y = -138, line = true })
+    local card = TB.UI.CreateCard(campFrame, "FORMATION", W - (C.PAD or 10) * 2, 100, { y = -168, line = true })
     local pills = {}
     local formationTips = {}
     for i, def in ipairs(C.FORMATIONS or {}) do
@@ -1248,7 +1252,7 @@ end
 local function BuildQuestsCard(campFrame, buttons)
     -- Party quests: accept/share loop over grouped bots, grind toggles the
     -- autonomous grind strategy for the whole party.
-    local card = TB.UI.CreateCard(campFrame, "QUESTS", W - (C.PAD or 10) * 2, 58, { y = -242, line = true })
+    local card = TB.UI.CreateCard(campFrame, "QUESTS", W - (C.PAD or 10) * 2, 58, { y = -272, line = true })
     buttons.acceptQuest = TB.UI.CreateButton(card, "Accept", 150, 26, {
         x = 8, y = -24,
         icon = "Interface\\Icons\\INV_Misc_Book_08",
@@ -1320,7 +1324,7 @@ CreateActions = function(parent)
     BuildQuestsCard(campFrame, buttons)
 
     local campTip = campFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    campTip:SetPoint("TOPLEFT", campFrame, "TOPLEFT", 6, -312)
+    campTip:SetPoint("TOPLEFT", campFrame, "TOPLEFT", 6, -342)
     campTip:SetWidth(468); campTip:SetJustifyH("LEFT")
     campTip:SetText("Gear, bags and per-bot habits: bag icon on the Party tab, or target a bot and use Gear & bags on Fight.")
     TB.SetTextColor(campTip, color("muted"))
@@ -2599,10 +2603,13 @@ function TB.RefreshActionControls()
     TB.RefreshToggleButtons()
     TB.RefreshDeathButton()
     if TB.RefreshCampControls then TB.RefreshCampControls() end
-    -- Flee is a newer server intent: hide it from servers that do not
-    -- advertise it rather than let the click fail.
+    -- Flee and downtime are newer server intents: disable them on servers
+    -- that do not advertise the capability rather than let the click fail.
     if TB.actionButtons.flee then
         if serverHasCap("flee") then TB.actionButtons.flee:Enable() else TB.actionButtons.flee:Disable() end
+    end
+    if TB.actionButtons.downtime then
+        if serverHasCap("downtime") then TB.actionButtons.downtime:Enable() else TB.actionButtons.downtime:Disable() end
     end
     if TB.UpdateFormationPills then TB.UpdateFormationPills() end
     if TB.UpdateStancePills then TB.UpdateStancePills() end
