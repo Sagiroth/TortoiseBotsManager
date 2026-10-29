@@ -9,14 +9,15 @@
 -- Sends (byte-exact, contract: TortoiseBots#1297 "Addon contract"):
 --   "order list"                                   -> full order snapshot
 --   "order search <bot> <farm|buy|craft> <text>"   -> item search (>=3 chars)
---   "order <bot> <farm|buy|craft> <itemId> <n>"    -> give or replace (1-200)
---   "order <bot> cancel"                           -> remove the order
+--   "order <bot> <farm|buy|craft> <itemId> <n> [hours]" -> give or replace
+--     (1-200, 1-24 farm hours; an old server answers invalid for the hours
+--     and the addon resends without them)
 -- Inbound:
 --   TBM:ORDER_BEGIN|<n>
---   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>
+--   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>
 --   TBM:ORDER_END
 --   TBM:ORDER_ITEMS_BEGIN|<n>
---   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>
+--   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>|<difficulty>
 --   TBM:ORDER_ITEMS_END
 --   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|cancel>
 --   TBM:ACTION_ERR|order|<code>|<message>
@@ -25,6 +26,8 @@
 -- only). The search pair is its own stream, so an empty result is a real
 -- answer. Unknown state / reason tokens are shown raw, never crash.
 -- <reason> "-" means none; <zone> "-" means none; <chance> is percent.
+-- <difficulty> is easy / medium / hard ("-" or a missing field on old
+-- servers means none); <reason> and <verdict> may be "elite".
 --
 -- Permission: the giver's guild rank must be allowed to edit officer notes
 -- (CanEditOfficerNote). Without it the Order and Cancel buttons are greyed
@@ -39,6 +42,7 @@ local SEARCH_MIN = 3
 local SEARCH_DEBOUNCE = 0.6
 local LIST_INTERVAL = 30
 local AMOUNT_MIN, AMOUNT_MAX = 1, 200
+local HOURS_MIN, HOURS_MAX = 1, 24
 
 local function trim(text) local s = TB.Trim(text or "") return s end
 
@@ -73,8 +77,8 @@ local STATE_COLOR = {
 local REASON_LABEL = {
     grouped = "in a group", noskill = "missing profession", lowskill = "skill too low",
     lowlevel = "bot under level 10", norange = "nothing in level range",
-    nosource = "no source", norecipe = "unknown recipe", stuck = "stuck, gave up",
-    bagsfull = "bags full", nobank = "no bank deposit",
+    nosource = "no source", norecipe = "unknown recipe", elite = "only from elite creatures",
+    stuck = "stuck, gave up", bagsfull = "bags full", nobank = "no bank deposit",
 }
 local SOURCE_LABEL = { drop = "drop", skin = "skin", herb = "herb", ore = "ore", craft = "craft", ah = "AH" }
 local SKILL_NAMES = {
@@ -98,6 +102,19 @@ function TB.OrderReasonLabel(reason)
     reason = trim(reason or "")
     if reason == "" or reason == "-" then return nil end
     return REASON_LABEL[string.lower(reason)] or reason
+end
+
+-- Difficulty estimate from the server: easy / medium / hard in plain words
+-- with a subtle colour, nothing for "-" or old lines without the field.
+local DIFFICULTY_LABEL = { easy = "Easy", medium = "Medium", hard = "Hard" }
+local DIFFICULTY_COLOR = { easy = "|cff4ecb5a", medium = "|cffffd200", hard = "|cffff5050" }
+
+function TB.OrderDifficultyLabel(difficulty)
+    difficulty = trim(difficulty or "")
+    if difficulty == "" or difficulty == "-" then return nil end
+    local key = string.lower(difficulty)
+    if not DIFFICULTY_LABEL[key] then return nil end
+    return (DIFFICULTY_COLOR[key] or "") .. DIFFICULTY_LABEL[key] .. "|r"
 end
 
 function TB.OrderSourcesLabel(sources)
@@ -144,7 +161,7 @@ function TB.OrderEstimate(kind, sources, chance, amount)
 end
 
 -- ── model ─────────────────────────────────────────────────────────────────
--- orders[bot] = { bot, type, itemId, item, have, want, state, reason, zone }
+-- orders[bot] = { bot, type, itemId, item, have, want, state, reason, zone, difficulty }
 local orders = {}
 
 function TB.GetBotOrder(bot)
@@ -171,27 +188,30 @@ function TB.OrderRowText(order)
         if paint then return paint .. text .. "|r" end
         return text
     end
+    local text
     if state == "working" then
-        local text = item .. " " .. progress
+        text = item .. " " .. progress
         if order.zone then text = text .. " (" .. order.zone .. ")" end
-        return text
     elseif state == "waiting" then
-        return item .. " " .. progress .. " · " .. word("Waiting")
+        text = item .. " " .. progress .. " · " .. word("Waiting")
     elseif state == "delivering" then
-        return word("Delivering") .. " " .. item
+        text = word("Delivering") .. " " .. item
     elseif state == "done" then
-        return item .. " · " .. word("Done")
+        text = item .. " · " .. word("Done")
     elseif state == "mailed" then
-        return item .. " · " .. word("Mailed to GM")
+        text = item .. " · " .. word("Mailed to GM")
     elseif state == "noskill" then
-        return item .. " · " .. word("No skill")
+        text = item .. " · " .. word("No skill")
     elseif state == "cant" then
-        return item .. " · " .. word("Can't")
+        text = item .. " · " .. word("Can't")
+    else
+        text = item .. " " .. progress .. " · " .. trim(order.state or "")
     end
-    return item .. " " .. progress .. " · " .. trim(order.state or "")
+    local diff = TB.OrderDifficultyLabel(order.difficulty)
+    if diff then text = text .. " · " .. diff end
+    return text
 end
-
--- Tooltip body for a bot's order: type, progress, state, reason, zone.
+-- Tooltip body for a bot's order: type, progress, state, reason, zone, difficulty.
 function TB.OrderTooltipText(order)
     if not order then return nil end
     local lines = { "Order: " .. TB.OrderTypeLabel(order.type) .. " " .. (order.item or "?")
@@ -201,9 +221,13 @@ function TB.OrderTooltipText(order)
     if reason then state = state .. " (" .. reason .. ")" end
     table.insert(lines, state)
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
+    local diff = TB.OrderDifficultyLabel(order.difficulty)
+    if diff then
+        table.insert(lines, "Difficulty: " .. diff
+            .. " (Rough effort for this bot: how many kills or gathers it needs)")
+    end
     return table.concat(lines, "\n")
 end
-
 -- ── parsing ───────────────────────────────────────────────────────────────
 local function splitProtocol(text)
     local fields = {}
@@ -239,7 +263,8 @@ end
 function TB.ParseOrderLine(msg)
     if string.sub(msg or "", 1, 10) ~= "TBM:ORDER|" then return nil end
     local fields = splitProtocol(string.sub(msg, 11))
-    if table.getn(fields) ~= 9 then return nil end
+    local count = table.getn(fields)
+    if count ~= 9 and count ~= 10 then return nil end
     local bot = norm(trim(fields[1]))
     if not bot or bot == "" then return nil end
     local kind = trim(fields[2])
@@ -254,13 +279,15 @@ function TB.ParseOrderLine(msg)
         bot = bot, type = kind, itemId = math.floor(itemId), item = item,
         have = math.floor(have), want = math.floor(want), state = state,
         reason = noneDash(fields[8]), zone = noneDash(fields[9]),
+        difficulty = count == 10 and noneDash(fields[10]) or nil,
     }
 end
 
 function TB.ParseOrderItemLine(msg)
     if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_ITEM|" then return nil end
     local fields = splitProtocol(string.sub(msg, 16))
-    if table.getn(fields) ~= 9 then return nil end
+    local count = table.getn(fields)
+    if count ~= 9 and count ~= 10 then return nil end
     local itemId = tonumber(trim(fields[1]))
     local item = trim(fields[2])
     local quality = tonumber(trim(fields[3]))
@@ -276,6 +303,7 @@ function TB.ParseOrderItemLine(msg)
         sources = splitSources(fields[4]), minLevel = math.floor(minLevel),
         skill = noneDash(fields[6]), verdict = verdict,
         zone = noneDash(fields[8]), chance = math.floor(chance),
+        difficulty = count == 10 and noneDash(fields[10]) or nil,
     }
 end
 
@@ -380,15 +408,33 @@ function TB.ClampOrderAmount(amount)
     return amount
 end
 
-function TB.SendOrderGive(bot, kind, itemId, amount)
+function TB.ClampOrderHours(hours)
+    hours = math.floor(tonumber(hours) or 0)
+    if hours < HOURS_MIN then hours = HOURS_MIN end
+    if hours > HOURS_MAX then hours = HOURS_MAX end
+    return hours
+end
+
+-- A hours-bearing give waiting for the server's answer; an "invalid" reply
+-- means an old server that rejects the trailing argument.
+local pendingGive = nil
+
+function TB.SendOrderGive(bot, kind, itemId, amount, hours)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
     kind = string.lower(trim(kind or ""))
     itemId = math.floor(tonumber(itemId) or 0)
     if not bot or (kind ~= "farm" and kind ~= "buy" and kind ~= "craft") then return false end
     if itemId <= 0 then return false end
-    return TB.SendBotCommand("order " .. bot .. " " .. kind .. " " .. itemId
-        .. " " .. TB.ClampOrderAmount(amount))
+    amount = TB.ClampOrderAmount(amount)
+    local text = "order " .. bot .. " " .. kind .. " " .. itemId .. " " .. amount
+    if hours ~= nil then
+        text = text .. " " .. TB.ClampOrderHours(hours)
+        pendingGive = { bot = bot, kind = kind, itemId = itemId, amount = amount }
+    else
+        pendingGive = nil
+    end
+    return TB.SendBotCommand(text)
 end
 
 function TB.SendOrderCancel(bot)
@@ -403,6 +449,7 @@ end
 -- give ACK closes the window, the live line paints the progress.
 function TB.OnOrderAck(packet)
     if not packet or packet.intent ~= "order" then return false end
+    pendingGive = nil
     local _, _, scopeBot = string.find(packet.scope or "", "^bot:(.+)$")
     local bot = norm(scopeBot)
     if packet.executor == "cancel" then
@@ -430,6 +477,16 @@ end
 -- text below still reports the code and message.
 function TB.OnOrderError(packet)
     if not packet or packet.intent ~= "order" then return false end
+    -- An old server rejects the trailing hours argument as invalid: resend
+    -- the same give without it. Any other answer settles the pending give.
+    if packet.code == "invalid" and pendingGive then
+        local give = pendingGive
+        pendingGive = nil
+        TB.SetOrderFeedback("Old server: retrying without farm time...", "pending")
+        TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount)
+        return false
+    end
+    pendingGive = nil
     local message = trim(packet.message)
     if message == "" then message = packet.code end
     TB.SetOrderFeedback("|cffff5050Order refused:|r " .. message, "err")
@@ -479,6 +536,7 @@ local win = nil
 local windowBot = nil
 local orderKind = "farm"
 local orderAmount = 10
+local orderHours = 1
 local selectedItemId = nil
 local searchPendingAt = nil
 local feedback = nil
@@ -523,6 +581,19 @@ function TB.SetOrderAmount(amount)
     end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     return orderAmount
+end
+
+function TB.GetOrderHours()
+    return orderHours
+end
+
+function TB.SetOrderHours(hours)
+    orderHours = TB.ClampOrderHours(hours)
+    if win and win.hoursBox and win.hoursBox:GetText() ~= tostring(orderHours) then
+        win.hoursBox:SetText(tostring(orderHours))
+    end
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return orderHours
 end
 
 function TB.GetOrderSelection()
@@ -580,7 +651,7 @@ local function itemTexture(id)
 end
 
 -- Second line of a search result: why the bot cannot get it, or sources,
--- level, skill, zone and the farm estimate for the current amount.
+-- level, skill, zone, the farm estimate for the current amount and difficulty.
 function TB.OrderItemDetail(item, kind, amount, level)
     kind = string.lower(trim(kind or "farm"))
     if not item then return "" end
@@ -609,6 +680,8 @@ function TB.OrderItemDetail(item, kind, amount, level)
     if item.zone then table.insert(parts, item.zone) end
     local estimate = TB.OrderEstimate(kind, item.sources, item.chance, amount)
     if estimate then table.insert(parts, estimate) end
+    local diff = TB.OrderDifficultyLabel(item.difficulty)
+    if diff then table.insert(parts, diff) end
     return table.concat(parts, " · ")
 end
 
@@ -639,7 +712,6 @@ end
 
 local function firePendingSearch()
     if not searchPendingAt or now() < searchPendingAt then return end
-    searchPendingAt = nil
     if not (win and windowBot and win.searchBox) then return end
     local text = trim(win.searchBox:GetText() or "")
     if string.len(text) < SEARCH_MIN then
@@ -654,7 +726,7 @@ end
 
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
-    win:SetWidth(OW); win:SetHeight(396)
+    win:SetWidth(OW); win:SetHeight(440)
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
@@ -779,6 +851,12 @@ local function createWindow()
                     GameTooltip:AddLine(item.zone, 0.9, 0.9, 0.9, 1)
                 end
             end
+            local diff = TB.OrderDifficultyLabel(item.difficulty)
+            if diff then
+                GameTooltip:AddLine("Difficulty: " .. diff, 0.9, 0.9, 0.9, 1)
+                GameTooltip:AddLine("Rough effort for this bot: how many kills or gathers it needs",
+                    0.9, 0.9, 0.9, 1)
+            end
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -792,6 +870,13 @@ local function createWindow()
     TB.SetTextColor(win.emptyMsg, color("muted"))
 
     local base = 106 + RESULT_ROW_N * RESULT_ROW_H + 4
+    local farmNote = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    farmNote:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 2))
+    farmNote:SetWidth(OW - 24); farmNote:SetJustifyH("LEFT")
+    farmNote:SetText("Bots farm like players: large amounts or rare drops can take very long or fail.")
+    TB.SetTextColor(farmNote, color("muted"))
+    win.farmNote = farmNote
+    base = 106 + RESULT_ROW_N * RESULT_ROW_H + 30
     local amountLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     amountLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 4))
     amountLabel:SetText("AMOUNT")
@@ -848,14 +933,46 @@ local function createWindow()
     end)
     win.amountPlus = plus
 
-    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 2),
+    local hoursLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hoursLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 4))
+    hoursLabel:SetText("FARM TIME")
+    TB.SetTextColor(hoursLabel, color("gold"))
+
+    local hoursBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderHours", win, "InputBoxTemplate")
+    hoursBox:SetWidth(36); hoursBox:SetHeight(20)
+    hoursBox:SetPoint("TOPLEFT", win, "TOPLEFT", 268, -(base + 2))
+    hoursBox:SetAutoFocus(false)
+    hoursBox:SetScript("OnEscapePressed", function()
+        this:SetText(tostring(orderHours))
+        this:ClearFocus()
+    end)
+    hoursBox:SetScript("OnEnterPressed", function()
+        TB.SetOrderHours(tonumber(this:GetText()) or orderHours)
+        this:ClearFocus()
+    end)
+    hoursBox:SetScript("OnTextChanged", function()
+        local n = tonumber(this:GetText() or "")
+        if n and TB.ClampOrderHours(n) ~= orderHours then TB.SetOrderHours(n) end
+    end)
+    hoursBox:SetScript("OnEditFocusLost", function()
+        this:SetText(tostring(orderHours))
+    end)
+    win.hoursBox = hoursBox
+    setTooltip(hoursBox, "Farm time",
+        { "Whole hours this order may farm (1-24). The bot stops when the time runs out." })
+
+    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 28),
         "Send order", "Give this bot the order (replaces its old one).",
         function()
-            -- The box commits on change, but read it anyway: a valid
-            -- number must always win over a stale amount.
+            -- The boxes commit on change, but read them anyway: a valid
+            -- number must always win over a stale value.
             if win.amountBox then
                 local n = tonumber(win.amountBox:GetText() or "")
                 if n then TB.SetOrderAmount(n) end
+            end
+            if win.hoursBox then
+                local h = tonumber(win.hoursBox:GetText() or "")
+                if h then TB.SetOrderHours(h) end
             end
             local item = nil
             for _, candidate in ipairs((TB.GetOrderSearch().items) or {}) do
@@ -870,23 +987,23 @@ local function createWindow()
                 return
             end
             TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
-                .. " x" .. orderAmount .. " sent, waiting for the server...", "pending")
-            TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount)
+                .. " x" .. orderAmount .. " (" .. orderHours .. "h) sent, waiting for the server...", "pending")
+            TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount, orderHours)
         end)
 
-    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 2),
+    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 28),
         "Cancel order", "Remove this bot's current order.",
         function()
             if windowBot then TB.SendOrderCancel(windowBot) end
         end)
 
     win.statusLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 28))
+    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 54))
     win.statusLine:SetWidth(OW - 24); win.statusLine:SetJustifyH("LEFT")
     TB.SetTextColor(win.statusLine, color("muted"))
 
     win.feedbackLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 44))
+    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 70))
     win.feedbackLine:SetWidth(OW - 24); win.feedbackLine:SetJustifyH("LEFT")
 
     win:SetScript("OnUpdate", function()
@@ -1000,12 +1117,14 @@ function TB.OpenOrderWindow(bot)
     windowBot = bot
     if switched then
         orderAmount = 10
+        orderHours = 1
         selectedItemId = nil
         feedback = nil
         searchPendingAt = nil
         lastSearch = { bot = bot, kind = orderKind, text = "", items = {} }
         if win.searchBox then win.searchBox:SetText("") end
         if win.amountBox then win.amountBox:SetText("10") end
+        if win.hoursBox then win.hoursBox:SetText("1") end
     end
     -- Anchor beside the main window, like the run window.
     win:ClearAllPoints()

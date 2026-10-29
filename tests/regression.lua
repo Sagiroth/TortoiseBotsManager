@@ -2382,14 +2382,28 @@ local searchItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|d
 assert(searchItem and searchItem.itemId == 2319 and searchItem.quality == 1
     and table.getn(searchItem.sources) == 2 and searchItem.minLevel == 16
     and searchItem.skill == "393:100" and searchItem.verdict == "ok"
-    and searchItem.zone == "Ashenvale" and searchItem.chance == 50, "search items parse")
+    and searchItem.zone == "Ashenvale" and searchItem.chance == 50
+    and searchItem.difficulty == nil, "search items parse (old 10-field lines have no difficulty)")
+local searchItemHard = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|hard")
+assert(searchItemHard and searchItemHard.difficulty == "hard", "search items parse the new difficulty field")
+local searchItemDash = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|-")
+assert(searchItemDash and searchItemDash.difficulty == nil, "a dash difficulty parses as none")
 assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319") == nil, "a short search line is dropped")
 assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop|16|-|ok|Ashenvale") == nil,
     "a short chance field drops the search line")
 assert(TB.OrderItemDetail(searchItem, "farm", 10, 24) == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills",
     "a good result shows sources, level, skill, zone and estimate")
+assert(TB.OrderItemDetail(searchItemHard, "farm", 10, 24)
+    == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · |cffff5050Hard|r",
+    "a good result shows the difficulty word")
 assert(TB.OrderItemDetail(searchItem, "buy", 10, 24) == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale",
     "buy results hide the kill estimate")
+assert(TB.OrderDifficultyLabel("easy") == "|cff4ecb5aEasy|r", "easy gets the plain word")
+assert(TB.OrderDifficultyLabel("medium") == "|cffffd200Medium|r", "medium gets the plain word")
+assert(TB.OrderDifficultyLabel("hard") == "|cffff5050Hard|r", "hard gets the plain word")
+assert(TB.OrderDifficultyLabel("-") == nil and TB.OrderDifficultyLabel(nil) == nil,
+    "a dash difficulty shows nothing")
+assert(TB.OrderReasonLabel("elite") == "only from elite creatures", "elite gets a plain reason")
 local skillItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
 assert(TB.OrderItemDetail(skillItem, "farm", 10, 12) == "needs Skinning",
     "a noskill verdict names the trade")
@@ -2402,10 +2416,32 @@ assert(TB.OrderItemDetail(rangeItem, "farm", 10, 12) == "no source near level 12
 local herbItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|765|Silverleaf|1|herb|1|182:1|lowlevel|-|0")
 assert(TB.OrderItemDetail(herbItem, "farm", 10, 8) == "needs level 10",
     "a lowlevel verdict names level 10")
+local eliteItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|-|elite|-|0")
+assert(TB.OrderItemDetail(eliteItem, "farm", 10, 12) == "Can't: only from elite creatures",
+    "an elite verdict names the elite rule")
 local strangeItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|-|soggy|-|0")
 assert(TB.OrderItemDetail(strangeItem, "farm", 10, 12) == "Can't: soggy",
     "an unknown verdict renders raw")
 assert(TB.OrderItemDetail(nil, "farm", 10, 12) == "", "a missing item has no detail")
+
+-- Order rows carry the difficulty, old 9-field lines still parse.
+local orderWithDiff = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy")
+assert(orderWithDiff and orderWithDiff.difficulty == "easy", "order lines parse the new difficulty field")
+assert(TB.OrderRowText(orderWithDiff) == "Light Leather 4/10 (Ashenvale) · |cff4ecb5aEasy|r",
+    "order rows show the difficulty word")
+assert(TB.OrderRowText(parsedOrder) == "Light Leather 4/10 (Ashenvale)",
+    "old order lines show no difficulty")
+assert(string.find(TB.OrderTooltipText(orderWithDiff), "Difficulty: |cff4ecb5aEasy|r", 1, true) ~= nil
+    and string.find(TB.OrderTooltipText(orderWithDiff),
+        "Rough effort for this bot: how many kills or gathers it needs", 1, true) ~= nil,
+    "order tooltips explain the difficulty")
+assert(TB.OrderTooltipText(parsedOrder)
+    == "Order: Farm Light Leather 4/10\nState: Working\nZone: Ashenvale",
+    "old order tooltips stay unchanged")
+
+-- Farm time: hours clamp, the give carries them, an old server falls back.
+assert(TB.ClampOrderHours(0) == 1 and TB.ClampOrderHours(99) == 24,
+    "hours clamp to 1-24")
 
 -- The order window: search debounce, results, kind, amount, send.
 assert(TB.OpenOrderWindow("Goldie"), "the window opens for a guild bot")
@@ -2415,6 +2451,10 @@ assert(TB.orderWindow.title:GetText() == "Order for Goldie", "the title names th
 assert(TB.orderWindow.statusLine:GetText() == "Current: Light Leather 7/10 (Ashenvale)",
     "the window shows the bot's current order")
 assert(TB.orderWindow.amountBox:GetText() == "10", "a fresh window starts at 10")
+assert(TB.orderWindow.hoursBox:GetText() == "1", "farm time starts at 1 hour")
+assert(TB.orderWindow.farmNote ~= nil
+    and string.find(TB.orderWindow.farmNote:GetText(), "Bots farm like players", 1, true) ~= nil,
+    "the window warns that big or rare farms take very long")
 local beforeSearch = table.getn(addonSent)
 this = TB.orderWindow.searchBox
 TB.orderWindow.searchBox.text = "le"
@@ -2454,8 +2494,19 @@ firstResult.scripts.OnClick(firstResult)
 assert(TB.GetOrderSelection() == 2318, "a good result is picked")
 now = now + 1
 TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
-assert(lastAddon() == "order Goldie farm 2318 10", "Send gives the picked item and amount")
+assert(lastAddon() == "order Goldie farm 2318 10 1", "Send gives the picked item, amount and farm time")
 assert(string.find(TB.GetOrderFeedback().text, "sent, waiting"), "Send says it is waiting")
+TB.SetOrderHours(3)
+assert(TB.GetOrderHours() == 3 and TB.orderWindow.hoursBox:GetText() == "3",
+    "the hours box follows the setter")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 3", "Send uses the farm time box")
+-- An old server rejects the trailing hours: the addon retries without them.
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "an invalid-arg reply retries the give bare")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without farm time"), "the retry says so")
 assert(TB.ClampOrderAmount(0) == 1 and TB.ClampOrderAmount(999) == 200,
     "amounts clamp to 1-200")
 TB.SetOrderAmount(25)
@@ -2575,7 +2626,22 @@ assert(TB.GetOrderSelection() == 2318, "round 2 picks the item")
 now = now + 1
 TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
 assert(TB.GetOrderAmount() == 25, "Send commits the box number")
-assert(lastAddon() == "order Goldie farm 2318 25", "Send sends the box number, not the stale amount")
+assert(lastAddon() == "order Goldie farm 2318 25 1", "Send sends the box number, not the stale amount")
+local hoursBox = TB.orderWindow.hoursBox
+hoursBox.text = "4"
+this = hoursBox
+hoursBox.scripts.OnTextChanged(hoursBox)
+assert(TB.GetOrderHours() == 4, "typing commits the hours at once")
+hoursBox.text = "abc"
+hoursBox.scripts.OnTextChanged(hoursBox)
+assert(TB.GetOrderHours() == 4, "non-numeric hours do not commit")
+TB.RefreshOrderWindow()
+assert(hoursBox:GetText() == "abc", "a refresh keeps a half-typed hours edit")
+this = hoursBox
+hoursBox.scripts.OnEditFocusLost(hoursBox)
+assert(hoursBox:GetText() == "4", "hours focus loss restores the committed hours")
+assert(TB.ClampOrderHours("0") == 1 and TB.ClampOrderHours("30") == 24 and TB.ClampOrderHours("abc") == 1,
+    "hours clamp text to 1-24")
 
 -- Round 2: unusable results carry no quality escape, so the grey sticks.
 TB.orderWindow.searchBox.text = "leather"

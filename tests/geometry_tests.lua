@@ -1460,7 +1460,7 @@ return function()
                 local wr = frameRect(win, cache)
                 local items = {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
-                    "sendBtn", "cancelBtn" }) do
+                    "hoursBox", "sendBtn", "cancelBtn" }) do
                     if win[key] then
                         table.insert(items, { key, win[key] })
                         if win[key].kind == "Button" then
