@@ -2311,6 +2311,11 @@ assert(parsedOrder and parsedOrder.bot == "Goldie" and parsedOrder.type == "farm
     and parsedOrder.state == "working" and parsedOrder.reason == nil
     and parsedOrder.zone == "Ashenvale", "order lines parse")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318") == nil, "a short order line is dropped")
+local hoursOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3")
+assert(hoursOrder and hoursOrder.hours == 3 and hoursOrder.difficulty == "easy", "an 11-field order line carries the farm hours")
+assert(string.find(TB.OrderTooltipText(hoursOrder), "Farm time: 3 h", 1, true), "the order tooltip shows the farm hours")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy").hours == nil,
+    "a 10-field order line has no hours")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|nope|Light Leather|4|10|working|-|Ashenvale") == nil,
     "a bad item id drops the order line")
 now = now + 1

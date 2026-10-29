@@ -16,7 +16,7 @@
 --     and the addon resends without them)
 -- Inbound:
 --   TBM:ORDER_BEGIN|<n>
---   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>
+--   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>|<hours>
 --   TBM:ORDER_END
 --   TBM:ORDER_ITEMS_BEGIN|<n>
 --   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>|<difficulty>|<category>
@@ -240,6 +240,9 @@ function TB.OrderTooltipText(order)
     if reason then state = state .. " (" .. reason .. ")" end
     table.insert(lines, state)
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
+    if order.hours and order.hours > 0 then
+        table.insert(lines, "Farm time: " .. math.floor(order.hours) .. " h")
+    end
     local diff = TB.OrderDifficultyLabel(order.difficulty)
     if diff then
         table.insert(lines, "Difficulty: " .. diff
@@ -283,7 +286,7 @@ function TB.ParseOrderLine(msg)
     if string.sub(msg or "", 1, 10) ~= "TBM:ORDER|" then return nil end
     local fields = splitProtocol(string.sub(msg, 11))
     local count = table.getn(fields)
-    if count ~= 9 and count ~= 10 then return nil end
+    if count < 9 or count > 11 then return nil end
     local bot = norm(trim(fields[1]))
     if not bot or bot == "" then return nil end
     local kind = trim(fields[2])
@@ -298,7 +301,8 @@ function TB.ParseOrderLine(msg)
         bot = bot, type = kind, itemId = math.floor(itemId), item = item,
         have = math.floor(have), want = math.floor(want), state = state,
         reason = noneDash(fields[8]), zone = noneDash(fields[9]),
-        difficulty = count == 10 and noneDash(fields[10]) or nil,
+        difficulty = count >= 10 and noneDash(fields[10]) or nil,
+        hours = count >= 11 and tonumber(trim(fields[11])) or nil,
     }
 end
 
