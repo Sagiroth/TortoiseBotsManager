@@ -5,8 +5,8 @@ All notable changes to TortoiseBotsManager are documented here.
 ## Unreleased
 
 ### Guild Orders
-- Guild tab: every claimed bot row has an Order button opening an order window — search a real item by name, pick Farm / Buy / Craft, an amount (1-200) and a farm time (whole hours, 1-24), and send it. Each result says where the bot would farm, roughly how long, and the difficulty (`Easy` / `Medium` / `Hard`) — or why it can't (`only from elite creatures` greys the row like other unusable results). The window warns that large amounts or rare drops can take very long or fail. On an old server that rejects the farm time, the addon resends the order without it.
-- Guild bot rows show the live order (`Light Leather 4/10 (Ashenvale) · Easy`, `Delivering`, `Done`, `Mailed to GM`, `No skill`, `Can't`) with the reason in the tooltip (the tooltip explains the difficulty as rough effort: how many kills or gathers the bot needs); Cancel removes it. Needs the `guild-orders` server capability and a guild rank that may edit officer notes.
+- Guild tab: every claimed bot row has an Order button opening an order window — search a real item by name, or pick a kind (All, Herbs, Ore, Leather, Fish, Cloth, Drops, Other) to browse it. Pick Farm / Buy / Craft, an amount (1-200) and a farm time (whole hours, 1-24), and send it. Each result says where the bot would farm, roughly how long, the drop rate (`12% drop`, never on 100% nodes) and the difficulty (`Easy` / `Medium` / `Hard`) — or why it can't (`only from elite creatures` greys the row like other unusable results). The window warns that large amounts or rare drops can take very long or fail. On an old server that rejects the farm time or the kind filter, the addon resends without it.
+- Guild bot rows show the live order (`Light Leather 4/10 (Ashenvale) · Easy`, `Delivering`, `Done`, `Mailed to GM`, `No skill`, `Can't`, including when the farm time ran out) with the reason in the tooltip (the tooltip explains the difficulty as rough effort: how many kills or gathers the bot needs); Cancel removes it. Needs the `guild-orders` server capability and a guild rank that may edit officer notes.
 
 ---
 

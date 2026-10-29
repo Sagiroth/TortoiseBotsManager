@@ -8,7 +8,9 @@
 --
 -- Sends (byte-exact, contract: TortoiseBots#1297 "Addon contract"):
 --   "order list"                                   -> full order snapshot
---   "order search <bot> <farm|buy|craft> <text>"   -> item search (>=3 chars)
+--   "order search <bot> <farm|buy|craft> [cat=<category>] <text>" -> item search
+--     (3+ chars, or empty text when filtering by kind; an old server
+--     answering invalid to a cat= search is retried without it)
 --   "order <bot> <farm|buy|craft> <itemId> <n> [hours]" -> give or replace
 --     (1-200, 1-24 farm hours; an old server answers invalid for the hours
 --     and the addon resends without them)
@@ -17,7 +19,7 @@
 --   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>
 --   TBM:ORDER_END
 --   TBM:ORDER_ITEMS_BEGIN|<n>
---   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>|<difficulty>
+--   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>|<difficulty>|<category>
 --   TBM:ORDER_ITEMS_END
 --   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|cancel>
 --   TBM:ACTION_ERR|order|<code>|<message>
@@ -27,7 +29,9 @@
 -- answer. Unknown state / reason tokens are shown raw, never crash.
 -- <reason> "-" means none; <zone> "-" means none; <chance> is percent.
 -- <difficulty> is easy / medium / hard ("-" or a missing field on old
--- servers means none); <reason> and <verdict> may be "elite".
+-- servers means none); <reason> and <verdict> may be "elite" or "timeout".
+-- <category> is herb / ore / leather / fish / cloth / drop / other
+-- ("-" or missing on old servers means none).
 --
 -- Permission: the giver's guild rank must be allowed to edit officer notes
 -- (CanEditOfficerNote). Without it the Order and Cancel buttons are greyed
@@ -78,6 +82,7 @@ local REASON_LABEL = {
     grouped = "in a group", noskill = "missing profession", lowskill = "skill too low",
     lowlevel = "bot under level 10", norange = "nothing in level range",
     nosource = "no source", norecipe = "unknown recipe", elite = "only from elite creatures",
+    timeout = "farm time ran out",
     stuck = "stuck, gave up", bagsfull = "bags full", nobank = "no bank deposit",
 }
 local SOURCE_LABEL = { drop = "drop", skin = "skin", herb = "herb", ore = "ore", craft = "craft", ah = "AH" }
@@ -158,6 +163,20 @@ function TB.OrderEstimate(kind, sources, chance, amount)
     end
     if count == 1 then unit = string.sub(unit, 1, string.len(unit) - 1) end
     return "about " .. count .. " " .. unit
+end
+
+-- Drop rate next to the estimate: the server's whole-number chance, shown
+-- plainly for farm kills ("12% drop"). Herb and ore nodes sit at 100 and
+-- say nothing; a zero chance (no usable source) says nothing either.
+function TB.OrderDropRate(kind, sources, chance)
+    if string.lower(trim(kind or "")) ~= "farm" then return nil end
+    chance = tonumber(chance) or 0
+    if chance <= 0 then return nil end
+    for _, token in ipairs(sources or {}) do
+        token = string.lower(trim(token))
+        if (token == "herb" or token == "ore") and chance >= 100 then return nil end
+    end
+    return chance .. "% drop"
 end
 
 -- ── model ─────────────────────────────────────────────────────────────────
@@ -287,7 +306,7 @@ function TB.ParseOrderItemLine(msg)
     if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_ITEM|" then return nil end
     local fields = splitProtocol(string.sub(msg, 16))
     local count = table.getn(fields)
-    if count ~= 9 and count ~= 10 then return nil end
+    if count ~= 9 and count ~= 10 and count ~= 11 then return nil end
     local itemId = tonumber(trim(fields[1]))
     local item = trim(fields[2])
     local quality = tonumber(trim(fields[3]))
@@ -303,18 +322,19 @@ function TB.ParseOrderItemLine(msg)
         sources = splitSources(fields[4]), minLevel = math.floor(minLevel),
         skill = noneDash(fields[6]), verdict = verdict,
         zone = noneDash(fields[8]), chance = math.floor(chance),
-        difficulty = count == 10 and noneDash(fields[10]) or nil,
+        difficulty = count >= 10 and noneDash(fields[10]) or nil,
+        category = count == 11 and noneDash(fields[11]) or nil,
     }
 end
 
--- Last completed search: { bot, kind, text, items }.
-local lastSearch = { bot = nil, kind = "farm", text = "", items = {} }
-local searchBot, searchKind, searchText = nil, "farm", ""
+-- Last completed search: { bot, kind, text, cat, items }.
+local lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
+local searchBot, searchKind, searchText, searchCat = nil, "farm", "", nil
 local orderReceiving, itemsReceiving = nil, nil
 
 function TB.GetOrderSearch()
     return { bot = lastSearch.bot, kind = lastSearch.kind, text = lastSearch.text,
-        items = lastSearch.items or {} }
+        cat = lastSearch.cat, items = lastSearch.items or {} }
 end
 
 local function commitOrderList(rows)
@@ -368,7 +388,7 @@ function TB.ParseOrderMessage(msg)
         itemsReceiving = nil
         if batch then
             lastSearch = { bot = searchBot, kind = searchKind, text = searchText,
-                items = batch.rows }
+                cat = searchCat, items = batch.rows }
             if TB.SetStatus then
                 if table.getn(batch.rows) == 0 then
                     TB.SetStatus("No matching items.", "muted")
@@ -390,15 +410,39 @@ function TB.RequestOrderList()
     return TB.SendBotCommand("order list")
 end
 
-function TB.SendOrderSearch(bot, kind, text)
+-- Item kinds for the search filter; the server takes cat=<token> and the
+-- text may be empty (browse the kind). Old servers reject cat= as invalid.
+-- A cat= search waiting for the answer; an old server rejects it as invalid
+-- and the search is retried once without the filter.
+local pendingSearchCat = nil
+local ORDER_CATS = { "all", "herb", "ore", "leather", "fish", "cloth", "drop", "other" }
+local ORDER_CAT_LABEL = {
+    all = "All", herb = "Herbs", ore = "Ore", leather = "Leather",
+    fish = "Fish", cloth = "Cloth", drop = "Drops", other = "Other",
+}
+
+function TB.OrderCatLabel(cat)
+    cat = string.lower(trim(cat or ""))
+    if cat == "" or cat == "-" then return nil end
+    return ORDER_CAT_LABEL[cat] or cat
+end
+
+function TB.SendOrderSearch(bot, kind, text, cat)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
     kind = string.lower(trim(kind or ""))
     text = trim(text or "")
+    cat = string.lower(trim(cat or ""))
+    if cat == "all" or cat == "" then cat = nil end
     if not bot or (kind ~= "farm" and kind ~= "buy" and kind ~= "craft") then return false end
-    if string.len(text) < SEARCH_MIN then return false end
-    searchBot, searchKind, searchText = bot, kind, text
-    return TB.SendBotCommand("order search " .. bot .. " " .. kind .. " " .. text)
+    if cat and not ORDER_CAT_LABEL[cat] then return false end
+    if string.len(text) < SEARCH_MIN and not cat then return false end
+    searchBot, searchKind, searchText, searchCat = bot, kind, text, cat
+    local line = "order search " .. bot .. " " .. kind
+    if cat then line = line .. " cat=" .. cat end
+    if text ~= "" then line = line .. " " .. text end
+    if cat then pendingSearchCat = { bot = bot, kind = kind, text = text } end
+    return TB.SendBotCommand(line)
 end
 
 function TB.ClampOrderAmount(amount)
@@ -450,6 +494,7 @@ end
 function TB.OnOrderAck(packet)
     if not packet or packet.intent ~= "order" then return false end
     pendingGive = nil
+    pendingSearchCat = nil
     local _, _, scopeBot = string.find(packet.scope or "", "^bot:(.+)$")
     local bot = norm(scopeBot)
     if packet.executor == "cancel" then
@@ -477,8 +522,8 @@ end
 -- text below still reports the code and message.
 function TB.OnOrderError(packet)
     if not packet or packet.intent ~= "order" then return false end
-    -- An old server rejects the trailing hours argument as invalid: resend
-    -- the same give without it. Any other answer settles the pending give.
+    -- An old server rejects the trailing hours argument or cat= as invalid:
+    -- resend the same request without it. Any other answer settles both.
     if packet.code == "invalid" and pendingGive then
         local give = pendingGive
         pendingGive = nil
@@ -486,7 +531,15 @@ function TB.OnOrderError(packet)
         TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount)
         return false
     end
+    if packet.code == "invalid" and pendingSearchCat then
+        local search = pendingSearchCat
+        pendingSearchCat = nil
+        TB.SetOrderFeedback("Old server: retrying without the kind filter...", "pending")
+        TB.SendOrderSearch(search.bot, search.kind, search.text)
+        return false
+    end
     pendingGive = nil
+    pendingSearchCat = nil
     local message = trim(packet.message)
     if message == "" then message = packet.code end
     TB.SetOrderFeedback("|cffff5050Order refused:|r " .. message, "err")
@@ -502,9 +555,10 @@ function TB.NoteOrderCaps()
         return
     end
     for key in pairs(orders) do orders[key] = nil end
-    lastSearch = { bot = nil, kind = "farm", text = "", items = {} }
+    lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
     orderReceiving, itemsReceiving = nil, nil
-    searchBot = nil
+    searchBot, searchCat = nil, nil
+    pendingSearchCat = nil
     TB.CloseOrderWindow()
     if TB.RefreshGuildView then TB.RefreshGuildView() end
 end
@@ -535,10 +589,14 @@ local RESULT_ROW_N = 6
 local win = nil
 local windowBot = nil
 local orderKind = "farm"
+local orderCat = nil
 local orderAmount = 10
 local orderHours = 1
 local selectedItemId = nil
 local searchPendingAt = nil
+-- A picked empty-text row clears once typing starts: the next run is a
+-- plain text search again, not another browse.
+local searchTouched = false
 local feedback = nil
 local uncachedAt = nil
 local scanTip = nil
@@ -557,19 +615,50 @@ function TB.SetOrderKind(kind)
     if kind == orderKind then return true end
     orderKind = kind
     selectedItemId = nil
-    lastSearch = { bot = windowBot, kind = kind, text = "", items = {} }
+    lastSearch = { bot = windowBot, kind = kind, text = "", cat = orderCat, items = {} }
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     -- A new kind re-runs a valid search at once: verdicts differ per kind
     -- (a craft search refuses unknown recipes, a farm search does not).
+    -- With a kind filter the text may be empty (browse that kind).
     if win and windowBot and win.searchBox then
         local text = trim(win.searchBox:GetText() or "")
-        if string.len(text) >= SEARCH_MIN then
+        if orderCat then
+            searchPendingAt = nil
+            TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
+        elseif string.len(text) >= SEARCH_MIN then
             TB.SendOrderSearch(windowBot, orderKind, text)
         end
     end
     return true
 end
 
+function TB.GetOrderCat()
+    return orderCat
+end
+
+-- Item kind filter: nil (no filter) or a server category token. Picking one
+-- runs the search at once (empty text browses the kind); clearing the
+-- filter needs text again.
+function TB.SetOrderCat(cat)
+    cat = string.lower(trim(cat or ""))
+    if cat == "" or cat == "all" then cat = nil end
+    if cat and not ORDER_CAT_LABEL[cat] then return false end
+    if cat == orderCat then return true end
+    orderCat = cat
+    selectedItemId = nil
+    searchTouched = false
+    if cat then
+        searchPendingAt = nil
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        if win and win.searchBox and windowBot then
+            TB.SendOrderSearch(windowBot, orderKind, trim(win.searchBox:GetText() or ""), orderCat)
+        end
+    else
+        lastSearch = { bot = windowBot, kind = orderKind, text = "", cat = nil, items = {} }
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    end
+    return true
+end
 function TB.GetOrderAmount()
     return orderAmount
 end
@@ -651,7 +740,8 @@ local function itemTexture(id)
 end
 
 -- Second line of a search result: why the bot cannot get it, or sources,
--- level, skill, zone, the farm estimate for the current amount and difficulty.
+-- level, skill, zone, the farm estimate and drop rate for the current amount,
+-- and difficulty. Unusable verdicts explain themselves instead.
 function TB.OrderItemDetail(item, kind, amount, level)
     kind = string.lower(trim(kind or "farm"))
     if not item then return "" end
@@ -668,8 +758,8 @@ function TB.OrderItemDetail(item, kind, amount, level)
         elseif verdict == "norange" and level then
             return "no source near level " .. level
         end
-        local label = TB.OrderReasonLabel(item.verdict)
-        return "Can't: " .. (label or item.verdict)
+        local reason = TB.OrderReasonLabel(item.verdict)
+        return "Can't: " .. (reason or item.verdict)
     end
     local parts = {}
     local sources = TB.OrderSourcesLabel(item.sources)
@@ -680,6 +770,8 @@ function TB.OrderItemDetail(item, kind, amount, level)
     if item.zone then table.insert(parts, item.zone) end
     local estimate = TB.OrderEstimate(kind, item.sources, item.chance, amount)
     if estimate then table.insert(parts, estimate) end
+    local rate = TB.OrderDropRate(kind, item.sources, item.chance)
+    if rate then table.insert(parts, rate) end
     local diff = TB.OrderDifficultyLabel(item.difficulty)
     if diff then table.insert(parts, diff) end
     return table.concat(parts, " · ")
@@ -706,7 +798,9 @@ local function smallButton(parent, label, width, x, y, tipTitle, tip, onClick)
 end
 
 -- The search goes out after a short pause in typing, not on every key.
+-- With a kind filter the text may stay empty (browse that kind).
 local function armSearch()
+    searchTouched = true
     searchPendingAt = now() + SEARCH_DEBOUNCE
 end
 
@@ -714,19 +808,19 @@ local function firePendingSearch()
     if not searchPendingAt or now() < searchPendingAt then return end
     if not (win and windowBot and win.searchBox) then return end
     local text = trim(win.searchBox:GetText() or "")
-    if string.len(text) < SEARCH_MIN then
-        lastSearch = { bot = windowBot, kind = orderKind, text = text, items = {} }
+    if string.len(text) < SEARCH_MIN and not orderCat then
+        lastSearch = { bot = windowBot, kind = orderKind, text = text, cat = nil, items = {} }
         selectedItemId = nil
         TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return
     end
-    TB.SendOrderSearch(windowBot, orderKind, text)
+    TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
 end
 
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
-    win:SetWidth(OW); win:SetHeight(440)
+    win:SetWidth(OW); win:SetHeight(486)
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
@@ -770,8 +864,8 @@ local function createWindow()
         this:ClearFocus()
         if win and windowBot then
             local text = trim(this:GetText() or "")
-            if string.len(text) >= SEARCH_MIN then
-                TB.SendOrderSearch(windowBot, orderKind, text)
+            if string.len(text) >= SEARCH_MIN or orderCat then
+                TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
             else
                 TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
             end
@@ -795,8 +889,21 @@ local function createWindow()
         win.kindPills[kind] = pill
     end
 
+    win.catPills = {}
+    for i, cat in ipairs(ORDER_CATS) do
+        local pill = TB.UI.CreateTogglePill(win, ORDER_CAT_LABEL[cat], 74, 18, {
+            tipTitle = ORDER_CAT_LABEL[cat],
+            tip = "Only show this kind of item.",
+        })
+        pill:SetPoint("TOPLEFT", win, "TOPLEFT", 12 + ((i - 1) % 4) * 80,
+            -106 - math.floor((i - 1) / 4) * 22)
+        local token = cat
+        pill:SetScript("OnClick", function() TB.SetOrderCat(token) end)
+        win.catPills[cat] = pill
+    end
+
     local results = CreateFrame("ScrollFrame", "TortoiseBotsManagerOrderResults", win, "FauxScrollFrameTemplate")
-    results:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -106)
+    results:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -152)
     results:SetWidth(OW - 24)
     results:SetHeight(RESULT_ROW_N * RESULT_ROW_H + 4)
     results:SetScript("OnVerticalScroll", function()
@@ -857,6 +964,10 @@ local function createWindow()
                 GameTooltip:AddLine("Rough effort for this bot: how many kills or gathers it needs",
                     0.9, 0.9, 0.9, 1)
             end
+            if TB.OrderDropRate(orderKind, item.sources, item.chance) then
+                GameTooltip:AddLine("Rare drops can take many hours. Give reasonable orders.",
+                    0.9, 0.9, 0.9, 1)
+            end
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -864,19 +975,19 @@ local function createWindow()
     end
 
     win.emptyMsg = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    win.emptyMsg:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -150)
+    win.emptyMsg:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -196)
     win.emptyMsg:SetWidth(OW - 24)
     win.emptyMsg:SetJustifyH("CENTER")
     TB.SetTextColor(win.emptyMsg, color("muted"))
 
-    local base = 106 + RESULT_ROW_N * RESULT_ROW_H + 4
+    local base = 152 + RESULT_ROW_N * RESULT_ROW_H + 4
     local farmNote = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     farmNote:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 2))
     farmNote:SetWidth(OW - 24); farmNote:SetJustifyH("LEFT")
     farmNote:SetText("Bots farm like players: large amounts or rare drops can take very long or fail.")
     TB.SetTextColor(farmNote, color("muted"))
     win.farmNote = farmNote
-    base = 106 + RESULT_ROW_N * RESULT_ROW_H + 30
+    base = 152 + RESULT_ROW_N * RESULT_ROW_H + 30
     local amountLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     amountLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 4))
     amountLabel:SetText("AMOUNT")
@@ -1025,9 +1136,13 @@ function TB.RefreshOrderWindow()
     for kind, pill in pairs(win.kindPills or {}) do
         if pill.SetActive then pill:SetActive(kind == orderKind) end
     end
+    for cat, pill in pairs(win.catPills or {}) do
+        if pill.SetActive then pill:SetActive(cat == (orderCat or "all")) end
+    end
     local search = TB.GetOrderSearch()
     local items = {}
-    if search.bot == windowBot and search.kind == orderKind then
+    if search.bot == windowBot and search.kind == orderKind
+        and (search.cat or nil) == (orderCat or nil) then
         items = search.items or {}
     end
     local total = table.getn(items)
@@ -1064,9 +1179,10 @@ function TB.RefreshOrderWindow()
     if win.emptyMsg then
         if total == 0 then
             local text = trim(win.searchBox:GetText() or "")
-            if string.len(text) < SEARCH_MIN then
+            if string.len(text) < SEARCH_MIN and not orderCat then
                 win.emptyMsg:SetText("Type at least 3 letters to search.")
-            elseif search.bot == windowBot and search.kind == orderKind then
+            elseif search.bot == windowBot and search.kind == orderKind
+                and (search.cat or nil) == (orderCat or nil) then
                 win.emptyMsg:SetText("No matching items.")
             else
                 win.emptyMsg:SetText("Searching...")
@@ -1118,10 +1234,12 @@ function TB.OpenOrderWindow(bot)
     if switched then
         orderAmount = 10
         orderHours = 1
+        orderCat = nil
         selectedItemId = nil
         feedback = nil
         searchPendingAt = nil
-        lastSearch = { bot = bot, kind = orderKind, text = "", items = {} }
+        searchTouched = false
+        lastSearch = { bot = bot, kind = orderKind, text = "", cat = nil, items = {} }
         if win.searchBox then win.searchBox:SetText("") end
         if win.amountBox then win.amountBox:SetText("10") end
         if win.hoursBox then win.hoursBox:SetText("1") end

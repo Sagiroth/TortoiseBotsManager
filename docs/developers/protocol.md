@@ -50,8 +50,8 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `TBM:INV_BEGIN` / `INV_EQ` / `INV_ITEM` / `INV_END` | [Bot panel](../play/bot-panel.md) gear and bags |
 | `TBM:ACTION_ACK`, `TBM:ACTION_ERR` | Status line and Log tab result of each order |
 | `TBM:RUN` | [Dungeon run](../play/dungeon-run.md) status |
-| `TBM:ORDER_BEGIN` / `ORDER` / `ORDER_END` | [Guild orders](../play/party-roster-guild.md#guild-orders): full list inside the pair, live one-bot update outside it; rows carry a trailing difficulty (`easy` / `medium` / `hard`, `-` or missing on old servers) |
-| `TBM:ORDER_ITEMS_BEGIN` / `ORDER_ITEM` / `ORDER_ITEMS_END` | Guild order search results with the same trailing difficulty (an empty pair is a real answer); an `elite` verdict means only from elite creatures |
+| `TBM:ORDER_BEGIN` / `ORDER` / `ORDER_END` | [Guild orders](../play/party-roster-guild.md#guild-orders): full list inside the pair, live one-bot update outside it; rows carry a trailing difficulty (`easy` / `medium` / `hard`, `-` or missing on old servers); `timeout` means the farm time ran out |
+| `TBM:ORDER_ITEMS_BEGIN` / `ORDER_ITEM` / `ORDER_ITEMS_END` | Guild order search results with the same trailing difficulty plus a trailing category (`herb` / `ore` / `leather` / `fish` / `cloth` / `drop` / `other`, missing on old servers; an empty pair is a real answer); an `elite` verdict means only from elite creatures; search takes `cat=<kind>` with optional empty text (an old server answering `invalid` is retried without it) |
 | `TBM:FEATURE`, `TBM:CONFIG_BEGIN` / `CONFIG` / `CONFIG_END` | [Info window](../play/controls.md#info-window) |
 
 Some replies have no structured line and are parsed from the bot's whisper text: spell list (`=== Spells ===`), flights (`=== Taxi ===`), bank (`=== Bank ===`), mailbox (`=== Mailbox ===`), plus lifecycle chat replies for older servers. Those patterns live in `Comms.lua`, `BotPanel.lua`, `BotNpc.lua` and `BotVault.lua` and must follow the module's wording.

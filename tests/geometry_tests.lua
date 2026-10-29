@@ -1460,7 +1460,7 @@ return function()
                 local wr = frameRect(win, cache)
                 local items = {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
-                    "hoursBox", "sendBtn", "cancelBtn" }) do
+                    "hoursBox", "sendBtn", "cancelBtn", "farmNote" }) do
                     if win[key] then
                         table.insert(items, { key, win[key] })
                         if win[key].kind == "Button" then
@@ -1473,6 +1473,10 @@ return function()
                 for kind, pill in pairs(win.kindPills or {}) do
                     table.insert(items, { "kind." .. kind, pill })
                     labelFits("OrderWindow kind." .. kind, pill, nil, 6)
+                end
+                for cat, pill in pairs(win.catPills or {}) do
+                    table.insert(items, { "cat." .. cat, pill })
+                    labelFits("OrderWindow cat." .. cat, pill, nil, 6)
                 end
                 childrenInside("OrderWindow", win, wr, items, cache, 2)
                 noOverlaps("OrderWindow controls", items, cache)

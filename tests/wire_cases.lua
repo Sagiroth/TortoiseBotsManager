@@ -1204,6 +1204,22 @@ local cases = {
         end,
     },
     {
+        id = "guild.order.search.cat",
+        expected = { ".bot order search Goldie farm cat=leather light" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderSearch("Goldie", "farm", "light", "leather")
+        end,
+    },
+    {
+        id = "guild.order.search.cat.browse",
+        expected = { ".bot order search Goldie farm cat=ore" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderSearch("Goldie", "farm", "", "ore")
+        end,
+    },
+    {
         id = "guild.order.cancel",
         expected = { ".bot order Goldie cancel" },
         trigger = function()

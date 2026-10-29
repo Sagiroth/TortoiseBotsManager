@@ -2391,19 +2391,31 @@ assert(searchItemDash and searchItemDash.difficulty == nil, "a dash difficulty p
 assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319") == nil, "a short search line is dropped")
 assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop|16|-|ok|Ashenvale") == nil,
     "a short chance field drops the search line")
-assert(TB.OrderItemDetail(searchItem, "farm", 10, 24) == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills",
-    "a good result shows sources, level, skill, zone and estimate")
+assert(TB.OrderItemDetail(searchItem, "farm", 10, 24) == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · 50% drop",
+    "a good result shows sources, level, skill, zone, estimate and drop rate")
 assert(TB.OrderItemDetail(searchItemHard, "farm", 10, 24)
-    == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · |cffff5050Hard|r",
+    == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · 50% drop · |cffff5050Hard|r",
     "a good result shows the difficulty word")
 assert(TB.OrderItemDetail(searchItem, "buy", 10, 24) == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale",
     "buy results hide the kill estimate")
+assert(TB.OrderDropRate("farm", { "skin" }, 50) == "50% drop", "kills show the drop rate")
+assert(TB.OrderDropRate("farm", { "ore" }, 100) == nil, "nodes at 100% show no drop rate")
+assert(TB.OrderDropRate("farm", { "skin" }, 0) == nil, "a zero chance shows no drop rate")
+assert(TB.OrderDropRate("buy", { "ah" }, 50) == nil, "buy shows no drop rate")
 assert(TB.OrderDifficultyLabel("easy") == "|cff4ecb5aEasy|r", "easy gets the plain word")
 assert(TB.OrderDifficultyLabel("medium") == "|cffffd200Medium|r", "medium gets the plain word")
 assert(TB.OrderDifficultyLabel("hard") == "|cffff5050Hard|r", "hard gets the plain word")
 assert(TB.OrderDifficultyLabel("-") == nil and TB.OrderDifficultyLabel(nil) == nil,
     "a dash difficulty shows nothing")
 assert(TB.OrderReasonLabel("elite") == "only from elite creatures", "elite gets a plain reason")
+assert(TB.OrderReasonLabel("timeout") == "farm time ran out", "timeout gets a plain reason")
+local searchItemCat = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|hard|leather")
+assert(searchItemCat and searchItemCat.difficulty == "hard" and searchItemCat.category == "leather",
+    "search items parse the new category field")
+local searchItemCatDash = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|hard|-")
+assert(searchItemCatDash and searchItemCatDash.category == nil, "a dash category parses as none")
+assert(TB.OrderCatLabel("leather") == "Leather" and TB.OrderCatLabel("all") == "All"
+    and TB.OrderCatLabel("-") == nil, "kind labels read plainly")
 local skillItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
 assert(TB.OrderItemDetail(skillItem, "farm", 10, 12) == "needs Skinning",
     "a noskill verdict names the trade")
@@ -2482,6 +2494,8 @@ local firstResult = TB.orderWindow.resultRows[1]
 assert(firstResult:IsVisible() and string.find(firstResult.name:GetText(), "Light Leather", 1, true)
     and string.find(firstResult.detail:GetText(), "about 15 kills", 1, true),
     "a good result shows the estimate for the amount")
+assert(string.find(firstResult.detail:GetText(), "70% drop", 1, true) ~= nil,
+    "a good result shows the drop rate next to the estimate")
 local secondResult = TB.orderWindow.resultRows[2]
 assert(secondResult:IsVisible() and string.find(secondResult.detail:GetText(), "needs Skinning", 1, true),
     "an unusable result explains itself")
@@ -2515,12 +2529,42 @@ assert(TB.GetOrderAmount() == 25 and TB.orderWindow.amountBox:GetText() == "25",
 assert(string.find(firstResult.detail:GetText(), "about 36 kills", 1, true),
     "the estimate follows the amount")
 
--- Kind pills re-run a valid search; give ACK closes, cancel ACK drops.
+-- Kind filter: picking a kind browses it (empty text allowed); All restores.
+now = now + 1
+assert(TB.SetOrderCat("bogus") == false and TB.GetOrderCat() == nil, "an unknown kind is refused")
+TB.orderWindow.searchBox.text = ""
+now = now + 1
+local beforeCat = table.getn(addonSent)
+assert(TB.SetOrderCat("leather"), "the kind filter picks leather")
+assert(TB.GetOrderCat() == "leather", "the filter tracks the kind")
+assert(table.getn(addonSent) == beforeCat + 1 and lastAddon() == "order search Goldie farm cat=leather",
+    "picking a kind browses it without text")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70|easy|leather")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0|-|leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+assert(table.getn(TB.GetOrderSearch().items) == 2 and TB.GetOrderSearch().cat == "leather",
+    "the filtered search lands with its kind")
+now = now + 1
+TB.orderWindow.searchBox.text = "light"
+TB.orderWindow.searchBox.scripts.OnTextChanged(TB.orderWindow.searchBox)
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(lastAddon() == "order search Goldie farm cat=leather light",
+    "a filtered search keeps the kind with text")
+-- An old server rejects cat=: the addon retries once without it.
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order search Goldie farm light", "an invalid-arg reply retries the search bare")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without the kind filter"),
+    "the retry says the filter was dropped")
+assert(TB.SetOrderCat("all") and TB.GetOrderCat() == nil, "All clears the filter")
+
 now = now + 1
 local beforeKind = table.getn(addonSent)
 TB.SetOrderKind("buy")
 assert(TB.GetOrderKind() == "buy", "the kind switches")
-assert(table.getn(addonSent) == beforeKind + 1 and lastAddon() == "order search Goldie buy leather",
+assert(table.getn(addonSent) == beforeKind + 1 and lastAddon() == "order search Goldie buy light",
     "a kind switch re-runs a valid search")
 assert(TB.SetOrderKind("steal") == false and TB.GetOrderKind() == "buy",
     "an unknown kind is refused")
@@ -2553,9 +2597,18 @@ assert(TB.lastActionError and TB.lastActionError.intent == "order"
     and TB.lastActionError.code == "forbidden", "the order error is recorded")
 TB.CloseOrderWindow()
 
--- An empty search answer clears the list instead of hanging.
+-- A kind with no text still searches (browse that kind).
 assert(TB.OpenOrderWindow("Silver"), "the window opens for another bot")
+TB.orderWindow.searchBox.text = ""
+now = now + 1
+assert(TB.SetOrderCat("ore"), "a kind browses with empty text")
+assert(lastAddon() == "order search Silver farm cat=ore", "an empty filtered search goes out")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+assert(table.getn(TB.GetOrderSearch().items) == 0, "an empty filtered search is a real answer")
+assert(TB.SetOrderCat("all") and TB.GetOrderCat() == nil, "the filter clears again")
 TB.orderWindow.searchBox.text = "leather"
+-- An empty search answer clears the list instead of hanging.
 now = now + 1
 TB.SendOrderSearch("Silver", "farm", "leather")
 TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|0")
