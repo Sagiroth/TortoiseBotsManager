@@ -157,10 +157,11 @@ local function isBotCommandMessage(message)
     if string.find(message, "^%.bot$") or string.find(message, "^%.bot%s") or string.find(message, "^TBM:") then
         return true
     end
-    -- The run window reads these replies itself (plan list, run mode).
+    -- The run window reads these replies itself (plan list, run mode, raid layout).
     if string.find(message, "^Dungeon plans:") or string.find(message, "^Run mode:")
         or string.find(message, "^Server features:") or string.find(message, "^Config: %d+ keys match")
-        or string.find(message, "^Run plan here:") then
+        or string.find(message, "^Run plan here:") or string.find(message, "^Raid layout:")
+        or string.find(message, "^Raid: ") then
         return true
     end
     if string.find(message, "^Bot commands:") then

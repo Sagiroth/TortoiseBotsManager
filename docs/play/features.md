@@ -40,7 +40,7 @@ Every feature, where to find it, and what the server needs. "Always" means any T
 | Gear, bags, item menu, trade, upkeep, autogear | Bot panel | `inventory` | [Bot panel](bot-panel.md) | [bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-panel-commands) |
 | Per-bot behaviour switches | Bot panel | Always | [Behaviour](bot-panel.md#behaviour-switches) | [behavior](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior) |
 | Spells, NPC errands, flights, bank, mail | Bot panel | Always | [Bot panel](bot-panel.md#npc-errands) | [bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md) |
-| Dungeon run (Preview) | Dungeon | `dungeon-run` | [Dungeon run](dungeon-run.md) | [run leader](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/commander.md#run-leader-bot-run) |
+| Dungeon run (Preview) | Dungeon | `dungeon-run` | [Dungeon run](dungeon-run.md) (binds raids too: main-tank bind, layout, stop before the boss) | [run leader](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/commander.md#run-leader-bot-run) |
 | Loot and roll history | Loot | `loot-log` | [Loot history](loot-history.md) | [loot history](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/addon.md#protocol-grammar--semantics) |
 | Mini bar and favourites | Header | Always | [Mini bar](controls.md#mini-bar) | |
 | Key bindings, slash commands, minimap | Game menu, chat | Always | [Controls](controls.md) | |
