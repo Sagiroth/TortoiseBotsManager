@@ -7,6 +7,11 @@ All notable changes to TortoiseBotsManager are documented here.
 ### Camp
 - New Downtime button sends your own alt to its class trainer, vendor and repair, then back to you. Shown only when the server advertises the `downtime` capability; hires and pool bots are refused by the server.
 
+### Dungeon Run
+- Raid bind: Bind raid binds your target as the main tank of your raid (same `dungeon-run` gate, no new capability). The applied layout shows under the Party row (main tank first, warning when a member is not where planned) and the `Raid layout:` lines stay out of the chat.
+- Stop before the boss: the No boss checkbox adds `until boss` to the next Start (bots lead only; locked while a run goes or in I-lead mode), and the status shows the `until boss (step N)` label.
+- Raid plans group after the dungeon plans in the picker; servers without them behave as before.
+
 ---
 
 ## v1.4.1 (2026-10-28)

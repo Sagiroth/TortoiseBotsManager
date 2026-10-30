@@ -31,10 +31,10 @@ The tab explains both, shows the current run, and has **Open run window**.
 | Section | What you do | Sends |
 | :--- | :--- | :--- |
 | Mode | Pick Bots lead or I lead. | |
-| Party | Bind the lead bot and up to four more (bots lead). | `.bot commander bind <lead> [<bot> ...] inparty`, `commander unbind`, `commander status` |
-| Plan | Walk them to the nearest entrance, list and search plans, pick one. | `.bot cmd enter near`, `.bot run list` |
-| Controls | Start, Pause, Resume, Skip a step, Stop (bots stay where they are, still bound; optional reason). | `.bot run start [plan] [player]`, `run pause`, `run resume`, `run skip`, `run stop [reason]` |
-| Status | Live state lamp, step x/y, leg, phase and note. | reads `TBM:RUN` |
+| Party | Bind the lead bot and up to four more (bots lead), or bind the raid with its main tank. The raid bind shows its layout (main tank first) under the row. | `.bot commander bind <lead> [<bot> ...] inparty`, `.bot commander bind <lead> raid`, `commander unbind`, `commander status` |
+| Plan | Walk them to the nearest entrance, list and search plans, pick one. Raid plans group after the dungeon plans. | `.bot cmd enter near`, `.bot run list` |
+| Controls | Start, Pause, Resume, Skip a step, Stop (bots stay where they are, still bound; optional reason). No boss stops the run before the first boss step (bots lead only). | `.bot run start [plan] [until boss] [player]`, `run pause`, `run resume`, `run skip`, `run stop [reason]` |
+| Status | Live state lamp, step x/y, leg, phase and note (a stop-before-boss run shows `until boss (step N)`). | reads `TBM:RUN`, `TBM:RAID_LAYOUT` |
 
 **Bots lead:** any order you give the party (buttons, `.bot`, whispers) pauses the run until **Resume**; the window and status line say so. **I lead:** your orders never pause the run.
 

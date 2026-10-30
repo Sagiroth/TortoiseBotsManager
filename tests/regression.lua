@@ -2065,6 +2065,22 @@ GetRealZoneText = nil
 this = TB.runWindow.planRows[1]
 TB.runWindow.planRows[1].scripts.OnClick(TB.runWindow.planRows[1])
 assert(not TB.runWindow.planSearch:IsVisible(), "a pick closes the search list")
+-- Raid bind: targets the main tank, applies the layout, stops before the boss.
+TB.OpenRunWindow()
+TB.OnSystemMessage("TBM:RAID_LAYOUT|25|Alpha,Beta|Pri1 -> Alpha|Druid1|1=Alpha,Pri1;2=Beta,Druid1")
+assert(TB.GetRaidLayout() and TB.GetRaidLayout().tanks == "Alpha,Beta", "the raid layout parses")
+assert(string.find(TB.runWindow.layout.text, "Main Alpha,Beta", 1, true),
+    "the layout renders under the bind row")
+TB.OnSystemMessage("TBM:ACTION_ACK|commander bind|raid|25|Alpha")
+assert(string.find(TB.GetRunFeedback().text, "Bind done") and string.find(TB.GetRunFeedback().text, "raid"),
+    "the raid bind ACK names the scope")
+this = TB.runWindow.untilBoss
+TB.runWindow.untilBoss:SetChecked(true)
+TB.runWindow.untilBoss.scripts.OnClick(TB.runWindow.untilBoss)
+assert(TB.GetRunStopBeforeBoss() == true, "the checkbox arms stop-before-boss")
+TB.OnSystemMessage("TBM:RAID_LAYOUT|warning|could not place: Gamma")
+assert(TB.GetRaidLayout().warning and TB.runWindow.layout.text ~= "", "the layout warning shows")
+TB.SetRunStopBeforeBoss(false)
 -- Server info window: ".bot features" fills the switch list.
 assert(TB.infoButton, "the header has an Info button")
 this = TB.infoButton
