@@ -2708,8 +2708,16 @@ assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
     "an order shows an enabled Cancel")
 now = now + 1
 this = guildOrderRow.cancelBtn
+local beforeCancel = table.getn(addonSent)
 guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
-assert(lastAddon() == "order Goldie cancel", "row Cancel asks for the removal")
+assert(table.getn(addonSent) == beforeCancel, "row Cancel sends nothing before the confirm")
+assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER", "row Cancel asks first")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"] ~= nil, "cancel dialog must exist")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].text
+    == "Cancel Goldie's order for 25x Light Leather?\n\nCancelling also ends keep-in-stock and no-limit orders.",
+    "the confirm names the bot and item")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+assert(lastAddon() == "order Goldie cancel", "confirming asks for the removal")
 TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
 assert(TB.GetBotOrder("Goldie") == nil, "a cancel ACK drops the row at once")
 assert(string.find(guildOrderRow.orderLine:GetText(), "No order", 1, true),
@@ -2856,7 +2864,123 @@ assert(TB.orderWindow:IsVisible() and not TB.infoWindow:IsVisible(),
 TB.CloseOrderWindow()
 TB.CloseServerInfo()
 
-partyMembers = {}
+-- No time limit: parse inf, show "no limit", send inf; a refused inf
+-- retries once as 24 hours. Old numeric rows still parse.
+local infOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|inf")
+assert(infOrder and infOrder.hours == "inf", "an inf order line parses")
+assert(string.find(TB.OrderRowText(infOrder), "No limit", 1, true) ~= nil,
+    "inf rows show no limit")
+assert(string.find(TB.OrderTooltipText(infOrder), "Farm time: no limit", 1, true) ~= nil,
+    "inf tooltips show no limit")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|INF").hours == "inf",
+    "INF parses in any case")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").hours == 3,
+    "numeric hours still parse")
+assert(TB.OpenOrderWindow("Goldie"), "the window reopens for no-limit")
+assert(TB.GetOrderNoLimit() == false and not TB.orderWindow.noLimitBox:GetChecked(),
+    "no limit starts off")
+TB.orderWindow.noLimitBox:SetChecked(true)
+this = TB.orderWindow.noLimitBox
+TB.orderWindow.noLimitBox.scripts.OnClick(TB.orderWindow.noLimitBox)
+assert(TB.GetOrderNoLimit() == true, "ticking the box arms no limit")
+assert(TB.orderWindow.hoursBox.mouseEnabled == false
+    and TB.orderWindow.hoursBox.textColor[1] == 0.5,
+    "no limit greys the hours box")
+TB.SetOrderNoLimit(false)
+assert(TB.GetOrderNoLimit() == false and not TB.orderWindow.noLimitBox:GetChecked(),
+    "the setter clears no limit")
+assert(TB.orderWindow.hoursBox.mouseEnabled ~= false
+    and TB.orderWindow.hoursBox.textColor[1] == 1,
+    "clearing no limit restores the hours box")
+TB.orderWindow.searchBox.text = "leather"
+now = now + 1
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+this = TB.orderWindow.resultRows[1]
+TB.orderWindow.resultRows[1].scripts.OnClick(TB.orderWindow.resultRows[1])
+assert(TB.GetOrderSelection() == 2318, "no-limit picks the item")
+TB.SetOrderAmount(10)
+TB.SetOrderKeep(false)
+TB.orderWindow.noLimitBox:SetChecked(true)
+this = TB.orderWindow.noLimitBox
+TB.orderWindow.noLimitBox.scripts.OnClick(TB.orderWindow.noLimitBox)
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 inf", "Send carries inf when ticked")
+assert(string.find(TB.GetOrderFeedback().text, "(no limit) sent, waiting", 1, true) ~= nil,
+    "Send names no limit while waiting")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|bad hours")
+assert(lastAddon() == "order Goldie farm 2318 10 24", "a refused inf retries once as 24 hours")
+assert(string.find(TB.GetOrderFeedback().text, "retrying with 24 hours", 1, true) ~= nil,
+    "the inf retry says so")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "a second invalid reply drops the farm time")
+TB.SetOrderNoLimit(true)
+TB.SetOrderKeep(true)
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 inf keep", "Send carries inf with keep after it")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 inf", "keep still sheds first on an inf give")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|bad hours")
+assert(lastAddon() == "order Goldie farm 2318 10 24", "then a refused inf retries as 24")
+TB.SetOrderNoLimit(false)
+TB.SetOrderKeep(false)
+
+-- Cancel stays reachable on every long-lived order, from the window and
+-- the Guild tab row. Both ask first; only Yes sends.
+local states = { "working", "waiting", "delivering" }
+for _, state in ipairs(states) do
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|" .. state .. "|-|Ashenvale|easy|3")
+    TB.RefreshGuildView()
+    TB.RefreshOrderWindow()
+    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+        "row Cancel stays enabled while " .. state)
+    assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
+        "window Cancel stays enabled while " .. state)
+end
+local longLived = {
+    "TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|inf",
+    "TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|stocked|-|-|-|-|keep",
+}
+for _, line in ipairs(longLived) do
+    TB.OnSystemMessage(line)
+    TB.RefreshGuildView()
+    TB.RefreshOrderWindow()
+    local order = TB.GetBotOrder("Goldie")
+    assert(order ~= nil, "the long-lived order lands")
+    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+        "row Cancel stays enabled for a long-lived order")
+    assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
+        "window Cancel stays enabled for a long-lived order")
+    this = TB.orderWindow.cancelBtn
+    local beforeWindowCancel = table.getn(addonSent)
+    TB.orderWindow.cancelBtn.scripts.OnClick(TB.orderWindow.cancelBtn)
+    assert(table.getn(addonSent) == beforeWindowCancel,
+        "window Cancel sends nothing before the confirm")
+    assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER",
+        "window Cancel asks first")
+    now = now + 1
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+    assert(lastAddon() == "order Goldie cancel", "confirming the window Cancel sends")
+    this = guildOrderRow.cancelBtn
+    local beforeRowCancel = table.getn(addonSent)
+    guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
+    assert(table.getn(addonSent) == beforeRowCancel,
+        "row Cancel sends nothing before the confirm")
+    now = now + 1
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+    assert(lastAddon() == "order Goldie cancel", "confirming the row Cancel sends")
+end
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+assert(TB.GetBotOrder("Goldie") == nil, "the last confirm clears the row")
+TB.CloseOrderWindow()
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,

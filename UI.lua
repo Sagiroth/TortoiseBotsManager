@@ -1869,9 +1869,9 @@ function TB.InitUI()
             cancelBtn:SetText("Can")
             cancelBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
-                if entry and TB.SendOrderCancel then TB.SendOrderCancel(entry.name) end
+                if entry and TB.ConfirmOrderCancel then TB.ConfirmOrderCancel(entry.name) end
             end)
-            setButtonTooltip(cancelBtn, "Remove this bot's current order.", "Cancel order")
+            setButtonTooltip(cancelBtn, "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.", "Cancel order")
             row.cancelBtn = cancelBtn
 
             local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))

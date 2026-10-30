@@ -11,9 +11,10 @@
 --   "order search <bot> <farm|buy|craft> [cat=<category>] <text>" -> item search
 --     (3+ chars, or empty text when filtering by kind; an old server
 --     answering invalid to a cat= search is retried without it)
---   "order <bot> <farm|buy|craft> <itemId> <n> [hours] [keep]" -> give or replace
---     (1-200, 1-24 farm hours; an old server answers invalid for the trailing
---     arguments and the addon resends without them, keep first, then hours)
+--   "order <bot> <farm|buy|craft> <itemId> <n> [hours|inf] [keep]" -> give or replace
+--     (1-200, 1-24 farm hours or inf for no limit; an old server answers
+--     invalid for the trailing arguments and the addon resends: keep first,
+--     then a refused inf retries once as 24, then bare)
 -- Inbound:
 --   TBM:ORDER_BEGIN|<n>
 --   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>|<hours>|<keep>
@@ -32,6 +33,8 @@
 -- servers means none); <reason> and <verdict> may be "elite" or "timeout".
 -- <keep> is keep or "-" (missing on old servers means not keep); a keep
 -- order that delivered sits in state "stocked" until the bank runs low.
+-- <hours> is whole hours or "inf" for no limit (missing on old servers
+-- means none); an inf order never times out, only cancel ends it.
 -- <category> is herb / ore / leather / fish / cloth / drop / other
 -- ("-" or missing on old servers means none).
 --
@@ -184,6 +187,7 @@ end
 
 -- ── model ─────────────────────────────────────────────────────────────────
 -- orders[bot] = { bot, type, itemId, item, have, want, state, reason, zone, difficulty, hours, keep }
+-- hours is a number, "inf" for no limit, or nil when the server sent none.
 local orders = {}
 
 function TB.GetBotOrder(bot)
@@ -232,6 +236,7 @@ function TB.OrderRowText(order)
         text = item .. " " .. progress .. " · " .. trim(order.state or "")
     end
     if order.keep and state ~= "stocked" then text = text .. " · " .. word("Keep") end
+    if order.hours == "inf" then text = text .. " · " .. word("No limit") end
     local diff = TB.OrderDifficultyLabel(order.difficulty)
     if diff then text = text .. " · " .. diff end
     return text
@@ -246,7 +251,9 @@ function TB.OrderTooltipText(order)
     if reason then state = state .. " (" .. reason .. ")" end
     table.insert(lines, state)
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
-    if order.hours and order.hours > 0 then
+    if order.hours == "inf" then
+        table.insert(lines, "Farm time: no limit")
+    elseif order.hours and order.hours > 0 then
         table.insert(lines, "Farm time: " .. math.floor(order.hours) .. " h")
     end
     local diff = TB.OrderDifficultyLabel(order.difficulty)
@@ -311,12 +318,18 @@ function TB.ParseOrderLine(msg)
     local want = tonumber(trim(fields[6]))
     local state = trim(fields[7])
     if not itemId or item == "" or not have or not want or state == "" then return nil end
+    local hours = nil
+    if count >= 11 then
+        local hoursField = trim(fields[11])
+        if string.lower(hoursField) == "inf" then hours = "inf"
+        else hours = tonumber(hoursField) end
+    end
     return {
         bot = bot, type = kind, itemId = math.floor(itemId), item = item,
         have = math.floor(have), want = math.floor(want), state = state,
         reason = noneDash(fields[8]), zone = noneDash(fields[9]),
         difficulty = count >= 10 and noneDash(fields[10]) or nil,
-        hours = count >= 11 and tonumber(trim(fields[11])) or nil,
+        hours = hours,
         keep = count >= 12 and string.lower(trim(fields[12])) == "keep" or false,
     }
 end
@@ -495,6 +508,11 @@ end
 -- "invalid" reply means an old server that rejects the trailing argument.
 local pendingGive = nil
 
+-- The give's hours slot also takes "inf" (any case) for no time limit.
+local function isInf(hours)
+    return string.lower(tostring(hours or "")) == "inf"
+end
+
 function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
@@ -505,7 +523,8 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep)
     amount = TB.ClampOrderAmount(amount)
     local text = "order " .. bot .. " " .. kind .. " " .. itemId .. " " .. amount
     if hours ~= nil then
-        text = text .. " " .. TB.ClampOrderHours(hours)
+        if isInf(hours) then text = text .. " inf"
+        else text = text .. " " .. TB.ClampOrderHours(hours) end
     end
     if keep then
         if hours == nil then text = text .. " " .. TB.ClampOrderHours(orderHours) end
@@ -525,6 +544,36 @@ function TB.SendOrderCancel(bot)
     bot = norm(bot)
     if not bot then return false end
     return TB.SendBotCommand("order " .. bot .. " cancel")
+end
+
+-- Cancel asks first: a StaticPopup names the bot and item (the BotPanel.lua
+-- destroy pattern), and only Yes sends. Cancel is the only way to end a
+-- keep-in-stock or no-limit order, so the dialog says so.
+function TB.ConfirmOrderCancel(bot)
+    bot = norm(bot)
+    if not bot then return false end
+    local order = orders[bot]
+    local text = "Cancel " .. bot .. "'s order?"
+    if order and order.item then
+        text = "Cancel " .. bot .. "'s order for " .. tostring(order.want or 0)
+            .. "x " .. order.item .. "?"
+    end
+    text = text .. "\n\nCancelling also ends keep-in-stock and no-limit orders."
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"] = {
+            text = text,
+            button1 = "Yes",
+            button2 = "No",
+            OnAccept = function() TB.SendOrderCancel(bot) end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_CANCEL_ORDER")
+    else
+        TB.SendOrderCancel(bot)
+    end
+    return true
 end
 
 -- ACK routing from Comms.ParseActionMessage for the order intent. A cancel
@@ -562,8 +611,8 @@ end
 function TB.OnOrderError(packet)
     if not packet or packet.intent ~= "order" then return false end
     -- An old server rejects the trailing keep / hours arguments or cat= as
-    -- invalid: resend the same request without them, keep first, then hours.
-    -- Any other answer settles both.
+    -- invalid: resend the same request without them, keep first, then hours
+    -- (a refused inf retries once as 24). Any other answer settles both.
     if packet.code == "invalid" and pendingGive then
         local give = pendingGive
         if give.keep then
@@ -571,6 +620,13 @@ function TB.OnOrderError(packet)
                 amount = give.amount, hours = give.hours, keep = false }
             TB.SetOrderFeedback("Old server: retrying without keep in stock...", "pending")
             TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, give.hours)
+            return false
+        end
+        if isInf(give.hours) then
+            pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
+                amount = give.amount, hours = HOURS_MAX, keep = false }
+            TB.SetOrderFeedback("Old server: no time limit refused, retrying with 24 hours...", "pending")
+            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, HOURS_MAX)
             return false
         end
         pendingGive = nil
@@ -646,6 +702,7 @@ local orderKind = "farm"
 local orderCat = nil
 local orderAmount = 10
 local orderHours = 1
+local orderNoLimit = false
 local orderKeep = false
 local selectedItemId = nil
 local searchPendingAt = nil
@@ -761,6 +818,20 @@ function TB.SetOrderKeep(keep)
     end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     return orderKeep
+end
+
+function TB.GetOrderNoLimit()
+    return orderNoLimit and true or false
+end
+
+function TB.SetOrderNoLimit(noLimit)
+    orderNoLimit = noLimit and true or false
+    if win and win.noLimitBox and win.noLimitBox.GetChecked
+        and win.noLimitBox:GetChecked() ~= orderNoLimit then
+        win.noLimitBox:SetChecked(orderNoLimit)
+    end
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return orderNoLimit
 end
 
 function TB.GetOrderSelection()
@@ -908,7 +979,7 @@ end
 
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
-    win:SetWidth(OW); win:SetHeight(486)
+    win:SetWidth(OW); win:SetHeight(510)
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
@@ -1180,7 +1251,23 @@ local function createWindow()
     TB.SetTextColor(keepLabel, color("muted"))
     win.keepLabel = keepLabel
 
-    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 28),
+    local noLimitBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderNoLimit", win, "UICheckButtonTemplate")
+    noLimitBox:SetWidth(20); noLimitBox:SetHeight(20)
+    noLimitBox:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 26))
+    noLimitBox:SetScript("OnClick", function()
+        TB.SetOrderNoLimit(this:GetChecked() and true or false)
+    end)
+    win.noLimitBox = noLimitBox
+    setTooltip(noLimitBox, "No time limit",
+        { "The bot farms until it has the amount, however long it takes. Only Cancel stops it." })
+    local noLimitLabel = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    noLimitLabel:SetPoint("LEFT", noLimitBox, "RIGHT", 2, 0)
+    noLimitLabel:SetWidth(110); noLimitLabel:SetJustifyH("LEFT")
+    noLimitLabel:SetText("No time limit")
+    TB.SetTextColor(noLimitLabel, color("muted"))
+    win.noLimitLabel = noLimitLabel
+
+    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 50),
         "Send order", "Give this bot the order (replaces its old one).",
         function()
             -- The boxes commit on change, but read them anyway: a valid
@@ -1189,7 +1276,7 @@ local function createWindow()
                 local n = tonumber(win.amountBox:GetText() or "")
                 if n then TB.SetOrderAmount(n) end
             end
-            if win.hoursBox then
+            if win.hoursBox and not orderNoLimit then
                 local h = tonumber(win.hoursBox:GetText() or "")
                 if h then TB.SetOrderHours(h) end
             end
@@ -1205,24 +1292,26 @@ local function createWindow()
                 TB.SetOrderFeedback("This bot can't get it.", "warn")
                 return
             end
+            local timeText = orderNoLimit and "no limit" or (orderHours .. "h")
             TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
-                .. " x" .. orderAmount .. " (" .. orderHours .. "h" .. (orderKeep and ", keep" or "") .. ") sent, waiting for the server...", "pending")
-            TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount, orderHours, orderKeep)
+                .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "") .. ") sent, waiting for the server...", "pending")
+            TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount,
+                orderNoLimit and "inf" or orderHours, orderKeep)
         end)
 
-    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 28),
-        "Cancel order", "Remove this bot's current order.",
+    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 50),
+        "Cancel order", "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.",
         function()
-            if windowBot then TB.SendOrderCancel(windowBot) end
+            if windowBot then TB.ConfirmOrderCancel(windowBot) end
         end)
 
     win.statusLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 54))
+    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 76))
     win.statusLine:SetWidth(OW - 24); win.statusLine:SetJustifyH("LEFT")
     TB.SetTextColor(win.statusLine, color("muted"))
 
     win.feedbackLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 70))
+    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 92))
     win.feedbackLine:SetWidth(OW - 24); win.feedbackLine:SetJustifyH("LEFT")
 
     win:SetScript("OnUpdate", function()
@@ -1320,6 +1409,22 @@ function TB.RefreshOrderWindow()
         win.keepBox:SetChecked(orderKeep and true or false)
         if TB.CanGiveOrders() then win.keepBox:Enable() else win.keepBox:Disable() end
     end
+    if win.noLimitBox and win.noLimitBox.SetChecked then
+        win.noLimitBox:SetChecked(orderNoLimit and true or false)
+        if TB.CanGiveOrders() then win.noLimitBox:Enable() else win.noLimitBox:Disable() end
+    end
+    -- No time limit greys the hours box: unfocused, unclickable, dimmed.
+    -- The kept number returns when the box is ticked off.
+    if win.hoursBox then
+        if orderNoLimit then
+            win.hoursBox:ClearFocus()
+            win.hoursBox:EnableMouse(false)
+            win.hoursBox:SetTextColor(0.5, 0.5, 0.5)
+        else
+            win.hoursBox:EnableMouse(true)
+            win.hoursBox:SetTextColor(1, 1, 1)
+        end
+    end
     if win.feedbackLine then
         if feedback then
             win.feedbackLine:SetText(feedback.text)
@@ -1346,6 +1451,7 @@ function TB.OpenOrderWindow(bot)
     if switched then
         orderAmount = 10
         orderHours = 1
+        orderNoLimit = false
         orderKeep = false
         orderCat = nil
         selectedItemId = nil
@@ -1356,6 +1462,7 @@ function TB.OpenOrderWindow(bot)
         if win.searchBox then win.searchBox:SetText("") end
         if win.amountBox then win.amountBox:SetText("10") end
         if win.hoursBox then win.hoursBox:SetText("1") end
+        if win.noLimitBox and win.noLimitBox.SetChecked then win.noLimitBox:SetChecked(false) end
         if win.keepBox and win.keepBox.SetChecked then win.keepBox:SetChecked(false) end
     end
     -- Anchor beside the main window, like the run window.
