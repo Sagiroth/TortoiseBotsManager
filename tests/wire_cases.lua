@@ -469,6 +469,16 @@ local cases = {
         end,
     },
     {
+        id = "camp.downtime",
+        expected = { ".bot downtime" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,downtime")
+            this = TB.actionButtons.downtime
+            TB.actionButtons.downtime.scripts.OnClick(TB.actionButtons.downtime)
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+        end,
+    },
+    {
         id = "camp.grind.on",
         expected = { ".bot strategy +grind" },
         trigger = function()

@@ -4,6 +4,9 @@ All notable changes to TortoiseBotsManager are documented here.
 
 ## Unreleased
 
+### Camp
+- New Downtime button sends your own alt to its class trainer, vendor and repair, then back to you. Shown only when the server advertises the `downtime` capability; hires and pool bots are refused by the server.
+
 ### Guild Orders
 - Guild tab: every claimed bot row has an Order button opening an order window — search a real item by name, or pick a kind (All, Herbs, Ore, Leather, Fish, Cloth, Drops, Other) to browse it. Pick Farm / Buy / Craft, an amount (1-200) and a farm time (whole hours, 1-24), and send it. Each result says where the bot would farm, roughly how long, the drop rate (`12% drop`, never on 100% nodes) and the difficulty (`Easy` / `Medium` / `Hard`) — or why it can't (`only from elite creatures` greys the row like other unusable results). The window warns that large amounts or rare drops can take very long or fail. On an old server that rejects the farm time or the kind filter, the addon resends without it.
 - Guild bot rows show the live order (`Light Leather 4/10 (Ashenvale) · Easy`, `Delivering`, `Done`, `Mailed to GM`, `No skill`, `Can't`, including when the farm time ran out) with the reason and the chosen farm time in the tooltip (the tooltip explains the difficulty as rough effort: how many kills or gathers the bot needs); Cancel removes it. Needs the `guild-orders` server capability and a guild rank that may edit officer notes.
@@ -15,7 +18,6 @@ All notable changes to TortoiseBotsManager are documented here.
 ### Roster & Lifecycle
 - Guild tab claimed bot list now refreshes correctly on the 1.12 client instead of going blank after the first refresh. [#50](https://github.com/Sagiroth/TortoiseBotsManager/pull/50)
 - Clearing the claimed list now resets the client’s remembered list length, preventing empty-slot sorting failures and the “Roster.lua:278: attempt to index local 'b' (a nil value)” chat error every 8 seconds. [#50](https://github.com/Sagiroth/TortoiseBotsManager/pull/50)
-
 ---
 
 ## v1.4.0 (2026-10-27)

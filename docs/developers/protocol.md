@@ -33,6 +33,8 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `claimed-roster` | Guild tab data |
 | `guild-orders` | Guild order window, row status and the `.bot order` sends |
 | `dungeon-run` | Dungeon tab and run window (server needs `DungeonSelfClear` and `RemoteCommander`) |
+| `loot-log` | Loot tab and the `.bot lootlog` catch-up |
+| `downtime` | Downtime button for own-alt errands (`.bot downtime`) |
 
 `behavior` is also advertised; the addon does not gate on it.
 
