@@ -2068,8 +2068,8 @@ assert(not TB.runWindow.planSearch:IsVisible(), "a pick closes the search list")
 -- Raid bind: targets the main tank, applies the layout, stops before the boss.
 TB.OpenRunWindow()
 TB.OnSystemMessage("TBM:RAID_LAYOUT|25|Alpha,Beta|Pri1 -> Alpha|Druid1|1=Alpha,Pri1;2=Beta,Druid1")
-assert(TB.GetRaidLayout() and TB.GetRaidLayout().tanks == "Alpha,Beta", "the raid layout parses")
-assert(string.find(TB.runWindow.layout.text, "Main Alpha,Beta", 1, true),
+assert(TB.GetRaidLayout() and TB.GetRaidLayout().mainTank == "Alpha", "the raid layout parses main first")
+assert(string.find(TB.runWindow.layout.text, "Main Alpha + 1 off", 1, true),
     "the layout renders under the bind row")
 TB.OnSystemMessage("TBM:ACTION_ACK|commander bind|raid|25|Alpha")
 assert(string.find(TB.GetRunFeedback().text, "Bind done") and string.find(TB.GetRunFeedback().text, "raid"),

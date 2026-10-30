@@ -1364,7 +1364,7 @@ return function()
                 TB.OnSystemMessage("TBM:RAID_LAYOUT|25|Alpha,Beta,Gamma|Pri1 -> Alpha,Pri2 -> Beta|Druid1,Druid2|1=Alpha,Pri1;2=Beta,Druid1")
                 local status = {}
                 for _, key in ipairs({ "runBar", "runLeg", "runPhase",
-                    "runNote", "runStep", "runState", "bindHint", "planHint", "modeHint",
+                    "runNote", "runStop", "runStep", "runState", "bindHint", "planHint", "modeHint",
                     "feedback", "warn", "layout" }) do
                     if win[key] then table.insert(status, { key, win[key] }) end
                 end
@@ -1392,7 +1392,7 @@ return function()
                     end
                 end
                 local boxes = {}
-                for _, key in ipairs({ "runLeg", "runPhase", "runNote" }) do
+                for _, key in ipairs({ "layout", "runLeg", "runPhase", "runNote", "runStop" }) do
                     if win[key] and win[key].kind == "FontString" then
                         table.insert(boxes, { key, boxRect(win[key], cache) })
                     end
@@ -1406,7 +1406,19 @@ return function()
                         end
                     end
                 end
-                -- Docked beside main with the panel open, on both sides:
+                -- The bind hint (right column) must clear the layout line and
+                -- the plan header below it, even wrapped; the layout line must
+                -- clear the plan header too.
+                for _, pair in ipairs({ { "bindHint", "layout" }, { "layout", "planToggle" } }) do
+                    local a, b = win[pair[1]], win[pair[2]]
+                    if a and b and a.kind == "FontString" and b.kind == "FontString" then
+                        local ra, rb = boxRect(a, cache), boxRect(b, cache)
+                        if overlaps(ra, rb) then
+                            bad(string.format("RunWindow: '%s' %s overlaps '%s' %s",
+                                pair[1], fmt(ra), pair[2], fmt(rb)))
+                        end
+                    end
+                end
                 -- the window never covers main or the panel.
                 if TB.OpenBotPanel and TB.frame then
                     local savedX = TB.frame.x

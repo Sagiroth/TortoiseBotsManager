@@ -161,7 +161,7 @@ local function isBotCommandMessage(message)
     if string.find(message, "^Dungeon plans:") or string.find(message, "^Run mode:")
         or string.find(message, "^Server features:") or string.find(message, "^Config: %d+ keys match")
         or string.find(message, "^Run plan here:") or string.find(message, "^Raid layout:")
-        then
+        or string.find(message, "^Raid: ") then
         return true
     end
     if string.find(message, "^Bot commands:") then
