@@ -2411,6 +2411,29 @@ assert(TB.OrderTooltipText(strangeOrder)
 assert(TB.OrderStateLabel("brewing") == "brewing", "unknown state labels stay raw")
 assert(TB.OrderReasonLabel("froth") == "froth", "unknown reason labels stay raw")
 
+-- Keep in stock: the trailing keep field, stocked rows, keep markers.
+local keepOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep")
+assert(keepOrder and keepOrder.keep == true and keepOrder.hours == 3, "a 12-field order line carries keep")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-").keep == false,
+    "a dash keep parses as not keep")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").keep == false,
+    "an 11-field order line has no keep")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|extra") == nil,
+    "a 13-field order line is dropped")
+assert(TB.OrderStateLabel("stocked") == "Stocked", "stocked gets the plain label")
+assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "stocked", keep = true })
+    == "Light Leather · |cff4ecb5aStocked|r", "stocked rows show the state")
+assert(TB.OrderRowText(keepOrder)
+    == "Light Leather 4/10 (Ashenvale) · |cff4ecb5aKeep|r · |cff4ecb5aEasy|r",
+    "keep rows mark the refill")
+assert(string.find(TB.OrderTooltipText(keepOrder),
+    "Keep in stock: the bot refills when the bank drops below 10", 1, true) ~= nil,
+    "keep tooltips explain the refill")
+local stockedOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|stocked|-|-|-|-|keep")
+assert(string.find(TB.OrderTooltipText(stockedOrder),
+    "Stocked: 10 in the bank, the bot refills when it drops below 10", 1, true) ~= nil,
+    "stocked tooltips name the bank stock")
+
 -- Estimates: amount ÷ chance, nodes for herb and ore, none for buy/craft.
 assert(TB.OrderEstimate("farm", { "skin" }, 50, 10) == "about 20 kills", "a 50% chance doubles the kills")
 assert(TB.OrderEstimate("farm", { "ore" }, 100, 10) == "about 10 nodes", "ore counts nodes")
@@ -2478,6 +2501,15 @@ local strangeItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|
 assert(TB.OrderItemDetail(strangeItem, "farm", 10, 12) == "Can't: soggy",
     "an unknown verdict renders raw")
 assert(TB.OrderItemDetail(nil, "farm", 10, 12) == "", "a missing item has no detail")
+assert(TB.OrderItemDetail(searchItemCat, "farm", 10, 24)
+    == "drop, skin · Leather · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · 50% drop · |cffff5050Hard|r",
+    "a good result shows the item kind")
+assert(TB.OrderSourcesLabel({ "fish" }) == "fish", "fish sources read plainly")
+assert(TB.OrderEstimate("farm", { "fish" }, 50, 10) == "about 20 casts", "fish counts casts")
+assert(TB.OrderEstimate("farm", { "fish" }, 100, 1) == "about 1 cast", "one cast stays singular")
+local lowZoneItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|6358|Raw Summer Bass|1|fish|1|356:150|lowskill|Ashenvale|30")
+assert(TB.OrderItemDetail(lowZoneItem, "farm", 10, 20) == "needs Fishing 150 (Ashenvale)",
+    "a lowskill verdict names the lower zone")
 
 -- Order rows carry the difficulty, old 9-field lines still parse.
 local orderWithDiff = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy")
@@ -2488,7 +2520,7 @@ assert(TB.OrderRowText(parsedOrder) == "Light Leather 4/10 (Ashenvale)",
     "old order lines show no difficulty")
 assert(string.find(TB.OrderTooltipText(orderWithDiff), "Difficulty: |cff4ecb5aEasy|r", 1, true) ~= nil
     and string.find(TB.OrderTooltipText(orderWithDiff),
-        "Rough effort for this bot: how many kills or gathers it needs", 1, true) ~= nil,
+        "Rough effort for this bot: how many kills, gathers or casts it needs", 1, true) ~= nil,
     "order tooltips explain the difficulty")
 assert(TB.OrderTooltipText(parsedOrder)
     == "Order: Farm Light Leather 4/10\nState: Working\nZone: Ashenvale",
@@ -2564,6 +2596,28 @@ now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
 assert(lastAddon() == "order Goldie farm 2318 10", "an invalid-arg reply retries the give bare")
 assert(string.find(TB.GetOrderFeedback().text, "retrying without farm time"), "the retry says so")
+-- Keep in stock: the checkbox rides Send, and old servers shed it first.
+assert(TB.GetOrderKeep() == false and not TB.orderWindow.keepBox:GetChecked(),
+    "keep starts off")
+this = TB.orderWindow.keepBox
+TB.orderWindow.keepBox:SetChecked(true)
+TB.orderWindow.keepBox.scripts.OnClick(TB.orderWindow.keepBox)
+assert(TB.GetOrderKeep() == true, "ticking the box arms keep")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 3 keep", "Send carries keep when ticked")
+assert(string.find(TB.GetOrderFeedback().text, "(3h, keep) sent, waiting", 1, true) ~= nil,
+    "Send names keep while waiting")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 3", "an invalid-arg reply drops keep first")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without keep in stock"), "the keep retry says so")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "a second invalid-arg reply drops the farm time")
+TB.SetOrderKeep(false)
+assert(TB.GetOrderKeep() == false and not TB.orderWindow.keepBox:GetChecked(),
+    "the setter clears the box")
 assert(TB.ClampOrderAmount(0) == 1 and TB.ClampOrderAmount(999) == 200,
     "amounts clamp to 1-200")
 TB.SetOrderAmount(25)

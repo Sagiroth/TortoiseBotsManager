@@ -1206,6 +1206,14 @@ local cases = {
         end,
     },
     {
+        id = "guild.order.give.keep",
+        expected = { ".bot order Goldie farm 2318 10 2 keep" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true)
+        end,
+    },
+    {
         id = "guild.order.give.nohours",
         expected = { ".bot order Goldie farm 2318 10" },
         trigger = function()
