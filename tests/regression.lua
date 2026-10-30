@@ -2475,6 +2475,7 @@ assert(TB.OrderDifficultyLabel("-") == nil and TB.OrderDifficultyLabel(nil) == n
     "a dash difficulty shows nothing")
 assert(TB.OrderReasonLabel("elite") == "only from elite creatures", "elite gets a plain reason")
 assert(TB.OrderReasonLabel("timeout") == "farm time ran out", "timeout gets a plain reason")
+assert(TB.OrderReasonLabel("noprogress") == "no progress - the bot found nothing to farm", "noprogress gets a plain reason")
 local searchItemCat = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|hard|leather")
 assert(searchItemCat and searchItemCat.difficulty == "hard" and searchItemCat.category == "leather",
     "search items parse the new category field")
@@ -2538,7 +2539,11 @@ assert(TB.orderWindow.title:GetText() == "Order for Goldie", "the title names th
 assert(TB.orderWindow.statusLine:GetText() == "Current: Light Leather 7/10 (Ashenvale)",
     "the window shows the bot's current order")
 assert(TB.orderWindow.amountBox:GetText() == "10", "a fresh window starts at 10")
-assert(TB.orderWindow.hoursBox:GetText() == "1", "farm time starts at 1 hour")
+assert(TB.orderWindow.hoursBox:GetText() == "1", "farm time keeps 1 hour behind no limit")
+assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
+    "a fresh window ticks no time limit")
+assert(TB.orderWindow.hoursBox.mouseEnabled == false,
+    "a fresh window greys the hours box")
 assert(TB.orderWindow.farmNote ~= nil
     and string.find(TB.orderWindow.farmNote:GetText(), "Bots farm like players", 1, true) ~= nil,
     "the window warns that big or rare farms take very long")
@@ -2583,8 +2588,13 @@ firstResult.scripts.OnClick(firstResult)
 assert(TB.GetOrderSelection() == 2318, "a good result is picked")
 now = now + 1
 TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
-assert(lastAddon() == "order Goldie farm 2318 10 1", "Send gives the picked item, amount and farm time")
+assert(lastAddon() == "order Goldie farm 2318 10 inf", "Send gives the picked item and amount with no time limit")
 assert(string.find(TB.GetOrderFeedback().text, "sent, waiting"), "Send says it is waiting")
+TB.SetOrderNoLimit(false)
+assert(TB.GetOrderNoLimit() == false and not TB.orderWindow.noLimitBox:GetChecked(),
+    "unticking arms a capped farm time")
+assert(TB.orderWindow.hoursBox.mouseEnabled ~= false,
+    "unticking enables the hours box")
 TB.SetOrderHours(3)
 assert(TB.GetOrderHours() == 3 and TB.orderWindow.hoursBox:GetText() == "3",
     "the hours box follows the setter")
@@ -2815,7 +2825,7 @@ assert(TB.GetOrderSelection() == 2318, "round 2 picks the item")
 now = now + 1
 TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
 assert(TB.GetOrderAmount() == 25, "Send commits the box number")
-assert(lastAddon() == "order Goldie farm 2318 25 1", "Send sends the box number, not the stale amount")
+assert(lastAddon() == "order Goldie farm 2318 25 inf", "Send sends the box number with no time limit")
 local hoursBox = TB.orderWindow.hoursBox
 hoursBox.text = "4"
 this = hoursBox
@@ -2864,8 +2874,8 @@ assert(TB.orderWindow:IsVisible() and not TB.infoWindow:IsVisible(),
 TB.CloseOrderWindow()
 TB.CloseServerInfo()
 
--- No time limit: parse inf, show "no limit", send inf; a refused inf
--- retries once as 24 hours. Old numeric rows still parse.
+-- No time limit: the default, parse inf, show "no limit", send inf; a
+-- refused inf retries once as 24 hours. Old numeric rows still parse.
 local infOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|inf")
 assert(infOrder and infOrder.hours == "inf", "an inf order line parses")
 assert(string.find(TB.OrderRowText(infOrder), "No limit", 1, true) ~= nil,
@@ -2877,21 +2887,20 @@ assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").hours == 3,
     "numeric hours still parse")
 assert(TB.OpenOrderWindow("Goldie"), "the window reopens for no-limit")
-assert(TB.GetOrderNoLimit() == false and not TB.orderWindow.noLimitBox:GetChecked(),
-    "no limit starts off")
-TB.orderWindow.noLimitBox:SetChecked(true)
-this = TB.orderWindow.noLimitBox
-TB.orderWindow.noLimitBox.scripts.OnClick(TB.orderWindow.noLimitBox)
-assert(TB.GetOrderNoLimit() == true, "ticking the box arms no limit")
+assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
+    "no limit starts ticked")
 assert(TB.orderWindow.hoursBox.mouseEnabled == false
     and TB.orderWindow.hoursBox.textColor[1] == 0.5,
     "no limit greys the hours box")
 TB.SetOrderNoLimit(false)
 assert(TB.GetOrderNoLimit() == false and not TB.orderWindow.noLimitBox:GetChecked(),
-    "the setter clears no limit")
+    "unticking clears no limit")
 assert(TB.orderWindow.hoursBox.mouseEnabled ~= false
     and TB.orderWindow.hoursBox.textColor[1] == 1,
     "clearing no limit restores the hours box")
+TB.SetOrderNoLimit(true)
+assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
+    "the setter ticks no limit")
 TB.orderWindow.searchBox.text = "leather"
 now = now + 1
 TB.SendOrderSearch("Goldie", "farm", "leather")

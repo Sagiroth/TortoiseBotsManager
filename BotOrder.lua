@@ -30,11 +30,11 @@
 -- answer. Unknown state / reason tokens are shown raw, never crash.
 -- <reason> "-" means none; <zone> "-" means none; <chance> is percent.
 -- <difficulty> is easy / medium / hard ("-" or a missing field on old
--- servers means none); <reason> and <verdict> may be "elite" or "timeout".
--- <keep> is keep or "-" (missing on old servers means not keep); a keep
--- order that delivered sits in state "stocked" until the bank runs low.
--- <hours> is whole hours or "inf" for no limit (missing on old servers
--- means none); an inf order never times out, only cancel ends it.
+-- servers means none); <reason> and <verdict> may be "elite", "timeout" or
+-- "noprogress". <keep> is keep or "-" (missing on old servers means not
+-- keep); a keep order that delivered sits in state "stocked" until the bank
+-- runs low. <hours> is whole hours or "inf" for no limit (missing on old
+-- servers means none); an inf order never times out, only cancel ends it.
 -- <category> is herb / ore / leather / fish / cloth / drop / other
 -- ("-" or missing on old servers means none).
 --
@@ -87,7 +87,7 @@ local REASON_LABEL = {
     grouped = "in a group", noskill = "missing profession", lowskill = "skill too low",
     lowlevel = "bot under level 10", norange = "nothing in level range",
     nosource = "no source", norecipe = "unknown recipe", elite = "only from elite creatures",
-    timeout = "farm time ran out",
+    timeout = "farm time ran out", noprogress = "no progress - the bot found nothing to farm",
     stuck = "stuck, gave up", bagsfull = "bags full", nobank = "no bank deposit",
 }
 local SOURCE_LABEL = { drop = "drop", skin = "skin", herb = "herb", ore = "ore", fish = "fish", craft = "craft", ah = "AH" }
@@ -702,7 +702,7 @@ local orderKind = "farm"
 local orderCat = nil
 local orderAmount = 10
 local orderHours = 1
-local orderNoLimit = false
+local orderNoLimit = true
 local orderKeep = false
 local selectedItemId = nil
 local searchPendingAt = nil
@@ -1451,7 +1451,7 @@ function TB.OpenOrderWindow(bot)
     if switched then
         orderAmount = 10
         orderHours = 1
-        orderNoLimit = false
+        orderNoLimit = true
         orderKeep = false
         orderCat = nil
         selectedItemId = nil
@@ -1462,7 +1462,7 @@ function TB.OpenOrderWindow(bot)
         if win.searchBox then win.searchBox:SetText("") end
         if win.amountBox then win.amountBox:SetText("10") end
         if win.hoursBox then win.hoursBox:SetText("1") end
-        if win.noLimitBox and win.noLimitBox.SetChecked then win.noLimitBox:SetChecked(false) end
+        if win.noLimitBox and win.noLimitBox.SetChecked then win.noLimitBox:SetChecked(true) end
         if win.keepBox and win.keepBox.SetChecked then win.keepBox:SetChecked(false) end
     end
     -- Anchor beside the main window, like the run window.

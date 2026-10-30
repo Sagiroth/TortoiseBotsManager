@@ -1238,6 +1238,22 @@ local cases = {
         end,
     },
     {
+        id = "guild.order.give.default",
+        expected = { ".bot order search Wirebot farm leather", ".bot order Wirebot farm 2318 10 inf" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.OpenOrderWindow("Wirebot")
+            TB.SendOrderSearch("Wirebot", "farm", "leather")
+            TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+            TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+            TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+            TB.SetOrderSelection(2318)
+            this = TB.orderWindow.sendBtn
+            TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+            TB.CloseOrderWindow()
+        end,
+    },
+    {
         id = "guild.order.search.cat",
         expected = { ".bot order search Goldie farm cat=leather light" },
         trigger = function()
