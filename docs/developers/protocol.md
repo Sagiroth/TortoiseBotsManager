@@ -31,7 +31,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `flee` | Flee button and key binding |
 | `inventory` | Bag icons and the bot panel |
 | `claimed-roster` | Guild tab data |
-| `dungeon-run` | Dungeon tab and run window (server needs `DungeonSelfClear` and `RemoteCommander`) |
+| `dungeon-run` | Dungeon tab and run window (server needs `DungeonSelfClear` and `RemoteCommander`); raid binds ride the same gate |
 | `loot-log` | Loot tab and the `.bot lootlog` catch-up |
 | `downtime` | Downtime button for own-alt errands (`.bot downtime`) |
 
@@ -50,7 +50,8 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `TBM:CC_ASSIGN_BEGIN` / `CC_ASSIGN` / `CC_ASSIGN_END` | CC mark icons on party rows |
 | `TBM:INV_BEGIN` / `INV_EQ` / `INV_ITEM` / `INV_END` | [Bot panel](../play/bot-panel.md) gear and bags |
 | `TBM:ACTION_ACK`, `TBM:ACTION_ERR` | Status line and Log tab result of each order |
-| `TBM:RUN` | [Dungeon run](../play/dungeon-run.md) status |
+| `TBM:RUN` | [Dungeon run](../play/dungeon-run.md) status (a stop-before-boss run appends `until boss (step N)`) |
+| `TBM:RAID_LAYOUT` | [Dungeon run](../play/dungeon-run.md) raid layout (`<bots>|<tanks>|<tankHealers>|<raidHealers>|<groups>`, tanks main first) and `warning|<text>` lines; the bind ACK scope is `raid` |
 | `TBM:LOOT_BEGIN` / `LOOT` / `LOOT_END` | [Loot tab](../play/loot-history.md): 24 h catch-up pages of `.bot lootlog [cursor]`, newest first |
 | `TBM:FEATURE`, `TBM:CONFIG_BEGIN` / `CONFIG` / `CONFIG_END` | [Info window](../play/controls.md#info-window) |
 

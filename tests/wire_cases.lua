@@ -2028,6 +2028,7 @@ local cases = {
             assert(TB.SendRunSkip() == false, "no sends without the capability")
             assert(TB.SendRunStop() == false, "no sends without the capability")
             assert(TB.SendRunBind() == false, "no sends without the capability")
+            assert(TB.SendRunBindRaid() == false, "no raid sends without the capability")
             assert(TB.SendRunUnbind() == false, "no sends without the capability")
             assert(TB.SendRunEnter() == false, "no sends without the capability")
         end,
@@ -2054,6 +2055,22 @@ local cases = {
             TB.OpenRunWindow()
             this = TB.runWindow.bind
             TB.runWindow.bind.scripts.OnClick(TB.runWindow.bind)
+            TB.CloseRunWindow()
+            setTarget(false, nil)
+        end,
+    },
+    {
+        id = "run.bind.raid",
+        expected = { ".bot run list", ".bot run status", ".bot commander bind Alpha raid" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OnSystemMessage("TBM:RAID_LAYOUT|25|Alpha,Beta|Pri1 -> Alpha|Druid1|1=Alpha,Pri1")
+            assert(TB.GetRaidLayout(), "a layout is showing")
+            setTarget(true, "Alpha")
+            TB.OpenRunWindow()
+            this = TB.runWindow.bindRaid
+            TB.runWindow.bindRaid.scripts.OnClick(TB.runWindow.bindRaid)
+            assert(TB.GetRaidLayout() == nil, "a fresh raid bind clears the old layout")
             TB.CloseRunWindow()
             setTarget(false, nil)
         end,
@@ -2152,6 +2169,31 @@ local cases = {
                 and table.getn(TB.ParseRunPlanList("Dungeon plans: none loaded")) == 0,
                 "an empty plan list parses")
             assert(TB.ParseRunPlanList("someone: hello") == nil, "chat never parses as plans")
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.layout.parse",
+        expected = { ".bot run list", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("TBM:RAID_LAYOUT|25|Alpha,Beta|Pri1 -> Alpha|Druid1|1=Alpha,Pri1;2=Beta,Druid1")
+            local layout = TB.GetRaidLayout()
+            assert(layout and layout.bots == 25, "the layout bot count parses")
+            assert(layout.mainTank == "Alpha", "the main tank parses first")
+            assert(layout.tanks == "Alpha,Beta", "the full tank list parses")
+            assert(layout.tankHealers == "Pri1 -> Alpha", "tank healers parse")
+            assert(string.find(TB.runWindow.layout.text, "Main Alpha + 1 off", 1, true),
+                "the layout renders compactly")
+            local handled = TB.ParseRunMessage("TBM:RAID_LAYOUT|warning|could not place: Gamma")
+            assert(handled, "the warning line routes")
+            assert(string.find(TB.GetRaidLayout().warning, "Gamma", 1, true),
+                "the warning keeps its text")
+            TB.OnSystemMessage("TBM:RAID_LAYOUT|25|Alpha,Beta|Pri1 -> Alpha|Druid1|1=Alpha,Pri1")
+            assert(TB.GetRaidLayout().warning == nil, "a clean layout clears the old warning")
+            assert(TB.ParseRaidLayout("TBM:RAID_LAYOUT|short") == nil, "short lines never parse")
+            assert(TB.ParseRaidLayout("someone: hello") == nil, "chat never parses as layout")
             TB.CloseRunWindow()
         end,
     },
@@ -2354,6 +2396,69 @@ local cases = {
             assert(TB.ParseRunLine("TBM:RUN|short") == nil, "short lines never parse")
             assert(TB.ParseRunLine("TBM:RUN|uldaman|running|7/41|baelog|pull|pull|") ~= nil,
                 "an empty note parses as '-'")
+            TB.OnSystemMessage("TBM:RUN|molten_core|running|40/684|shazzrah|pull|walk|walking|until boss (step 41)")
+            r = TB.GetRun()
+            assert(r.untilStop == "until boss (step 41)", "the until label parses")
+            assert(string.find(TB.runWindow.runPhase.text, "until boss", 1, true) == nil,
+                "the until label leaves the phase line")
+            assert(string.find(TB.runWindow.runStop.text, "until boss (step 41)", 1, true),
+                "the until label renders on its own stop line")
+            TB.OnSystemMessage("TBM:RUN|molten_core|running|40/684|shazzrah|pull|walk|walking|speed 2.0 (test); until boss (step 41)")
+            r = TB.GetRun()
+            assert(r.speed == "2.0 (test)", "the speed label parses without the until clause")
+            assert(r.untilStop == "until boss (step 41)", "the joined until label parses")
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.until",
+        expected = { ".bot run list", ".bot run status", ".bot run start molten_core until boss" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.SetRunStopBeforeBoss(true)
+            TB.SetRunSelectedPlan("molten_core")
+            assert(TB.runWindow.untilBoss.checked, "the checkbox mirrors the flag")
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.SetRunStopBeforeBoss(false)
+            TB.SetRunSelectedPlan(nil)
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.start.until.player",
+        expected = { ".bot run list", ".bot run status", ".bot run start uldaman player" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.SetRunMode("player")
+            TB.SetRunSelectedPlan("uldaman")
+            TB.SetRunStopBeforeBoss(true)
+            assert(not TB.runWindow.untilBoss.enabled, "player-led locks the checkbox")
+            this = TB.runWindow.start
+            TB.runWindow.start.scripts.OnClick(TB.runWindow.start)
+            TB.SetRunStopBeforeBoss(false)
+            TB.SetRunMode("bot")
+            TB.CloseRunWindow()
+        end,
+    },
+    {
+        id = "run.plans.raid",
+        expected = { ".bot run list", ".bot run status" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|dungeon-run")
+            TB.OpenRunWindow()
+            TB.OnSystemMessage("Dungeon plans: uldaman (map 70, 41 steps), molten_core (map 409, 684 steps), ragefire_chasm (map 389, 120 steps), upper_blackrock_spire (map 229, 300 steps), onyxias_lair (map 249, 100 steps)")
+            TB.SetRunPlanPicker(true)
+            assert(TB.IsRaidRunPlan("molten_core"), "raid plans are known")
+            assert(TB.IsRaidRunPlan("upper_blackrock_spire"), "UBRS groups as a raid")
+            assert(TB.IsRaidRunPlan("onyxias_lair"), "Onyxia groups as a raid")
+            assert(not TB.IsRaidRunPlan("uldaman", 41), "dungeon plans are not raids")
+            assert(TB.runWindow.planRows[1].planName == "uldaman", "dungeon plans come first")
+            assert(TB.runWindow.planRows[2].planName == "ragefire_chasm", "dungeons stay ordered")
+            assert(TB.runWindow.planRows[5].planName == "onyxias_lair", "raid plans group last")
+            TB.SetRunPlanPicker(false)
             TB.CloseRunWindow()
         end,
     },
