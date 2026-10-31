@@ -35,6 +35,7 @@ Every feature, where to find it, and what the server needs. "Always" means any T
 | Bot roles by spec, your own role | Party | Always | [Party tab](party-roster-guild.md#party-tab) | [role](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role) |
 | Log in/out, invite, kick, summon, fill party | Roster | Always | [Roster tab](party-roster-guild.md#roster-tab) | [roster and hiring](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md) |
 | Claimed guild bots, fill raid | Guild | `claimed-roster` | [Guild tab](party-roster-guild.md#guild-tab) | [guilds](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/world/social.md#autonomous-guild-formation) |
+| Guild orders (farm, buy, craft) with live progress | Guild | `guild-orders` | [Guild orders](party-roster-guild.md#guild-orders) | |
 | Raid helpers, custom raid tactics | Raid (in a raid) | Always | [Raid tab](party-roster-guild.md#raid-tab) | [raid tactics](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/dungeons-and-raids.md#raid-tactics--boss-mechanics) |
 | Gear, bags, item menu, trade, upkeep, autogear | Bot panel | `inventory` | [Bot panel](bot-panel.md) | [bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-panel-commands) |
 | Per-bot behaviour switches | Bot panel | Always | [Behaviour](bot-panel.md#behaviour-switches) | [behavior](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior) |

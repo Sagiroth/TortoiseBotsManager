@@ -380,6 +380,7 @@ function TB.OpenNpc(name)
     if currentBot and currentBot ~= name then TB.SetNpcPending(currentBot, false) end
     if TB.CloseVault then TB.CloseVault() end
     if TB.CloseRunWindow then TB.CloseRunWindow() end
+    if TB.CloseOrderWindow then TB.CloseOrderWindow() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then page = 1 end
     currentBot = name

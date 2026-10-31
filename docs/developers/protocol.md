@@ -31,6 +31,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `flee` | Flee button and key binding |
 | `inventory` | Bag icons and the bot panel |
 | `claimed-roster` | Guild tab data |
+| `guild-orders` | Guild order window, row status and the `.bot order` sends |
 | `dungeon-run` | Dungeon tab and run window (server needs `DungeonSelfClear` and `RemoteCommander`); raid binds ride the same gate |
 | `loot-log` | Loot tab and the `.bot lootlog` catch-up |
 | `downtime` | Downtime button for own-alt errands (`.bot downtime`) |
@@ -53,6 +54,8 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `TBM:RUN` | [Dungeon run](../play/dungeon-run.md) status (a stop-before-boss run appends `until boss (step N)`) |
 | `TBM:RAID_LAYOUT` | [Dungeon run](../play/dungeon-run.md) raid layout (`<bots>|<tanks>|<tankHealers>|<raidHealers>|<groups>`, tanks main first) and `warning|<text>` lines; the bind ACK scope is `raid` |
 | `TBM:LOOT_BEGIN` / `LOOT` / `LOOT_END` | [Loot tab](../play/loot-history.md): 24 h catch-up pages of `.bot lootlog [cursor]`, newest first |
+| `TBM:ORDER_BEGIN` / `ORDER` / `ORDER_END` | [Guild orders](../play/party-roster-guild.md#guild-orders): full list inside the pair, live one-bot update outside it; rows carry a trailing difficulty (`easy` / `medium` / `hard`, `-` or missing on old servers), then a trailing farm time in whole hours or `inf` for no limit (missing on old servers), then a trailing `keep` / `-` flag (missing on old servers); `timeout` means the farm time ran out (an `inf` order never times out), `noprogress` means the bot worked 3 hours without gaining a single item, `stocked` means a keep order sits delivered while the bank holds the amount; the give's hours slot also takes `inf`, and a refused `inf` retries once as 24 (give fallback order: keep, then inf→24, then bare) |
+| `TBM:ORDER_ITEMS_BEGIN` / `ORDER_ITEM` / `ORDER_ITEMS_END` | Guild order search results with the same trailing difficulty plus a trailing category (`herb` / `ore` / `leather` / `fish` / `cloth` / `drop` / `other`, missing on old servers; an empty pair is a real answer); an `elite` verdict means only from elite creatures; search takes `cat=<kind>` with optional empty text (an old server answering `invalid` is retried without it) |
 | `TBM:FEATURE`, `TBM:CONFIG_BEGIN` / `CONFIG` / `CONFIG_END` | [Info window](../play/controls.md#info-window) |
 
 Some replies have no structured line and are parsed from the bot's whisper text: spell list (`=== Spells ===`), flights (`=== Taxi ===`), bank (`=== Bank ===`), mailbox (`=== Mailbox ===`), plus lifecycle chat replies for older servers. Those patterns live in `Comms.lua`, `BotPanel.lua`, `BotNpc.lua` and `BotVault.lua` and must follow the module's wording.

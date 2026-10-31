@@ -198,6 +198,7 @@ for _, file in ipairs({
     "BotVault.lua",
     "BotRun.lua",
     "BotLoot.lua",
+    "BotOrder.lua",
     "ServerInfo.lua",
     "MiniBar.lua",
     "Minimap.lua",
@@ -2295,7 +2296,700 @@ TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster
 assert(not TB.tabLoot:IsVisible(), "losing the cap hides the Loot tab")
 assert(TB.RequestLootPage() == false, "losing the cap stops the sends")
 
-partyMembers = {}
+-- ── Guild orders (TBM#51): capability gate, permission, parsers ────────────
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+assert(not TB.HasOrderCapability(), "no guild order controls without the capability")
+assert(TB.RequestOrderList() == false, "order list is not sent without the capability")
+assert(TB.SendOrderSearch("Goldie", "farm", "leather") == false, "order search is not sent without the capability")
+assert(TB.SendOrderGive("Goldie", "farm", 2318, 10) == false, "order give is not sent without the capability")
+assert(TB.SendOrderCancel("Goldie") == false, "order cancel is not sent without the capability")
+assert(TB.OpenOrderWindow("Goldie") == false, "the order window stays closed without the capability")
+TB.ShowTab("guild")
+TB.RefreshGuildView()
+assert(not TB.guildFrame.rows[1].ordBtn:IsVisible(), "no capability hides the Order button")
+assert(not TB.guildFrame.rows[1].cancelBtn:IsVisible(), "no capability hides the Cancel button")
+
+-- Permission gating: CanEditOfficerNote decides, re-checked every refresh.
+canEditOfficerNote = false
+function CanEditOfficerNote() return canEditOfficerNote end
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+assert(TB.HasOrderCapability(), "the guild-orders token enables orders")
+TB.ShowTab("guild")
+TB.RefreshGuildView()
+local guildOrderRow = TB.guildFrame.rows[1]
+assert(guildOrderRow.ordBtn:IsVisible() and not guildOrderRow.ordBtn.enabled,
+    "without officer-note rights the Order button is greyed out")
+canEditOfficerNote = true
+TB.RefreshGuildView()
+assert(guildOrderRow.ordBtn:IsVisible() and guildOrderRow.ordBtn.enabled,
+    "with officer-note rights the Order button is enabled")
+canEditOfficerNote = false
+TB.RefreshGuildView()
+assert(not guildOrderRow.ordBtn.enabled, "losing the right greys the button out again")
+canEditOfficerNote = true
+
+-- Guild tab open and poll ticks request the full list.
+TB._lastOrderListAt = 0
+now = now + 1
+TB.ShowTab("guild")
+assert(lastAddon() == "order list", "opening the Guild tab asks for the order list")
+TB._lastOrderListAt = now - 31
+now = now + 1
+assert(TB.OrderPollTick() and lastAddon() == "order list", "the 30s tick re-asks for the order list")
+assert(TB.OrderPollTick() == false, "no re-ask inside the 30s window")
+TB.ShowTab("log")
+TB._lastOrderListAt = now - 31
+assert(TB.OrderPollTick() == false, "no re-ask while another tab is open")
+TB.ShowTab("guild")
+
+-- ORDER list parsing: full list replaces, live lines update one row.
+local parsedOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale")
+assert(parsedOrder and parsedOrder.bot == "Goldie" and parsedOrder.type == "farm"
+    and parsedOrder.itemId == 2318 and parsedOrder.have == 4 and parsedOrder.want == 10
+    and parsedOrder.state == "working" and parsedOrder.reason == nil
+    and parsedOrder.zone == "Ashenvale", "order lines parse")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318") == nil, "a short order line is dropped")
+local hoursOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3")
+assert(hoursOrder and hoursOrder.hours == 3 and hoursOrder.difficulty == "easy", "an 11-field order line carries the farm hours")
+assert(string.find(TB.OrderTooltipText(hoursOrder), "Farm time: 3 h", 1, true), "the order tooltip shows the farm hours")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy").hours == nil,
+    "a 10-field order line has no hours")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|nope|Light Leather|4|10|working|-|Ashenvale") == nil,
+    "a bad item id drops the order line")
+now = now + 1
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale")
+TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+TB.OnSystemMessage("TBM:ORDER_END")
+assert(table.getn(TB.GetOrders()) == 2, "the list holds both orders")
+local goldieOrder = TB.GetBotOrder("Goldie")
+assert(goldieOrder and goldieOrder.have == 4 and goldieOrder.zone == "Ashenvale",
+    "the model keeps the full row")
+TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|7|10|working|-|Ashenvale")
+assert(TB.GetBotOrder("Goldie").have == 7 and table.getn(TB.GetOrders()) == 2,
+    "a live line updates only that bot")
+TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|7|10|working|-|Ashenvale")
+TB.OnSystemMessage("TBM:ORDER_END")
+assert(table.getn(TB.GetOrders()) == 1 and TB.GetBotOrder("Silver") == nil,
+    "the next list replaces the whole set")
+
+-- Row text and tooltips: progress, finished states, reason and zone.
+assert(TB.OrderRowText(TB.GetBotOrder("Goldie")) == "Light Leather 7/10 (Ashenvale)",
+    "working rows show item, progress and zone")
+assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "delivering", zone = "Ashenvale" })
+    == "|cffffd200Delivering|r Light Leather", "delivering rows show the verb")
+assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "done" })
+    == "Light Leather · |cff4ecb5aDone|r", "done rows show the state")
+assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "mailed" })
+    == "Light Leather · |cffffd200Mailed to GM|r", "mailed rows name the guild master")
+assert(TB.OrderRowText({ item = "Light Leather", have = 0, want = 10, state = "noskill" })
+    == "Light Leather · |cffff5050No skill|r", "noskill rows use the plain label")
+assert(TB.OrderRowText({ item = "Light Leather", have = 0, want = 10, state = "cant" })
+    == "Light Leather · |cffff5050Can't|r", "cant rows use the plain label")
+local tooltipOrder = TB.ParseOrderLine("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+assert(TB.OrderTooltipText(tooltipOrder)
+    == "Order: Buy Highland Spring Water 0/20\nState: Waiting (in a group)\nZone: Ironforge",
+    "the tooltip carries type, progress, state, reason and zone")
+assert(TB.OrderReasonLabel("-") == nil and TB.OrderSkillLabel("-") == nil,
+    "dash fields mean none")
+assert(TB.OrderReasonLabel("stuck") == "stuck, gave up", "known reasons get plain labels")
+assert(TB.OrderSkillLabel("393:125") == "Skinning 125", "skill ids get their trade name")
+assert(TB.OrderSkillLabel("999:12") == "Skill 999 12", "unknown skill ids stay readable")
+assert(TB.OrderSourcesLabel({ "drop", "skin" }) == "drop, skin", "sources join with commas")
+assert(TB.OrderSourcesLabel({ "ah" }) == "AH", "ah is capped")
+
+-- Unknown state or reason tokens show raw, never crash.
+local strangeOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|1|10|brewing|froth|-")
+assert(strangeOrder and strangeOrder.state == "brewing" and strangeOrder.reason == "froth"
+    and strangeOrder.zone == nil, "unknown tokens parse raw")
+assert(TB.OrderRowText(strangeOrder) == "Light Leather 1/10 · brewing",
+    "unknown states render raw")
+assert(TB.OrderTooltipText(strangeOrder)
+    == "Order: Farm Light Leather 1/10\nState: brewing (froth)",
+    "unknown reasons render raw")
+assert(TB.OrderStateLabel("brewing") == "brewing", "unknown state labels stay raw")
+assert(TB.OrderReasonLabel("froth") == "froth", "unknown reason labels stay raw")
+
+-- Keep in stock: the trailing keep field, stocked rows, keep markers.
+local keepOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep")
+assert(keepOrder and keepOrder.keep == true and keepOrder.hours == 3, "a 12-field order line carries keep")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-").keep == false,
+    "a dash keep parses as not keep")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").keep == false,
+    "an 11-field order line has no keep")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|extra") == nil,
+    "a 13-field order line is dropped")
+assert(TB.OrderStateLabel("stocked") == "Stocked", "stocked gets the plain label")
+assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "stocked", keep = true })
+    == "Light Leather · |cff4ecb5aStocked|r", "stocked rows show the state")
+assert(TB.OrderRowText(keepOrder)
+    == "Light Leather 4/10 (Ashenvale) · |cff4ecb5aKeep|r · |cff4ecb5aEasy|r",
+    "keep rows mark the refill")
+assert(string.find(TB.OrderTooltipText(keepOrder),
+    "Keep in stock: the bot refills when the bank drops below 10", 1, true) ~= nil,
+    "keep tooltips explain the refill")
+local stockedOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|stocked|-|-|-|-|keep")
+assert(string.find(TB.OrderTooltipText(stockedOrder),
+    "Stocked: 10 in the bank, the bot refills when it drops below 10", 1, true) ~= nil,
+    "stocked tooltips name the bank stock")
+
+-- Estimates: amount ÷ chance, nodes for herb and ore, none for buy/craft.
+assert(TB.OrderEstimate("farm", { "skin" }, 50, 10) == "about 20 kills", "a 50% chance doubles the kills")
+assert(TB.OrderEstimate("farm", { "ore" }, 100, 10) == "about 10 nodes", "ore counts nodes")
+assert(TB.OrderEstimate("farm", { "herb" }, 25, 10) == "about 40 nodes", "herb counts nodes")
+assert(TB.OrderEstimate("farm", { "skin" }, 100, 1) == "about 1 kill", "one kill stays singular")
+assert(TB.OrderEstimate("buy", { "ah" }, 100, 10) == nil, "buy shows no estimate")
+assert(TB.OrderEstimate("craft", { "craft" }, 100, 10) == nil, "craft shows no estimate")
+assert(TB.OrderEstimate("farm", { "skin" }, 0, 10) == nil, "a zero chance shows no estimate")
+
+-- Search item parsing and verdict details.
+local searchItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50")
+assert(searchItem and searchItem.itemId == 2319 and searchItem.quality == 1
+    and table.getn(searchItem.sources) == 2 and searchItem.minLevel == 16
+    and searchItem.skill == "393:100" and searchItem.verdict == "ok"
+    and searchItem.zone == "Ashenvale" and searchItem.chance == 50
+    and searchItem.difficulty == nil, "search items parse (old 10-field lines have no difficulty)")
+local searchItemHard = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|hard")
+assert(searchItemHard and searchItemHard.difficulty == "hard", "search items parse the new difficulty field")
+local searchItemDash = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|-")
+assert(searchItemDash and searchItemDash.difficulty == nil, "a dash difficulty parses as none")
+assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319") == nil, "a short search line is dropped")
+assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop|16|-|ok|Ashenvale") == nil,
+    "a short chance field drops the search line")
+assert(TB.OrderItemDetail(searchItem, "farm", 10, 24) == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · 50% drop",
+    "a good result shows sources, level, skill, zone, estimate and drop rate")
+assert(TB.OrderItemDetail(searchItemHard, "farm", 10, 24)
+    == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · 50% drop · |cffff5050Hard|r",
+    "a good result shows the difficulty word")
+assert(TB.OrderItemDetail(searchItem, "buy", 10, 24) == "drop, skin · lvl 16+ · Skinning 100 · Ashenvale",
+    "buy results hide the kill estimate")
+assert(TB.OrderDropRate("farm", { "skin" }, 50) == "50% drop", "kills show the drop rate")
+assert(TB.OrderDropRate("farm", { "ore" }, 100) == nil, "nodes at 100% show no drop rate")
+assert(TB.OrderDropRate("farm", { "skin" }, 0) == nil, "a zero chance shows no drop rate")
+assert(TB.OrderDropRate("buy", { "ah" }, 50) == nil, "buy shows no drop rate")
+assert(TB.OrderDifficultyLabel("easy") == "|cff4ecb5aEasy|r", "easy gets the plain word")
+assert(TB.OrderDifficultyLabel("medium") == "|cffffd200Medium|r", "medium gets the plain word")
+assert(TB.OrderDifficultyLabel("hard") == "|cffff5050Hard|r", "hard gets the plain word")
+assert(TB.OrderDifficultyLabel("-") == nil and TB.OrderDifficultyLabel(nil) == nil,
+    "a dash difficulty shows nothing")
+assert(TB.OrderReasonLabel("elite") == "only from elite creatures", "elite gets a plain reason")
+assert(TB.OrderReasonLabel("timeout") == "farm time ran out", "timeout gets a plain reason")
+assert(TB.OrderReasonLabel("noprogress") == "no progress - the bot found nothing to farm", "noprogress gets a plain reason")
+local searchItemCat = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|hard|leather")
+assert(searchItemCat and searchItemCat.difficulty == "hard" and searchItemCat.category == "leather",
+    "search items parse the new category field")
+local searchItemCatDash = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|hard|-")
+assert(searchItemCatDash and searchItemCatDash.category == nil, "a dash category parses as none")
+assert(TB.OrderCatLabel("leather") == "Leather" and TB.OrderCatLabel("all") == "All"
+    and TB.OrderCatLabel("-") == nil, "kind labels read plainly")
+local skillItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
+assert(TB.OrderItemDetail(skillItem, "farm", 10, 12) == "needs Skinning",
+    "a noskill verdict names the trade")
+local lowItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|lowskill|-|0")
+assert(TB.OrderItemDetail(lowItem, "farm", 10, 12) == "needs Skinning 100",
+    "a lowskill verdict names the skill value")
+local rangeItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|-|norange|-|0")
+assert(TB.OrderItemDetail(rangeItem, "farm", 10, 12) == "no source near level 12",
+    "a norange verdict names the bot level")
+local herbItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|765|Silverleaf|1|herb|1|182:1|lowlevel|-|0")
+assert(TB.OrderItemDetail(herbItem, "farm", 10, 8) == "needs level 10",
+    "a lowlevel verdict names level 10")
+local eliteItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|-|elite|-|0")
+assert(TB.OrderItemDetail(eliteItem, "farm", 10, 12) == "Can't: only from elite creatures",
+    "an elite verdict names the elite rule")
+local strangeItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|-|soggy|-|0")
+assert(TB.OrderItemDetail(strangeItem, "farm", 10, 12) == "Can't: soggy",
+    "an unknown verdict renders raw")
+assert(TB.OrderItemDetail(nil, "farm", 10, 12) == "", "a missing item has no detail")
+assert(TB.OrderItemDetail(searchItemCat, "farm", 10, 24)
+    == "drop, skin · Leather · lvl 16+ · Skinning 100 · Ashenvale · about 20 kills · 50% drop · |cffff5050Hard|r",
+    "a good result shows the item kind")
+assert(TB.OrderSourcesLabel({ "fish" }) == "fish", "fish sources read plainly")
+assert(TB.OrderEstimate("farm", { "fish" }, 50, 10) == "about 20 casts", "fish counts casts")
+assert(TB.OrderEstimate("farm", { "fish" }, 100, 1) == "about 1 cast", "one cast stays singular")
+local lowZoneItem = TB.ParseOrderItemLine("TBM:ORDER_ITEM|6358|Raw Summer Bass|1|fish|1|356:150|lowskill|Ashenvale|30")
+assert(TB.OrderItemDetail(lowZoneItem, "farm", 10, 20) == "needs Fishing 150 (Ashenvale)",
+    "a lowskill verdict names the lower zone")
+
+-- Order rows carry the difficulty, old 9-field lines still parse.
+local orderWithDiff = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy")
+assert(orderWithDiff and orderWithDiff.difficulty == "easy", "order lines parse the new difficulty field")
+assert(TB.OrderRowText(orderWithDiff) == "Light Leather 4/10 (Ashenvale) · |cff4ecb5aEasy|r",
+    "order rows show the difficulty word")
+assert(TB.OrderRowText(parsedOrder) == "Light Leather 4/10 (Ashenvale)",
+    "old order lines show no difficulty")
+assert(string.find(TB.OrderTooltipText(orderWithDiff), "Difficulty: |cff4ecb5aEasy|r", 1, true) ~= nil
+    and string.find(TB.OrderTooltipText(orderWithDiff),
+        "Rough effort for this bot: how many kills, gathers or casts it needs", 1, true) ~= nil,
+    "order tooltips explain the difficulty")
+assert(TB.OrderTooltipText(parsedOrder)
+    == "Order: Farm Light Leather 4/10\nState: Working\nZone: Ashenvale",
+    "old order tooltips stay unchanged")
+
+-- Farm time: hours clamp, the give carries them, an old server falls back.
+assert(TB.ClampOrderHours(0) == 1 and TB.ClampOrderHours(99) == 24,
+    "hours clamp to 1-24")
+
+-- The order window: search debounce, results, kind, amount, send.
+assert(TB.OpenOrderWindow("Goldie"), "the window opens for a guild bot")
+assert(TB.orderWindow:IsVisible() and TB.GetOrderWindowBot() == "Goldie",
+    "the window tracks its bot")
+assert(TB.orderWindow.title:GetText() == "Order for Goldie", "the title names the bot")
+assert(TB.orderWindow.statusLine:GetText() == "Current: Light Leather 7/10 (Ashenvale)",
+    "the window shows the bot's current order")
+assert(TB.orderWindow.amountBox:GetText() == "10", "a fresh window starts at 10")
+assert(TB.orderWindow.hoursBox:GetText() == "1", "farm time keeps 1 hour behind no limit")
+assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
+    "a fresh window ticks no time limit")
+assert(TB.orderWindow.hoursBox.mouseEnabled == false,
+    "a fresh window greys the hours box")
+assert(TB.orderWindow.farmNote ~= nil
+    and string.find(TB.orderWindow.farmNote:GetText(), "Bots farm like players", 1, true) ~= nil,
+    "the window warns that big or rare farms take very long")
+local beforeSearch = table.getn(addonSent)
+this = TB.orderWindow.searchBox
+TB.orderWindow.searchBox.text = "le"
+TB.orderWindow.searchBox.scripts.OnTextChanged(TB.orderWindow.searchBox)
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(table.getn(addonSent) == beforeSearch, "short text never goes out")
+assert(TB.orderWindow.emptyMsg:IsVisible(), "short text explains the 3-letter rule")
+TB.orderWindow.searchBox.text = "leather"
+TB.orderWindow.searchBox.scripts.OnTextChanged(TB.orderWindow.searchBox)
+now = now + 0.1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(table.getn(addonSent) == beforeSearch, "typing waits for the pause")
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(lastAddon() == "order search Goldie farm leather", "the pause sends one search")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+local found = TB.GetOrderSearch()
+assert(table.getn(found.items) == 2 and found.bot == "Goldie",
+    "the search lands on the window's bot")
+local firstResult = TB.orderWindow.resultRows[1]
+assert(firstResult:IsVisible() and string.find(firstResult.name:GetText(), "Light Leather", 1, true)
+    and string.find(firstResult.detail:GetText(), "about 15 kills", 1, true),
+    "a good result shows the estimate for the amount")
+assert(string.find(firstResult.detail:GetText(), "70% drop", 1, true) ~= nil,
+    "a good result shows the drop rate next to the estimate")
+local secondResult = TB.orderWindow.resultRows[2]
+assert(secondResult:IsVisible() and string.find(secondResult.detail:GetText(), "needs Skinning", 1, true),
+    "an unusable result explains itself")
+this = secondResult
+secondResult.scripts.OnClick(secondResult)
+assert(TB.GetOrderSelection() == nil and TB.GetOrderFeedback() ~= nil,
+    "an unusable result cannot be picked")
+this = firstResult
+firstResult.scripts.OnClick(firstResult)
+assert(TB.GetOrderSelection() == 2318, "a good result is picked")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 inf", "Send gives the picked item and amount with no time limit")
+assert(string.find(TB.GetOrderFeedback().text, "sent, waiting"), "Send says it is waiting")
+TB.SetOrderNoLimit(false)
+assert(TB.GetOrderNoLimit() == false and not TB.orderWindow.noLimitBox:GetChecked(),
+    "unticking arms a capped farm time")
+assert(TB.orderWindow.hoursBox.mouseEnabled ~= false,
+    "unticking enables the hours box")
+TB.SetOrderHours(3)
+assert(TB.GetOrderHours() == 3 and TB.orderWindow.hoursBox:GetText() == "3",
+    "the hours box follows the setter")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 3", "Send uses the farm time box")
+-- An old server rejects the trailing hours: the addon retries without them.
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "an invalid-arg reply retries the give bare")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without farm time"), "the retry says so")
+-- Keep in stock: the checkbox rides Send, and old servers shed it first.
+assert(TB.GetOrderKeep() == false and not TB.orderWindow.keepBox:GetChecked(),
+    "keep starts off")
+this = TB.orderWindow.keepBox
+TB.orderWindow.keepBox:SetChecked(true)
+TB.orderWindow.keepBox.scripts.OnClick(TB.orderWindow.keepBox)
+assert(TB.GetOrderKeep() == true, "ticking the box arms keep")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 3 keep", "Send carries keep when ticked")
+assert(string.find(TB.GetOrderFeedback().text, "(3h, keep) sent, waiting", 1, true) ~= nil,
+    "Send names keep while waiting")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 3", "an invalid-arg reply drops keep first")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without keep in stock"), "the keep retry says so")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "a second invalid-arg reply drops the farm time")
+TB.SetOrderKeep(false)
+assert(TB.GetOrderKeep() == false and not TB.orderWindow.keepBox:GetChecked(),
+    "the setter clears the box")
+assert(TB.ClampOrderAmount(0) == 1 and TB.ClampOrderAmount(999) == 200,
+    "amounts clamp to 1-200")
+TB.SetOrderAmount(25)
+assert(TB.GetOrderAmount() == 25 and TB.orderWindow.amountBox:GetText() == "25",
+    "the amount box follows the setter")
+assert(string.find(firstResult.detail:GetText(), "about 36 kills", 1, true),
+    "the estimate follows the amount")
+
+-- Kind filter: picking a kind browses it (empty text allowed); All restores.
+now = now + 1
+assert(TB.SetOrderCat("bogus") == false and TB.GetOrderCat() == nil, "an unknown kind is refused")
+TB.orderWindow.searchBox.text = ""
+now = now + 1
+local beforeCat = table.getn(addonSent)
+assert(TB.SetOrderCat("leather"), "the kind filter picks leather")
+assert(TB.GetOrderCat() == "leather", "the filter tracks the kind")
+assert(table.getn(addonSent) == beforeCat + 1 and lastAddon() == "order search Goldie farm cat=leather",
+    "picking a kind browses it without text")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70|easy|leather")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0|-|leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+assert(table.getn(TB.GetOrderSearch().items) == 2 and TB.GetOrderSearch().cat == "leather",
+    "the filtered search lands with its kind")
+now = now + 1
+TB.orderWindow.searchBox.text = "light"
+TB.orderWindow.searchBox.scripts.OnTextChanged(TB.orderWindow.searchBox)
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(lastAddon() == "order search Goldie farm cat=leather light",
+    "a filtered search keeps the kind with text")
+-- An old server rejects cat=: the addon retries once without it.
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order search Goldie farm light", "an invalid-arg reply retries the search bare")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without the kind filter"),
+    "the retry says the filter was dropped")
+assert(TB.SetOrderCat("all") and TB.GetOrderCat() == nil, "All clears the filter")
+assert(TB.OrderCatBrowsable("herb") and TB.OrderCatBrowsable("cloth")
+    and not TB.OrderCatBrowsable("drop") and not TB.OrderCatBrowsable("other")
+    and not TB.OrderCatBrowsable("-"), "only small kinds browse empty")
+
+-- Big kinds need text: picking Drops empty sends nothing and hints instead.
+TB.orderWindow.searchBox.text = ""
+now = now + 1
+local beforeBig = table.getn(addonSent)
+assert(TB.SetOrderCat("drop"), "the kind filter picks drops")
+assert(TB.GetOrderCat() == "drop", "the filter tracks the big kind")
+assert(table.getn(addonSent) == beforeBig, "an empty big-kind browse sends nothing")
+assert(string.find(TB.GetOrderFeedback().text, "Type at least 3 letters to search drops", 1, true),
+    "an empty big-kind browse hints at text")
+assert(TB.SendOrderSearch("Goldie", "farm", "", "drop") == false
+    and TB.SendOrderSearch("Goldie", "farm", "", "other") == false,
+    "empty big-kind searches are refused")
+assert(TB.SendOrderSearch("Goldie", "farm", "dr", "drop") == false,
+    "short text with a big kind still needs 3 letters")
+now = now + 1
+TB.orderWindow.searchBox.text = "dev"
+TB.orderWindow.searchBox.scripts.OnTextChanged(TB.orderWindow.searchBox)
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(lastAddon() == "order search Goldie farm cat=drop dev",
+    "text with a big kind sends the filtered search")
+-- A with-text filtered search still retries bare on an old-server invalid.
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order search Goldie farm dev", "an invalid-arg reply retries the search bare")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without the kind filter"),
+    "the retry says the filter was dropped")
+assert(TB.SetOrderCat("all") and TB.GetOrderCat() == nil, "All clears the big kind")
+now = now + 1
+local beforeKind = table.getn(addonSent)
+TB.SetOrderKind("buy")
+assert(TB.GetOrderKind() == "buy", "the kind switches")
+assert(table.getn(addonSent) == beforeKind + 1 and lastAddon() == "order search Goldie buy dev",
+    "a kind switch re-runs a valid search")
+assert(TB.SetOrderKind("steal") == false and TB.GetOrderKind() == "buy",
+    "an unknown kind is refused")
+TB.SetOrderKind("farm")
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|farm")
+assert(not TB.orderWindow:IsVisible(), "a give ACK closes the window")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "order"
+    and TB.lastActionAck.executor == "farm", "a give ACK is recorded")
+TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|25|working|-|Ashenvale")
+assert(guildOrderRow.orderLine:GetText() == "Light Leather 0/25 (Ashenvale)",
+    "the live line repaints the guild row")
+assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+    "an order shows an enabled Cancel")
+now = now + 1
+this = guildOrderRow.cancelBtn
+local beforeCancel = table.getn(addonSent)
+guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
+assert(table.getn(addonSent) == beforeCancel, "row Cancel sends nothing before the confirm")
+assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER", "row Cancel asks first")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"] ~= nil, "cancel dialog must exist")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].text
+    == "Cancel Goldie's order for 25x Light Leather?\n\nCancelling also ends keep-in-stock and no-limit orders.",
+    "the confirm names the bot and item")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+assert(lastAddon() == "order Goldie cancel", "confirming asks for the removal")
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+assert(TB.GetBotOrder("Goldie") == nil, "a cancel ACK drops the row at once")
+assert(string.find(guildOrderRow.orderLine:GetText(), "No order", 1, true),
+    "a cancelled row falls back to No order")
+assert(not guildOrderRow.cancelBtn:IsVisible(), "no order hides Cancel")
+
+-- Errors ride the window feedback plus the generic status line.
+assert(TB.OpenOrderWindow("Goldie"), "the window reopens")
+TB.OnSystemMessage("TBM:ACTION_ERR|order|forbidden|Your rank may not give orders.")
+assert(string.find(TB.GetOrderFeedback().text, "Your rank may not give orders.", 1, true),
+    "the window shows the refusal")
+assert(TB.lastActionError and TB.lastActionError.intent == "order"
+    and TB.lastActionError.code == "forbidden", "the order error is recorded")
+TB.CloseOrderWindow()
+
+-- A kind with no text still searches (browse that kind).
+assert(TB.OpenOrderWindow("Silver"), "the window opens for another bot")
+TB.orderWindow.searchBox.text = ""
+now = now + 1
+assert(TB.SetOrderCat("ore"), "a kind browses with empty text")
+assert(lastAddon() == "order search Silver farm cat=ore", "an empty filtered search goes out")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+assert(table.getn(TB.GetOrderSearch().items) == 0, "an empty filtered search is a real answer")
+assert(TB.SetOrderCat("all") and TB.GetOrderCat() == nil, "the filter clears again")
+TB.orderWindow.searchBox.text = "leather"
+-- An empty search answer clears the list instead of hanging.
+now = now + 1
+TB.SendOrderSearch("Silver", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+assert(table.getn(TB.GetOrderSearch().items) == 0, "an empty search is a real answer")
+assert(TB.orderWindow.emptyMsg:IsVisible()
+    and string.find(TB.orderWindow.emptyMsg:GetText(), "No matching items.", 1, true),
+    "an empty search says so")
+TB.CloseOrderWindow()
+assert(TB.GetOrderWindowBot() == nil, "a closed window tracks no bot")
+
+-- Orders survive a roster-agnostic CAPS refresh but not losing the token.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|1|10|working|-|Ashenvale")
+TB.OnSystemMessage("TBM:ORDER_END")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,loot-log")
+assert(TB.GetBotOrder("Goldie") ~= nil, "a CAPS line with the token keeps orders")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+assert(not TB.HasOrderCapability(), "CAPS is re-checked on every line")
+assert(table.getn(TB.GetOrders()) == 0, "losing the cap drops the model")
+assert(TB.RequestOrderList() == false and TB.SendOrderCancel("Goldie") == false,
+    "losing the cap stops the sends")
+TB.RefreshGuildView()
+assert(not TB.guildFrame.rows[1].ordBtn:IsVisible(), "losing the cap hides the buttons again")
+assert(TB.OrderPollTick() == false, "losing the cap stops the poll tick")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+canEditOfficerNote = true
+
+-- Round 2: the amount box commits while typing, Send reads the box, and a
+-- refresh never wipes a valid typed number.
+assert(TB.OpenOrderWindow("Goldie"), "round 2 reopens the window")
+local amountBox = TB.orderWindow.amountBox
+amountBox.text = "50"
+this = amountBox
+amountBox.scripts.OnTextChanged(amountBox)
+assert(TB.GetOrderAmount() == 50, "typing commits the amount at once")
+assert(amountBox:GetText() == "50", "committing keeps the typed text")
+TB.RefreshOrderWindow()
+assert(amountBox:GetText() == "50" and TB.GetOrderAmount() == 50,
+    "a refresh keeps a valid typed number")
+TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|Ashenvale")
+assert(amountBox:GetText() == "50", "a live update keeps the typed number")
+amountBox.text = "abc"
+amountBox.scripts.OnTextChanged(amountBox)
+assert(TB.GetOrderAmount() == 50, "non-numeric text does not commit")
+TB.RefreshOrderWindow()
+assert(amountBox:GetText() == "abc", "a refresh keeps a half-typed edit")
+this = amountBox
+amountBox.scripts.OnEditFocusLost(amountBox)
+assert(amountBox:GetText() == "50", "focus loss restores the committed amount")
+amountBox.text = "25"
+amountBox.scripts.OnTextChanged(amountBox)
+assert(TB.GetOrderAmount() == 25, "typing again commits the new number")
+TB.SetOrderAmount(10)
+amountBox.text = "25"
+-- No OnTextChanged here: Send must read the box itself.
+now = now + 1
+TB.orderWindow.searchBox.text = "leather"
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.orderWindow.resultRows[1].item = nil
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+this = TB.orderWindow.resultRows[1]
+TB.orderWindow.resultRows[1].scripts.OnClick(TB.orderWindow.resultRows[1])
+assert(TB.GetOrderSelection() == 2318, "round 2 picks the item")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(TB.GetOrderAmount() == 25, "Send commits the box number")
+assert(lastAddon() == "order Goldie farm 2318 25 inf", "Send sends the box number with no time limit")
+local hoursBox = TB.orderWindow.hoursBox
+hoursBox.text = "4"
+this = hoursBox
+hoursBox.scripts.OnTextChanged(hoursBox)
+assert(TB.GetOrderHours() == 4, "typing commits the hours at once")
+hoursBox.text = "abc"
+hoursBox.scripts.OnTextChanged(hoursBox)
+assert(TB.GetOrderHours() == 4, "non-numeric hours do not commit")
+TB.RefreshOrderWindow()
+assert(hoursBox:GetText() == "abc", "a refresh keeps a half-typed hours edit")
+this = hoursBox
+hoursBox.scripts.OnEditFocusLost(hoursBox)
+assert(hoursBox:GetText() == "4", "hours focus loss restores the committed hours")
+assert(TB.ClampOrderHours("0") == 1 and TB.ClampOrderHours("30") == 24 and TB.ClampOrderHours("abc") == 1,
+    "hours clamp text to 1-24")
+
+-- Round 2: unusable results carry no quality escape, so the grey sticks.
+TB.orderWindow.searchBox.text = "leather"
+now = now + 1
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+local goodRow, badRow = TB.orderWindow.resultRows[1], TB.orderWindow.resultRows[2]
+assert(string.find(goodRow.name:GetText(), "|cff", 1, true) ~= nil,
+    "a usable result keeps its quality colour")
+assert(badRow.name:GetText() == "Medium Leather", "an unusable result has no colour escape")
+assert(badRow.name.textColor[1] == 0.45, "an unusable result is greyed")
+
+-- Round 2: the order window and the other satellites exclude each other.
+assert(TB.orderWindow:IsVisible(), "the order window is open")
+TB.OpenBotPanel("Goldie")
+assert(not TB.orderWindow:IsVisible() and TB.botPanel:IsVisible(),
+    "the bot panel closes the order window")
+now = now + 1
+assert(TB.OpenOrderWindow("Goldie"), "the order window reopens")
+assert(TB.orderWindow:IsVisible() and not TB.botPanel:IsVisible(),
+    "the order window closes the bot panel")
+TB.OpenServerInfo()
+assert(not TB.orderWindow:IsVisible() and TB.infoWindow:IsVisible(),
+    "the info window closes the order window")
+assert(TB.OpenOrderWindow("Goldie"), "the order window reopens again")
+assert(TB.orderWindow:IsVisible() and not TB.infoWindow:IsVisible(),
+    "the order window closes the info window")
+TB.CloseOrderWindow()
+TB.CloseServerInfo()
+
+-- No time limit: the default, parse inf, show "no limit", send inf; a
+-- refused inf retries once as 24 hours. Old numeric rows still parse.
+local infOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|inf")
+assert(infOrder and infOrder.hours == "inf", "an inf order line parses")
+assert(string.find(TB.OrderRowText(infOrder), "No limit", 1, true) ~= nil,
+    "inf rows show no limit")
+assert(string.find(TB.OrderTooltipText(infOrder), "Farm time: no limit", 1, true) ~= nil,
+    "inf tooltips show no limit")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|INF").hours == "inf",
+    "INF parses in any case")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").hours == 3,
+    "numeric hours still parse")
+assert(TB.OpenOrderWindow("Goldie"), "the window reopens for no-limit")
+assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
+    "no limit starts ticked")
+assert(TB.orderWindow.hoursBox.mouseEnabled == false
+    and TB.orderWindow.hoursBox.textColor[1] == 0.5,
+    "no limit greys the hours box")
+TB.SetOrderNoLimit(false)
+assert(TB.GetOrderNoLimit() == false and not TB.orderWindow.noLimitBox:GetChecked(),
+    "unticking clears no limit")
+assert(TB.orderWindow.hoursBox.mouseEnabled ~= false
+    and TB.orderWindow.hoursBox.textColor[1] == 1,
+    "clearing no limit restores the hours box")
+TB.SetOrderNoLimit(true)
+assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
+    "the setter ticks no limit")
+TB.orderWindow.searchBox.text = "leather"
+now = now + 1
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+this = TB.orderWindow.resultRows[1]
+TB.orderWindow.resultRows[1].scripts.OnClick(TB.orderWindow.resultRows[1])
+assert(TB.GetOrderSelection() == 2318, "no-limit picks the item")
+TB.SetOrderAmount(10)
+TB.SetOrderKeep(false)
+TB.orderWindow.noLimitBox:SetChecked(true)
+this = TB.orderWindow.noLimitBox
+TB.orderWindow.noLimitBox.scripts.OnClick(TB.orderWindow.noLimitBox)
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 inf", "Send carries inf when ticked")
+assert(string.find(TB.GetOrderFeedback().text, "(no limit) sent, waiting", 1, true) ~= nil,
+    "Send names no limit while waiting")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|bad hours")
+assert(lastAddon() == "order Goldie farm 2318 10 24", "a refused inf retries once as 24 hours")
+assert(string.find(TB.GetOrderFeedback().text, "retrying with 24 hours", 1, true) ~= nil,
+    "the inf retry says so")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "a second invalid reply drops the farm time")
+TB.SetOrderNoLimit(true)
+TB.SetOrderKeep(true)
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 inf keep", "Send carries inf with keep after it")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 inf", "keep still sheds first on an inf give")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|bad hours")
+assert(lastAddon() == "order Goldie farm 2318 10 24", "then a refused inf retries as 24")
+TB.SetOrderNoLimit(false)
+TB.SetOrderKeep(false)
+
+-- Cancel stays reachable on every long-lived order, from the window and
+-- the Guild tab row. Both ask first; only Yes sends.
+local states = { "working", "waiting", "delivering" }
+for _, state in ipairs(states) do
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|" .. state .. "|-|Ashenvale|easy|3")
+    TB.RefreshGuildView()
+    TB.RefreshOrderWindow()
+    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+        "row Cancel stays enabled while " .. state)
+    assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
+        "window Cancel stays enabled while " .. state)
+end
+local longLived = {
+    "TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|inf",
+    "TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|stocked|-|-|-|-|keep",
+}
+for _, line in ipairs(longLived) do
+    TB.OnSystemMessage(line)
+    TB.RefreshGuildView()
+    TB.RefreshOrderWindow()
+    local order = TB.GetBotOrder("Goldie")
+    assert(order ~= nil, "the long-lived order lands")
+    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+        "row Cancel stays enabled for a long-lived order")
+    assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
+        "window Cancel stays enabled for a long-lived order")
+    this = TB.orderWindow.cancelBtn
+    local beforeWindowCancel = table.getn(addonSent)
+    TB.orderWindow.cancelBtn.scripts.OnClick(TB.orderWindow.cancelBtn)
+    assert(table.getn(addonSent) == beforeWindowCancel,
+        "window Cancel sends nothing before the confirm")
+    assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER",
+        "window Cancel asks first")
+    now = now + 1
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+    assert(lastAddon() == "order Goldie cancel", "confirming the window Cancel sends")
+    this = guildOrderRow.cancelBtn
+    local beforeRowCancel = table.getn(addonSent)
+    guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
+    assert(table.getn(addonSent) == beforeRowCancel,
+        "row Cancel sends nothing before the confirm")
+    now = now + 1
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+    assert(lastAddon() == "order Goldie cancel", "confirming the row Cancel sends")
+end
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+assert(TB.GetBotOrder("Goldie") == nil, "the last confirm clears the row")
+TB.CloseOrderWindow()
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,

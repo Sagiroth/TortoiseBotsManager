@@ -1166,6 +1166,117 @@ local cases = {
             row1.roleBtn.scripts.OnClick(row1.roleBtn)
         end,
     },
+    {
+        id = "guild.order.list",
+        expected = { ".bot order list" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB._lastOrderListAt = 0
+            TB.ShowTab("guild")
+        end,
+    },
+    {
+        id = "guild.order.open",
+        expected = { ".bot order list" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.ShowTab("guild")
+            local row1 = TB.guildFrame.rows[1]
+            this = row1.ordBtn
+            row1.ordBtn.scripts.OnClick(row1.ordBtn)
+            TB.CloseOrderWindow()
+        end,
+    },
+    {
+        id = "guild.order.search",
+        expected = { ".bot order search Goldie farm leather" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.OpenOrderWindow("Goldie")
+            TB.SendOrderSearch("Goldie", "farm", "leather")
+            TB.CloseOrderWindow()
+        end,
+    },
+    {
+        id = "guild.order.give",
+        expected = { ".bot order Goldie farm 2318 10 1" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "farm", 2318, 10, 1)
+        end,
+    },
+    {
+        id = "guild.order.give.keep",
+        expected = { ".bot order Goldie farm 2318 10 2 keep" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true)
+        end,
+    },
+    {
+        id = "guild.order.give.inf",
+        expected = { ".bot order Goldie farm 2318 10 inf" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "farm", 2318, 10, "inf")
+        end,
+    },
+    {
+        id = "guild.order.give.inf.keep",
+        expected = { ".bot order Goldie farm 2318 10 inf keep" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "farm", 2318, 10, "INF", true)
+        end,
+    },
+    {
+        id = "guild.order.give.nohours",
+        expected = { ".bot order Goldie farm 2318 10" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "farm", 2318, 10)
+        end,
+    },
+    {
+        id = "guild.order.give.default",
+        expected = { ".bot order search Wirebot farm leather", ".bot order Wirebot farm 2318 10 inf" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.OpenOrderWindow("Wirebot")
+            TB.SendOrderSearch("Wirebot", "farm", "leather")
+            TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+            TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+            TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+            TB.SetOrderSelection(2318)
+            this = TB.orderWindow.sendBtn
+            TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+            TB.CloseOrderWindow()
+        end,
+    },
+    {
+        id = "guild.order.search.cat",
+        expected = { ".bot order search Goldie farm cat=leather light" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderSearch("Goldie", "farm", "light", "leather")
+        end,
+    },
+    {
+        id = "guild.order.search.cat.browse",
+        expected = { ".bot order search Goldie farm cat=ore" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderSearch("Goldie", "farm", "", "ore")
+        end,
+    },
+    {
+        id = "guild.order.cancel",
+        expected = { ".bot order Goldie cancel" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderCancel("Goldie")
+        end,
+    },
 
     -- ── Raid Tab ───────────────────────────────────────────────────────────
     {
@@ -1692,6 +1803,7 @@ local cases = {
         id = "guild.fill.raid",
         expected = { ".bot invite Goldie" },
         trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
             TB.ShowTab("guild")
             TB.ClearClaimedSelection()
             updateGroup({}, "Priest")

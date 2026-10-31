@@ -246,6 +246,10 @@ function TB.ParseActionMessage(msg)
             if TB.Refresh then TB.Refresh() end
             return true, "ack", packet
         end
+        if TB.OnOrderAck and TB.OnOrderAck(packet) then
+            if TB.Refresh then TB.Refresh() end
+            return true, "ack", packet
+        end
         -- Dungeon run: clears the model on the "no run" status ACK; the
         -- generic text below still reports every run ACK/ERR.
         if TB.OnRunAck then TB.OnRunAck(packet) end
@@ -271,6 +275,7 @@ function TB.ParseActionMessage(msg)
         end
         if TB.OnBotPanelError then TB.OnBotPanelError(packet) end
         if TB.OnRunError then TB.OnRunError(packet) end
+        if TB.OnOrderError then TB.OnOrderError(packet) end
         if TB.OnLootError and TB.OnLootError(packet) then
             if TB.Refresh then TB.Refresh() end
             return true, "error", packet
@@ -543,7 +548,7 @@ function TB.OnCommandQueued(cmd)
     local verb = string.lower(string.gsub(cmd or "", "%s+.*", ""))
     local name = commandTargetName(cmd)
     if name and verb ~= "list" and verb ~= "roster" and verb ~= "stats"
-        and verb ~= "help" and verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
+        and verb ~= "help" and verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" and verb ~= "order" and not TB.IsPanelVerb(verb) and TB.BeginOperation then
         if verb == "add" then TB.AddToRoster(name) end
         TB.BeginOperation(name, verb, true)
         if TB.Refresh then TB.Refresh() end
@@ -567,7 +572,7 @@ function TB.OnCommandSent(cmd)
     -- not a roster name: no per-bot operation for them.
     if name and verb ~= "action" and verb ~= "strategy"
         and verb ~= "commander" and verb ~= "cmd" and verb ~= "run"
-        and verb ~= "lootlog" and TB.BeginOperation then
+        and verb ~= "lootlog" and verb ~= "order" and TB.BeginOperation then
         TB.BeginOperation(name, verb, false)
     end
 
@@ -582,7 +587,7 @@ function TB.OnCommandSent(cmd)
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
     end
     if TB.Refresh then TB.Refresh() end
-    if verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
+    if verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" and verb ~= "order" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────
@@ -712,6 +717,7 @@ function TB.OnSystemMessage(msg)
             -- (and its button, via Refresh) on every CAPS line.
             if TB.NoteRunCaps then TB.NoteRunCaps() end
             if TB.NoteLootCaps then TB.NoteLootCaps() end
+            if TB.NoteOrderCaps then TB.NoteOrderCaps() end
             if TB.Refresh then TB.Refresh() end
             TB.lastSystem = msg
             return
@@ -767,6 +773,11 @@ function TB.OnSystemMessage(msg)
     end
 
     if TB.ParseLootMessage and TB.ParseLootMessage(msg) then
+        TB.lastSystem = msg
+        return
+    end
+
+    if TB.ParseOrderMessage and TB.ParseOrderMessage(msg) then
         TB.lastSystem = msg
         return
     end

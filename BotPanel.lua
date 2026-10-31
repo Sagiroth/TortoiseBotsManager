@@ -1286,6 +1286,7 @@ function TB.OpenBotPanel(name, view)
     if not panel then createPanel() end
     if currentBot and currentBot ~= name then TB.SetSpellPending(currentBot, false) end
     if TB.CloseRunWindow then TB.CloseRunWindow() end
+    if TB.CloseOrderWindow then TB.CloseOrderWindow() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then bagPage = 1; spellPage = 1 end
     currentBot = name
@@ -1316,6 +1317,7 @@ function TB.CloseBotPanel()
     if TB.CloseVault then TB.CloseVault() end
     if TB.CloseNpc then TB.CloseNpc() end
     if TB.CloseRunWindow then TB.CloseRunWindow() end
+    if TB.CloseOrderWindow then TB.CloseOrderWindow() end
     if panel then panel:Hide() end
 end
 
