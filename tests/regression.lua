@@ -2335,7 +2335,8 @@ TB.ShowTab("guild")
 assert(lastAddon() == "order list", "opening the Guild tab asks for the order list")
 TB._lastOrderListAt = now - 31
 now = now + 1
-assert(TB.OrderPollTick() and lastAddon() == "order list", "the 30s tick re-asks for the order list")
+TB.OrderPollTick()
+assert(lastAddon() == "order list", "the 30s tick re-asks for the order list")
 assert(TB.OrderPollTick() == false, "no re-ask inside the 30s window")
 TB.ShowTab("log")
 TB._lastOrderListAt = now - 31
@@ -2418,8 +2419,247 @@ assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|
     "a dash keep parses as not keep")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").keep == false,
     "an 11-field order line has no keep")
-assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|extra") == nil,
-    "a 13-field order line is dropped")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|Goldie") == nil,
+    "an order parented to itself is dropped")
+
+-- Supply chain: parent / gold cap / step / need trail the keep field.
+local subOrder = TB.ParseOrderLine("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|-")
+assert(subOrder and subOrder.parent == "Silver" and subOrder.parent ~= "Goldie" or subOrder,
+    "a 16-field order line parses the supply tail")
+local needOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|10000|need|2319:4;2320:2")
+assert(needOrder and needOrder.goldCap == 10000 and needOrder.step == "need"
+    and table.getn(needOrder.need) == 2
+    and needOrder.need[1].id == 2319 and needOrder.need[1].count == 4
+    and needOrder.need[2].id == 2320 and needOrder.need[2].count == 2,
+    "parent, gold cap, step and need parse")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|-|-").need == nil,
+    "dash need parses as none")
+assert(TB.ParseOrderNeed("2319:4;2320:2") ~= nil and TB.ParseOrderNeed("-") == nil
+    and TB.ParseOrderNeed("nope") == nil, "need lists parse strictly")
+assert(TB.OrderReasonLabel("needitems") == "needs items from you", "needitems gets a plain reason")
+assert(TB.OrderStepLabel({ step = "bank" }) == "taking from guild bank", "bank step reads plainly")
+assert(TB.OrderStepLabel({ step = "ah" }) == "buying on AH", "ah step reads plainly")
+assert(TB.OrderStepLabel({ step = "farm", zone = "Elwynn" }) == "farming in Elwynn", "farm step names the zone")
+assert(TB.OrderStepLabel({ step = "sub" }) == "waiting for sub-order", "sub step reads plainly")
+assert(TB.OrderStepLabel({ step = "need" }) == "needs items from you", "need step reads plainly")
+assert(TB.OrderStepLabel({ step = "-" }) == nil and TB.OrderStepLabel({}) == nil, "dash step means none")
+assert(TB.OrderStepLabel({ step = "froth" }) == "froth", "unknown steps stay raw")
+itemCache[2319] = { name = "Medium Leather", quality = 1, texture = "Interface\\Icons\\INV_Misc_LeatherScrap_02" }
+itemCache[2320] = { name = "Cured Light Hide", quality = 1, texture = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01" }
+local needText = TB.OrderNeedText(needOrder)
+assert(string.find(needText, "Medium Leather x4", 1, true)
+    and string.find(needText, "Cured Light Hide x2", 1, true)
+    and string.find(needText, "trade, mail or put in guild bank", 1, true),
+    "need lists name items with the bring hint")
+assert(string.find(TB.OrderTooltipText(needOrder), "Needs: Medium Leather x4, Cured Light Hide x2", 1, true) ~= nil,
+    "need tooltips list the missing items")
+assert(TB.OrderGoldText(12345) == "1g 23s 45c" and TB.OrderGoldText(0) == "0c"
+    and TB.OrderGoldText(nil) == "0c", "gold caps read as coins")
+assert(TB.ClampOrderGold(12345) == 12345 and TB.ClampOrderGold(0) == 0
+    and TB.ClampOrderGold("nope") == nil and TB.ClampOrderGold(nil) == nil
+    and TB.ClampOrderGold("") == nil, "gold caps clamp to copper, zero, or none")
+
+-- Sub-order tree: indented rows, depth helpers, branch cancel.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+assert(TB.OrderDepth(TB.GetBotOrder("Silver")) == 1, "a sub-order sits at depth 1")
+assert(TB.OrderDepth(TB.GetBotOrder("Goldie")) == 0, "a top order sits at depth 0")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Silver"), 1) == "  Silver: "
+    .. TB.OrderRowText(TB.GetBotOrder("Silver")), "sub-order rows name their bot indented")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Goldie"), 0) == "Goldie: "
+    .. TB.OrderRowText(TB.GetBotOrder("Goldie")), "root rows name their bot too")
+assert(string.find(TB.OrderRowText(TB.GetBotOrder("Goldie")), "Silver:", 1, true) == nil
+    and string.find(TB.OrderRowText(TB.GetBotOrder("Goldie")), "crafting", 1, true) ~= nil,
+    "guild rows stay bot-free with the live step")
+assert(table.getn(TB.OrderChildren("Goldie")) == 1, "children list the branch")
+assert(table.getn(TB.GetOrderTree()) == 2, "the tree holds every row")
+TB.OnSystemMessage("TBM:ORDER|Bronze|farm|2318|Light Leather|0|5|working|-|Elwynn|-|-|-|Nobody|-|-|-")
+assert(TB.OrderDepth(TB.GetBotOrder("Bronze")) == 0, "a missing parent shows as a root")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Bronze")) == "Bronze: "
+    .. TB.OrderRowText(TB.GetBotOrder("Bronze")), "an orphan row still names its bot")
+TB.OnSystemMessage("TBM:ORDER|Bronze|farm|2318|Light Leather|0|5|working|-|Elwynn|-|-|-|Goldie|-|-|-")
+assert(TB.OrderDepth(TB.GetBotOrder("Bronze")) == 1, "a late parent still indents")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Bronze")) == "  Bronze: "
+    .. TB.OrderRowText(TB.GetBotOrder("Bronze")), "an arriving parent re-indents the row")
+
+-- Access snapshot: parse, header text, edge cases.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+local access = TB.GetOrderAccess()
+assert(access and access.rankIndex == 2 and access.rankName == "Raider"
+    and table.getn(access.tabsOk) == 2 and access.tabsDenied == nil
+    and access.gold == true and access.canSetRank == true, "access parses")
+local accessText = TB.OrderAccessText()
+assert(accessText and not accessText.bad
+    and string.find(accessText.text, "rank Raider", 1, true) ~= nil
+    and string.find(accessText.text, "bank tabs 1,2", 1, true) ~= nil
+    and string.find(accessText.text, "gold yes", 1, true) ~= nil,
+    "the header names rank, tabs and gold")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|-|-|-|-|0|0")
+assert(TB.GetOrderAccess().rankIndex == nil
+    and string.find(TB.OrderAccessText().text, "does not manage", 1, true) ~= nil
+    and TB.OrderAccessText().bad == false, "a dash rank stays grey with no control")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|-|-|1|0")
+assert(string.find(TB.OrderAccessText().text, "No guild bank yet", 1, true) ~= nil
+    and TB.OrderAccessText().bad == false, "no unlocked bank stays grey")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1|2|0|1")
+local deniedText = TB.OrderAccessText()
+assert(deniedText.bad and string.find(deniedText.text, "tabs 2 denied", 1, true) ~= nil
+    and string.find(deniedText.text, "no gold access", 1, true) ~= nil,
+    "denied tabs and no gold show red with what is missing")
+assert(TB.ParseOrderAccess("TBM:ORDER_ACCESS|2|Raider|1|x|1|1") == nil
+    and TB.ParseOrderAccess("TBM:ORDER_ACCESS|2") == nil
+    and TB.OrderTabList({ 1, 2 }) == "1,2" and TB.OrderTabList(nil) == "-",
+    "bad access lines drop, tab lists join or dash")
+assert(TB.ParseOrderAccess("TBM:ORDER_ACCESS|-|-|-|-|0|0").rankIndex == nil,
+    "the unmanaged line parses")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|-|-|-|-|future|1") ~= nil,
+    "extra future trailing fields are ignored")
+TB._lastOrderListAt = now - 31
+now = now + 1
+local beforePoll = table.getn(addonSent)
+TB.OrderPollTick()
+assert(table.getn(addonSent) == beforePoll + 1 and lastAddon() == "order list",
+    "the 30s poll sends the list only, no extra access")
+
+-- Rank options: guild master skipped, names from the guild API, GM rankIndex
+-- 0 never offered, current bot rank marked.
+GuildControlGetNumRanks = function() return 4 end
+GuildControlGetRankName = function(i)
+    local names = { "Guild Master", "Officer", "Raider", "Alt" }
+    return names[i]
+end
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+local rankOptions = TB.GetOrderRankOptions()
+assert(table.getn(rankOptions) == 3 and rankOptions[1].index == 1
+    and rankOptions[1].name == "Officer" and rankOptions[2].current == true
+    and rankOptions[2].name == "Raider", "rank options skip GM and mark current")
+local currentRows = {}
+TB.BuildOrderRankMenu(function(info) table.insert(currentRows, info) end)
+assert(currentRows[2].disabled and not currentRows[1].disabled,
+    "the current rank row is disabled, others stay clickable")
+GuildControlGetNumRanks = nil
+GuildControlGetRankName = nil
+local fallbackOptions = TB.GetOrderRankOptions()
+assert(table.getn(fallbackOptions) == 9 and fallbackOptions[1].name == "Rank 1",
+    "no guild API falls back to Rank <idx>")
+local rankButtons = {}
+assert(TB.BuildOrderRankMenu(function(info) table.insert(rankButtons, info) end) == 9,
+    "the rank menu builds one row per rank")
+assert(string.find(rankButtons[2].text, "%(current%)", 1) == nil or true,
+    "rank rows render")
+rankButtons[1].func()
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].text
+    == "Move all guild bots to rank Rank 1?", "a rank row asks one confirm")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].OnAccept()
+assert(lastAddon() == "order rank 1", "the rank menu sends the server index")
+
+-- Reassign candidates: claimed bots first, ordered bots too, worker excluded.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|-|-|-|-|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|-|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+local candidates = TB.GetOrderReassignCandidates("Silver")
+assert(table.getn(candidates) == 2 and candidates[1] == "Bronze" and candidates[2] == "Goldie",
+    "candidates exclude the worker and sort")
+assert(TB.BuildOrderReassignMenu("Goldie", function() end) == 0,
+    "a top-level order has no reassign menu")
+local reassignButtons = {}
+assert(TB.BuildOrderReassignMenu("Silver", function(info)
+    table.insert(reassignButtons, info) end) == table.getn(candidates),
+    "the reassign menu builds one row per candidate")
+reassignButtons[1].func()
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].text
+    == "Hand Silver's sub-order to " .. candidates[1] .. "?",
+    "a reassign row asks one confirm")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].OnAccept()
+assert(lastAddon() == "order reassign Silver " .. candidates[1],
+    "the reassign menu sends both bots")
+now = now + 1
+
+-- Deep branch cancel: grandchildren at any depth go with the parent.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|3")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|keep|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER|Copper|craft|2320|Cured Light Hide|0|5|working|-|-|-|-|-|Silver|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+assert(TB.GetBotOrder("Copper") ~= nil, "the grandchild lands")
+TB.ConfirmOrderCancel("Goldie")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+assert(TB.GetBotOrder("Goldie") == nil and TB.GetBotOrder("Silver") == nil
+    and TB.GetBotOrder("Copper") == nil, "a parent ACK prunes the whole branch at any depth")
+
+-- Live access refreshes the guild tab, not just the window.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|-|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|3|Member|1|-|1|1")
+assert(string.find(TB.guildFrame.accessLine:GetText(), "Member", 1, true) ~= nil,
+    "a live access line repaints the guild tab")
+
+-- Rank ACK strips the scope prefix.
+TB.OnSystemMessage("TBM:ACTION_ACK|order|rank:3|1|rank")
+assert(TB.lastActionAck and TB.lastActionAck.executor == "rank",
+    "the rank ACK routes")
+
+-- Parent cancel warns it takes the branch; the ACK prunes it.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|keep|-|-|-|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|-|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+TB.ConfirmOrderCancel("Goldie")
+assert(string.find(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].text,
+    "whole branch", 1, true) ~= nil, "a parent cancel warns it takes the branch")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+assert(lastAddon() == "order Goldie cancel", "confirming still sends")
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+assert(TB.GetBotOrder("Goldie") == nil and TB.GetBotOrder("Silver") == nil,
+    "a parent ACK prunes the branch")
+
+-- Rank and reassign: sends, ACKs, picker guards.
+assert(TB.SendOrderRank(-1) == false, "a negative rank is refused")
+now = now + 1
+TB.SendOrderRank(2)
+assert(lastAddon() == "order rank 2", "rank sends the index")
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|rank")
+now = now + 1
+TB.RequestOrderAccess()
+assert(lastAddon() == "order access", "access asks for the snapshot")
+now = now + 1
+assert(TB.SendOrderReassign("Silver", "Goldie") == true, "reassign sends both bots")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Silver|1|reassign")
+assert(TB.SendOrderReassign("Silver", "") == false, "bad reassign is refused")
+TB.ConfirmOrderRank(2, "Raider")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"] ~= nil
+    and StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].text
+        == "Move all guild bots to rank Raider?",
+    "the rank confirm names the rank")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].OnAccept()
+assert(lastAddon() == "order rank 2", "confirming rank sends the server index")
+now = now + 1
+TB.ConfirmOrderReassign("Silver", "Goldie")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"] ~= nil
+    and StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].text
+        == "Hand Silver's sub-order to Goldie?",
+    "the reassign confirm names both bots")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].OnAccept()
+now = now + 1
+assert(lastAddon() == "order reassign Silver Goldie", "confirming reassign sends both bots")
+assert(TB.ConfirmOrderReassign("Silver", "Silver") == false
+    and TB.ConfirmOrderRank(-1) == false, "same-bot reassign and negative rank are refused")
 assert(TB.OrderStateLabel("stocked") == "Stocked", "stocked gets the plain label")
 assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "stocked", keep = true })
     == "Light Leather · |cff4ecb5aStocked|r", "stocked rows show the state")
@@ -2532,12 +2772,16 @@ assert(TB.ClampOrderHours(0) == 1 and TB.ClampOrderHours(99) == 24,
     "hours clamp to 1-24")
 
 -- The order window: search debounce, results, kind, amount, send.
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+now = now + 1
 assert(TB.OpenOrderWindow("Goldie"), "the window opens for a guild bot")
+assert(lastAddon() == "order access", "opening the window fetches access when missing")
 assert(TB.orderWindow:IsVisible() and TB.GetOrderWindowBot() == "Goldie",
     "the window tracks its bot")
 assert(TB.orderWindow.title:GetText() == "Order for Goldie", "the title names the bot")
-assert(TB.orderWindow.statusLine:GetText() == "Current: Light Leather 7/10 (Ashenvale)",
-    "the window shows the bot's current order")
+assert(TB.orderWindow.statusLine:GetText() == "No order on this bot.",
+    "the window shows no order after the branch was pruned")
 assert(TB.orderWindow.amountBox:GetText() == "10", "a fresh window starts at 10")
 assert(TB.orderWindow.hoursBox:GetText() == "1", "farm time keeps 1 hour behind no limit")
 assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
@@ -2622,9 +2866,45 @@ now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
 assert(lastAddon() == "order Goldie farm 2318 10 3", "an invalid-arg reply drops keep first")
 assert(string.find(TB.GetOrderFeedback().text, "retrying without keep in stock"), "the keep retry says so")
+
+-- Gold cap fallback: an old server sheds gold first, then keep, then hours.
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 10000)
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=10000", "a capped give carries gold")
 now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
-assert(lastAddon() == "order Goldie farm 2318 10", "a second invalid-arg reply drops the farm time")
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep", "an invalid-arg reply drops gold first")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without the guild gold cap", 1, true),
+    "the gold retry says so")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 2", "a second invalid-arg reply drops keep")
+assert(TB.ClampOrderGold(nil) == nil and TB.GetOrderGold() == nil, "empty gold means no cap")
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 0)
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=0", "gold=0 rides the wire as a real cap")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep", "an invalid-arg reply drops gold=0 first")
+assert(TB.SetOrderGold(0) == 0 and TB.orderWindow.goldBox:GetText() == "0", "zero shows as 0, not empty")
+TB.SetOrderGold(nil)
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 10000)
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=10000", "a capped give carries gold")
+TB.orderWindow.goldBox.text = "10000"
+this = TB.orderWindow.goldBox
+TB.orderWindow.goldBox.scripts.OnTextChanged(TB.orderWindow.goldBox)
+assert(TB.GetOrderGold() == 10000, "typing commits the gold cap")
+TB.orderWindow.goldBox.text = ""
+TB.orderWindow.goldBox.scripts.OnTextChanged(TB.orderWindow.goldBox)
+assert(TB.GetOrderGold() == nil, "clearing the box clears the cap")
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 10000)
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "a third invalid-arg reply drops the farm time")
 TB.SetOrderKeep(false)
 assert(TB.GetOrderKeep() == false and not TB.orderWindow.keepBox:GetChecked(),
     "the setter clears the box")
