@@ -1761,7 +1761,7 @@ function TB.InitUI()
         rankBtn:SetText("Rank")
         setButtonTooltip(rankBtn, "Change the guild rank bots get", "Bots' rank")
         rankBtn:SetScript("OnClick", function()
-            if TB.OpenOrderRankPicker then TB.OpenOrderRankPicker() end
+            if TB.OpenOrderRankMenu then TB.OpenOrderRankMenu(this) end
         end)
         guildFrame.rankBtn = rankBtn
         local GUILD_ROW_H = 32
@@ -1899,13 +1899,8 @@ function TB.InitUI()
             moveBtn:SetText("Mv")
             moveBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
-                if entry and TB.SetOrderReassign and TB.OpenOrderReassignPicker then
-                    TB.SetOrderReassign(entry.name)
-                    if not TB.OpenOrderReassignPicker() then
-                        TB.OpenOrderWindow(entry.name)
-                        TB.SetOrderReassign(entry.name)
-                        TB.OpenOrderReassignPicker()
-                    end
+                if entry and TB.OpenOrderReassignMenu then
+                    TB.OpenOrderReassignMenu(entry.name, this)
                 end
             end)
             setButtonTooltip(moveBtn, "Hand this sub-order to another guild bot.", "Reassign")

@@ -1320,6 +1320,24 @@ local cases = {
             TB.SendOrderCancel("Goldie")
         end,
     },
+    {
+        id = "guild.order.rank.confirm",
+        expected = { ".bot order rank 2" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.ConfirmOrderRank(2, "Raider")
+            StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].OnAccept()
+        end,
+    },
+    {
+        id = "guild.order.reassign.confirm",
+        expected = { ".bot order reassign Silver Goldie" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.ConfirmOrderReassign("Silver", "Goldie")
+            StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].OnAccept()
+        end,
+    },
 
     -- ── Raid Tab ───────────────────────────────────────────────────────────
     {

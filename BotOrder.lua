@@ -600,6 +600,56 @@ function TB.OrderTabList(tabs)
     return table.concat(parts, ",")
 end
 
+-- Guild ranks for the rank dropdown: index 0 is the guild master (skipped:
+-- setting bots to GM is never offered), the rest by name from the client
+-- guild API when present, else "Rank <idx>". The server's rankIndex is the
+-- same 0-based index (GetGuildRosterInfo rankIndex; 1-based GuildControl
+-- names minus one). The current bot rank is marked, not offered.
+function TB.GetOrderRankOptions()
+    local access = TB.GetOrderAccess()
+    if not access or not access.canSetRank then return {} end
+    local names = {}
+    if GuildControlGetNumRanks and GuildControlGetRankName then
+        local count = GuildControlGetNumRanks() or 0
+        for i = 2, math.min(count, 10) do
+            local name = GuildControlGetRankName(i)
+            if name and trim(name) ~= "" then names[i - 1] = name end
+        end
+    end
+    if table.getn(names) == 0 then
+        for idx = 1, 9 do names[idx] = "Rank " .. idx end
+    end
+    local out = {}
+    for idx = 1, 9 do
+        if names[idx] then
+            table.insert(out, { index = idx, name = names[idx],
+                current = access.rankIndex == idx })
+        end
+    end
+    return out
+end
+
+-- Reassign candidates: the guild bots the addon knows (claimed roster first,
+-- then any other ordered bot), excluding the worker holding the sub-order.
+-- Sorted so the menu reads the same from any list order.
+function TB.GetOrderReassignCandidates(subBot)
+    subBot = norm(subBot)
+    local seen = {}
+    local out = {}
+    local function add(name)
+        name = norm(name)
+        if not name or name == subBot or seen[name] then return end
+        seen[name] = true
+        table.insert(out, name)
+    end
+    if TB.GetClaimedBots then
+        for _, entry in ipairs(TB.GetClaimedBots() or {}) do add(entry.name) end
+    end
+    for _, order in pairs(orders) do add(order.bot) end
+    table.sort(out)
+    return out
+end
+
 function TB.ParseOrderItemLine(msg)
     if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_ITEM|" then return nil end
     local fields = splitProtocol(string.sub(msg, 16))
@@ -1054,7 +1104,6 @@ local orderHours = 1
 local orderNoLimit = true
 local orderKeep = false
 local orderGold = nil
-local selectedReassign = nil
 local searchPendingAt = nil
 -- A picked empty-text row clears once typing starts: the next run is a
 -- plain text search again, not another browse.
@@ -1208,17 +1257,6 @@ function TB.SetOrderSelection(itemId)
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
 end
 
--- The sub-order picked for "Move" in the order window: nil or a bot name.
-function TB.GetOrderReassign()
-    return selectedReassign
-end
-
-function TB.SetOrderReassign(bot)
-    selectedReassign = norm(bot)
-    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
-    return selectedReassign
-end
-
 function TB.GetOrderFeedback()
     return feedback
 end
@@ -1352,6 +1390,11 @@ local function firePendingSearch()
     TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
 end
 
+-- Dropdown menus (rank list, reassign targets): the 1.12 FrameXML set is
+-- UIDropDownMenu_Initialize / UIDropDownMenu_AddButton / ToggleDropDownMenu
+-- on a UIDropDownMenuTemplate frame anchored to the cursor. Each menu row
+-- picks, asks one confirm, then sends; the builders below stay testable
+-- without the global DropDownList frames.
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
     win:SetWidth(OW); win:SetHeight(510 + 118)
@@ -1527,7 +1570,7 @@ local function createWindow()
     win.rankBtn = smallButton(win, "Rank", 56, 260, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 2),
         "Change bots' rank", "Pick the guild rank bots get (needs rank rights).",
         function()
-            TB.OpenOrderRankPicker()
+            TB.OpenOrderRankMenu(this)
         end)
 
     -- Live orders and sub-orders: every row names its bot and step, indented
@@ -1546,12 +1589,6 @@ local function createWindow()
         TB.SetTextColor(line, color("muted"))
         win.treeLines[i] = line
     end
-
-    win.reassignBtn = smallButton(win, "Move", 56, 260, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 40),
-        "Reassign sub-order", "Hand the picked sub-order to another guild bot.",
-        function()
-            TB.OpenOrderReassignPicker()
-        end)
 
     local base = 152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 76
     local farmNote = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1887,16 +1924,6 @@ function TB.RefreshOrderWindow()
             end
         end
     end
-    if win.reassignBtn then
-        local picked = selectedReassign
-        if picked and orders[picked] and orders[picked].parent and TB.CanGiveOrders() then
-            win.reassignBtn:Show()
-            win.reassignBtn:SetText("Move " .. picked)
-            win.reassignBtn:Enable()
-        else
-            win.reassignBtn:Hide()
-        end
-    end
     if win.goldBox then
         if TB.CanGiveOrders() then
             win.goldBox:EnableMouse(true)
@@ -1968,7 +1995,6 @@ function TB.OpenOrderWindow(bot)
         orderGold = nil
         orderCat = nil
         selectedItemId = nil
-        selectedReassign = nil
         feedback = nil
         searchPendingAt = nil
         searchTouched = false
@@ -2007,50 +2033,111 @@ function TB.CloseOrderWindow()
     if win then win:Hide() end
 end
 
--- Rank picker: 1.12 popups only offer two buttons, so Rank steps through the
--- ten guild ranks one at a time (each Yes sends the next index). The label
--- always names the current rank; the server answers ACK or ERR and the
--- fresh TBM:ORDER_ACCESS repaints.
-function TB.OpenOrderRankPicker()
-    local access = TB.GetOrderAccess()
-    if not access or not access.canSetRank or not access.rankIndex then return false end
-    local next = access.rankIndex + 1
-    if next > 9 then next = 0 end
-    local label = "Bots' rank is now " .. (access.rankName or ("#" .. access.rankIndex))
-        .. ". Set it to rank " .. next .. "?"
+-- Rank menu: a dropdown listing the guild's ranks by name (guild master
+-- skipped, current bot rank marked). Picking one asks "Move all guild bots
+-- to rank <name>?" and only Yes sends `.bot order rank <idx>` with the
+-- server's 0-based rank index. The builders stay testable without the
+-- global DropDownList frames; the openers need the 1.12 dropdown API.
+function TB.BuildOrderRankMenu(addButton)
+    local options = TB.GetOrderRankOptions()
+    for _, option in ipairs(options) do
+        local label = option.name
+        if option.current then label = label .. " (current)" end
+        addButton({ text = label, notCheckable = 1,
+            func = function() TB.ConfirmOrderRank(option.index, option.name) end })
+    end
+    return table.getn(options)
+end
+
+function TB.OpenOrderRankMenu(owner)
+    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return false end
+    if table.getn(TB.GetOrderRankOptions()) == 0 then return false end
+    if not TB._orderRankMenu then
+        TB._orderRankMenu = CreateFrame("Frame", "TortoiseBotsManagerOrderRankMenu",
+            UIParent, "UIDropDownMenuTemplate")
+    end
+    local menu = TB._orderRankMenu
+    UIDropDownMenu_Initialize(menu, function()
+        TB.BuildOrderRankMenu(UIDropDownMenu_AddButton)
+    end, "MENU")
+    ToggleDropDownMenu(1, nil, menu, "cursor")
+    return true
+end
+
+-- Reassign menu: a dropdown on the sub-order row listing the guild's bots
+-- the addon knows, excluding the worker holding the sub-order. Picking one
+-- asks first, then sends `.bot order reassign <sub> <new>`. No candidates:
+-- a short message instead of a menu.
+function TB.BuildOrderReassignMenu(subBot, addButton)
+    subBot = norm(subBot)
+    if not subBot or not orders[subBot] or not orders[subBot].parent then return 0 end
+    local names = TB.GetOrderReassignCandidates(subBot)
+    for _, name in ipairs(names) do
+        addButton({ text = name, notCheckable = 1,
+            func = function() TB.ConfirmOrderReassign(subBot, name) end })
+    end
+    return table.getn(names)
+end
+
+function TB.OpenOrderReassignMenu(subBot, owner)
+    subBot = norm(subBot)
+    if not subBot then return false end
+    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return false end
+    if table.getn(TB.GetOrderReassignCandidates(subBot)) == 0 then
+        TB.SetOrderFeedback("No other guild bots to hand it to.", "warn")
+        return false
+    end
+    if not TB._orderReassignMenu then
+        TB._orderReassignMenu = CreateFrame("Frame", "TortoiseBotsManagerOrderReassignMenu",
+            UIParent, "UIDropDownMenuTemplate")
+    end
+    local menu = TB._orderReassignMenu
+    UIDropDownMenu_Initialize(menu, function()
+        TB.BuildOrderReassignMenu(subBot, UIDropDownMenu_AddButton)
+    end, "MENU")
+    ToggleDropDownMenu(1, nil, menu, "cursor")
+    return true
+end
+
+function TB.ConfirmOrderRank(index, name)
+    index = math.floor(tonumber(index) or -1)
+    if index < 0 then return false end
+    local text = "Move all guild bots to rank " .. (name or ("#" .. index)) .. "?"
     if StaticPopupDialogs and StaticPopup_Show then
         StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"] = {
-            text = label,
+            text = text,
             button1 = "Yes",
             button2 = "No",
-            OnAccept = function() TB.SendOrderRank(next) end,
+            OnAccept = function() TB.SendOrderRank(index) end,
             timeout = 0,
             whileDead = 1,
             hideOnEscape = 1,
         }
         StaticPopup_Show("TORTOISEBOTSMANAGER_ORDER_RANK")
     else
-        TB.SendOrderRank(next)
+        TB.SendOrderRank(index)
     end
     return true
 end
 
--- Reassign picker: 1.12 popups only offer two buttons, so Move asks for the
--- target name in the window's search box: type the guild bot's name there,
--- then Move sends. The tree hint names the picked sub-order.
-function TB.OpenOrderReassignPicker()
-    if not selectedReassign or not orders[selectedReassign] then return false end
-    if not orders[selectedReassign].parent then return false end
-    local target = win and win.searchBox and trim(win.searchBox:GetText() or "") or ""
-    if target == "" then
-        TB.SetOrderFeedback("Type the new bot's name in the search box, then Move.", "warn")
-        return false
+function TB.ConfirmOrderReassign(subBot, newBot)
+    subBot = norm(subBot)
+        newBot = norm(newBot)
+    if not subBot or not newBot or subBot == newBot then return false end
+    local text = "Hand " .. subBot .. "'s sub-order to " .. newBot .. "?"
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"] = {
+            text = text,
+            button1 = "Yes",
+            button2 = "No",
+            OnAccept = function() TB.SendOrderReassign(subBot, newBot) end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_ORDER_REASSIGN")
+    else
+        TB.SendOrderReassign(subBot, newBot)
     end
-    target = norm(target)
-    if not target or target == selectedReassign then
-        TB.SetOrderFeedback("Type another guild bot's name, then Move.", "warn")
-        return false
-    end
-    TB.SendOrderReassign(selectedReassign, target)
     return true
 end

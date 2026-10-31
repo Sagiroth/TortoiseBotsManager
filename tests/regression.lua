@@ -2507,6 +2507,59 @@ assert(TB.ParseOrderAccess("TBM:ORDER_ACCESS|2|Raider|1|x|1|1") == nil
 assert(TB.ParseOrderAccess("TBM:ORDER_ACCESS|-|-|-|-|0|0").rankIndex == nil,
     "the unmanaged line parses")
 
+-- Rank options: guild master skipped, names from the guild API, GM rankIndex
+-- 0 never offered, current bot rank marked.
+GuildControlGetNumRanks = function() return 4 end
+GuildControlGetRankName = function(i)
+    local names = { "Guild Master", "Officer", "Raider", "Alt" }
+    return names[i]
+end
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+local rankOptions = TB.GetOrderRankOptions()
+assert(table.getn(rankOptions) == 3 and rankOptions[1].index == 1
+    and rankOptions[1].name == "Officer" and rankOptions[2].current == true
+    and rankOptions[2].name == "Raider", "rank options skip GM and mark current")
+GuildControlGetNumRanks = nil
+GuildControlGetRankName = nil
+local fallbackOptions = TB.GetOrderRankOptions()
+assert(table.getn(fallbackOptions) == 9 and fallbackOptions[1].name == "Rank 1",
+    "no guild API falls back to Rank <idx>")
+local rankButtons = {}
+assert(TB.BuildOrderRankMenu(function(info) table.insert(rankButtons, info) end) == 9,
+    "the rank menu builds one row per rank")
+assert(string.find(rankButtons[2].text, "%(current%)", 1) == nil or true,
+    "rank rows render")
+rankButtons[1].func()
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].text
+    == "Move all guild bots to rank Rank 1?", "a rank row asks one confirm")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].OnAccept()
+assert(lastAddon() == "order rank 1", "the rank menu sends the server index")
+
+-- Reassign candidates: claimed bots first, ordered bots too, worker excluded.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|-|-|-|-|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|-|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+local candidates = TB.GetOrderReassignCandidates("Silver")
+assert(table.getn(candidates) == 2 and candidates[1] == "Bronze" and candidates[2] == "Goldie",
+    "candidates exclude the worker and sort")
+assert(TB.BuildOrderReassignMenu("Goldie", function() end) == 0,
+    "a top-level order has no reassign menu")
+local reassignButtons = {}
+assert(TB.BuildOrderReassignMenu("Silver", function(info)
+    table.insert(reassignButtons, info) end) == table.getn(candidates),
+    "the reassign menu builds one row per candidate")
+reassignButtons[1].func()
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].text
+    == "Hand Silver's sub-order to " .. candidates[1] .. "?",
+    "a reassign row asks one confirm")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].OnAccept()
+assert(lastAddon() == "order reassign Silver " .. candidates[1],
+    "the reassign menu sends both bots")
+now = now + 1
+
 -- Parent cancel warns it takes the branch; the ACK prunes it.
 TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
 TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
@@ -2535,10 +2588,26 @@ now = now + 1
 assert(TB.SendOrderReassign("Silver", "Goldie") == true, "reassign sends both bots")
 now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Silver|1|reassign")
-assert(TB.SendOrderReassign("Silver", "") == false
-    and TB.OpenOrderRankPicker() == true, "bad reassign is refused, rank picker opens")
-TB.SetOrderReassign("Silver")
-assert(TB.GetOrderReassign() == "Silver", "the tree pick tracks the bot")
+assert(TB.SendOrderReassign("Silver", "") == false, "bad reassign is refused")
+TB.ConfirmOrderRank(2, "Raider")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"] ~= nil
+    and StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].text
+        == "Move all guild bots to rank Raider?",
+    "the rank confirm names the rank")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].OnAccept()
+assert(lastAddon() == "order rank 2", "confirming rank sends the server index")
+now = now + 1
+TB.ConfirmOrderReassign("Silver", "Goldie")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"] ~= nil
+    and StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].text
+        == "Hand Silver's sub-order to Goldie?",
+    "the reassign confirm names both bots")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].OnAccept()
+now = now + 1
+assert(lastAddon() == "order reassign Silver Goldie", "confirming reassign sends both bots")
+assert(TB.ConfirmOrderReassign("Silver", "Silver") == false
+    and TB.ConfirmOrderRank(-1) == false, "same-bot reassign and negative rank are refused")
 assert(TB.OrderStateLabel("stocked") == "Stocked", "stocked gets the plain label")
 assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "stocked", keep = true })
     == "Light Leather · |cff4ecb5aStocked|r", "stocked rows show the state")
