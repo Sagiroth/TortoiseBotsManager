@@ -1168,7 +1168,7 @@ local cases = {
     },
     {
         id = "guild.order.list",
-        expected = { ".bot order list", ".bot order access" },
+        expected = { ".bot order list" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
             TB._lastOrderListAt = 0
@@ -1180,7 +1180,6 @@ local cases = {
         expected = { ".bot order list", ".bot order access" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
-            TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|0")
             TB.ShowTab("guild")
             local row1 = TB.guildFrame.rows[1]
             this = row1.ordBtn

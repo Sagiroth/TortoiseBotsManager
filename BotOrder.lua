@@ -333,9 +333,9 @@ function TB.GetOrders()
 end
 
 -- One guild-row line: item, progress, state. The reason stays in the
--- tooltip (RefreshGuildView + the row tooltip in UI.lua). Sub-order rows
--- indent under their parent ("  Silver: item 1/5 · ..."); the live step
--- ("taking from guild bank", "farming in Elwynn" ...) joins waiting rows.
+-- tooltip (RefreshGuildView + the row tooltip in UI.lua). The live step
+-- ("taking from guild bank", "farming in Elwynn" ...) joins working and
+-- waiting rows (except needitems, whose rows name the need instead).
 function TB.OrderRowText(order)
     if not order then return "" end
     local item = order.item or ("item #" .. tostring(order.itemId or "?"))
@@ -377,11 +377,18 @@ function TB.OrderRowText(order)
     if order.hours == "inf" then text = text .. " · " .. word("No limit") end
     local diff = TB.OrderDifficultyLabel(order.difficulty)
     if diff then text = text .. " · " .. diff end
-    if order.parent and orders[order.parent] then
-        local indent = TB.OrderDepth(order)
-        if indent > 0 then text = string.rep("  ", indent) .. order.bot .. ": " .. text end
-    end
     return text
+end
+
+-- One order-window tree line: always names the bot, indented under its
+-- parent ("  Silver: item 1/5 · ..."). A sub-order whose parent row is
+-- missing or late shows as a root (no indent) until the parent arrives,
+-- then re-indents; the name never drops.
+function TB.OrderTreeRowText(order, depth)
+    if not order then return "" end
+    depth = tonumber(depth) or TB.OrderDepth(order)
+    if depth < 0 then depth = 0 end
+    return string.rep("  ", depth) .. (order.bot or "?") .. ": " .. TB.OrderRowText(order)
 end
 -- Tooltip body for a bot's order: type, progress, state, reason, zone, step,
 -- need list, difficulty. Need items show item links like other rows, with a
@@ -474,7 +481,7 @@ function TB.ParseOrderLine(msg)
     if string.sub(msg or "", 1, 10) ~= "TBM:ORDER|" then return nil end
     local fields = splitProtocol(string.sub(msg, 11))
     local count = table.getn(fields)
-    if count < 9 or count > 16 then return nil end
+    if count < 9 then return nil end
     local bot = norm(trim(fields[1]))
     if not bot or bot == "" then return nil end
     local kind = trim(fields[2])
@@ -703,6 +710,7 @@ function TB.ParseOrderMessage(msg)
             if access then orderReceiving.access = access end
         elseif access then
             orderAccess = access
+            if TB.RefreshGuildView then TB.RefreshGuildView() end
             if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         end
         return true
@@ -840,11 +848,13 @@ local function isInf(hours)
     return string.lower(tostring(hours or "")) == "inf"
 end
 
--- Guild gold cap for one give, in copper: nil or <= 0 means no cap and rides
--- no trailing field. Rounds down whole copper, plain digits only.
+-- Guild gold cap for one give, in copper: nil means no cap (empty box) and
+-- rides no trailing field; 0 is a real cap (no guild gold at all) and rides
+-- gold=0. Rounds down whole copper, plain digits only.
 function TB.ClampOrderGold(copper)
+    if copper == nil or copper == "" then return nil end
     copper = tonumber(copper)
-    if not copper or copper <= 0 then return nil end
+    if not copper or copper < 0 then return nil end
     return math.floor(copper)
 end
 
@@ -866,8 +876,8 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold)
         if hours == nil then text = text .. " " .. TB.ClampOrderHours(orderHours) end
         text = text .. " keep"
     end
-    if gold then text = text .. " gold=" .. gold end
-    if hours ~= nil or keep or gold then
+    if gold ~= nil then text = text .. " gold=" .. gold end
+    if hours ~= nil or keep or gold ~= nil then
         pendingGive = { bot = bot, kind = kind, itemId = itemId, amount = amount,
             hours = hours, keep = keep and true or false, gold = gold }
     else
@@ -955,9 +965,21 @@ function TB.OnOrderAck(packet)
     local bot = norm(scopeBot)
     if packet.executor == "cancel" then
         if bot then
+            -- The whole branch goes at any depth: sweep until no row
+            -- still names a removed bot as its parent.
+            local gone = {}
+            gone[bot] = true
             orders[bot] = nil
-            for child, order in pairs(orders) do
-                if order.parent == bot then orders[child] = nil end
+            local swept = true
+            while swept do
+                swept = false
+                for child, order in pairs(orders) do
+                    if order.parent and gone[order.parent] then
+                        gone[child] = true
+                        orders[child] = nil
+                        swept = true
+                    end
+                end
             end
         end
         if TB.SetStatus then
@@ -978,10 +1000,11 @@ function TB.OnOrderAck(packet)
     end
     if packet.executor == "rank" then
         if TB.SetStatus then
-            local rank = tonumber(packet.scope) or packet.scope
-            TB.SetStatus("Bots' rank changed to " .. tostring(rank) .. ".", "ok")
+            local _, _, want = string.find(packet.scope or "", "^rank:(.+)$")
+            TB.SetStatus("Bots' rank changed to " .. tostring(want or packet.scope) .. ".", "ok")
         end
         TB.RequestOrderAccess()
+        if TB.RefreshGuildView then TB.RefreshGuildView() end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return true
     end
@@ -1006,7 +1029,7 @@ function TB.OnOrderError(packet)
     -- then hours (a refused inf retries once as 24). The rest settles both.
     if packet.code == "invalid" and pendingGive then
         local give = pendingGive
-        if give.gold then
+        if give.gold ~= nil then
             pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
                 amount = give.amount, hours = give.hours, keep = give.keep, gold = nil }
             TB.SetOrderFeedback("Old server: retrying without the guild gold cap...", "pending")
@@ -1072,14 +1095,13 @@ function TB.NoteOrderCaps()
     if TB.RefreshGuildView then TB.RefreshGuildView() end
 end
 
--- "order access" rides along when the window opens and has no snapshot yet.
+-- "order access" goes out when the window opens and has no snapshot yet, or
+-- right after a rank change; the list batch already carries it.
 function TB.OrderPollTick()
     if not TB.HasOrderCapability() then return false end
     if not (TB.guildFrame and TB.guildFrame:IsVisible()) then return false end
     if now() - (TB._lastOrderListAt or 0) < LIST_INTERVAL then return false end
-    local sentList = TB.RequestOrderList()
-    TB.RequestOrderAccess()
-    return sentList
+    return TB.RequestOrderList()
 end
 
 local pollFrame
@@ -1233,15 +1255,17 @@ function TB.SetOrderNoLimit(noLimit)
     return orderNoLimit
 end
 
--- Max guild gold for the give, in copper: nil means no cap (empty box).
+-- Max guild gold for the give, in copper: nil means no cap (empty box);
+-- 0 is a real cap (no guild gold at all) and shows "0".
 function TB.GetOrderGold()
     return orderGold
 end
 
 function TB.SetOrderGold(copper)
     orderGold = TB.ClampOrderGold(copper)
-    if win and win.goldBox and win.goldBox:GetText() ~= (orderGold and tostring(orderGold) or "") then
-        win.goldBox:SetText(orderGold and tostring(orderGold) or "")
+    local shown = orderGold ~= nil and tostring(orderGold) or ""
+    if win and win.goldBox and win.goldBox:GetText() ~= shown then
+        win.goldBox:SetText(shown)
     end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     return orderGold
@@ -1710,13 +1734,13 @@ local function createWindow()
     goldBox:SetPoint("TOPLEFT", win, "TOPLEFT", 168, -(base + 44))
     goldBox:SetAutoFocus(false)
     goldBox:SetScript("OnEscapePressed", function()
-        this:SetText(orderGold and tostring(orderGold) or "")
+        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
         this:ClearFocus()
     end)
     goldBox:SetScript("OnEnterPressed", function()
         local text = trim(this:GetText() or "")
         if text == "" then TB.SetOrderGold(nil)
-        else TB.SetOrderGold(tonumber(text) or orderGold) end
+        else TB.SetOrderGold(tonumber(text)) end
         this:ClearFocus()
     end)
     goldBox:SetScript("OnTextChanged", function()
@@ -1725,11 +1749,11 @@ local function createWindow()
             if orderGold ~= nil then TB.SetOrderGold(nil) end
         else
             local g = tonumber(text)
-            if g and TB.ClampOrderGold(g) ~= orderGold then TB.SetOrderGold(g) end
+            if g ~= nil and TB.ClampOrderGold(g) ~= orderGold then TB.SetOrderGold(g) end
         end
     end)
     goldBox:SetScript("OnEditFocusLost", function()
-        this:SetText(orderGold and tostring(orderGold) or "")
+        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
     end)
     win.goldBox = goldBox
     setTooltip(goldLabel, "Max guild gold",
@@ -1914,7 +1938,7 @@ function TB.RefreshOrderWindow()
         for i, line in ipairs(win.treeLines) do
             local entry = tree[i]
             if entry then
-                line:SetText(TB.OrderRowText(entry.order))
+                line:SetText(TB.OrderTreeRowText(entry.order, entry.depth))
                 local paint = entry.order.bot == windowBot
                 if paint then line:SetTextColor(0.95, 0.72, 0.28)
                 else line:SetTextColor(0.85, 0.85, 0.85) end
@@ -2043,8 +2067,12 @@ function TB.BuildOrderRankMenu(addButton)
     for _, option in ipairs(options) do
         local label = option.name
         if option.current then label = label .. " (current)" end
-        addButton({ text = label, notCheckable = 1,
-            func = function() TB.ConfirmOrderRank(option.index, option.name) end })
+        if option.current then
+            addButton({ text = label, notCheckable = 1, disabled = 1 })
+        else
+            addButton({ text = label, notCheckable = 1,
+                func = function() TB.ConfirmOrderRank(option.index, option.name) end })
+        end
     end
     return table.getn(options)
 end

@@ -2511,7 +2511,6 @@ function TB.InitUI()
                 TB.PollList(true)
             end
             if TB.RequestOrderList then TB.RequestOrderList() end
-            if TB.RequestOrderAccess then TB.RequestOrderAccess() end
         elseif name == "party" then
             if TB.RefreshPartyView then TB.RefreshPartyView() end
         elseif name == "log" then
