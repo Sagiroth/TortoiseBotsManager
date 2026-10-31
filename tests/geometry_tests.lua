@@ -624,11 +624,10 @@ return function()
                 end
                 if row.roleBtn then table.insert(cols, { "roleBtn", row.roleBtn }) end
                 if row.relBtn then table.insert(cols, { "relBtn", row.relBtn }) end
-                -- Order widgets share the row with the classic columns.
                 if row.orderLine then table.insert(cols, { "orderLine", row.orderLine }) end
                 if row.ordBtn then table.insert(cols, { "ordBtn", row.ordBtn }) end
                 if row.cancelBtn then table.insert(cols, { "cancelBtn", row.cancelBtn }) end
-                childrenInside("Guild row " .. i, row, r, cols, cache, 2)
+                if row.moveBtn then table.insert(cols, { "moveBtn", row.moveBtn }) end
                 noOverlaps("Guild row " .. i .. " columns", cols, cache)
                 if row.roleBtn and i == 1 then
                     local saved = row.roleBtn.text
@@ -657,6 +656,16 @@ return function()
                         bad(string.format("Guild: action button '%s' %s overlaps the scroll frame (bottom %d)",
                             entry[1], fmt(r), math.floor(sr.bottom + 0.5)))
                     end
+                end
+                if frame.accessLine and frame.rankBtn then
+                    local ar = frameRect(frame.accessLine, cache)
+                    local rr = frameRect(frame.rankBtn, cache)
+                    if overlaps(ar, rr) then
+                        bad(string.format("Guild: access line %s overlaps rank %s", fmt(ar), fmt(rr)))
+                    end
+                    labelFits("Guild rankBtn", frame.rankBtn, nil, 6)
+                else
+                    bad("Guild: access line or rank button missing")
                 end
             end
         end
@@ -1473,7 +1482,8 @@ return function()
                 local wr = frameRect(win, cache)
                 local items = {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
-                    "hoursBox", "noLimitBox", "noLimitLabel", "keepBox", "sendBtn", "cancelBtn", "farmNote" }) do
+                    "hoursBox", "noLimitBox", "noLimitLabel", "keepBox", "sendBtn", "cancelBtn", "farmNote",
+                    "goldLabel", "goldBox", "accessLabel", "rankBtn", "reassignBtn" }) do
                     if win[key] then
                         table.insert(items, { key, win[key] })
                         if win[key].kind == "Button" then
@@ -1482,6 +1492,9 @@ return function()
                     else
                         bad("OrderWindow: control " .. key .. " missing")
                     end
+                end
+                for i, line in ipairs(win.treeLines or {}) do
+                    table.insert(items, { "tree" .. i, line })
                 end
                 for kind, pill in pairs(win.kindPills or {}) do
                     table.insert(items, { "kind." .. kind, pill })

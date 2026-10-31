@@ -1745,10 +1745,29 @@ function TB.InitUI()
             TB.SetTextColor(fs, color("muted"))
         end
 
+        -- Guild bank access bots can reach: rank, bank tabs, gold. Red when
+        -- a bank tab is denied or gold is off; grey when the server leaves
+        -- ranks alone or no bank is unlocked yet.
+        local access = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        access:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 6, -38)
+        access:SetWidth(W - (C.PAD or 10) * 2 - 130)
+        access:SetJustifyH("LEFT")
+        TB.SetTextColor(access, color("muted"))
+        guildFrame.accessLine = access
+
+        local rankBtn = TB.StyleButton(CreateFrame("Button", nil, guildFrame, "UIPanelButtonTemplate"))
+        rankBtn:SetWidth(56); rankBtn:SetHeight(18)
+        rankBtn:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", W - (C.PAD or 10) * 2 - 62, -36)
+        rankBtn:SetText("Rank")
+        setButtonTooltip(rankBtn, "Change the guild rank bots get", "Bots' rank")
+        rankBtn:SetScript("OnClick", function()
+            if TB.OpenOrderRankPicker then TB.OpenOrderRankPicker() end
+        end)
+        guildFrame.rankBtn = rankBtn
         local GUILD_ROW_H = 32
         local GUILD_ROW_N = 7
         local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerGuildScroll", guildFrame, "FauxScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -42)
+        scroll:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -56)
         scroll:SetWidth(W - (C.PAD or 10) * 2)
         scroll:SetHeight(GUILD_ROW_N * GUILD_ROW_H + 4)
         scroll:SetScript("OnVerticalScroll", function()
@@ -1874,6 +1893,24 @@ function TB.InitUI()
             setButtonTooltip(cancelBtn, "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.", "Cancel order")
             row.cancelBtn = cancelBtn
 
+            local moveBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+            moveBtn:SetWidth(24); moveBtn:SetHeight(16)
+            moveBtn:SetPoint("LEFT", row, "LEFT", 316, -7)
+            moveBtn:SetText("Mv")
+            moveBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.SetOrderReassign and TB.OpenOrderReassignPicker then
+                    TB.SetOrderReassign(entry.name)
+                    if not TB.OpenOrderReassignPicker() then
+                        TB.OpenOrderWindow(entry.name)
+                        TB.SetOrderReassign(entry.name)
+                        TB.OpenOrderReassignPicker()
+                    end
+                end
+            end)
+            setButtonTooltip(moveBtn, "Hand this sub-order to another guild bot.", "Reassign")
+            row.moveBtn = moveBtn
+
             local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             relBtn:SetWidth(34); relBtn:SetHeight(20)
             relBtn:SetPoint("LEFT", row, "LEFT", 424, 0)
@@ -1930,7 +1967,7 @@ function TB.InitUI()
 
         -- Bottom Guild Action Bar
         local bar = CreateFrame("Frame", nil, guildFrame)
-        bar:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -(42 + GUILD_ROW_N * GUILD_ROW_H + 4))
+        bar:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -(56 + GUILD_ROW_N * GUILD_ROW_H + 4))
         bar:SetWidth(W - (C.PAD or 10) * 2)
         bar:SetHeight(34)
 
@@ -2253,6 +2290,34 @@ function TB.InitUI()
                 .. " online|r, |cffffd200" .. lockedCount .. " locked|r)")
         end
 
+        if frame.accessLine then
+            local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+            local accessText = orderCap and TB.OrderAccessText and TB.OrderAccessText() or nil
+            if orderCap and accessText then
+                frame.accessLine:SetText(accessText.text)
+                if accessText.bad then frame.accessLine:SetTextColor(1, 0.34, 0.28)
+                else frame.accessLine:SetTextColor(0.62, 0.60, 0.56) end
+                frame.accessLine:Show()
+            elseif orderCap then
+                frame.accessLine:SetText("Bank access: waiting for the server...")
+                frame.accessLine:SetTextColor(0.62, 0.60, 0.56)
+                frame.accessLine:Show()
+            else
+                frame.accessLine:Hide()
+            end
+        end
+        if frame.rankBtn then
+            local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+            local access = orderCap and TB.GetOrderAccess and TB.GetOrderAccess() or nil
+            local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+            if orderCap and access and access.canSetRank and access.rankIndex and mayOrder then
+                frame.rankBtn:Show()
+                frame.rankBtn:Enable()
+            else
+                frame.rankBtn:Hide()
+            end
+        end
+
         if total == 0 then
             if frame.emptyMsg then frame.emptyMsg:Show() end
             if frame.scroll then frame.scroll:Hide() end
@@ -2299,6 +2364,8 @@ function TB.InitUI()
 
                 -- Guild order line: hidden with no capability, greyed with no
                 -- officer-note right (TB.CanGiveOrders), else order + buttons.
+                -- Sub-order rows indent under their parent and show a Move
+                -- button to hand them to another guild bot.
                 local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
                 local order = orderCap and TB.GetBotOrder and TB.GetBotOrder(entry.name) or nil
                 local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
@@ -2325,6 +2392,14 @@ function TB.InitUI()
                         if mayOrder then row.cancelBtn:Enable() else row.cancelBtn:Disable() end
                     else
                         row.cancelBtn:Hide()
+                    end
+                end
+                if row.moveBtn then
+                    if orderCap and order and order.parent and mayOrder then
+                        row.moveBtn:Show()
+                        row.moveBtn:Enable()
+                    else
+                        row.moveBtn:Hide()
                     end
                 end
 
@@ -2441,6 +2516,7 @@ function TB.InitUI()
                 TB.PollList(true)
             end
             if TB.RequestOrderList then TB.RequestOrderList() end
+            if TB.RequestOrderAccess then TB.RequestOrderAccess() end
         elseif name == "party" then
             if TB.RefreshPartyView then TB.RefreshPartyView() end
         elseif name == "log" then
