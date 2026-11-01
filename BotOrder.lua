@@ -417,7 +417,7 @@ function TB.OrderTooltipText(order)
     table.insert(lines, state)
     if string.lower(trim(order.state or "")) == "working"
         and (order.want or 0) > 0 and (order.have or 0) >= order.want then
-        table.insert(lines, "Not deliverable yet: the count includes items still in the bot's mail. It delivers once all are in its bags.")
+        table.insert(lines, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail). It delivers once all are in its bags.")
     end
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
     local step = TB.OrderStepLabel(order)

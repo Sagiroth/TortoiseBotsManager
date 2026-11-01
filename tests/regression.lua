@@ -2490,7 +2490,7 @@ assert(string.find(TB.OrderRowText({ item = "Light Leather", have = 0, want = 0,
     "a working row with no want gets no marker")
 local honestTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-"))
 local shortTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-"))
-assert(string.find(honestTip, "Not deliverable yet: the count includes items still in the bot's mail.", 1, true) ~= nil
+assert(string.find(honestTip, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail).", 1, true) ~= nil
     and string.find(shortTip, "Not deliverable yet", 1, true) == nil,
     "the tooltip says when the count is not deliverable yet")
 assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|Ashenvale|-|-|keep|-|-|farm|-")) == "Light Leather 10/10 · farming in Ashenvale · |cffffd200not all in its bags yet|r · |cff4ecb5aKeep|r",
