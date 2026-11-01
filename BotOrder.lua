@@ -194,6 +194,116 @@ function TB.OrderNeedText(order)
         .. " (trade, mail or put in guild bank)"
 end
 
+-- ── send missing items (mailbox) ─────────────────────────────────────────
+-- The button never mails anything on its own: it fills the Send Mail form
+-- for the bot that needs items and attaches one stack from the bags. The
+-- player presses Send (items and postage are irreversible).
+local MAIL_BAGS = 5 -- bags 0..4 (backpack plus equipped bags)
+
+local function orderHasNeed(order)
+    return order and order.need and table.getn(order.need) > 0
+end
+
+-- First bot in the window's tree (root, then children depth-first) whose
+-- order needs items. Returns bot, order, or nil.
+function TB.OrderNeedTarget(rootBot)
+    rootBot = norm(rootBot)
+    if not rootBot then return nil end
+    local rootOrder = TB.GetBotOrder(rootBot)
+    if not rootOrder then return nil end
+    if orderHasNeed(rootOrder) then return rootBot, rootOrder end
+    local function visit(parentBot)
+        for _, child in ipairs(TB.OrderChildren(parentBot)) do
+            if orderHasNeed(child) then return child.bot, child end
+            local bot, order = visit(child.bot)
+            if bot then return bot, order end
+        end
+        return nil
+    end
+    return visit(rootBot)
+end
+
+-- The mail the button would fill: recipient, subject, need body. nil when
+-- the order needs nothing.
+function TB.OrderMailDraft(bot, order)
+    if not orderHasNeed(order) then return nil end
+    return {
+        to = bot,
+        subject = "Order: " .. (order.item or "item"),
+        body = TB.OrderNeedText(order),
+    }
+end
+
+-- One bag stack for the first need entry that is in bags 0..4. Sparse
+-- stacks are skipped; locked stacks are skipped. split is the need count
+-- when the stack is larger (a partial attach), else nil (whole stack).
+function TB.FindOrderNeedStack(order)
+    if not orderHasNeed(order) then return nil end
+    if not (GetContainerNumSlots and GetContainerItemLink and GetContainerItemInfo) then return nil end
+    for _, entry in ipairs(order.need) do
+        local needCount = entry.count or 0
+        if needCount > 0 then
+            for bag = 0, MAIL_BAGS - 1 do
+                local slots = GetContainerNumSlots(bag) or 0
+                for slot = 1, slots do
+                    local link = GetContainerItemLink(bag, slot)
+                    if link then
+                        local _, _, idText = string.find(link, "item:(%d+)")
+                        if tonumber(idText) == entry.id then
+                            local _, count, locked = GetContainerItemInfo(bag, slot)
+                            if not locked and count and count > 0 then
+                                local split = nil
+                                if count > needCount then split = needCount end
+                                return { bag = bag, slot = slot, id = entry.id, count = count, split = split }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- The button is live only at an open mailbox with a bot that needs items.
+function TB.CanSendOrderItems(rootBot)
+    if not (MailFrame and MailFrame.IsVisible and MailFrame:IsVisible()) then
+        return false, "Open a mailbox first"
+    end
+    if not TB.OrderNeedTarget(rootBot) then
+        return false, "No order needs items"
+    end
+    return true, nil
+end
+
+-- Fill the form and attach one stack. Never sends. Returns true when the
+-- form was filled (with or without an attachment).
+function TB.SendOrderMissingItems(rootBot)
+    local bot, order = TB.OrderNeedTarget(rootBot)
+    if not bot then return false end
+    local draft = TB.OrderMailDraft(bot, order)
+    if not draft then return false end
+    -- D4: open the Send tab and fill the boxes (guard every global).
+    if MailFrameTab_OnClick then MailFrameTab_OnClick(2) end
+    if SendMailNameEditBox and SendMailNameEditBox.SetText then SendMailNameEditBox:SetText(draft.to) end
+    if SendMailSubjectEditBox and SendMailSubjectEditBox.SetText then SendMailSubjectEditBox:SetText(draft.subject) end
+    if SendMailBodyEditBox and SendMailBodyEditBox.SetText then SendMailBodyEditBox:SetText(draft.body) end
+    local stack = TB.FindOrderNeedStack(order)
+    if not stack then
+        TB.SetOrderFeedback("None of the needed items are in your bags", "error")
+        return true
+    end
+    local attached = stack.split or stack.count
+    if stack.split then
+        if SplitContainerItem then SplitContainerItem(stack.bag, stack.slot, stack.split) end
+    else
+        if PickupContainerItem then PickupContainerItem(stack.bag, stack.slot) end
+    end
+    if ClickSendMailItemButton then ClickSendMailItemButton() end
+    TB.SetOrderFeedback(needName(stack.id) .. " x" .. tostring(attached) .. " attached - press Send", "ok")
+    return true
+end
+
 -- Difficulty estimate from the server: easy / medium / hard in plain words
 -- with a subtle colour, nothing for "-" or old lines without the field.
 local DIFFICULTY_LABEL = { easy = "Easy", medium = "Medium", hard = "Hard" }
@@ -1117,6 +1227,13 @@ local function ensurePollFrame()
     if pollFrame then return end
     pollFrame = CreateFrame("Frame", "TortoiseBotsManagerOrderPoll")
     pollFrame:SetScript("OnUpdate", function() TB.OrderPollTick() end)
+    -- The Send-missing-items button follows the mailbox: refresh when it
+    -- opens or closes so the button enables/disables itself (D2).
+    pollFrame:RegisterEvent("MAIL_SHOW")
+    pollFrame:RegisterEvent("MAIL_CLOSED")
+    pollFrame:SetScript("OnEvent", function()
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    end)
 end
 ensurePollFrame()
 
@@ -1832,6 +1949,14 @@ local function createWindow()
             if windowBot then TB.ConfirmOrderCancel(windowBot) end
         end)
 
+    -- Fills the Send Mail form for the bot that needs items; the player
+    -- presses Send. Enabled only at an open mailbox with a need (D2/D3).
+    win.sendItemsBtn = smallButton(win, "Send missing items", 176, 12, -(base + 66),
+        "Send missing items", "Fill the mail form for the bot that needs items.",
+        function()
+            TB.SendOrderMissingItems(TB.GetOrderWindowBot())
+        end)
+
     win.statusLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 92))
     win.statusLine:SetWidth(OW - 24); win.statusLine:SetJustifyH("LEFT")
@@ -1975,6 +2100,24 @@ function TB.RefreshOrderWindow()
     end
     if win.sendBtn then
         if TB.CanGiveOrders() then win.sendBtn:Enable() else win.sendBtn:Disable() end
+    end
+    if win.sendItemsBtn then
+        local canSend, mailReason = TB.CanSendOrderItems(windowBot)
+        if canSend then win.sendItemsBtn:Enable() else win.sendItemsBtn:Disable() end
+        -- The tooltip names the bot and its need, or why the button is dead.
+        win.sendItemsBtn:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Send missing items")
+            if canSend then
+                local bot, order = TB.OrderNeedTarget(windowBot)
+                local need = order and TB.OrderNeedText(order)
+                if bot and need then GameTooltip:AddLine(bot .. ": " .. need, 0.9, 0.9, 0.9, 1) end
+            elseif mailReason then
+                GameTooltip:AddLine(mailReason, 0.9, 0.9, 0.9, 1)
+            end
+            GameTooltip:Show()
+        end)
+        win.sendItemsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
     if win.keepBox and win.keepBox.SetChecked then
         win.keepBox:SetChecked(orderKeep and true or false)
