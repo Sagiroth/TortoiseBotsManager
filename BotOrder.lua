@@ -265,6 +265,32 @@ function TB.FindOrderNeedStack(order)
     return nil
 end
 
+-- The item in the Send Mail attachment slot: 1.12 GetSendMailItem() returns
+-- itemName, itemTexture, stackCount, quality (MailFrame.lua, build 5803).
+-- Both nil when the slot is empty.
+local function sendMailItem()
+    if not GetSendMailItem then return nil, nil end
+    local name, _, count = GetSendMailItem()
+    if name == "" then name = nil end
+    return name, tonumber(count)
+end
+
+-- The globals the attach needs, by name: the pickup call for this path
+-- (split or whole stack), the attach click, the cursor probe and the
+-- read-back. Names, so the message can say which one is missing.
+local function missingMailApis(split)
+    local missing = {}
+    if split then
+        if not SplitContainerItem then table.insert(missing, "SplitContainerItem") end
+    elseif not PickupContainerItem then
+        table.insert(missing, "PickupContainerItem")
+    end
+    if not ClickSendMailItemButton then table.insert(missing, "ClickSendMailItemButton") end
+    if not CursorHasItem then table.insert(missing, "CursorHasItem") end
+    if not GetSendMailItem then table.insert(missing, "GetSendMailItem") end
+    return missing
+end
+
 -- The button is live only at an open mailbox with a bot that needs items.
 function TB.CanSendOrderItems(rootBot)
     if not (MailFrame and MailFrame.IsVisible and MailFrame:IsVisible()) then
@@ -277,7 +303,9 @@ function TB.CanSendOrderItems(rootBot)
 end
 
 -- Fill the form and attach one stack. Never sends. Returns true when the
--- form was filled (with or without an attachment).
+-- form was filled (with or without an attachment). A busy cursor or a filled
+-- attachment slot stops the attach: the pickup would swap one of the two
+-- items into the mail, which is worse than attaching nothing.
 function TB.SendOrderMissingItems(rootBot)
     local bot, order = TB.OrderNeedTarget(rootBot)
     if not bot then return false end
@@ -294,13 +322,43 @@ function TB.SendOrderMissingItems(rootBot)
         return true
     end
     local attached = stack.split or stack.count
-    if stack.split then
-        if SplitContainerItem then SplitContainerItem(stack.bag, stack.slot, stack.split) end
-    else
-        if PickupContainerItem then PickupContainerItem(stack.bag, stack.slot) end
+    local itemName = needName(stack.id)
+    -- No half-blind attach: without the pickup call, the attach click, the
+    -- cursor probe and the read-back, nothing is moved at all.
+    local missing = missingMailApis(stack.split)
+    if table.getn(missing) > 0 then
+        TB.SetOrderFeedback("Nothing attached: this client has no "
+            .. table.concat(missing, ", "), "error")
+        return true
     end
-    if ClickSendMailItemButton then ClickSendMailItemButton() end
-    TB.SetOrderFeedback(needName(stack.id) .. " x" .. tostring(attached) .. " attached - press Send", "ok")
+    -- The cursor and the attachment slot must both be empty, or the pickup
+    -- would swap whatever they hold into the mail.
+    if CursorHasItem() then
+        TB.SetOrderFeedback("Nothing attached: your cursor holds an item - drop or place it first", "error")
+        return true
+    end
+    local heldName = sendMailItem()
+    if heldName then
+        TB.SetOrderFeedback("Nothing attached: the mail already holds " .. heldName, "error")
+        return true
+    end
+    if stack.split then
+        SplitContainerItem(stack.bag, stack.slot, stack.split)
+    else
+        PickupContainerItem(stack.bag, stack.slot)
+    end
+    ClickSendMailItemButton()
+    -- The client is the only witness: a wrong item, a wrong count or an
+    -- item left on the cursor is an error, never "attached".
+    local sentName, sentCount = sendMailItem()
+    if CursorHasItem() or sentName ~= itemName or sentCount ~= attached then
+        if ClearCursor then ClearCursor() end
+        local shown = sentName and (sentName .. " x" .. tostring(sentCount)) or "no item"
+        TB.SetOrderFeedback("Nothing attached: the mail shows " .. shown
+            .. " instead of " .. itemName .. " x" .. tostring(attached), "error")
+        return true
+    end
+    TB.SetOrderFeedback(itemName .. " x" .. tostring(attached) .. " attached - press Send", "ok")
     return true
 end
 
