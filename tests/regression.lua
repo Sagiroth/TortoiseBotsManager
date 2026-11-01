@@ -2692,6 +2692,158 @@ assert(string.find(TB.OrderTooltipText(stockedOrder),
     "Stocked: 10 in the bank, the bot refills when it drops below 10", 1, true) ~= nil,
     "stocked tooltips name the bank stock")
 
+-- ── Per-order step history (TBM:ORDER_STEPS_*): request, cache, tooltip ───
+-- The server answers ".bot order <bot> steps" with BEGIN, one ORDER_STEP per
+-- entry (oldest first) and END; the addon caches it per bot and shows the
+-- newest steps inside the order tooltip. Own function: the main chunk is at
+-- Lua's 200-local limit.
+local function orderStepHistoryChecks()
+    -- Parse: six fields after the prefix, ages and item ids numeric and >= 0.
+    local stepLine = TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|90|working|nobanker|bank|2319")
+    assert(stepLine and stepLine.bot == "Goldie" and stepLine.age == 90
+        and stepLine.state == "working" and stepLine.reason == "nobanker"
+        and stepLine.step == "bank" and stepLine.itemId == 2319, "step lines parse")
+    assert(TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|90|working|nobanker|bank") == nil,
+        "a five-field step line is dropped")
+    assert(TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|-5|working|-|bank|2319") == nil,
+        "a negative age drops the step line")
+
+    -- Gate off: no request, no send without the guild-order-steps token.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    local before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Goldie") == false, "no step request without the capability")
+    assert(table.getn(addonSent) == before, "a gated step request sends nothing")
+
+    -- Request: one per bot per 15 s.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "a capable server gets the step request")
+    assert(lastAddon() == "order Goldie steps", "the request names the bot and the steps sub-command")
+    assert(TB.RequestOrderSteps("Goldie") == false, "a second request at the same time is throttled")
+    now = now + 1
+    before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Goldie") == false, "the throttle holds a second later too")
+    assert(table.getn(addonSent) == before, "the throttled request sends nothing")
+    now = now + 15
+    assert(TB.RequestOrderSteps("Goldie") == true, "the throttle opens after 15 s")
+
+    -- Cache: BEGIN buffers, ORDER_STEP appends, END commits.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|2|3")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|90|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|nobanker|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    local cache = TB.GetOrderSteps("Goldie")
+    assert(cache and table.getn(cache.entries) == 2 and cache.dropped == 3,
+        "an END commits the buffered entries and the dropped count")
+    assert(cache.entries[1].age == 90 and cache.entries[2].age == 30,
+        "the cache keeps the server's oldest-first order")
+
+    -- Tooltip block: newest first, ages, the earlier count.
+    local lines = TB.OrderStepsTooltipLines("Goldie")
+    assert(table.getn(lines) == 4
+        and lines[1] == "Steps (newest first):"
+        and lines[2] == "  just now · taking from guild bank: Medium Leather (no banker in reach)"
+        and lines[3] == "  1m ago · taking from guild bank: Medium Leather"
+        and lines[4] == "  ... 3 earlier steps",
+        "the block lists the newest steps with ages and the earlier count")
+    now = now + 3600
+    lines = TB.OrderStepsTooltipLines("Goldie")
+    assert(lines[2] == "  1h ago · taking from guild bank: Medium Leather (no banker in reach)"
+        and lines[3] == "  1h 1m ago · taking from guild bank: Medium Leather",
+        "ages grow with the time since the reply arrived")
+
+    -- The order tooltip carries the block.
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(string.find(TB.OrderTooltipText(TB.GetBotOrder("Goldie")), "Steps (newest first):", 1, true) ~= nil,
+        "the order tooltip carries the step block")
+
+    -- Bound: eight entries plus one earlier line.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|12|0")
+    for i = 1, 12 do
+        TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|" .. (i * 60) .. "|working|-|bank|2319")
+    end
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    lines = TB.OrderStepsTooltipLines("Goldie")
+    assert(table.getn(lines) == 10 and lines[10] == "  ... 4 earlier steps",
+        "the block caps at eight entries and counts the rest")
+    assert(string.find(lines[2], "  12m ago", 1, true) == 1
+        and string.find(lines[9], "  5m ago", 1, true) == 1,
+        "the eight newest entries show, newest first")
+
+    -- Foreign lines: another bot's step line is ignored, an END needs its BEGIN.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|2|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|20|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Silver|10|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(TB.GetOrderSteps("Goldie").entries) == 1,
+        "another bot's step line is not buffered")
+    before = table.getn(addonSent)
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Silver")
+    assert(TB.GetOrderSteps("Silver") == nil, "an END without its BEGIN stores nothing")
+    assert(table.getn(addonSent) == before, "a stray END sends nothing")
+    assert(TB.ParseOrderMessage("TBM:ORDER_STEP|Goldie|1|done|-|-|0") == true,
+        "a bare step line is still claimed by the order parser")
+
+    -- Throttle reset: a changed live line clears it, an identical one does not.
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "a fresh step request lands")
+    assert(TB.RequestOrderSteps("Goldie") == false, "the throttle holds at once")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|-")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "a changed step clears the throttle")
+    before = table.getn(addonSent)
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|-")
+    assert(TB.RequestOrderSteps("Goldie") == false, "an identical live line keeps the throttle")
+    assert(table.getn(addonSent) == before, "the throttled call sends nothing")
+
+    -- Entry and age texts.
+    assert(TB.OrderStepText({ state = "done", itemId = 0 }) == "Done",
+        "a finished step reads as its state")
+    assert(TB.OrderStepText({ state = "waiting", reason = "needitems", itemId = 0 })
+        == "Waiting (needs items from you)", "a waiting step carries its reason")
+    assert(TB.OrderStepAgeText(7260) == "2h 1m ago" and TB.OrderStepAgeText(7200) == "2h ago"
+        and TB.OrderStepAgeText(90000) == "1d ago", "ages read in minutes, hours and days")
+
+    -- Repaint: a committed list redraws the hovered row without a new request.
+    -- The changed live line below clears the throttle, so a repaint that asked
+    -- again would really send. The time step keeps the tab's own "order list"
+    -- out of the send queue (a queued command would leak into the wire cases).
+    now = now + 1
+    TB.ShowTab("guild")
+    local tipRow = TB.guildFrame.rows[1]
+    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the guild row holds Goldie")
+    local tipLines = {}
+    local realAddLine = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
+    now = now + 16
+    TB.ShowGuildRowTooltip(tipRow)
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|deliver|-")
+    now = now + 1
+    before = table.getn(addonSent)
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    GameTooltip.AddLine = realAddLine
+    local sawStepBlock = false
+    for _, text in ipairs(tipLines) do
+        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
+    end
+    assert(sawStepBlock, "the committed list redraws the hovered tooltip")
+    assert(table.getn(addonSent) == before, "the repaint sends no second request")
+    TB._guildTipRow = nil
+
+    -- Old server: the cache may exist, the block still stays away.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.GetOrderSteps("Goldie") ~= nil, "a capability refresh keeps the step cache")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 0,
+        "no step block on a server without the token")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.HasOrderCapability() and not TB.HasServerCapability("guild-order-steps"),
+        "the block restores the capability set")
+end
+orderStepHistoryChecks()
+
 -- Estimates: amount ÷ chance, nodes for herb and ore, none for buy/craft.
 assert(TB.OrderEstimate("farm", { "skin" }, 50, 10) == "about 20 kills", "a 50% chance doubles the kills")
 assert(TB.OrderEstimate("farm", { "ore" }, 100, 10) == "about 10 nodes", "ore counts nodes")
