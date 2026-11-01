@@ -2669,7 +2669,7 @@ local function sendMissingItemsBlock()
     cursor, mailItem = nil, nil
     calls = {}
     TB.SendOrderMissingItems("Goldie")
-    assert(nameSeq() == "MailFrameTab_OnClick,CursorHasItem,GetSendMailItem,PickupContainerItem,"
+    assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,PickupContainerItem,"
         .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
         "the click checks the cursor first and reads the attachment back after: " .. nameSeq())
     assert(argsOf("MailFrameTab_OnClick")[1] == 2 and argsOf("PickupContainerItem")[1] == 0
@@ -2691,7 +2691,7 @@ local function sendMissingItemsBlock()
     cursor, mailItem = nil, nil
     calls = {}
     TB.SendOrderMissingItems("Goldie")
-    assert(nameSeq() == "MailFrameTab_OnClick,CursorHasItem,GetSendMailItem,SplitContainerItem,"
+    assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,SplitContainerItem,"
         .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
         "a larger stack splits instead of picking up: " .. nameSeq())
     assert(argsOf("SplitContainerItem")[3] == 4 and mailItem and mailItem.count == 4,
@@ -2702,6 +2702,8 @@ local function sendMissingItemsBlock()
     -- 10. The attachment slot already holds an item: nothing is picked up
     -- (a pickup would swap that item away) and the message says why.
     cursor, mailItem = nil, { name = "Cured Light Hide", count = 2 }
+    SendMailNameEditBox:SetText("Friend")
+    SendMailSubjectEditBox:SetText("my draft")
     calls = {}
     TB.SendOrderMissingItems("Goldie")
     assert(not hasCall("PickupContainerItem") and not hasCall("SplitContainerItem")
@@ -2711,13 +2713,16 @@ local function sendMissingItemsBlock()
     assert(busy and busy.kind == "error"
         and string.find(busy.text, "the mail already holds Cured Light Hide", 1, true) ~= nil,
         "an occupied slot says why nothing was attached: " .. tostring(busy and busy.text))
-    assert(SendMailNameEditBox:GetText() == "Goldie",
-        "the text fields still fill with an occupied attachment slot")
+    assert(SendMailNameEditBox:GetText() == "Friend" and SendMailSubjectEditBox:GetText() == "my draft"
+        and not hasCall("MailFrameTab_OnClick"),
+        "a draft with an attachment is left untouched (re-addressing it would mail that item to the bot)")
 
     -- 11. An item on the cursor: nothing is moved, the held item is left alone.
     cursor, mailItem = { name = "Cured Light Hide", count = 2 }, nil
+    SendMailNameEditBox:SetText("Friend")
     calls = {}
     TB.SendOrderMissingItems("Goldie")
+    assert(SendMailNameEditBox:GetText() == "Friend", "a busy cursor leaves the draft untouched")
     assert(not hasCall("PickupContainerItem") and not hasCall("SplitContainerItem")
         and not hasCall("ClickSendMailItemButton"),
         "a busy cursor stops the attach before any pickup")

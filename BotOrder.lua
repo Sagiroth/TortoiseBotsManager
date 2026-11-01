@@ -311,6 +311,18 @@ function TB.SendOrderMissingItems(rootBot)
     if not bot then return false end
     local draft = TB.OrderMailDraft(bot, order)
     if not draft then return false end
+    -- A draft the player is already composing is left alone: with an item on
+    -- the cursor or in the attachment slot, re-addressing the form would send
+    -- that item to the bot. Check before any field changes.
+    if CursorHasItem and CursorHasItem() then
+        TB.SetOrderFeedback("Nothing changed: your cursor holds an item - drop or place it first", "error")
+        return false
+    end
+    local busyName = sendMailItem()
+    if busyName then
+        TB.SetOrderFeedback("Nothing changed: the mail already holds " .. busyName .. " - send or clear it first", "error")
+        return false
+    end
     -- D4: open the Send tab and fill the boxes (guard every global).
     if MailFrameTab_OnClick then MailFrameTab_OnClick(2) end
     if SendMailNameEditBox and SendMailNameEditBox.SetText then SendMailNameEditBox:SetText(draft.to) end
@@ -331,17 +343,8 @@ function TB.SendOrderMissingItems(rootBot)
             .. table.concat(missing, ", "), "error")
         return true
     end
-    -- The cursor and the attachment slot must both be empty, or the pickup
-    -- would swap whatever they hold into the mail.
-    if CursorHasItem() then
-        TB.SetOrderFeedback("Nothing attached: your cursor holds an item - drop or place it first", "error")
-        return true
-    end
-    local heldName = sendMailItem()
-    if heldName then
-        TB.SetOrderFeedback("Nothing attached: the mail already holds " .. heldName, "error")
-        return true
-    end
+    -- The cursor and the attachment slot were checked empty before the form
+    -- was touched (top of this function), so the pickup cannot swap anything.
     if stack.split then
         SplitContainerItem(stack.bag, stack.slot, stack.split)
     else
