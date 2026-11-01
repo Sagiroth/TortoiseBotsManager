@@ -2752,11 +2752,51 @@ local function orderStepHistoryChecks()
         and lines[3] == "  1h 1m ago · taking from guild bank: Medium Leather",
         "ages grow with the time since the reply arrived")
 
-    -- The order tooltip carries the block.
+    -- The order tooltip carries the block for its own order: a matching
+    -- identity still shows the cache.
     TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|nobanker|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
     assert(string.find(TB.OrderTooltipText(TB.GetBotOrder("Goldie")), "Steps (newest first):", 1, true) ~= nil,
-        "the order tooltip carries the step block")
+        "a matching identity still shows the cache")
 
+    -- A new order on the same bot drops the old history: the tooltip shows
+    -- nothing until the fresh reply lands.
+    TB.OnSystemMessage("TBM:ORDER|Goldie|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    assert(TB.GetBotOrder("Goldie") ~= nil, "the new order lands")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a new order on the same bot drops the old history")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 0,
+        "a new order tooltips no stale steps")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|-|bank|18231")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2,
+        "the fresh reply for the current order shows again")
+
+    -- A full list snapshot with a different order drops it too.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a full list with a new order drops the old history")
+
+    -- Same type and item with a different parent is a new order too.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale|-|-|-|Silver|-|-|-")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a changed parent drops the history")
+
+    -- Losing the step token wipes the whole cache (session or restart).
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(TB.GetOrderSteps("Goldie") ~= nil, "the step reply lands")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.GetOrderSteps("Goldie") == nil, "losing the step token clears the cache")
+
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
     -- Bound: eight entries plus one earlier line.
     TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|12|0")
     for i = 1, 12 do
@@ -2833,9 +2873,10 @@ local function orderStepHistoryChecks()
     assert(table.getn(addonSent) == before, "the repaint sends no second request")
     TB._guildTipRow = nil
 
-    -- Old server: the cache may exist, the block still stays away.
+    -- Old server: without the token the block stays away (the cache was
+    -- already wiped when the token went missing above).
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
-    assert(TB.GetOrderSteps("Goldie") ~= nil, "a capability refresh keeps the step cache")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a missing token leaves no step cache")
     assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 0,
         "no step block on a server without the token")
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
