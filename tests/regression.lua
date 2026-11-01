@@ -2531,6 +2531,7 @@ local function sendMissingItemsBlock()
     SendMailNameEditBox = object("EditBox", MailFrame)
     SendMailSubjectEditBox = object("EditBox", MailFrame)
     SendMailBodyEditBox = object("EditBox", MailFrame)
+    local function clearDraft() SendMailNameEditBox:SetText(""); SendMailSubjectEditBox:SetText(""); SendMailBodyEditBox:SetText("") end
 
     -- Bags are sparse; slots come from GetContainerNumSlots.
     local bags, bagSlots = {}, {}
@@ -2638,6 +2639,7 @@ local function sendMissingItemsBlock()
     TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
     TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4;2320:2")
     TB.OnSystemMessage("TBM:ORDER_END")
+    clearDraft()
     TB.SendOrderMissingItems("Goldie")
     assert(SendMailNameEditBox:GetText() == "Goldie",
         "the form fills even when nothing can be attached")
@@ -2668,6 +2670,7 @@ local function sendMissingItemsBlock()
     setBag(0, 3, 2319, 4, "Medium Leather")
     cursor, mailItem = nil, nil
     calls = {}
+    clearDraft()
     TB.SendOrderMissingItems("Goldie")
     assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,PickupContainerItem,"
         .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
@@ -2690,6 +2693,7 @@ local function sendMissingItemsBlock()
     setBag(0, 3, 2319, 10, "Medium Leather")
     cursor, mailItem = nil, nil
     calls = {}
+    clearDraft()
     TB.SendOrderMissingItems("Goldie")
     assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,SplitContainerItem,"
         .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
@@ -2740,6 +2744,7 @@ local function sendMissingItemsBlock()
     local savedPickup = PickupContainerItem
     PickupContainerItem = nil
     calls = {}
+    clearDraft()
     local ok, err = pcall(TB.SendOrderMissingItems, "Goldie")
     assert(ok, "a missing PickupContainerItem must not error: " .. tostring(err))
     assert(not hasCall("ClickSendMailItemButton") and mailItem == nil,
@@ -2755,6 +2760,7 @@ local function sendMissingItemsBlock()
     local savedCursorProbe = CursorHasItem
     CursorHasItem = nil
     calls = {}
+    clearDraft()
     pcall(TB.SendOrderMissingItems, "Goldie")
     assert(not hasCall("PickupContainerItem") and not hasCall("ClickSendMailItemButton"),
         "no cursor probe means no pickup and no attach")
@@ -2773,13 +2779,31 @@ local function sendMissingItemsBlock()
         mailItem = { name = "Cured Light Hide", count = 2 } -- ...but the slot holds another
     end
     calls = {}
+    clearDraft()
     TB.SendOrderMissingItems("Goldie")
     assert(hasCall("ClearCursor"), "a mismatched attach clears the cursor")
+    assert(SendMailNameEditBox:GetText() == "",
+        "a mismatched attach clears the recipient so the wrong item cannot be sent to the bot")
+    local wrong = TB.GetOrderFeedback()
+    assert(wrong and wrong.kind == "error" and string.find(wrong.text, "recipient cleared", 1, true) ~= nil,
+        "a mismatched attach says the recipient was cleared: " .. tostring(wrong and wrong.text))
+
     local wrong = TB.GetOrderFeedback()
     assert(wrong and wrong.kind == "error"
         and string.find(wrong.text, "Cured Light Hide x2", 1, true) ~= nil
         and string.find(wrong.text, "attached - press Send", 1, true) == nil,
         "a mismatched attach is an error, not attached: " .. tostring(wrong and wrong.text))
+
+    -- 10b. A text-only draft (no attachment, empty cursor) is the player's: left untouched.
+    cursor, mailItem = nil, nil
+    clearDraft()
+    SendMailBodyEditBox:SetText("hi friend")
+    calls = {}
+    TB.SendOrderMissingItems("Goldie")
+    assert(SendMailBodyEditBox:GetText() == "hi friend" and SendMailNameEditBox:GetText() == ""
+        and not hasCall("MailFrameTab_OnClick") and not hasCall("PickupContainerItem"),
+        "a text-only draft is not overwritten")
+    clearDraft()
 
     -- 14. The click leaves the item on the cursor: same error path.
     cursor, mailItem = nil, nil
@@ -2787,6 +2811,7 @@ local function sendMissingItemsBlock()
         table.insert(calls, { name = "ClickSendMailItemButton" })
     end
     calls = {}
+    clearDraft()
     TB.SendOrderMissingItems("Goldie")
     assert(hasCall("ClearCursor"), "an item left on the cursor after the click is cleared")
     assert(cursor == nil, "ClearCursor empties the cursor")

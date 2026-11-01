@@ -323,6 +323,13 @@ function TB.SendOrderMissingItems(rootBot)
         TB.SetOrderFeedback("Nothing changed: the mail already holds " .. busyName .. " - send or clear it first", "error")
         return false
     end
+    -- A text-only draft is the player's too: never overwrite it.
+    local function boxText(box) return box and box.GetText and box:GetText() or "" end
+    if boxText(SendMailNameEditBox) ~= "" or boxText(SendMailSubjectEditBox) ~= ""
+        or boxText(SendMailBodyEditBox) ~= "" then
+        TB.SetOrderFeedback("Nothing changed: the mail form already has text - clear it first", "error")
+        return false
+    end
     -- D4: open the Send tab and fill the boxes (guard every global).
     if MailFrameTab_OnClick then MailFrameTab_OnClick(2) end
     if SendMailNameEditBox and SendMailNameEditBox.SetText then SendMailNameEditBox:SetText(draft.to) end
@@ -356,9 +363,12 @@ function TB.SendOrderMissingItems(rootBot)
     local sentName, sentCount = sendMailItem()
     if CursorHasItem() or sentName ~= itemName or sentCount ~= attached then
         if ClearCursor then ClearCursor() end
+        -- The wrong item may now sit in the attachment slot: clear the
+        -- recipient so a Send cannot mail it to the bot.
+        if SendMailNameEditBox and SendMailNameEditBox.SetText then SendMailNameEditBox:SetText("") end
         local shown = sentName and (sentName .. " x" .. tostring(sentCount)) or "no item"
-        TB.SetOrderFeedback("Nothing attached: the mail shows " .. shown
-            .. " instead of " .. itemName .. " x" .. tostring(attached), "error")
+        TB.SetOrderFeedback("Check the mail: it shows " .. shown .. " instead of " .. itemName
+            .. " x" .. tostring(attached) .. " - recipient cleared", "error")
         return true
     end
     TB.SetOrderFeedback(itemName .. " x" .. tostring(attached) .. " attached - press Send", "ok")
