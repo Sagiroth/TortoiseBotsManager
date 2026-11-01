@@ -2871,7 +2871,23 @@ local function orderStepHistoryChecks()
     end
     assert(sawStepBlock, "the committed list redraws the hovered tooltip")
     assert(table.getn(addonSent) == before, "the repaint sends no second request")
-    TB._guildTipRow = nil
+    -- Stale reply: asked for A, the bot moved to B, the reply lands late.
+    -- Nothing is cached and B tooltips no steps; the next hover may ask again.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    now = now + 16
+    assert(TB.RequestOrderSteps("Goldie") == true, "the step request for the old order lands")
+    assert(lastAddon() == "order Goldie steps", "the stale-reply request names the bot")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    assert(TB.GetBotOrder("Goldie") ~= nil, "the replacement order lands")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a late reply for the old order is not cached")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 0,
+        "a late reply shows no steps for the new order")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "the discard leaves the next hover free to ask again")
 
     -- Old server: without the token the block stays away (the cache was
     -- already wiped when the token went missing above).

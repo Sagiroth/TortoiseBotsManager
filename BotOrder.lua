@@ -289,10 +289,13 @@ local orders = {}
 -- oldest first; type + itemId (+ parent when the row has one) is the order
 -- identity the list belongs to. stepsReceiving buffers one bot's list
 -- between BEGIN and END; stepsAskedAt is the per-bot request throttle (one
--- ".bot order <bot> steps" per 15 s).
+-- ".bot order <bot> steps" per 15 s); stepsPending keeps the order identity
+-- seen when the request went out, so a reply that lands after the bot moved
+-- to a new order is dropped instead of stamped onto it.
 local orderSteps = {}
 local stepsReceiving = nil
 local stepsAskedAt = {}
+local stepsPending = {}
 
 -- The order a step list belongs to. A new order on the same bot must not
 -- show the old order's steps, so every cached list carries its order's
@@ -579,6 +582,7 @@ function TB.RequestOrderSteps(bot)
     if not bot then return false end
     if now() - (stepsAskedAt[bot] or -1000) < STEPS_THROTTLE then return false end
     stepsAskedAt[bot] = now()
+    stepsPending[bot] = orderIdentity(orders[bot])
     return TB.SendBotCommand("order " .. bot .. " steps")
 end
 
@@ -962,11 +966,22 @@ function TB.ParseOrderMessage(msg)
     end
     -- Step history of one bot: BEGIN opens a buffer, the ORDER_STEP lines fill
     -- it (only for the bot the buffer belongs to), END commits it and redraws
-    -- the tooltip of the row under the cursor. A line for another bot, or an
-    -- END without its BEGIN, is ignored; a BEGIN replaces an open buffer.
+    -- the tooltip of the row under the cursor. The buffer carries the order
+    -- identity seen when the request went out; a reply that lands after the
+    -- bot moved to a new order is dropped at BEGIN (never buffered) and at
+    -- END (never cached), freeing the throttle so the next hover asks again.
+    -- A line for another bot, or an END without its BEGIN, is ignored; a
+    -- BEGIN replaces an open buffer. Without a pending request there is
+    -- nothing to compare against, so the reply commits as before.
     local _, _, stepBot, _, stepDropped = string.find(msg, "^TBM:ORDER_STEPS_BEGIN|([^|]+)|(%d+)|(%d+)$")
     if stepBot then
-        stepsReceiving = { bot = norm(stepBot), entries = {}, dropped = tonumber(stepDropped) }
+        local bot = norm(stepBot)
+        local expected = stepsPending[bot]
+        if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+            stepsReceiving = nil
+        else
+            stepsReceiving = { bot = bot, entries = {}, dropped = tonumber(stepDropped), expected = expected }
+        end
         return true
     end
     if string.sub(msg, 1, 15) == "TBM:ORDER_STEP|" then
@@ -980,16 +995,34 @@ function TB.ParseOrderMessage(msg)
     if stepEndBot then
         local bot = norm(stepEndBot)
         if stepsReceiving and stepsReceiving.bot == bot then
-            -- Stamp the commit with its order's identity; a missing row means
-            -- no identity, which never matches a live order.
-            local identity = orderIdentity(orders[bot])
-            orderSteps[bot] = { entries = stepsReceiving.entries, dropped = stepsReceiving.dropped,
-                receivedAt = now(),
-                type = identity and identity.type or nil,
-                itemId = identity and identity.itemId or nil,
-                parent = identity and identity.parent or nil }
-            stepsReceiving = nil
-            if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
+            local expected = stepsReceiving.expected
+            if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+            else
+                -- Stamp the commit with its order's identity; a missing row means
+                -- no identity, which never matches a live order.
+                local identity = orderIdentity(orders[bot])
+                orderSteps[bot] = { entries = stepsReceiving.entries, dropped = stepsReceiving.dropped,
+                    receivedAt = now(),
+                    type = identity and identity.type or nil,
+                    itemId = identity and identity.itemId or nil,
+                    parent = identity and identity.parent or nil }
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
+            end
+        elseif stepsPending[bot] then
+            -- The BEGIN was refused above (or the buffer was replaced), so the
+            -- tail ends nothing: a stale tail still frees the throttle so the
+            -- next hover asks again, a fresh one just clears the pending mark.
+            if not sameOrderIdentity(stepsPending[bot], orderIdentity(orders[bot])) then
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+            else
+                stepsPending[bot] = nil
+            end
         end
         return true
     end
@@ -1315,6 +1348,7 @@ function TB.NoteOrderCaps()
         if not TB.HasServerCapability("guild-order-steps") then
             for bot in pairs(orderSteps) do orderSteps[bot] = nil end
             stepsReceiving = nil
+            for bot in pairs(stepsPending) do stepsPending[bot] = nil end
         end
         if TB.RefreshGuildView then TB.RefreshGuildView() end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
@@ -1326,6 +1360,7 @@ function TB.NoteOrderCaps()
     lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
     orderReceiving, itemsReceiving = nil, nil
     stepsReceiving = nil
+    for bot in pairs(stepsPending) do stepsPending[bot] = nil end
     searchBot, searchCat = nil, nil
     pendingSearchCat = nil
     TB.CloseOrderWindow()
