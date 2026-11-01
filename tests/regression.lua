@@ -2458,6 +2458,22 @@ assert(TB.OrderGoldText(12345) == "1g 23s 45c" and TB.OrderGoldText(0) == "0c"
 assert(TB.ClampOrderGold(12345) == 12345 and TB.ClampOrderGold(0) == 0
     and TB.ClampOrderGold("nope") == nil and TB.ClampOrderGold(nil) == nil
     and TB.ClampOrderGold("") == nil, "gold caps clamp to copper, zero, or none")
+assert(TB.OrderReasonLabel("nobanker") == "no banker in reach", "nobanker names the missing banker")
+assert(TB.OrderReasonLabel("bankdenied") == "bank refused withdrawal", "bankdenied names the refused withdrawal")
+assert(string.find(TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|working|nobanker|-|-|-|-|-|-|bank|-")), "State: Working (no banker in reach)", 1, true) ~= nil,
+    "bank dead-end tooltips name the reason")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|2319:4")) == "Light Leather 2/10 · buying on AH · |cffffd200needs items from you|r",
+    "working rows with a need list say so")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|-")) == "Light Leather 2/10 · buying on AH",
+    "working rows without a need list stay unchanged")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4")) == "Light Leather 0/10 · |cffffd200Waiting|r",
+    "waiting needitems rows already say it")
+assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4")), "needs items from you", 1, true) == nil,
+    "waiting needitems rows get no extra marker")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|grouped|-|-|-|-|-|-|craft|2319:4")) == "Light Leather 0/10 · |cffffd200Waiting|r · crafting · |cffffd200needs items from you|r",
+    "waiting grouped rows with a need list get the marker once")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|10|10|done|-|-|-|-|-|-|-|-|2319:4")) == "Light Leather · |cff4ecb5aDone|r",
+    "finished rows get no need marker")
 
 -- Sub-order tree: indented rows, depth helpers, branch cancel.
 TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
