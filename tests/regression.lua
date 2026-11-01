@@ -2474,6 +2474,8 @@ assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leat
     "waiting grouped rows with a need list get the marker once")
 assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|10|10|done|-|-|-|-|-|-|-|-|2319:4")) == "Light Leather · |cff4ecb5aDone|r",
     "finished rows get no need marker")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|need|2319:4")) == "Light Leather 2/10 · needs items from you",
+    "a working row on its need step says it once")
 
 -- Sub-order tree: indented rows, depth helpers, branch cancel.
 TB.OnSystemMessage("TBM:ORDER_BEGIN|2")

@@ -377,7 +377,8 @@ function TB.OrderRowText(order)
         text = item .. " " .. progress .. " · " .. trim(order.state or "")
     end
     if (state == "working" or (state == "waiting" and string.lower(trim(order.reason or "")) ~= "needitems"))
-        and order.need and table.getn(order.need) > 0 then
+        and order.need and table.getn(order.need) > 0
+        and not string.find(text, "needs items from you", 1, true) then -- a "need" step label already says it
         text = text .. " · " .. "|cffffd200needs items from you|r"
     end
     if order.keep and state ~= "stocked" then text = text .. " · " .. word("Keep") end
