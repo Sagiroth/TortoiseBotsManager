@@ -758,6 +758,24 @@ local STEPS_THROTTLE = 15
 -- queue. The in-flight bot and its send time; empty means idle.
 local stepsFlightAt = nil
 local STEPS_FLIGHT_TIMEOUT = 5
+-- The most entries one reply may carry (the server's memory cap). A BEGIN
+-- count above it is refused; a reply whose valid entries fall short of its
+-- BEGIN count is discarded. stepsMissed[bot] = { identity } marks a bot whose
+-- last reply was discarded: its tooltip says so while it still shows that order.
+local STEPS_PROTOCOL_MAX = 16
+local stepsMissed = {}
+
+-- Drop a reply that cannot be trusted: free the buffer and the bot's throttle
+-- so the next hover asks again, flag the tooltip for the order the bot holds
+-- now, and repaint. The cached list stays as it was.
+local function discardSteps(bot)
+    stepsReceiving = nil
+    stepsPending[bot] = nil
+    stepsAskedAt[bot] = nil
+    if next(stepsPending) == nil then stepsFlightAt = nil end
+    stepsMissed[bot] = { identity = orderIdentity(orders[bot]) }
+    if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
+end
 
 -- TBM:ORDER_STEP|<bot>|<ageSec>|<state>|<reason>|<step>|<itemId>: exactly six
 -- fields, bot non-empty, age and itemId whole numbers >= 0.
@@ -847,9 +865,9 @@ function TB.OrderStepText(entry)
 end
 
 -- The tooltip block: the newest entries first (at most 8), then one line with
--- how many older steps are no longer kept. {} without the capability, without
--- a cache or with an empty list.
-function TB.OrderStepsTooltipLines(bot)
+-- how many older steps are no longer kept. {} without a cache or with an
+-- empty list.
+local function stepsBlockLines(bot)
     if not stepsCapable() then return {} end
     local record = TB.GetOrderSteps(bot)
     if not record or not record.entries or table.getn(record.entries) == 0 then return {} end
@@ -872,6 +890,24 @@ function TB.OrderStepsTooltipLines(bot)
     local earlier = (count - shown) + (record.dropped or 0)
     if earlier > 0 then
         table.insert(lines, "  ... " .. earlier .. " earlier steps")
+    end
+    return lines
+end
+
+-- The step lines for a bot's tooltip: the "history incomplete, retrying" flag
+-- while its last reply was discarded for the order it holds now, then the
+-- step block. {} without the capability.
+function TB.OrderStepsTooltipLines(bot)
+    if not stepsCapable() then return {} end
+    local key = norm(bot)
+    local lines = {}
+    local missed = key and stepsMissed[key]
+    local current = key and orders[key]
+    if missed and (not current or sameOrderIdentity(missed.identity, orderIdentity(current))) then
+        table.insert(lines, "Steps: history incomplete, retrying")
+    end
+    for _, line in ipairs(stepsBlockLines(bot)) do
+        table.insert(lines, line)
     end
     return lines
 end
@@ -1206,14 +1242,20 @@ function TB.ParseOrderMessage(msg)
     -- A line for another bot, or an END without its BEGIN, is ignored; a
     -- BEGIN replaces an open buffer. Without a pending request there is
     -- nothing to compare against, so the reply commits as before.
-    local _, _, stepBot, _, stepDropped = string.find(msg, "^TBM:ORDER_STEPS_BEGIN|([^|]+)|(%d+)|(%d+)$")
+    -- The BEGIN count is the entry count the reply promises: a count above
+    -- STEPS_PROTOCOL_MAX is refused at once, and an END whose valid entries
+    -- fall short of it is discarded (discardSteps), never committed.
+    local _, _, stepBot, stepCount, stepDropped = string.find(msg, "^TBM:ORDER_STEPS_BEGIN|([^|]+)|(%d+)|(%d+)$")
     if stepBot then
         local bot = norm(stepBot)
         local expected = stepsPending[bot]
+        local count = tonumber(stepCount)
         if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
             stepsReceiving = nil
+        elseif count > STEPS_PROTOCOL_MAX then
+            discardSteps(bot)
         else
-            stepsReceiving = { bot = bot, entries = {}, dropped = tonumber(stepDropped), expected = expected }
+            stepsReceiving = { bot = bot, entries = {}, count = count, dropped = tonumber(stepDropped), expected = expected }
         end
         return true
     end
@@ -1234,6 +1276,9 @@ function TB.ParseOrderMessage(msg)
                 stepsPending[bot] = nil
                 stepsAskedAt[bot] = nil
                 if next(stepsPending) == nil then stepsFlightAt = nil end
+            elseif table.getn(stepsReceiving.entries) ~= stepsReceiving.count then
+                -- Short of the BEGIN count: entries were lost, so nothing commits.
+                discardSteps(bot)
             else
                 -- Stamp the commit with its order's identity; a missing row means
                 -- no identity, which never matches a live order.
@@ -1243,6 +1288,7 @@ function TB.ParseOrderMessage(msg)
                     type = identity and identity.type or nil,
                     itemId = identity and identity.itemId or nil,
                     parent = identity and identity.parent or nil }
+                stepsMissed[bot] = nil
                 stepsReceiving = nil
                 stepsPending[bot] = nil
                 if next(stepsPending) == nil then stepsFlightAt = nil end

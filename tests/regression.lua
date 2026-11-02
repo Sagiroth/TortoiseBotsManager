@@ -3172,7 +3172,7 @@ local function orderStepHistoryChecks()
         "the eight newest entries show, newest first")
 
     -- Foreign lines: another bot's step line is ignored, an END needs its BEGIN.
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|2|0")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
     TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|20|working|-|bank|2319")
     TB.OnSystemMessage("TBM:ORDER_STEP|Silver|10|working|-|bank|2319")
     TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
@@ -3197,6 +3197,80 @@ local function orderStepHistoryChecks()
     TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|-")
     assert(TB.RequestOrderSteps("Goldie") == false, "an identical live line keeps the throttle")
     assert(table.getn(addonSent) == before, "the throttled call sends nothing")
+
+    -- Count check. Fresh bots per case so no earlier cache or throttle leaks in.
+    -- A BEGIN count that matches the valid entries commits, without the flag.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Ruth|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Ruth") == true, "a fresh request for Ruth goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Ruth|2|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Ruth|90|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Ruth|30|working|nobanker|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Ruth")
+    assert(TB.GetOrderSteps("Ruth") and table.getn(TB.GetOrderSteps("Ruth").entries) == 2,
+        "a count that matches its entries commits")
+    assert(table.getn(TB.OrderStepsTooltipLines("Ruth")) > 0
+        and string.find(TB.OrderStepsTooltipLines("Ruth")[1], "history incomplete", 1, true) == nil,
+        "a committed list shows no incomplete flag")
+
+    -- One entry missing (BEGIN says two): discarded, nothing cached, the
+    -- tooltip says so, and the throttle is free so the next hover asks again.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Hilda|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Hilda") == true, "a fresh request for Hilda goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Hilda|2|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Hilda|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Hilda")
+    assert(TB.GetOrderSteps("Hilda") == nil, "one missing entry: the list is discarded, not committed")
+    lines = TB.OrderStepsTooltipLines("Hilda")
+    assert(table.getn(lines) == 1 and lines[1] == "Steps: history incomplete, retrying",
+        "a discarded list flags the tooltip as incomplete, retrying")
+    -- Goldie's request above never got its END, so it still holds the one
+    -- steps slot; the slot times out after 5 s, then the retry goes out.
+    now = now + 6
+    before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Hilda") == true, "a discarded reply frees the throttle at once")
+    assert(lastAddon() == "order Hilda steps", "the retry asks the same bot again")
+
+    -- Over the cap: a BEGIN count above 16 is refused and its entries ignored.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Tessa|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Tessa") == true, "a fresh request for Tessa goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Tessa|17|0")
+    for i = 1, 17 do
+        TB.OnSystemMessage("TBM:ORDER_STEP|Tessa|" .. (i * 10) .. "|working|-|bank|2319")
+    end
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Tessa")
+    assert(TB.GetOrderSteps("Tessa") == nil, "an oversized count is rejected, nothing commits")
+    lines = TB.OrderStepsTooltipLines("Tessa")
+    assert(table.getn(lines) == 1 and lines[1] == "Steps: history incomplete, retrying",
+        "a rejected count flags the tooltip")
+    now = now + 6 -- Goldie's and Hilda's unanswered requests hold the slot until it times out
+    assert(TB.RequestOrderSteps("Tessa") == true, "a rejected count frees the throttle at once")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Tessa|0|0") -- answer the retry (no steps), so the slot frees
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Tessa")
+
+    -- The cap itself is accepted: sixteen entries commit.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Vera|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Vera") == true, "a fresh request for Vera goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Vera|16|0")
+    for i = 1, 16 do
+        TB.OnSystemMessage("TBM:ORDER_STEP|Vera|" .. (i * 10) .. "|working|-|bank|2319")
+    end
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Vera")
+    assert(TB.GetOrderSteps("Vera") and table.getn(TB.GetOrderSteps("Vera").entries) == 16,
+        "sixteen entries, the cap itself, commit")
+
+    -- A complete retry for Hilda clears her flag.
+    now = now + 60
+    assert(TB.RequestOrderSteps("Hilda") == true, "Hilda's retry goes out after the throttle")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Hilda|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Hilda|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Hilda")
+    assert(TB.GetOrderSteps("Hilda") ~= nil, "the complete retry commits")
+    lines = TB.OrderStepsTooltipLines("Hilda")
+    assert(lines[1] == "Steps (newest first):", "a committed retry clears the incomplete flag")
 
     -- Entry and age texts.
     assert(TB.OrderStepText({ state = "done", itemId = 0 }) == "Done",
