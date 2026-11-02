@@ -56,6 +56,8 @@
 -- new reason needitems (state waiting) means the order waits for those items:
 -- trade them, mail them or put them in the guild bank; a working row may also
 -- carry a non-empty need list.
+-- <have> counts delivered + the bot's bags + its mail; a `working` row with
+-- have >= want is not deliverable yet (delivery needs the bags).
 -- TBM:ORDER_ACCESS rides first inside ORDER_BEGIN/END and again after a rank
 -- change; tab lists are comma-separated 1-based tabs or "-". Rank "-" (as in
 -- "-|-|-|-|0|0") means the server leaves bot ranks alone: grey line, no rank
@@ -536,6 +538,9 @@ function TB.OrderRowText(order)
         local step = TB.OrderStepLabel(order)
         if step then text = text .. " · " .. step
         elseif order.zone then text = text .. " (" .. order.zone .. ")" end
+        if (order.want or 0) > 0 and (order.have or 0) >= order.want then
+            text = text .. " · " .. "|cffffd200not all in its bags yet|r"
+        end
     elseif state == "waiting" then
         text = item .. " " .. progress .. " · " .. word("Waiting")
         if string.lower(trim(order.reason or "")) ~= "needitems" then
@@ -591,6 +596,10 @@ function TB.OrderTooltipText(order)
     local reason = TB.OrderReasonLabel(order.reason)
     if reason then state = state .. " (" .. reason .. ")" end
     table.insert(lines, state)
+    if string.lower(trim(order.state or "")) == "working"
+        and (order.want or 0) > 0 and (order.have or 0) >= order.want then
+        table.insert(lines, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail). It delivers once all are in its bags.")
+    end
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
     local step = TB.OrderStepLabel(order)
     if step then table.insert(lines, "Now: " .. step) end
