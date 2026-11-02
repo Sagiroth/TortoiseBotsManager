@@ -1775,6 +1775,75 @@ function TB.InitUI()
         end)
         guildFrame.scroll = scroll
 
+        -- The row tooltip body lives in one function so a late step history
+        -- (TBM:ORDER_STEPS_END) can redraw the tooltip of the row under the
+        -- cursor. A resting hover arms a 0.4 s dwell timer (cancelled on
+        -- leave) before asking the server for that bot's steps, and only
+        -- when the bot has an order; the repaint passes noRequest so it
+        -- never sends a second request.
+        function TB.ShowGuildRowTooltip(row, noRequest)
+            local entry = row and row.entry
+            if not entry then return end
+            TB._guildTipRow = row
+            TB._guildTipOwner = row
+            if not noRequest and TB.GetBotOrder and TB.GetBotOrder(entry.name)
+                and TB.RequestOrderSteps then
+                TB._stepsDwell = { name = entry.name, at = (GetTime and GetTime()) or 0 }
+                ensureStepsDwellFrame()
+            end
+            GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+            GameTooltip:SetText(entry.name)
+            GameTooltip:AddLine("Level " .. entry.level .. " " .. (entry.className or "") .. " · " .. (entry.status or "Unknown"), 1, 1, 1)
+            if entry.location then
+                GameTooltip:AddLine("Location: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3])
+            end
+            if entry.gearLocked then
+                GameTooltip:AddLine("|cffffd200Gear Hard-Locked (Lvl 60)|r\nBot will never self-equip or auto-vendor gear. 100% player managed.", 1, 0.82, 0)
+            else
+                GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
+            end
+            if TB.GetBotOrder and TB.OrderTooltipText then
+                local order = TB.GetBotOrder(entry.name)
+                local orderText = order and TB.OrderTooltipText(order) or nil
+                if orderText then
+                    GameTooltip:AddLine(orderText, 1, 1, 1)
+                end
+            end
+            GameTooltip:Show()
+        end
+
+        -- Hover requests wait for a 0.4 s rest before going out; leaving the
+        -- row cancels the wait. The timer frame sends at most the bot it was
+        -- armed for, and RequestOrderSteps still applies its own gates.
+        local STEPS_DWELL = 0.4
+        local stepsDwellFrame
+        function ensureStepsDwellFrame()
+            if stepsDwellFrame then return end
+            stepsDwellFrame = CreateFrame("Frame", "TortoiseBotsManagerStepsDwell")
+            stepsDwellFrame:SetScript("OnUpdate", function()
+                local dwell = TB._stepsDwell
+                if not dwell then return end
+                if ((GetTime and GetTime()) or 0) - (dwell.at or 0) < STEPS_DWELL then return end
+                TB._stepsDwell = nil
+                if TB.RequestOrderSteps then TB.RequestOrderSteps(dwell.name) end
+            end)
+        end
+
+        -- A committed step list redraws the tooltip only while it still shows
+        -- that bot's row; every other case is left alone.
+        function TB.RepaintGuildRowTooltip(bot)
+            local row = TB._guildTipRow
+            if not row or not row.entry then return end
+            if TB.NormalizeName(row.entry.name) ~= bot then return end
+            if not row:IsVisible() then return end
+            if GameTooltip.IsOwned then
+                if not GameTooltip:IsOwned(row) then return end
+            elseif TB._guildTipOwner ~= row then
+                return
+            end
+            TB.ShowGuildRowTooltip(row, true)
+        end
+
         local rows = {}
         for i = 1, GUILD_ROW_N do
             local row = CreateFrame("Frame", nil, guildFrame)
@@ -1923,30 +1992,13 @@ function TB.InitUI()
             hl:SetAllPoints(row)
             hl:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.08)
 
-            row:SetScript("OnEnter", function()
-                local entry = this.entry
-                if not entry then return end
-                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-                GameTooltip:SetText(entry.name)
-                GameTooltip:AddLine("Level " .. entry.level .. " " .. (entry.className or "") .. " · " .. (entry.status or "Unknown"), 1, 1, 1)
-                if entry.location then
-                    GameTooltip:AddLine("Location: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3])
-                end
-                if entry.gearLocked then
-                    GameTooltip:AddLine("|cffffd200Gear Hard-Locked (Lvl 60)|r\nBot will never self-equip or auto-vendor gear. 100% player managed.", 1, 0.82, 0)
-                else
-                    GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
-                end
-                if TB.GetBotOrder and TB.OrderTooltipText then
-                    local order = TB.GetBotOrder(entry.name)
-                    local orderText = order and TB.OrderTooltipText(order) or nil
-                    if orderText then
-                        GameTooltip:AddLine(orderText, 1, 1, 1)
-                    end
-                end
-                GameTooltip:Show()
+            row:SetScript("OnEnter", function() TB.ShowGuildRowTooltip(this) end)
+            row:SetScript("OnLeave", function()
+                TB._guildTipRow = nil
+                TB._guildTipOwner = nil
+                TB._stepsDwell = nil
+                GameTooltip:Hide()
             end)
-            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
             table.insert(rows, row)
         end

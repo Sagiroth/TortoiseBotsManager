@@ -22,10 +22,15 @@
 --   "order reassign <subOrderBot> <newBot>"         -> hand a sub-order over
 --   "order <bot> cancel"                            -> on a parent cancels
 --     the whole branch
+--   "order <bot> steps"                             -> TBM:ORDER_STEPS_* for
+--     that bot's order (capability "guild-order-steps", memory only)
 -- Inbound:
 --   TBM:ORDER_BEGIN|<n>
 --   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>|<hours>|<keep>|<parent>|<goldCap>|<step>|<need>
 --   TBM:ORDER_END
+--   TBM:ORDER_STEPS_BEGIN|<bot>|<n>|<dropped>   (the answer to "order <bot>
+--   TBM:ORDER_STEP|<bot>|<ageSec>|<state>|<reason>|<step>|<itemId>   steps":
+--   TBM:ORDER_STEPS_END|<bot>                   oldest first, "TBM:ORDER" tokens)
 --   TBM:ORDER_ACCESS|<rankIndex>|<rankName>|<tabsOk>|<tabsDenied>|<gold 0/1>|<canSetRank 0/1>
 --   TBM:ORDER_ITEMS_BEGIN|<n>
 --   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>|<difficulty>|<category>
@@ -36,6 +41,11 @@
 -- set); outside a pair it is a live update for one bot (update that row
 -- only). The search pair is its own stream, so an empty result is a real
 -- answer. Unknown state / reason / step tokens are shown raw, never crash.
+-- The step pair is its own stream too: the addon asks on hover of a guild row
+-- (one request per bot per 15 s, cap token "guild-order-steps") and shows the
+-- newest entries at the end of the order tooltip. The server keeps at most 16
+-- entries in memory (it resets on restart, a new order or a reassign) and
+-- <dropped> counts the older ones it no longer keeps.
 -- <reason> "-" means none; <zone> "-" means none; <chance> is percent.
 -- <difficulty> is easy / medium / hard ("-" or a missing field on old
 -- servers means none); <reason> and <verdict> may be "elite", "timeout",
@@ -457,6 +467,55 @@ end
 -- the player must bring, or nil.
 local orders = {}
 
+-- Per-order step history, memory only: orderSteps[bot] = { entries, dropped,
+-- receivedAt, type, itemId, parent }. entries hold the server's entries
+-- oldest first; type + itemId (+ parent when the row has one) is the order
+-- identity the list belongs to. stepsReceiving buffers one bot's list
+-- between BEGIN and END; stepsAskedAt is the per-bot request throttle (one
+-- ".bot order <bot> steps" per 15 s); stepsPending keeps the order identity
+-- seen when the request went out, so a reply that lands after the bot moved
+-- to a new order is dropped instead of stamped onto it.
+local orderSteps = {}
+local stepsReceiving = nil
+local stepsAskedAt = {}
+local stepsPending = {}
+
+-- The order a step list belongs to. A new order on the same bot must not
+-- show the old order's steps, so every cached list carries its order's
+-- identity and the cache is dropped whenever the bot's current order
+-- identity differs from it.
+local function orderIdentity(order)
+    if not order then return nil end
+    local parent = order.parent
+    if parent ~= nil then parent = string.lower(trim(parent or "")) end
+    if parent == "" then parent = nil end
+    return {
+        type = string.lower(trim(order.type or "")),
+        itemId = order.itemId,
+        parent = parent,
+    }
+end
+
+local function sameOrderIdentity(a, b)
+    if not a or not b then return false end
+    return a.type == b.type and a.itemId == b.itemId and a.parent == b.parent
+end
+
+-- Tooltip-side view of one order-step record's identity: the same lowered
+-- key as orderIdentity, so a mixed-kind order ("Farm" vs "farm") still
+-- matches the row it belongs to.
+function TB.OrderStepIdentity(record)
+    if not record then return nil end
+    local parent = record.parent
+    if parent ~= nil then parent = string.lower(trim(parent or "")) end
+    if parent == "" then parent = nil end
+    return {
+        type = record.type and string.lower(trim(record.type or "")) or nil,
+        itemId = record.itemId,
+        parent = parent,
+    }
+end
+
 function TB.GetBotOrder(bot)
     bot = norm(bot)
     return bot and orders[bot] or nil
@@ -626,6 +685,11 @@ function TB.OrderTooltipText(order)
         table.insert(lines, "Stocked: " .. tostring(order.want or 0) .. " in the bank, the bot refills when it drops below "
             .. tostring(order.want or 0))
     end
+    -- The step timeline rides at the end: newest steps with their age, fetched
+    -- on hover (nothing on servers without the guild-order-steps token).
+    for _, stepLineText in ipairs(TB.OrderStepsTooltipLines(order.bot)) do
+        table.insert(lines, stepLineText)
+    end
     return table.concat(lines, "\n")
 end
 -- ── parsing ───────────────────────────────────────────────────────────────
@@ -673,6 +737,138 @@ function TB.ParseOrderNeed(text)
     end
     if table.getn(out) == 0 then return nil end
     return out
+end
+
+-- ── step history ──────────────────────────────────────────────────────────
+-- One bot's step timeline: ".bot order <bot> steps" is answered with
+-- TBM:ORDER_STEPS_BEGIN|<bot>|<n>|<dropped>, n TBM:ORDER_STEP lines (oldest
+-- first) and TBM:ORDER_STEPS_END|<bot>. The server keeps at most 16 entries in
+-- memory and counts the dropped older ones; the addon shows the newest ones in
+-- the order tooltip. Tokens are the TBM:ORDER ones ("-" = none, itemId 0 =
+-- none); errors ride the existing order action-error codes (no-bot, not-guild).
+local STEP_SHOWN = 8
+local STEPS_THROTTLE = 15
+-- One steps reply on the wire at a time: a resting hover on another bot waits
+-- until the current END lands (or 5 s pass), so a sweep never floods the send
+-- queue. The in-flight bot and its send time; empty means idle.
+local stepsFlightAt = nil
+local STEPS_FLIGHT_TIMEOUT = 5
+
+-- TBM:ORDER_STEP|<bot>|<ageSec>|<state>|<reason>|<step>|<itemId>: exactly six
+-- fields, bot non-empty, age and itemId whole numbers >= 0.
+function TB.ParseOrderStepLine(msg)
+    if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_STEP|" then return nil end
+    local fields = splitProtocol(string.sub(msg, 16))
+    if table.getn(fields) ~= 6 then return nil end
+    local bot = norm(trim(fields[1]))
+    if not bot or bot == "" then return nil end
+    local age = tonumber(trim(fields[2]))
+    local state = trim(fields[3])
+    local itemId = tonumber(trim(fields[6]))
+    if not age or not itemId or age < 0 or itemId < 0 or state == "" then return nil end
+    return {
+        bot = bot, age = math.floor(age), state = state,
+        reason = noneDash(fields[4]), step = noneDash(fields[5]),
+        itemId = math.floor(itemId),
+    }
+end
+
+-- The cached list of one bot (entries oldest first, dropped, receivedAt), or
+-- nil when none arrived yet.
+function TB.GetOrderSteps(bot)
+    bot = norm(bot)
+    return bot and orderSteps[bot] or nil
+end
+
+-- Both gates: the order feature and the step-history token. Old servers are
+-- never asked and their tooltips stay unchanged.
+local function stepsCapable()
+    return TB.HasOrderCapability() and TB.HasServerCapability("guild-order-steps")
+end
+
+-- Ask for one bot's step list; at most one request per bot per 15 s, and
+-- only one steps request in flight at a time (a new one waits until the
+-- current END arrives or 5 s pass). A live TBM:ORDER line that changes
+-- state, reason or step clears the throttle so the next hover refetches
+-- at once.
+function TB.RequestOrderSteps(bot)
+    if not stepsCapable() then return false end
+    bot = norm(bot)
+    if not bot then return false end
+    if now() - (stepsAskedAt[bot] or -1000) < STEPS_THROTTLE then return false end
+    if stepsFlightAt and now() - stepsFlightAt < STEPS_FLIGHT_TIMEOUT then
+        local other = false
+        for pending in pairs(stepsPending) do
+            if pending ~= bot then other = true break end
+        end
+        if other then return false end
+    end
+    stepsAskedAt[bot] = now()
+    stepsPending[bot] = orderIdentity(orders[bot])
+    stepsFlightAt = now()
+    return TB.SendBotCommand("order " .. bot .. " steps")
+end
+
+-- "just now", "5m ago", "2h ago", "2h 1m ago", "3d ago".
+function TB.OrderStepAgeText(sec)
+    sec = math.floor(tonumber(sec) or 0)
+    if sec < 0 then sec = 0 end
+    if sec < 60 then return "just now" end
+    if sec < 3600 then return math.floor(sec / 60) .. "m ago" end
+    if sec < 86400 then
+        local h = math.floor(sec / 3600)
+        local m = math.floor(math.mod(sec, 3600) / 60)
+        if m == 0 then return h .. "h ago" end
+        return h .. "h " .. m .. "m ago"
+    end
+    return math.floor(sec / 86400) .. "d ago"
+end
+
+-- One entry: what the bot did (the live step while working, else the state
+-- word), which item the leg is for, and the reason in brackets.
+function TB.OrderStepText(entry)
+    if not entry then return nil end
+    local base = nil
+    if string.lower(trim(entry.state or "")) == "working" then
+        base = TB.OrderStepLabel({ step = entry.step })
+    end
+    if not base then base = TB.OrderStateLabel(entry.state) end
+    if (tonumber(entry.itemId) or 0) > 0 then
+        base = base .. ": " .. needName(entry.itemId)
+    end
+    local reason = TB.OrderReasonLabel(entry.reason)
+    if reason then base = base .. " (" .. reason .. ")" end
+    return base
+end
+
+-- The tooltip block: the newest entries first (at most 8), then one line with
+-- how many older steps are no longer kept. {} without the capability, without
+-- a cache or with an empty list.
+function TB.OrderStepsTooltipLines(bot)
+    if not stepsCapable() then return {} end
+    local record = TB.GetOrderSteps(bot)
+    if not record or not record.entries or table.getn(record.entries) == 0 then return {} end
+    -- The cache belongs to one order: while the bot holds a different order,
+    -- show nothing until that order's own reply lands. With no current order
+    -- there is no tooltip anyway, so the stranded list still reads.
+    local current = orders[norm(bot)]
+    if current and not sameOrderIdentity(TB.OrderStepIdentity(record), TB.OrderStepIdentity(current)) then return {} end
+    local lines = { "Steps (newest first):" }
+    local entries = record.entries
+    local count = table.getn(entries)
+    local shown = 0
+    local drift = now() - (record.receivedAt or now())
+    for i = count, 1, -1 do
+        if shown >= STEP_SHOWN then break end
+        local age = (tonumber(entries[i].age) or 0) + drift
+        table.insert(lines, "  " .. TB.OrderStepAgeText(age) .. " · " .. TB.OrderStepText(entries[i]))
+        shown = shown + 1
+    end
+    local earlier = (count - shown) + (record.dropped or 0)
+    if earlier > 0 then
+        table.insert(lines, "  ... " .. earlier .. " earlier steps")
+    end
+    return lines
 end
 
 function TB.ParseOrderLine(msg)
@@ -918,6 +1114,23 @@ function TB.ParseOrderMessage(msg)
         if orderReceiving then
             if order then table.insert(orderReceiving.rows, order) end
         elseif order then
+            local previous = orders[order.bot]
+            -- The step list belongs to its order's identity. A new order on
+            -- the same bot drops the old list at once: hide via the identity
+            -- check by keeping only a list that matches the incoming row. A
+            -- new or changed state/reason/step also clears the throttle so
+            -- the next hover refetches.
+            if not previous
+                or not sameOrderIdentity(previous, order)
+                or string.lower(trim(previous.state or "")) ~= string.lower(trim(order.state or ""))
+                or string.lower(trim(previous.reason or "")) ~= string.lower(trim(order.reason or ""))
+                or string.lower(trim(previous.step or "")) ~= string.lower(trim(order.step or "")) then
+                stepsAskedAt[order.bot] = nil
+            end
+            if orderSteps[order.bot]
+                and not sameOrderIdentity(orderSteps[order.bot], orderIdentity(order)) then
+                orderSteps[order.bot] = nil
+            end
             orders[order.bot] = order
             if TB.RefreshGuildView then TB.RefreshGuildView() end
             if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
@@ -929,6 +1142,15 @@ function TB.ParseOrderMessage(msg)
         orderReceiving = nil
         if batch then
             commitOrderList(batch.rows)
+            -- A full list drops the step lists whose order is gone or whose
+            -- identity changed (a new order reuses the bot). A list with no
+            -- current row is stranded, not stale, so it stays readable.
+            for bot in pairs(orderSteps) do
+                local current = orders[bot]
+                if current and not sameOrderIdentity(orderSteps[bot], orderIdentity(current)) then
+                    orderSteps[bot] = nil
+                end
+            end
             if batch.access then orderAccess = batch.access end
             if TB.SetStatus then
                 TB.SetStatus("Orders updated · " .. table.getn(batch.rows), "ok")
@@ -962,6 +1184,71 @@ function TB.ParseOrderMessage(msg)
                 end
             end
             if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        end
+        return true
+    end
+    -- Step history of one bot: BEGIN opens a buffer, the ORDER_STEP lines fill
+    -- it (only for the bot the buffer belongs to), END commits it and redraws
+    -- the tooltip of the row under the cursor. The buffer carries the order
+    -- identity seen when the request went out; a reply that lands after the
+    -- bot moved to a new order is dropped at BEGIN (never buffered) and at
+    -- END (never cached), freeing the throttle so the next hover asks again.
+    -- A line for another bot, or an END without its BEGIN, is ignored; a
+    -- BEGIN replaces an open buffer. Without a pending request there is
+    -- nothing to compare against, so the reply commits as before.
+    local _, _, stepBot, _, stepDropped = string.find(msg, "^TBM:ORDER_STEPS_BEGIN|([^|]+)|(%d+)|(%d+)$")
+    if stepBot then
+        local bot = norm(stepBot)
+        local expected = stepsPending[bot]
+        if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+            stepsReceiving = nil
+        else
+            stepsReceiving = { bot = bot, entries = {}, dropped = tonumber(stepDropped), expected = expected }
+        end
+        return true
+    end
+    if string.sub(msg, 1, 15) == "TBM:ORDER_STEP|" then
+        local entry = TB.ParseOrderStepLine(msg)
+        if stepsReceiving and entry and entry.bot == stepsReceiving.bot then
+            table.insert(stepsReceiving.entries, entry)
+        end
+        return true
+    end
+    local _, _, stepEndBot = string.find(msg, "^TBM:ORDER_STEPS_END|([^|]+)$")
+    if stepEndBot then
+        local bot = norm(stepEndBot)
+        if stepsReceiving and stepsReceiving.bot == bot then
+            local expected = stepsReceiving.expected
+            if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
+            else
+                -- Stamp the commit with its order's identity; a missing row means
+                -- no identity, which never matches a live order.
+                local identity = orderIdentity(orders[bot])
+                orderSteps[bot] = { entries = stepsReceiving.entries, dropped = stepsReceiving.dropped,
+                    receivedAt = now(),
+                    type = identity and identity.type or nil,
+                    itemId = identity and identity.itemId or nil,
+                    parent = identity and identity.parent or nil }
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
+                if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
+            end
+        elseif stepsPending[bot] then
+            -- The BEGIN was refused above (or the buffer was replaced), so the
+            -- tail ends nothing: a stale tail still frees the throttle so the
+            -- next hover asks again, a fresh one just clears the pending mark.
+            if not sameOrderIdentity(stepsPending[bot], orderIdentity(orders[bot])) then
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+            else
+                stepsPending[bot] = nil
+            end
+            if next(stepsPending) == nil then stepsFlightAt = nil end
         end
         return true
     end
@@ -1168,6 +1455,7 @@ function TB.OnOrderAck(packet)
             local gone = {}
             gone[bot] = true
             orders[bot] = nil
+            orderSteps[bot] = nil
             local swept = true
             while swept do
                 swept = false
@@ -1175,6 +1463,7 @@ function TB.OnOrderAck(packet)
                     if order.parent and gone[order.parent] then
                         gone[child] = true
                         orders[child] = nil
+                        orderSteps[child] = nil
                         swept = true
                     end
                 end
@@ -1279,14 +1568,29 @@ end
 -- off): close the window and drop the model so no stale state lingers.
 function TB.NoteOrderCaps()
     if TB.HasOrderCapability() then
+        -- The server can lose the step history mid-session (a restart with
+        -- the token off, a session change): its memory resets, so the whole
+        -- cache goes rather than show one order's steps on another.
+        if not TB.HasServerCapability("guild-order-steps") then
+            for bot in pairs(orderSteps) do orderSteps[bot] = nil end
+            stepsReceiving = nil
+            for bot in pairs(stepsPending) do stepsPending[bot] = nil end
+            for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
+            stepsFlightAt = nil
+        end
         if TB.RefreshGuildView then TB.RefreshGuildView() end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return
     end
     for key in pairs(orders) do orders[key] = nil end
     orderAccess = nil
+    for bot in pairs(orderSteps) do orderSteps[bot] = nil end
     lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
     orderReceiving, itemsReceiving = nil, nil
+    stepsReceiving = nil
+    for bot in pairs(stepsPending) do stepsPending[bot] = nil end
+    for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
+    stepsFlightAt = nil
     searchBot, searchCat = nil, nil
     pendingSearchCat = nil
     TB.CloseOrderWindow()
