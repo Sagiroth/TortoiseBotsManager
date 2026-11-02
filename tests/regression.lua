@@ -135,11 +135,12 @@ function ChatFrame_AddMessageEventFilter(eventName, filter) chatFilters[eventNam
 local chatEventPassed = false
 function ChatFrame_OnEvent() chatEventPassed = true end
 GameTooltip = {
-    SetOwner = function() end,
+    SetOwner = function(self, owner) self.owner = owner end,
+    IsOwned = function(self, owner) return self.owner == owner end,
     SetText = function() end,
     AddLine = function() end,
     Show = function() end,
-    Hide = function() end,
+    Hide = function(self) self.owner = nil end,
 }
 
 function GetTime() return now end
@@ -2900,6 +2901,153 @@ local function orderStepHistoryChecks()
         "the block restores the capability set")
 end
 orderStepHistoryChecks()
+-- ── Step hover dwell + single outstanding (Opus cold review) ───────────────
+-- A hover asks only after the cursor rests 0.4 s; one steps reply in flight
+-- blocks the next bot until END or 5 s. Own function: chunk local limit.
+local function stepHoverDwellChecks()
+    TB._stepsDwell = nil
+    TB._guildTipRow = nil
+    TB._guildTipOwner = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|Farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    for i = 1, 20 do
+        TB.OnSystemMessage("TBM:ORDER|Sweep" .. i .. "|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    end
+    now = now + 16
+    TB.ShowTab("guild")
+    TB.RefreshGuildView()
+    local dwellFrame = frames["TortoiseBotsManagerStepsDwell"]
+    assert(dwellFrame and dwellFrame.scripts.OnUpdate, "the steps dwell timer must exist")
+    local hoverRow = TB.guildFrame.rows[1]
+    assert(hoverRow and hoverRow.scripts.OnEnter and hoverRow.scripts.OnLeave, "guild rows must hover")
+    local row1 = TB.guildFrame.rows[1]
+    assert(row1.entry and row1.entry.name == "Goldie", "the first guild row holds Goldie")
+
+    -- Sweep: 20 quick hovers (0.2 s each) send nothing.
+    local beforeSweep = table.getn(addonSent)
+    for i = 1, 20 do
+        local fake = { entry = { name = "Sweep" .. i, level = 60, className = "Warrior", status = "Online" } }
+        this = fake
+        hoverRow.scripts.OnEnter(hoverRow)
+        now = now + 0.2
+        dwellFrame.scripts.OnUpdate(dwellFrame)
+        this = fake
+        hoverRow.scripts.OnLeave(hoverRow)
+    end
+    now = now + 1
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSweep, "sweeping 20 rows sends no step request")
+
+    -- Rest: 0.5 s on Goldie sends one request.
+    now = now + 1
+    local stay = { entry = { name = "Goldie", level = 60, className = "Warrior", status = "Online" } }
+    this = stay
+    hoverRow.scripts.OnEnter(hoverRow)
+    now = now + 0.5
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSweep + 1 and lastAddon() == "order Goldie steps",
+        "resting 0.5 s sends one step request")
+    this = stay
+    hoverRow.scripts.OnLeave(hoverRow)
+
+    -- Outstanding: Silver waits while Goldie's reply is in flight.
+    now = now + 1
+    local beforeSecond = table.getn(addonSent)
+    local silver = { entry = { name = "Silver", level = 45, className = "Priest", status = "Online" } }
+    this = silver
+    hoverRow.scripts.OnEnter(hoverRow)
+    now = now + 0.5
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSecond, "a second row waits while one steps request is outstanding")
+    this = silver
+    hoverRow.scripts.OnLeave(hoverRow)
+
+    -- After 5 s without an END the next hover may ask again.
+    now = now + 6
+    this = silver
+    hoverRow.scripts.OnEnter(hoverRow)
+    now = now + 0.5
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSecond + 1 and lastAddon() == "order Silver steps",
+        "the single outstanding request times out after 5 s")
+    this = silver
+    hoverRow.scripts.OnLeave(hoverRow)
+
+    -- Both late replies still commit each bot's own list.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(TB.GetOrderSteps("Goldie") ~= nil, "Goldie's late reply still commits")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Silver|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Silver|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Silver")
+    assert(TB.GetOrderSteps("Silver") ~= nil, "Silver's reply still commits")
+
+    -- Identity is case-insensitive: the "Farm" row keeps its steps.
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2, "the Farm row tooltips its steps")
+
+    -- Repaint only while the row still shows and still owns the tooltip.
+    local tipRow = TB.guildFrame.rows[1]
+    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the first guild row still holds Goldie")
+    local tipLines = {}
+    local realAddLine = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
+    this = tipRow
+    tipRow.scripts.OnEnter(tipRow)
+    TB._stepsDwell = nil
+    tipLines = {}
+    tipRow:Hide()
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(tipLines) == 0, "a hidden row gets no repaint")
+    tipRow:Show()
+    GameTooltip.owner = TB.guildFrame.rows[2]
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(tipLines) == 0, "a moved tooltip gets no repaint")
+    this = tipRow
+    tipRow.scripts.OnEnter(tipRow)
+    TB._stepsDwell = nil
+    tipLines = {}
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    local sawStepBlock = false
+    for _, text in ipairs(tipLines) do
+        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
+    end
+    assert(sawStepBlock, "the visible owned row still repaints")
+    GameTooltip.AddLine = realAddLine
+    this = tipRow
+    tipRow.scripts.OnLeave(tipRow)
+
+    -- Token loss clears the per-bot request times: asking again works at once.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    now = now + 16
+    assert(TB.RequestOrderSteps("Goldie") == true, "a fresh step request lands before the token loss")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "losing the step token clears the request throttle")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+
+    -- Leave no step state behind for the tests below.
+    TB._stepsDwell = nil
+    TB._guildTipRow = nil
+    TB._guildTipOwner = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    TB.OnSystemMessage("TBM:ORDER_END")
+end
+stepHoverDwellChecks()
 
 -- Estimates: amount ÷ chance, nodes for herb and ore, none for buy/craft.
 assert(TB.OrderEstimate("farm", { "skin" }, 50, 10) == "about 20 kills", "a 50% chance doubles the kills")

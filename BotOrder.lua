@@ -303,16 +303,34 @@ local stepsPending = {}
 -- identity differs from it.
 local function orderIdentity(order)
     if not order then return nil end
+    local parent = order.parent
+    if parent ~= nil then parent = string.lower(trim(parent or "")) end
+    if parent == "" then parent = nil end
     return {
         type = string.lower(trim(order.type or "")),
         itemId = order.itemId,
-        parent = order.parent,
+        parent = parent,
     }
 end
 
 local function sameOrderIdentity(a, b)
     if not a or not b then return false end
     return a.type == b.type and a.itemId == b.itemId and a.parent == b.parent
+end
+
+-- Tooltip-side view of one order-step record's identity: the same lowered
+-- key as orderIdentity, so a mixed-kind order ("Farm" vs "farm") still
+-- matches the row it belongs to.
+function TB.OrderStepIdentity(record)
+    if not record then return nil end
+    local parent = record.parent
+    if parent ~= nil then parent = string.lower(trim(parent or "")) end
+    if parent == "" then parent = nil end
+    return {
+        type = record.type and string.lower(trim(record.type or "")) or nil,
+        itemId = record.itemId,
+        parent = parent,
+    }
 end
 
 function TB.GetBotOrder(bot)
@@ -540,6 +558,11 @@ end
 -- none); errors ride the existing order action-error codes (no-bot, not-guild).
 local STEP_SHOWN = 8
 local STEPS_THROTTLE = 15
+-- One steps reply on the wire at a time: a resting hover on another bot waits
+-- until the current END lands (or 5 s pass), so a sweep never floods the send
+-- queue. The in-flight bot and its send time; empty means idle.
+local stepsFlightAt = nil
+local STEPS_FLIGHT_TIMEOUT = 5
 
 -- TBM:ORDER_STEP|<bot>|<ageSec>|<state>|<reason>|<step>|<itemId>: exactly six
 -- fields, bot non-empty, age and itemId whole numbers >= 0.
@@ -573,16 +596,26 @@ local function stepsCapable()
     return TB.HasOrderCapability() and TB.HasServerCapability("guild-order-steps")
 end
 
--- Ask for one bot's step list; at most one request per bot per 15 s. A live
--- TBM:ORDER line that changes state, reason or step clears the throttle so the
--- next hover refetches at once.
+-- Ask for one bot's step list; at most one request per bot per 15 s, and
+-- only one steps request in flight at a time (a new one waits until the
+-- current END arrives or 5 s pass). A live TBM:ORDER line that changes
+-- state, reason or step clears the throttle so the next hover refetches
+-- at once.
 function TB.RequestOrderSteps(bot)
     if not stepsCapable() then return false end
     bot = norm(bot)
     if not bot then return false end
     if now() - (stepsAskedAt[bot] or -1000) < STEPS_THROTTLE then return false end
+    if stepsFlightAt and now() - stepsFlightAt < STEPS_FLIGHT_TIMEOUT then
+        local other = false
+        for pending in pairs(stepsPending) do
+            if pending ~= bot then other = true break end
+        end
+        if other then return false end
+    end
     stepsAskedAt[bot] = now()
     stepsPending[bot] = orderIdentity(orders[bot])
+    stepsFlightAt = now()
     return TB.SendBotCommand("order " .. bot .. " steps")
 end
 
@@ -629,7 +662,7 @@ function TB.OrderStepsTooltipLines(bot)
     -- show nothing until that order's own reply lands. With no current order
     -- there is no tooltip anyway, so the stranded list still reads.
     local current = orders[norm(bot)]
-    if current and not sameOrderIdentity(record, current) then return {} end
+    if current and not sameOrderIdentity(TB.OrderStepIdentity(record), TB.OrderStepIdentity(current)) then return {} end
     local lines = { "Steps (newest first):" }
     local entries = record.entries
     local count = table.getn(entries)
@@ -1000,6 +1033,7 @@ function TB.ParseOrderMessage(msg)
                 stepsReceiving = nil
                 stepsPending[bot] = nil
                 stepsAskedAt[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
             else
                 -- Stamp the commit with its order's identity; a missing row means
                 -- no identity, which never matches a live order.
@@ -1011,6 +1045,7 @@ function TB.ParseOrderMessage(msg)
                     parent = identity and identity.parent or nil }
                 stepsReceiving = nil
                 stepsPending[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
                 if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
             end
         elseif stepsPending[bot] then
@@ -1023,6 +1058,7 @@ function TB.ParseOrderMessage(msg)
             else
                 stepsPending[bot] = nil
             end
+            if next(stepsPending) == nil then stepsFlightAt = nil end
         end
         return true
     end
@@ -1349,6 +1385,8 @@ function TB.NoteOrderCaps()
             for bot in pairs(orderSteps) do orderSteps[bot] = nil end
             stepsReceiving = nil
             for bot in pairs(stepsPending) do stepsPending[bot] = nil end
+            for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
+            stepsFlightAt = nil
         end
         if TB.RefreshGuildView then TB.RefreshGuildView() end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
@@ -1361,6 +1399,8 @@ function TB.NoteOrderCaps()
     orderReceiving, itemsReceiving = nil, nil
     stepsReceiving = nil
     for bot in pairs(stepsPending) do stepsPending[bot] = nil end
+    for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
+    stepsFlightAt = nil
     searchBot, searchCat = nil, nil
     pendingSearchCat = nil
     TB.CloseOrderWindow()
