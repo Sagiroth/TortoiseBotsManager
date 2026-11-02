@@ -39,9 +39,10 @@
 -- <reason> "-" means none; <zone> "-" means none; <chance> is percent.
 -- <difficulty> is easy / medium / hard ("-" or a missing field on old
 -- servers means none); <reason> and <verdict> may be "elite", "timeout",
--- "noprogress" or "needitems". <keep> is keep or "-" (missing on old servers
--- means not keep); a keep order that delivered sits in state "stocked" until
--- the bank runs low. <hours> is whole hours or "inf" for no limit (missing on
+-- "noprogress", "needitems", "nobanker" or "bankdenied" (the last two ride
+-- state "working"). <keep> is keep or "-" (missing on old servers means not
+-- keep); a keep order that delivered sits in state "stocked" until the bank
+-- runs low. <hours> is whole hours or "inf" for no limit (missing on
 -- old servers means none); an inf order never times out, only cancel ends it.
 -- <category> is herb / ore / leather / fish / cloth / drop / other
 -- ("-" or missing on old servers means none).
@@ -53,7 +54,10 @@
 -- "-" (missing on old servers means none). <need> lists items the player must
 -- bring as "itemId:count;..." or "-" (names come from the client item cache);
 -- new reason needitems (state waiting) means the order waits for those items:
--- trade them, mail them or put them in the guild bank.
+-- trade them, mail them or put them in the guild bank; a working row may also
+-- carry a non-empty need list.
+-- <have> counts delivered + the bot's bags + its mail; a `working` row with
+-- have >= want is not deliverable yet (delivery needs the bags).
 -- TBM:ORDER_ACCESS rides first inside ORDER_BEGIN/END and again after a rank
 -- change; tab lists are comma-separated 1-based tabs or "-". Rank "-" (as in
 -- "-|-|-|-|0|0") means the server leaves bot ranks alone: grey line, no rank
@@ -113,6 +117,7 @@ local REASON_LABEL = {
     timeout = "farm time ran out", noprogress = "no progress - the bot found nothing to farm",
     stuck = "stuck, gave up", bagsfull = "bags full", nobank = "no bank deposit",
     needitems = "needs items from you",
+    nobanker = "no banker in reach", bankdenied = "bank refused withdrawal",
 }
 local SOURCE_LABEL = { drop = "drop", skin = "skin", herb = "herb", ore = "ore", fish = "fish", craft = "craft", ah = "AH" }
 local SKILL_NAMES = {
@@ -352,6 +357,9 @@ function TB.OrderRowText(order)
         local step = TB.OrderStepLabel(order)
         if step then text = text .. " · " .. step
         elseif order.zone then text = text .. " (" .. order.zone .. ")" end
+        if (order.want or 0) > 0 and (order.have or 0) >= order.want then
+            text = text .. " · " .. "|cffffd200not all in its bags yet|r"
+        end
     elseif state == "waiting" then
         text = item .. " " .. progress .. " · " .. word("Waiting")
         if string.lower(trim(order.reason or "")) ~= "needitems" then
@@ -372,6 +380,11 @@ function TB.OrderRowText(order)
         text = item .. " · " .. word("Can't")
     else
         text = item .. " " .. progress .. " · " .. trim(order.state or "")
+    end
+    if (state == "working" or (state == "waiting" and string.lower(trim(order.reason or "")) ~= "needitems"))
+        and order.need and table.getn(order.need) > 0
+        and not string.find(text, "needs items from you", 1, true) then -- a "need" step label already says it
+        text = text .. " · " .. "|cffffd200needs items from you|r"
     end
     if order.keep and state ~= "stocked" then text = text .. " · " .. word("Keep") end
     if order.hours == "inf" then text = text .. " · " .. word("No limit") end
@@ -402,6 +415,10 @@ function TB.OrderTooltipText(order)
     local reason = TB.OrderReasonLabel(order.reason)
     if reason then state = state .. " (" .. reason .. ")" end
     table.insert(lines, state)
+    if string.lower(trim(order.state or "")) == "working"
+        and (order.want or 0) > 0 and (order.have or 0) >= order.want then
+        table.insert(lines, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail). It delivers once all are in its bags.")
+    end
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
     local step = TB.OrderStepLabel(order)
     if step then table.insert(lines, "Now: " .. step) end
