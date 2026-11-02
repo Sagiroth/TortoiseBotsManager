@@ -1745,16 +1745,104 @@ function TB.InitUI()
             TB.SetTextColor(fs, color("muted"))
         end
 
+        -- Guild bank access bots can reach: rank, bank tabs, gold. Red when
+        -- a bank tab is denied or gold is off; grey when the server leaves
+        -- ranks alone or no bank is unlocked yet.
+        local access = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        access:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 6, -38)
+        access:SetWidth(W - (C.PAD or 10) * 2 - 130)
+        access:SetJustifyH("LEFT")
+        TB.SetTextColor(access, color("muted"))
+        guildFrame.accessLine = access
+
+        local rankBtn = TB.StyleButton(CreateFrame("Button", nil, guildFrame, "UIPanelButtonTemplate"))
+        rankBtn:SetWidth(56); rankBtn:SetHeight(18)
+        rankBtn:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", W - (C.PAD or 10) * 2 - 62, -36)
+        rankBtn:SetText("Rank")
+        setButtonTooltip(rankBtn, "Change the guild rank bots get", "Bots' rank")
+        rankBtn:SetScript("OnClick", function()
+            if TB.OpenOrderRankMenu then TB.OpenOrderRankMenu(this) end
+        end)
+        guildFrame.rankBtn = rankBtn
         local GUILD_ROW_H = 32
         local GUILD_ROW_N = 7
         local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerGuildScroll", guildFrame, "FauxScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -42)
+        scroll:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -56)
         scroll:SetWidth(W - (C.PAD or 10) * 2)
         scroll:SetHeight(GUILD_ROW_N * GUILD_ROW_H + 4)
         scroll:SetScript("OnVerticalScroll", function()
             FauxScrollFrame_OnVerticalScroll(GUILD_ROW_H, TB.RefreshGuildView)
         end)
         guildFrame.scroll = scroll
+
+        -- The row tooltip body lives in one function so a late step history
+        -- (TBM:ORDER_STEPS_END) can redraw the tooltip of the row under the
+        -- cursor. A resting hover arms a 0.4 s dwell timer (cancelled on
+        -- leave) before asking the server for that bot's steps, and only
+        -- when the bot has an order; the repaint passes noRequest so it
+        -- never sends a second request.
+        function TB.ShowGuildRowTooltip(row, noRequest)
+            local entry = row and row.entry
+            if not entry then return end
+            TB._guildTipRow = row
+            TB._guildTipOwner = row
+            if not noRequest and TB.GetBotOrder and TB.GetBotOrder(entry.name)
+                and TB.RequestOrderSteps then
+                TB._stepsDwell = { name = entry.name, at = (GetTime and GetTime()) or 0 }
+                ensureStepsDwellFrame()
+            end
+            GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+            GameTooltip:SetText(entry.name)
+            GameTooltip:AddLine("Level " .. entry.level .. " " .. (entry.className or "") .. " · " .. (entry.status or "Unknown"), 1, 1, 1)
+            if entry.location then
+                GameTooltip:AddLine("Location: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3])
+            end
+            if entry.gearLocked then
+                GameTooltip:AddLine("|cffffd200Gear Hard-Locked (Lvl 60)|r\nBot will never self-equip or auto-vendor gear. 100% player managed.", 1, 0.82, 0)
+            else
+                GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
+            end
+            if TB.GetBotOrder and TB.OrderTooltipText then
+                local order = TB.GetBotOrder(entry.name)
+                local orderText = order and TB.OrderTooltipText(order) or nil
+                if orderText then
+                    GameTooltip:AddLine(orderText, 1, 1, 1)
+                end
+            end
+            GameTooltip:Show()
+        end
+
+        -- Hover requests wait for a 0.4 s rest before going out; leaving the
+        -- row cancels the wait. The timer frame sends at most the bot it was
+        -- armed for, and RequestOrderSteps still applies its own gates.
+        local STEPS_DWELL = 0.4
+        local stepsDwellFrame
+        function ensureStepsDwellFrame()
+            if stepsDwellFrame then return end
+            stepsDwellFrame = CreateFrame("Frame", "TortoiseBotsManagerStepsDwell")
+            stepsDwellFrame:SetScript("OnUpdate", function()
+                local dwell = TB._stepsDwell
+                if not dwell then return end
+                if ((GetTime and GetTime()) or 0) - (dwell.at or 0) < STEPS_DWELL then return end
+                TB._stepsDwell = nil
+                if TB.RequestOrderSteps then TB.RequestOrderSteps(dwell.name) end
+            end)
+        end
+
+        -- A committed step list redraws the tooltip only while it still shows
+        -- that bot's row; every other case is left alone.
+        function TB.RepaintGuildRowTooltip(bot)
+            local row = TB._guildTipRow
+            if not row or not row.entry then return end
+            if TB.NormalizeName(row.entry.name) ~= bot then return end
+            if not row:IsVisible() then return end
+            if GameTooltip.IsOwned then
+                if not GameTooltip:IsOwned(row) then return end
+            elseif TB._guildTipOwner ~= row then
+                return
+            end
+            TB.ShowGuildRowTooltip(row, true)
+        end
 
         local rows = {}
         for i = 1, GUILD_ROW_N do
@@ -1874,6 +1962,19 @@ function TB.InitUI()
             setButtonTooltip(cancelBtn, "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.", "Cancel order")
             row.cancelBtn = cancelBtn
 
+            local moveBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+            moveBtn:SetWidth(24); moveBtn:SetHeight(16)
+            moveBtn:SetPoint("LEFT", row, "LEFT", 316, -7)
+            moveBtn:SetText("Mv")
+            moveBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.OpenOrderReassignMenu then
+                    TB.OpenOrderReassignMenu(entry.name, this)
+                end
+            end)
+            setButtonTooltip(moveBtn, "Hand this sub-order to another guild bot.", "Reassign")
+            row.moveBtn = moveBtn
+
             local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             relBtn:SetWidth(34); relBtn:SetHeight(20)
             relBtn:SetPoint("LEFT", row, "LEFT", 424, 0)
@@ -1891,30 +1992,13 @@ function TB.InitUI()
             hl:SetAllPoints(row)
             hl:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.08)
 
-            row:SetScript("OnEnter", function()
-                local entry = this.entry
-                if not entry then return end
-                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-                GameTooltip:SetText(entry.name)
-                GameTooltip:AddLine("Level " .. entry.level .. " " .. (entry.className or "") .. " · " .. (entry.status or "Unknown"), 1, 1, 1)
-                if entry.location then
-                    GameTooltip:AddLine("Location: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3])
-                end
-                if entry.gearLocked then
-                    GameTooltip:AddLine("|cffffd200Gear Hard-Locked (Lvl 60)|r\nBot will never self-equip or auto-vendor gear. 100% player managed.", 1, 0.82, 0)
-                else
-                    GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
-                end
-                if TB.GetBotOrder and TB.OrderTooltipText then
-                    local order = TB.GetBotOrder(entry.name)
-                    local orderText = order and TB.OrderTooltipText(order) or nil
-                    if orderText then
-                        GameTooltip:AddLine(orderText, 1, 1, 1)
-                    end
-                end
-                GameTooltip:Show()
+            row:SetScript("OnEnter", function() TB.ShowGuildRowTooltip(this) end)
+            row:SetScript("OnLeave", function()
+                TB._guildTipRow = nil
+                TB._guildTipOwner = nil
+                TB._stepsDwell = nil
+                GameTooltip:Hide()
             end)
-            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
             table.insert(rows, row)
         end
@@ -1930,7 +2014,7 @@ function TB.InitUI()
 
         -- Bottom Guild Action Bar
         local bar = CreateFrame("Frame", nil, guildFrame)
-        bar:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -(42 + GUILD_ROW_N * GUILD_ROW_H + 4))
+        bar:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", 0, -(56 + GUILD_ROW_N * GUILD_ROW_H + 4))
         bar:SetWidth(W - (C.PAD or 10) * 2)
         bar:SetHeight(34)
 
@@ -2253,6 +2337,34 @@ function TB.InitUI()
                 .. " online|r, |cffffd200" .. lockedCount .. " locked|r)")
         end
 
+        if frame.accessLine then
+            local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+            local accessText = orderCap and TB.OrderAccessText and TB.OrderAccessText() or nil
+            if orderCap and accessText then
+                frame.accessLine:SetText(accessText.text)
+                if accessText.bad then frame.accessLine:SetTextColor(1, 0.34, 0.28)
+                else frame.accessLine:SetTextColor(0.62, 0.60, 0.56) end
+                frame.accessLine:Show()
+            elseif orderCap then
+                frame.accessLine:SetText("Bank access: waiting for the server...")
+                frame.accessLine:SetTextColor(0.62, 0.60, 0.56)
+                frame.accessLine:Show()
+            else
+                frame.accessLine:Hide()
+            end
+        end
+        if frame.rankBtn then
+            local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+            local access = orderCap and TB.GetOrderAccess and TB.GetOrderAccess() or nil
+            local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+            if orderCap and access and access.canSetRank and access.rankIndex and mayOrder then
+                frame.rankBtn:Show()
+                frame.rankBtn:Enable()
+            else
+                frame.rankBtn:Hide()
+            end
+        end
+
         if total == 0 then
             if frame.emptyMsg then frame.emptyMsg:Show() end
             if frame.scroll then frame.scroll:Hide() end
@@ -2299,6 +2411,8 @@ function TB.InitUI()
 
                 -- Guild order line: hidden with no capability, greyed with no
                 -- officer-note right (TB.CanGiveOrders), else order + buttons.
+                -- Sub-order rows indent under their parent and show a Move
+                -- button to hand them to another guild bot.
                 local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
                 local order = orderCap and TB.GetBotOrder and TB.GetBotOrder(entry.name) or nil
                 local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
@@ -2325,6 +2439,14 @@ function TB.InitUI()
                         if mayOrder then row.cancelBtn:Enable() else row.cancelBtn:Disable() end
                     else
                         row.cancelBtn:Hide()
+                    end
+                end
+                if row.moveBtn then
+                    if orderCap and order and order.parent and mayOrder then
+                        row.moveBtn:Show()
+                        row.moveBtn:Enable()
+                    else
+                        row.moveBtn:Hide()
                     end
                 end
 

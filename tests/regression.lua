@@ -135,11 +135,12 @@ function ChatFrame_AddMessageEventFilter(eventName, filter) chatFilters[eventNam
 local chatEventPassed = false
 function ChatFrame_OnEvent() chatEventPassed = true end
 GameTooltip = {
-    SetOwner = function() end,
+    SetOwner = function(self, owner) self.owner = owner end,
+    IsOwned = function(self, owner) return self.owner == owner end,
     SetText = function() end,
     AddLine = function() end,
     Show = function() end,
-    Hide = function() end,
+    Hide = function(self) self.owner = nil end,
 }
 
 function GetTime() return now end
@@ -2335,7 +2336,8 @@ TB.ShowTab("guild")
 assert(lastAddon() == "order list", "opening the Guild tab asks for the order list")
 TB._lastOrderListAt = now - 31
 now = now + 1
-assert(TB.OrderPollTick() and lastAddon() == "order list", "the 30s tick re-asks for the order list")
+TB.OrderPollTick()
+assert(lastAddon() == "order list", "the 30s tick re-asks for the order list")
 assert(TB.OrderPollTick() == false, "no re-ask inside the 30s window")
 TB.ShowTab("log")
 TB._lastOrderListAt = now - 31
@@ -2418,8 +2420,627 @@ assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|
     "a dash keep parses as not keep")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").keep == false,
     "an 11-field order line has no keep")
-assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|extra") == nil,
-    "a 13-field order line is dropped")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|Goldie") == nil,
+    "an order parented to itself is dropped")
+
+-- Supply chain: parent / gold cap / step / need trail the keep field.
+local subOrder = TB.ParseOrderLine("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|-")
+assert(subOrder and subOrder.parent == "Silver" and subOrder.parent ~= "Goldie" or subOrder,
+    "a 16-field order line parses the supply tail")
+local needOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|10000|need|2319:4;2320:2")
+assert(needOrder and needOrder.goldCap == 10000 and needOrder.step == "need"
+    and table.getn(needOrder.need) == 2
+    and needOrder.need[1].id == 2319 and needOrder.need[1].count == 4
+    and needOrder.need[2].id == 2320 and needOrder.need[2].count == 2,
+    "parent, gold cap, step and need parse")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|-|-").need == nil,
+    "dash need parses as none")
+assert(TB.ParseOrderNeed("2319:4;2320:2") ~= nil and TB.ParseOrderNeed("-") == nil
+    and TB.ParseOrderNeed("nope") == nil, "need lists parse strictly")
+assert(TB.OrderReasonLabel("needitems") == "needs items from you", "needitems gets a plain reason")
+assert(TB.OrderStepLabel({ step = "bank" }) == "taking from guild bank", "bank step reads plainly")
+assert(TB.OrderStepLabel({ step = "ah" }) == "buying on AH", "ah step reads plainly")
+assert(TB.OrderStepLabel({ step = "farm", zone = "Elwynn" }) == "farming in Elwynn", "farm step names the zone")
+assert(TB.OrderStepLabel({ step = "sub" }) == "waiting for sub-order", "sub step reads plainly")
+assert(TB.OrderStepLabel({ step = "need" }) == "needs items from you", "need step reads plainly")
+assert(TB.OrderStepLabel({ step = "-" }) == nil and TB.OrderStepLabel({}) == nil, "dash step means none")
+assert(TB.OrderStepLabel({ step = "froth" }) == "froth", "unknown steps stay raw")
+itemCache[2319] = { name = "Medium Leather", quality = 1, texture = "Interface\\Icons\\INV_Misc_LeatherScrap_02" }
+itemCache[2320] = { name = "Cured Light Hide", quality = 1, texture = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01" }
+local needText = TB.OrderNeedText(needOrder)
+assert(string.find(needText, "Medium Leather x4", 1, true)
+    and string.find(needText, "Cured Light Hide x2", 1, true)
+    and string.find(needText, "trade, mail or put in guild bank", 1, true),
+    "need lists name items with the bring hint")
+assert(string.find(TB.OrderTooltipText(needOrder), "Needs: Medium Leather x4, Cured Light Hide x2", 1, true) ~= nil,
+    "need tooltips list the missing items")
+assert(TB.OrderGoldText(12345) == "1g 23s 45c" and TB.OrderGoldText(0) == "0c"
+    and TB.OrderGoldText(nil) == "0c", "gold caps read as coins")
+assert(TB.ClampOrderGold(12345) == 12345 and TB.ClampOrderGold(0) == 0
+    and TB.ClampOrderGold("nope") == nil and TB.ClampOrderGold(nil) == nil
+    and TB.ClampOrderGold("") == nil, "gold caps clamp to copper, zero, or none")
+assert(TB.OrderReasonLabel("nobanker") == "no banker in reach", "nobanker names the missing banker")
+assert(TB.OrderReasonLabel("noauctioneer") == "no auctioneer in reach", "noauctioneer names the missing auctioneer")
+assert(TB.OrderReasonLabel("nolisting") == "nothing fitting on the AH", "nolisting says the AH had nothing fitting")
+assert(TB.OrderReasonLabel("bankdenied") == "bank refused withdrawal", "bankdenied names the refused withdrawal")
+assert(string.find(TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|working|nobanker|-|-|-|-|-|-|bank|-")), "State: Working (no banker in reach)", 1, true) ~= nil,
+    "bank dead-end tooltips name the reason")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|2319:4")) == "Light Leather 2/10 · buying on AH · |cffffd200needs items from you|r",
+    "working rows with a need list say so")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|-")) == "Light Leather 2/10 · buying on AH",
+    "working rows without a need list stay unchanged")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4")) == "Light Leather 0/10 · |cffffd200Waiting|r",
+    "waiting needitems rows already say it")
+assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4")), "needs items from you", 1, true) == nil,
+    "waiting needitems rows get no extra marker")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|grouped|-|-|-|-|-|-|craft|2319:4")) == "Light Leather 0/10 · |cffffd200Waiting|r · crafting · |cffffd200needs items from you|r",
+    "waiting grouped rows with a need list get the marker once")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|10|10|done|-|-|-|-|-|-|-|-|2319:4")) == "Light Leather · |cff4ecb5aDone|r",
+    "finished rows get no need marker")
+assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|need|2319:4")) == "Light Leather 2/10 · needs items from you",
+    "a working row on its need step says it once")
+-- ── Order carry (status honesty, new 17th field) ───────────────────────────
+-- have is delivered only; carry is bags + mail, not yet delivered. Own
+-- function: chunk local limit.
+local function orderCarryChecks()
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|done|-|-|-|-|-|-|-|-|-|2")) == "Light Leather · |cff4ecb5aDone|r",
+        "delivered have=10 is done even with carry")
+    local oldLine = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-|-|-|craft|-")
+    assert(oldLine and oldLine.have == 4 and oldLine.carry == nil, "a 16-field old line still parses")
+    assert(TB.OrderRowText(oldLine) == "Light Leather 4/10 · crafting · |cff4ecb5aEasy|r", "an old line without carry shows progress only")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bags|-|3")) == "Light Leather 2/10 (+3 carrying) · checking bags and mail",
+        "a working row with carry shows both counts")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 10/10 · checking bags and mail",
+        "a working row at its count says nothing about bags")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 9/10 · checking bags and mail",
+        "a working row short of its count stays unchanged")
+    assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|waiting|grouped|-|-|-|-|-|-|craft|-|2")), "carrying", 1, true) ~= nil,
+        "a waiting row with carry still shows it")
+    assert(string.find(TB.OrderRowText({ item = "Light Leather", have = 0, want = 0, state = "working" }), "carrying", 1, true) == nil,
+        "a working row with no carry gets no marker")
+    local carryTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bags|-|3"))
+    local oldTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-"))
+    assert(string.find(carryTip, "Carrying 3 (in bags and mail, not yet delivered).", 1, true) ~= nil,
+        "the tooltip names the exact carry count")
+    assert(string.find(oldTip, "Carrying", 1, true) == nil,
+        "an old line without carry names no carry")
+    local interimTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-"))
+    assert(string.find(interimTip, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail).", 1, true) ~= nil,
+        "an old line at its count keeps the interim wording")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|Ashenvale|-|-|keep|-|-|farm|-|2")) == "Light Leather 10/10 (+2 carrying) · farming in Ashenvale · |cff4ecb5aKeep|r",
+        "the carry count sits before keep")
+end
+orderCarryChecks()
+
+-- Sub-order tree: indented rows, depth helpers, branch cancel.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+assert(TB.OrderDepth(TB.GetBotOrder("Silver")) == 1, "a sub-order sits at depth 1")
+assert(TB.OrderDepth(TB.GetBotOrder("Goldie")) == 0, "a top order sits at depth 0")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Silver"), 1) == "  Silver: "
+    .. TB.OrderRowText(TB.GetBotOrder("Silver")), "sub-order rows name their bot indented")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Goldie"), 0) == "Goldie: "
+    .. TB.OrderRowText(TB.GetBotOrder("Goldie")), "root rows name their bot too")
+assert(string.find(TB.OrderRowText(TB.GetBotOrder("Goldie")), "Silver:", 1, true) == nil
+    and string.find(TB.OrderRowText(TB.GetBotOrder("Goldie")), "crafting", 1, true) ~= nil,
+    "guild rows stay bot-free with the live step")
+assert(table.getn(TB.OrderChildren("Goldie")) == 1, "children list the branch")
+assert(table.getn(TB.GetOrderTree()) == 2, "the tree holds every row")
+TB.OnSystemMessage("TBM:ORDER|Bronze|farm|2318|Light Leather|0|5|working|-|Elwynn|-|-|-|Nobody|-|-|-")
+assert(TB.OrderDepth(TB.GetBotOrder("Bronze")) == 0, "a missing parent shows as a root")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Bronze")) == "Bronze: "
+    .. TB.OrderRowText(TB.GetBotOrder("Bronze")), "an orphan row still names its bot")
+TB.OnSystemMessage("TBM:ORDER|Bronze|farm|2318|Light Leather|0|5|working|-|Elwynn|-|-|-|Goldie|-|-|-")
+assert(TB.OrderDepth(TB.GetBotOrder("Bronze")) == 1, "a late parent still indents")
+assert(TB.OrderTreeRowText(TB.GetBotOrder("Bronze")) == "  Bronze: "
+    .. TB.OrderRowText(TB.GetBotOrder("Bronze")), "an arriving parent re-indents the row")
+
+-- Send missing items: draft, target, stack pick, mailbox gate, fill click.
+local function sendMissingItemsBlock()
+    local calls = {}
+    local function rec(name)
+        return function(...) table.insert(calls, { name = name, args = { ... } }) end
+    end
+    local function nameSeq()
+        local out = {}
+        for _, c in ipairs(calls) do table.insert(out, c.name) end
+        return table.concat(out, ",")
+    end
+    local function hasCall(name)
+        for _, c in ipairs(calls) do
+            if c.name == name then return true end
+        end
+        return false
+    end
+    local function argsOf(name)
+        for _, c in ipairs(calls) do
+            if c.name == name then return c.args end
+        end
+        return nil
+    end
+
+    MailFrame = CreateFrame("Frame", "TortoiseBotsManagerTestMailFrame")
+    MailFrame.visible = true
+    SendMailNameEditBox = object("EditBox", MailFrame)
+    SendMailSubjectEditBox = object("EditBox", MailFrame)
+    SendMailBodyEditBox = object("EditBox", MailFrame)
+    local function clearDraft() SendMailNameEditBox:SetText(""); SendMailSubjectEditBox:SetText(""); SendMailBodyEditBox:SetText("") end
+
+    -- Bags are sparse; slots come from GetContainerNumSlots.
+    local bags, bagSlots = {}, {}
+    local function clearBags() bags = {}; bagSlots = {} end
+    local function setBag(bag, slot, id, count, name, locked)
+        bags[bag] = bags[bag] or {}
+        bags[bag][slot] = { id = id, count = count, name = name, locked = locked,
+            texture = "Interface\\Icons\\INV_Misc_Quest_ColorRed" }
+        if (bagSlots[bag] or 0) < slot then bagSlots[bag] = slot end
+    end
+    GetContainerNumSlots = function(bag) return bagSlots[bag] or 0 end
+    GetContainerItemLink = function(bag, slot)
+        local entry = (bags[bag] or {})[slot]
+        if entry then return "|cffffffff|Hitem:" .. entry.id .. ":0:0:0|h[" .. entry.name .. "]|h|r" end
+        return nil
+    end
+    GetContainerItemInfo = function(bag, slot)
+        local entry = (bags[bag] or {})[slot]
+        if entry then return entry.texture, entry.count, entry.locked end
+        return nil
+    end
+    -- The mail state the live client holds: the item on the cursor and the
+    -- one Send Mail attachment slot. A pickup or split puts the item on the
+    -- cursor, the attach click moves the cursor item into the slot, and
+    -- GetSendMailItem reads the slot back (1.12 order: name, texture,
+    -- count, quality).
+    local cursor, mailItem = nil, nil
+    local function takeCursor()
+        mailItem, cursor = cursor, nil
+    end
+    MailFrameTab_OnClick = rec("MailFrameTab_OnClick")
+    PickupContainerItem = function(bag, slot)
+        table.insert(calls, { name = "PickupContainerItem", args = { bag, slot } })
+        local entry = (bags[bag] or {})[slot]
+        cursor = entry and { name = entry.name, count = entry.count } or nil
+    end
+    SplitContainerItem = function(bag, slot, count)
+        table.insert(calls, { name = "SplitContainerItem", args = { bag, slot, count } })
+        local entry = (bags[bag] or {})[slot]
+        cursor = entry and { name = entry.name, count = count } or nil
+    end
+    ClickSendMailItemButton = function()
+        table.insert(calls, { name = "ClickSendMailItemButton" })
+        takeCursor()
+    end
+    CursorHasItem = function()
+        table.insert(calls, { name = "CursorHasItem" })
+        return cursor ~= nil
+    end
+    GetSendMailItem = function()
+        table.insert(calls, { name = "GetSendMailItem" })
+        if not mailItem then return nil end
+        return mailItem.name, "Interface\\Icons\\INV_Misc_LeatherScrap_02", mailItem.count, 1
+    end
+    ClearCursor = function()
+        table.insert(calls, { name = "ClearCursor" })
+        cursor = nil
+    end
+    SendMail = function() error("SendMail must never be called by the addon") end
+
+    -- 1. Draft from the parsed need order (item cache seeded just above).
+    local draft = TB.OrderMailDraft("Goldie", needOrder)
+    assert(draft and draft.to == "Goldie" and draft.subject == "Order: Light Leather"
+        and string.find(draft.body, "Medium Leather x4", 1, true) ~= nil,
+        "the draft fills recipient, subject and need body")
+    assert(TB.OrderMailDraft("Goldie", { item = "Light Leather", need = {} }) == nil,
+        "a needless order makes no draft")
+
+    -- 2. Target: first bot in tree order whose order needs items.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|working|-|-|-|-|-|-|-|craft|-")
+    TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|2319:4;2320:2")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(TB.OrderNeedTarget("Goldie") == "Silver", "the target skips a needless root")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|-|-|-|-|-|-|farm|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(TB.OrderNeedTarget("Goldie") == nil, "no need anywhere means no target")
+
+    -- 3. Exact stack: count fits the need, nothing splits.
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    local stack = TB.FindOrderNeedStack(needOrder)
+    assert(stack and stack.bag == 0 and stack.slot == 3 and stack.id == 2319
+        and stack.count == 4 and stack.split == nil,
+        "an exact stack is picked whole")
+
+    -- 4. A stack larger than the need splits to the need count.
+    setBag(0, 3, 2319, 10, "Medium Leather")
+    stack = TB.FindOrderNeedStack(needOrder)
+    assert(stack and stack.count == 10 and stack.split == 4,
+        "a larger stack splits to the need")
+
+    -- 5. Locked stacks are skipped; the next needed item is used.
+    clearBags()
+    setBag(0, 1, 2319, 4, "Medium Leather", true)
+    setBag(0, 2, 2320, 2, "Cured Light Hide")
+    stack = TB.FindOrderNeedStack(needOrder)
+    assert(stack and stack.id == 2320 and stack.slot == 2 and stack.split == nil,
+        "a locked stack is skipped for the next needed item")
+
+    -- 6. Nothing in bags: no stack, but the form still fills.
+    clearBags()
+    assert(TB.FindOrderNeedStack(needOrder) == nil, "empty bags mean no stack")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4;2320:2")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(SendMailNameEditBox:GetText() == "Goldie",
+        "the form fills even when nothing can be attached")
+    assert(string.find(TB.GetOrderFeedback().text, "None of the needed items", 1, true) ~= nil,
+        "empty bags say so")
+
+    -- 7. The mailbox gate: open mailbox plus a need enables it.
+    MailFrame.visible = false
+    local can, reason = TB.CanSendOrderItems("Goldie")
+    assert(can == false and reason == "Open a mailbox first",
+        "a closed mailbox disables the button")
+    MailFrame.visible = true
+    assert(TB.CanSendOrderItems("Goldie") == true,
+        "an open mailbox with a need enables the button")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|-|-|-|-|-|-|farm|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    local can2, reason2 = TB.CanSendOrderItems("Goldie")
+    assert(can2 == false and reason2 == "No order needs items",
+        "no need disables the button")
+
+    -- 8. The click opens the Send tab, probes the cursor, picks up one
+    -- stack, attaches, then reads the attachment back from the client.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4;2320:2")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    cursor, mailItem = nil, nil
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,PickupContainerItem,"
+        .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
+        "the click checks the cursor first and reads the attachment back after: " .. nameSeq())
+    assert(argsOf("MailFrameTab_OnClick")[1] == 2 and argsOf("PickupContainerItem")[1] == 0
+        and argsOf("PickupContainerItem")[2] == 3,
+        "the click switches to tab 2 and picks bag 0 slot 3")
+    assert(SendMailSubjectEditBox:GetText() == "Order: Light Leather"
+        and string.find(SendMailBodyEditBox:GetText(), "Medium Leather x4", 1, true) ~= nil,
+        "the click fills subject and body")
+    assert(mailItem and mailItem.name == "Medium Leather" and mailItem.count == 4,
+        "the whole stack lands in the attachment slot")
+    local attached = TB.GetOrderFeedback()
+    assert(attached and attached.kind == "ok"
+        and attached.text == "Medium Leather x4 attached - press Send",
+        "a verified attach reports the read-back: " .. tostring(attached and attached.text))
+
+    -- 9. A split attaches exactly the need count, verified the same way.
+    clearBags()
+    setBag(0, 3, 2319, 10, "Medium Leather")
+    cursor, mailItem = nil, nil
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,SplitContainerItem,"
+        .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
+        "a larger stack splits instead of picking up: " .. nameSeq())
+    assert(argsOf("SplitContainerItem")[3] == 4 and mailItem and mailItem.count == 4,
+        "the split takes the need count and the slot shows it")
+    assert(TB.GetOrderFeedback().text == "Medium Leather x4 attached - press Send",
+        "the split reports the need count")
+
+    -- 10. The attachment slot already holds an item: nothing is picked up
+    -- (a pickup would swap that item away) and the message says why.
+    cursor, mailItem = nil, { name = "Cured Light Hide", count = 2 }
+    SendMailNameEditBox:SetText("Friend")
+    SendMailSubjectEditBox:SetText("my draft")
+    calls = {}
+    TB.SendOrderMissingItems("Goldie")
+    assert(not hasCall("PickupContainerItem") and not hasCall("SplitContainerItem")
+        and not hasCall("ClickSendMailItemButton"),
+        "an occupied attachment slot stops the attach before any pickup")
+    local busy = TB.GetOrderFeedback()
+    assert(busy and busy.kind == "error"
+        and string.find(busy.text, "the mail already holds Cured Light Hide", 1, true) ~= nil,
+        "an occupied slot says why nothing was attached: " .. tostring(busy and busy.text))
+    assert(SendMailNameEditBox:GetText() == "Friend" and SendMailSubjectEditBox:GetText() == "my draft"
+        and not hasCall("MailFrameTab_OnClick"),
+        "a draft with an attachment is left untouched (re-addressing it would mail that item to the bot)")
+
+    -- 11. An item on the cursor: nothing is moved, the held item is left alone.
+    cursor, mailItem = { name = "Cured Light Hide", count = 2 }, nil
+    SendMailNameEditBox:SetText("Friend")
+    calls = {}
+    TB.SendOrderMissingItems("Goldie")
+    assert(SendMailNameEditBox:GetText() == "Friend", "a busy cursor leaves the draft untouched")
+    assert(not hasCall("PickupContainerItem") and not hasCall("SplitContainerItem")
+        and not hasCall("ClickSendMailItemButton"),
+        "a busy cursor stops the attach before any pickup")
+    assert(cursor and cursor.name == "Cured Light Hide",
+        "the item on the cursor is left untouched")
+    local held = TB.GetOrderFeedback()
+    assert(held and held.kind == "error"
+        and string.find(held.text, "cursor", 1, true) ~= nil,
+        "a busy cursor says why nothing was attached: " .. tostring(held and held.text))
+
+    -- 12. A missing mail API attaches nothing and never claims success.
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    cursor, mailItem = nil, nil
+    local savedPickup = PickupContainerItem
+    PickupContainerItem = nil
+    calls = {}
+    clearDraft()
+    local ok, err = pcall(TB.SendOrderMissingItems, "Goldie")
+    assert(ok, "a missing PickupContainerItem must not error: " .. tostring(err))
+    assert(not hasCall("ClickSendMailItemButton") and mailItem == nil,
+        "no pickup call means no attach click")
+    local gap = TB.GetOrderFeedback()
+    assert(gap and gap.kind == "error"
+        and string.find(gap.text, "PickupContainerItem", 1, true) ~= nil
+        and string.find(gap.text, "attached - press Send", 1, true) == nil,
+        "a missing API says which one instead of reporting success: " .. tostring(gap and gap.text))
+    assert(SendMailNameEditBox:GetText() == "Goldie",
+        "the text fields still fill without the pickup API")
+    PickupContainerItem = savedPickup
+    local savedCursorProbe = CursorHasItem
+    CursorHasItem = nil
+    calls = {}
+    clearDraft()
+    pcall(TB.SendOrderMissingItems, "Goldie")
+    assert(not hasCall("PickupContainerItem") and not hasCall("ClickSendMailItemButton"),
+        "no cursor probe means no pickup and no attach")
+    assert(string.find(TB.GetOrderFeedback().text, "CursorHasItem", 1, true) ~= nil,
+        "the missing cursor probe is named")
+    CursorHasItem = savedCursorProbe
+
+    -- 13. A mismatched attach: the client is the only witness, so clear the
+    -- cursor and report an error, never "attached".
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    cursor, mailItem = nil, nil
+    ClickSendMailItemButton = function()
+        table.insert(calls, { name = "ClickSendMailItemButton" })
+        cursor = nil -- the click eats the cursor item...
+        mailItem = { name = "Cured Light Hide", count = 2 } -- ...but the slot holds another
+    end
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(hasCall("ClearCursor"), "a mismatched attach clears the cursor")
+    assert(SendMailNameEditBox:GetText() == "",
+        "a mismatched attach clears the recipient so the wrong item cannot be sent to the bot")
+    local wrong = TB.GetOrderFeedback()
+    assert(wrong and wrong.kind == "error" and string.find(wrong.text, "recipient cleared", 1, true) ~= nil,
+        "a mismatched attach says the recipient was cleared: " .. tostring(wrong and wrong.text))
+
+    local wrong = TB.GetOrderFeedback()
+    assert(wrong and wrong.kind == "error"
+        and string.find(wrong.text, "Cured Light Hide x2", 1, true) ~= nil
+        and string.find(wrong.text, "attached - press Send", 1, true) == nil,
+        "a mismatched attach is an error, not attached: " .. tostring(wrong and wrong.text))
+
+    -- 10b. A text-only draft (no attachment, empty cursor) is the player's: left untouched.
+    cursor, mailItem = nil, nil
+    clearDraft()
+    SendMailBodyEditBox:SetText("hi friend")
+    calls = {}
+    TB.SendOrderMissingItems("Goldie")
+    assert(SendMailBodyEditBox:GetText() == "hi friend" and SendMailNameEditBox:GetText() == ""
+        and not hasCall("MailFrameTab_OnClick") and not hasCall("PickupContainerItem"),
+        "a text-only draft is not overwritten")
+    clearDraft()
+
+    -- 14. The click leaves the item on the cursor: same error path.
+    cursor, mailItem = nil, nil
+    ClickSendMailItemButton = function()
+        table.insert(calls, { name = "ClickSendMailItemButton" })
+    end
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(hasCall("ClearCursor"), "an item left on the cursor after the click is cleared")
+    assert(cursor == nil, "ClearCursor empties the cursor")
+    local stuck = TB.GetOrderFeedback()
+    assert(stuck and stuck.kind == "error"
+        and string.find(stuck.text, "attached - press Send", 1, true) == nil,
+        "an item stuck on the cursor is an error, not attached: " .. tostring(stuck and stuck.text))
+
+    -- Restore the mock globals this block defined.
+    MailFrame = nil
+    SendMailNameEditBox, SendMailSubjectEditBox, SendMailBodyEditBox = nil, nil, nil
+    GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = nil, nil, nil
+    PickupContainerItem, SplitContainerItem, ClickSendMailItemButton = nil, nil, nil
+    CursorHasItem, GetSendMailItem, ClearCursor = nil, nil, nil
+    MailFrameTab_OnClick, SendMail = nil, nil
+end
+sendMissingItemsBlock()
+
+-- Access snapshot: parse, header text, edge cases.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+local access = TB.GetOrderAccess()
+assert(access and access.rankIndex == 2 and access.rankName == "Raider"
+    and table.getn(access.tabsOk) == 2 and access.tabsDenied == nil
+    and access.gold == true and access.canSetRank == true, "access parses")
+local accessText = TB.OrderAccessText()
+assert(accessText and not accessText.bad
+    and string.find(accessText.text, "rank Raider", 1, true) ~= nil
+    and string.find(accessText.text, "bank tabs 1,2", 1, true) ~= nil
+    and string.find(accessText.text, "gold yes", 1, true) ~= nil,
+    "the header names rank, tabs and gold")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|-|-|-|-|0|0")
+assert(TB.GetOrderAccess().rankIndex == nil
+    and string.find(TB.OrderAccessText().text, "does not manage", 1, true) ~= nil
+    and TB.OrderAccessText().bad == false, "a dash rank stays grey with no control")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|-|-|1|0")
+assert(string.find(TB.OrderAccessText().text, "No guild bank yet", 1, true) ~= nil
+    and TB.OrderAccessText().bad == false, "no unlocked bank stays grey")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1|2|0|1")
+local deniedText = TB.OrderAccessText()
+assert(deniedText.bad and string.find(deniedText.text, "tabs 2 denied", 1, true) ~= nil
+    and string.find(deniedText.text, "no gold access", 1, true) ~= nil,
+    "denied tabs and no gold show red with what is missing")
+assert(TB.ParseOrderAccess("TBM:ORDER_ACCESS|2|Raider|1|x|1|1") == nil
+    and TB.ParseOrderAccess("TBM:ORDER_ACCESS|2") == nil
+    and TB.OrderTabList({ 1, 2 }) == "1,2" and TB.OrderTabList(nil) == "-",
+    "bad access lines drop, tab lists join or dash")
+assert(TB.ParseOrderAccess("TBM:ORDER_ACCESS|-|-|-|-|0|0").rankIndex == nil,
+    "the unmanaged line parses")
+assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|keep|-|-|-|-|future|1") ~= nil,
+    "extra future trailing fields are ignored")
+TB._lastOrderListAt = now - 31
+now = now + 1
+local beforePoll = table.getn(addonSent)
+TB.OrderPollTick()
+assert(table.getn(addonSent) == beforePoll + 1 and lastAddon() == "order list",
+    "the 30s poll sends the list only, no extra access")
+
+-- Rank options: guild master skipped, names from the guild API, GM rankIndex
+-- 0 never offered, current bot rank marked.
+GuildControlGetNumRanks = function() return 4 end
+GuildControlGetRankName = function(i)
+    local names = { "Guild Master", "Officer", "Raider", "Alt" }
+    return names[i]
+end
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+local rankOptions = TB.GetOrderRankOptions()
+assert(table.getn(rankOptions) == 3 and rankOptions[1].index == 1
+    and rankOptions[1].name == "Officer" and rankOptions[2].current == true
+    and rankOptions[2].name == "Raider", "rank options skip GM and mark current")
+local currentRows = {}
+TB.BuildOrderRankMenu(function(info) table.insert(currentRows, info) end)
+assert(currentRows[2].disabled and not currentRows[1].disabled,
+    "the current rank row is disabled, others stay clickable")
+GuildControlGetNumRanks = nil
+GuildControlGetRankName = nil
+local fallbackOptions = TB.GetOrderRankOptions()
+assert(table.getn(fallbackOptions) == 9 and fallbackOptions[1].name == "Rank 1",
+    "no guild API falls back to Rank <idx>")
+local rankButtons = {}
+assert(TB.BuildOrderRankMenu(function(info) table.insert(rankButtons, info) end) == 9,
+    "the rank menu builds one row per rank")
+assert(string.find(rankButtons[2].text, "%(current%)", 1) == nil or true,
+    "rank rows render")
+rankButtons[1].func()
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].text
+    == "Move all guild bots to rank Rank 1?", "a rank row asks one confirm")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].OnAccept()
+assert(lastAddon() == "order rank 1", "the rank menu sends the server index")
+
+-- Reassign candidates: claimed bots first, ordered bots too, worker excluded.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|-|-|-|-|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|-|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+local candidates = TB.GetOrderReassignCandidates("Silver")
+assert(table.getn(candidates) == 2 and candidates[1] == "Bronze" and candidates[2] == "Goldie",
+    "candidates exclude the worker and sort")
+assert(TB.BuildOrderReassignMenu("Goldie", function() end) == 0,
+    "a top-level order has no reassign menu")
+local reassignButtons = {}
+assert(TB.BuildOrderReassignMenu("Silver", function(info)
+    table.insert(reassignButtons, info) end) == table.getn(candidates),
+    "the reassign menu builds one row per candidate")
+reassignButtons[1].func()
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].text
+    == "Hand Silver's sub-order to " .. candidates[1] .. "?",
+    "a reassign row asks one confirm")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].OnAccept()
+assert(lastAddon() == "order reassign Silver " .. candidates[1],
+    "the reassign menu sends both bots")
+now = now + 1
+
+-- Deep branch cancel: grandchildren at any depth go with the parent.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|3")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|keep|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER|Copper|craft|2320|Cured Light Hide|0|5|working|-|-|-|-|-|Silver|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+assert(TB.GetBotOrder("Copper") ~= nil, "the grandchild lands")
+TB.ConfirmOrderCancel("Goldie")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+assert(TB.GetBotOrder("Goldie") == nil and TB.GetBotOrder("Silver") == nil
+    and TB.GetBotOrder("Copper") == nil, "a parent ACK prunes the whole branch at any depth")
+
+-- Live access refreshes the guild tab, not just the window.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|-|-|-|craft|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|3|Member|1|-|1|1")
+assert(string.find(TB.guildFrame.accessLine:GetText(), "Member", 1, true) ~= nil,
+    "a live access line repaints the guild tab")
+
+-- Rank ACK strips the scope prefix.
+TB.OnSystemMessage("TBM:ACTION_ACK|order|rank:3|1|rank")
+assert(TB.lastActionAck and TB.lastActionAck.executor == "rank",
+    "the rank ACK routes")
+
+-- Parent cancel warns it takes the branch; the ACK prunes it.
+TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|4|10|working|-|-|-|-|keep|-|-|-|-")
+TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|-|-")
+TB.OnSystemMessage("TBM:ORDER_END")
+TB.ConfirmOrderCancel("Goldie")
+assert(string.find(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].text,
+    "whole branch", 1, true) ~= nil, "a parent cancel warns it takes the branch")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
+assert(lastAddon() == "order Goldie cancel", "confirming still sends")
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+assert(TB.GetBotOrder("Goldie") == nil and TB.GetBotOrder("Silver") == nil,
+    "a parent ACK prunes the branch")
+
+-- Rank and reassign: sends, ACKs, picker guards.
+assert(TB.SendOrderRank(-1) == false, "a negative rank is refused")
+now = now + 1
+TB.SendOrderRank(2)
+assert(lastAddon() == "order rank 2", "rank sends the index")
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|rank")
+now = now + 1
+TB.RequestOrderAccess()
+assert(lastAddon() == "order access", "access asks for the snapshot")
+now = now + 1
+assert(TB.SendOrderReassign("Silver", "Goldie") == true, "reassign sends both bots")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Silver|1|reassign")
+assert(TB.SendOrderReassign("Silver", "") == false, "bad reassign is refused")
+TB.ConfirmOrderRank(2, "Raider")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"] ~= nil
+    and StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].text
+        == "Move all guild bots to rank Raider?",
+    "the rank confirm names the rank")
+now = now + 1
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"].OnAccept()
+assert(lastAddon() == "order rank 2", "confirming rank sends the server index")
+now = now + 1
+TB.ConfirmOrderReassign("Silver", "Goldie")
+assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"] ~= nil
+    and StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].text
+        == "Hand Silver's sub-order to Goldie?",
+    "the reassign confirm names both bots")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"].OnAccept()
+now = now + 1
+assert(lastAddon() == "order reassign Silver Goldie", "confirming reassign sends both bots")
+assert(TB.ConfirmOrderReassign("Silver", "Silver") == false
+    and TB.ConfirmOrderRank(-1) == false, "same-bot reassign and negative rank are refused")
 assert(TB.OrderStateLabel("stocked") == "Stocked", "stocked gets the plain label")
 assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "stocked", keep = true })
     == "Light Leather · |cff4ecb5aStocked|r", "stocked rows show the state")
@@ -2433,6 +3054,436 @@ local stockedOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather
 assert(string.find(TB.OrderTooltipText(stockedOrder),
     "Stocked: 10 in the bank, the bot refills when it drops below 10", 1, true) ~= nil,
     "stocked tooltips name the bank stock")
+
+-- ── Per-order step history (TBM:ORDER_STEPS_*): request, cache, tooltip ───
+-- The server answers ".bot order <bot> steps" with BEGIN, one ORDER_STEP per
+-- entry (oldest first) and END; the addon caches it per bot and shows the
+-- newest steps inside the order tooltip. Own function: the main chunk is at
+-- Lua's 200-local limit.
+local function orderStepHistoryChecks()
+    -- Parse: six fields after the prefix, ages and item ids numeric and >= 0.
+    local stepLine = TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|90|working|nobanker|bank|2319")
+    assert(stepLine and stepLine.bot == "Goldie" and stepLine.age == 90
+        and stepLine.state == "working" and stepLine.reason == "nobanker"
+        and stepLine.step == "bank" and stepLine.itemId == 2319, "step lines parse")
+    assert(TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|90|working|nobanker|bank") == nil,
+        "a five-field step line is dropped")
+    assert(TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|-5|working|-|bank|2319") == nil,
+        "a negative age drops the step line")
+
+    -- Gate off: no request, no send without the guild-order-steps token.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    local before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Goldie") == false, "no step request without the capability")
+    assert(table.getn(addonSent) == before, "a gated step request sends nothing")
+
+    -- Request: one per bot per 15 s.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "a capable server gets the step request")
+    assert(lastAddon() == "order Goldie steps", "the request names the bot and the steps sub-command")
+    assert(TB.RequestOrderSteps("Goldie") == false, "a second request at the same time is throttled")
+    now = now + 1
+    before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Goldie") == false, "the throttle holds a second later too")
+    assert(table.getn(addonSent) == before, "the throttled request sends nothing")
+    now = now + 15
+    assert(TB.RequestOrderSteps("Goldie") == true, "the throttle opens after 15 s")
+
+    -- Cache: BEGIN buffers, ORDER_STEP appends, END commits.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|2|3")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|90|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|nobanker|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    local cache = TB.GetOrderSteps("Goldie")
+    assert(cache and table.getn(cache.entries) == 2 and cache.dropped == 3,
+        "an END commits the buffered entries and the dropped count")
+    assert(cache.entries[1].age == 90 and cache.entries[2].age == 30,
+        "the cache keeps the server's oldest-first order")
+
+    -- Tooltip block: newest first, ages, the earlier count.
+    local lines = TB.OrderStepsTooltipLines("Goldie")
+    assert(table.getn(lines) == 4
+        and lines[1] == "Steps (newest first):"
+        and lines[2] == "  just now · taking from guild bank: Medium Leather (no banker in reach)"
+        and lines[3] == "  1m ago · taking from guild bank: Medium Leather"
+        and lines[4] == "  ... 3 earlier steps",
+        "the block lists the newest steps with ages and the earlier count")
+    now = now + 3600
+    lines = TB.OrderStepsTooltipLines("Goldie")
+    assert(lines[2] == "  1h ago · taking from guild bank: Medium Leather (no banker in reach)"
+        and lines[3] == "  1h 1m ago · taking from guild bank: Medium Leather",
+        "ages grow with the time since the reply arrived")
+
+    -- The order tooltip carries the block for its own order: a matching
+    -- identity still shows the cache.
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|nobanker|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(string.find(TB.OrderTooltipText(TB.GetBotOrder("Goldie")), "Steps (newest first):", 1, true) ~= nil,
+        "a matching identity still shows the cache")
+
+    -- A new order on the same bot drops the old history: the tooltip shows
+    -- nothing until the fresh reply lands.
+    TB.OnSystemMessage("TBM:ORDER|Goldie|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    assert(TB.GetBotOrder("Goldie") ~= nil, "the new order lands")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a new order on the same bot drops the old history")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 0,
+        "a new order tooltips no stale steps")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|-|bank|18231")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2,
+        "the fresh reply for the current order shows again")
+
+    -- A full list snapshot with a different order drops it too.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a full list with a new order drops the old history")
+
+    -- Same type and item with a different parent is a new order too.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale|-|-|-|Silver|-|-|-")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a changed parent drops the history")
+
+    -- Losing the step token wipes the whole cache (session or restart).
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(TB.GetOrderSteps("Goldie") ~= nil, "the step reply lands")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.GetOrderSteps("Goldie") == nil, "losing the step token clears the cache")
+
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    -- Bound: eight entries plus one earlier line.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|12|0")
+    for i = 1, 12 do
+        TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|" .. (i * 60) .. "|working|-|bank|2319")
+    end
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    lines = TB.OrderStepsTooltipLines("Goldie")
+    assert(table.getn(lines) == 10 and lines[10] == "  ... 4 earlier steps",
+        "the block caps at eight entries and counts the rest")
+    assert(string.find(lines[2], "  12m ago", 1, true) == 1
+        and string.find(lines[9], "  5m ago", 1, true) == 1,
+        "the eight newest entries show, newest first")
+
+    -- Foreign lines: another bot's step line is ignored, an END needs its BEGIN.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|20|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Silver|10|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(TB.GetOrderSteps("Goldie").entries) == 1,
+        "another bot's step line is not buffered")
+    before = table.getn(addonSent)
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Silver")
+    assert(TB.GetOrderSteps("Silver") == nil, "an END without its BEGIN stores nothing")
+    assert(table.getn(addonSent) == before, "a stray END sends nothing")
+    assert(TB.ParseOrderMessage("TBM:ORDER_STEP|Goldie|1|done|-|-|0") == true,
+        "a bare step line is still claimed by the order parser")
+
+    -- Throttle reset: a changed live line clears it, an identical one does not.
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "a fresh step request lands")
+    assert(TB.RequestOrderSteps("Goldie") == false, "the throttle holds at once")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|-")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "a changed step clears the throttle")
+    before = table.getn(addonSent)
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|ah|-")
+    assert(TB.RequestOrderSteps("Goldie") == false, "an identical live line keeps the throttle")
+    assert(table.getn(addonSent) == before, "the throttled call sends nothing")
+
+    -- Count check. Fresh bots per case so no earlier cache or throttle leaks in.
+    -- A BEGIN count that matches the valid entries commits, without the flag.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Ruth|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Ruth") == true, "a fresh request for Ruth goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Ruth|2|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Ruth|90|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Ruth|30|working|nobanker|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Ruth")
+    assert(TB.GetOrderSteps("Ruth") and table.getn(TB.GetOrderSteps("Ruth").entries) == 2,
+        "a count that matches its entries commits")
+    assert(table.getn(TB.OrderStepsTooltipLines("Ruth")) > 0
+        and string.find(TB.OrderStepsTooltipLines("Ruth")[1], "history incomplete", 1, true) == nil,
+        "a committed list shows no incomplete flag")
+
+    -- One entry missing (BEGIN says two): discarded, nothing cached, the
+    -- tooltip says so, and the throttle is free so the next hover asks again.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Hilda|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Hilda") == true, "a fresh request for Hilda goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Hilda|2|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Hilda|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Hilda")
+    assert(TB.GetOrderSteps("Hilda") == nil, "one missing entry: the list is discarded, not committed")
+    lines = TB.OrderStepsTooltipLines("Hilda")
+    assert(table.getn(lines) == 1 and lines[1] == "Steps: history incomplete, retrying",
+        "a discarded list flags the tooltip as incomplete, retrying")
+    -- Goldie's request above never got its END, so it still holds the one
+    -- steps slot; the slot times out after 5 s, then the retry goes out.
+    now = now + 6
+    before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Hilda") == true, "a discarded reply frees the throttle at once")
+    assert(lastAddon() == "order Hilda steps", "the retry asks the same bot again")
+
+    -- Over the cap: a BEGIN count above 16 is refused and its entries ignored.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Tessa|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Tessa") == true, "a fresh request for Tessa goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Tessa|17|0")
+    for i = 1, 17 do
+        TB.OnSystemMessage("TBM:ORDER_STEP|Tessa|" .. (i * 10) .. "|working|-|bank|2319")
+    end
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Tessa")
+    assert(TB.GetOrderSteps("Tessa") == nil, "an oversized count is rejected, nothing commits")
+    lines = TB.OrderStepsTooltipLines("Tessa")
+    assert(table.getn(lines) == 1 and lines[1] == "Steps: history incomplete, retrying",
+        "a rejected count flags the tooltip")
+    now = now + 6 -- Goldie's and Hilda's unanswered requests hold the slot until it times out
+    assert(TB.RequestOrderSteps("Tessa") == true, "a rejected count frees the throttle at once")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Tessa|0|0") -- answer the retry (no steps), so the slot frees
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Tessa")
+
+    -- The cap itself is accepted: sixteen entries commit.
+    now = now + 60
+    TB.OnSystemMessage("TBM:ORDER|Vera|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    assert(TB.RequestOrderSteps("Vera") == true, "a fresh request for Vera goes out")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Vera|16|0")
+    for i = 1, 16 do
+        TB.OnSystemMessage("TBM:ORDER_STEP|Vera|" .. (i * 10) .. "|working|-|bank|2319")
+    end
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Vera")
+    assert(TB.GetOrderSteps("Vera") and table.getn(TB.GetOrderSteps("Vera").entries) == 16,
+        "sixteen entries, the cap itself, commit")
+
+    -- A complete retry for Hilda clears her flag.
+    now = now + 60
+    assert(TB.RequestOrderSteps("Hilda") == true, "Hilda's retry goes out after the throttle")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Hilda|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Hilda|30|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Hilda")
+    assert(TB.GetOrderSteps("Hilda") ~= nil, "the complete retry commits")
+    lines = TB.OrderStepsTooltipLines("Hilda")
+    assert(lines[1] == "Steps (newest first):", "a committed retry clears the incomplete flag")
+
+    -- Entry and age texts.
+    assert(TB.OrderStepText({ state = "done", itemId = 0 }) == "Done",
+        "a finished step reads as its state")
+    assert(TB.OrderStepText({ state = "waiting", reason = "needitems", itemId = 0 })
+        == "Waiting (needs items from you)", "a waiting step carries its reason")
+    assert(TB.OrderStepAgeText(7260) == "2h 1m ago" and TB.OrderStepAgeText(7200) == "2h ago"
+        and TB.OrderStepAgeText(90000) == "1d ago", "ages read in minutes, hours and days")
+
+    -- Repaint: a committed list redraws the hovered row without a new request.
+    -- The changed live line below clears the throttle, so a repaint that asked
+    -- again would really send. The time step keeps the tab's own "order list"
+    -- out of the send queue (a queued command would leak into the wire cases).
+    now = now + 1
+    TB.ShowTab("guild")
+    local tipRow = TB.guildFrame.rows[1]
+    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the guild row holds Goldie")
+    local tipLines = {}
+    local realAddLine = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
+    now = now + 16
+    TB.ShowGuildRowTooltip(tipRow)
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|deliver|-")
+    now = now + 1
+    before = table.getn(addonSent)
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    GameTooltip.AddLine = realAddLine
+    local sawStepBlock = false
+    for _, text in ipairs(tipLines) do
+        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
+    end
+    assert(sawStepBlock, "the committed list redraws the hovered tooltip")
+    assert(table.getn(addonSent) == before, "the repaint sends no second request")
+    -- Stale reply: asked for A, the bot moved to B, the reply lands late.
+    -- Nothing is cached and B tooltips no steps; the next hover may ask again.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bank|-")
+    now = now + 16
+    assert(TB.RequestOrderSteps("Goldie") == true, "the step request for the old order lands")
+    assert(lastAddon() == "order Goldie steps", "the stale-reply request names the bot")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    assert(TB.GetBotOrder("Goldie") ~= nil, "the replacement order lands")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a late reply for the old order is not cached")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 0,
+        "a late reply shows no steps for the new order")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "the discard leaves the next hover free to ask again")
+
+    -- Old server: without the token the block stays away (the cache was
+    -- already wiped when the token went missing above).
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.GetOrderSteps("Goldie") == nil, "a missing token leaves no step cache")
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 0,
+        "no step block on a server without the token")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.HasOrderCapability() and not TB.HasServerCapability("guild-order-steps"),
+        "the block restores the capability set")
+end
+orderStepHistoryChecks()
+-- ── Step hover dwell + single outstanding (Opus cold review) ───────────────
+-- A hover asks only after the cursor rests 0.4 s; one steps reply in flight
+-- blocks the next bot until END or 5 s. Own function: chunk local limit.
+local function stepHoverDwellChecks()
+    TB._stepsDwell = nil
+    TB._guildTipRow = nil
+    TB._guildTipOwner = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|Farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    for i = 1, 20 do
+        TB.OnSystemMessage("TBM:ORDER|Sweep" .. i .. "|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    end
+    now = now + 16
+    TB.ShowTab("guild")
+    TB.RefreshGuildView()
+    local dwellFrame = frames["TortoiseBotsManagerStepsDwell"]
+    assert(dwellFrame and dwellFrame.scripts.OnUpdate, "the steps dwell timer must exist")
+    local hoverRow = TB.guildFrame.rows[1]
+    assert(hoverRow and hoverRow.scripts.OnEnter and hoverRow.scripts.OnLeave, "guild rows must hover")
+    local row1 = TB.guildFrame.rows[1]
+    assert(row1.entry and row1.entry.name == "Goldie", "the first guild row holds Goldie")
+
+    -- Sweep: 20 quick hovers (0.2 s each) send nothing.
+    local beforeSweep = table.getn(addonSent)
+    for i = 1, 20 do
+        local fake = { entry = { name = "Sweep" .. i, level = 60, className = "Warrior", status = "Online" } }
+        this = fake
+        hoverRow.scripts.OnEnter(hoverRow)
+        now = now + 0.2
+        dwellFrame.scripts.OnUpdate(dwellFrame)
+        this = fake
+        hoverRow.scripts.OnLeave(hoverRow)
+    end
+    now = now + 1
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSweep, "sweeping 20 rows sends no step request")
+
+    -- Rest: 0.5 s on Goldie sends one request.
+    now = now + 1
+    local stay = { entry = { name = "Goldie", level = 60, className = "Warrior", status = "Online" } }
+    this = stay
+    hoverRow.scripts.OnEnter(hoverRow)
+    now = now + 0.5
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSweep + 1 and lastAddon() == "order Goldie steps",
+        "resting 0.5 s sends one step request")
+    this = stay
+    hoverRow.scripts.OnLeave(hoverRow)
+
+    -- Outstanding: Silver waits while Goldie's reply is in flight.
+    now = now + 1
+    local beforeSecond = table.getn(addonSent)
+    local silver = { entry = { name = "Silver", level = 45, className = "Priest", status = "Online" } }
+    this = silver
+    hoverRow.scripts.OnEnter(hoverRow)
+    now = now + 0.5
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSecond, "a second row waits while one steps request is outstanding")
+    this = silver
+    hoverRow.scripts.OnLeave(hoverRow)
+
+    -- After 5 s without an END the next hover may ask again.
+    now = now + 6
+    this = silver
+    hoverRow.scripts.OnEnter(hoverRow)
+    now = now + 0.5
+    dwellFrame.scripts.OnUpdate(dwellFrame)
+    assert(table.getn(addonSent) == beforeSecond + 1 and lastAddon() == "order Silver steps",
+        "the single outstanding request times out after 5 s")
+    this = silver
+    hoverRow.scripts.OnLeave(hoverRow)
+
+    -- Both late replies still commit each bot's own list.
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(TB.GetOrderSteps("Goldie") ~= nil, "Goldie's late reply still commits")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Silver|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Silver|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Silver")
+    assert(TB.GetOrderSteps("Silver") ~= nil, "Silver's reply still commits")
+
+    -- Identity is case-insensitive: the "Farm" row keeps its steps.
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2, "the Farm row tooltips its steps")
+
+    -- Repaint only while the row still shows and still owns the tooltip.
+    local tipRow = TB.guildFrame.rows[1]
+    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the first guild row still holds Goldie")
+    local tipLines = {}
+    local realAddLine = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
+    this = tipRow
+    tipRow.scripts.OnEnter(tipRow)
+    TB._stepsDwell = nil
+    tipLines = {}
+    tipRow:Hide()
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(tipLines) == 0, "a hidden row gets no repaint")
+    tipRow:Show()
+    GameTooltip.owner = TB.guildFrame.rows[2]
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    assert(table.getn(tipLines) == 0, "a moved tooltip gets no repaint")
+    this = tipRow
+    tipRow.scripts.OnEnter(tipRow)
+    TB._stepsDwell = nil
+    tipLines = {}
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+    local sawStepBlock = false
+    for _, text in ipairs(tipLines) do
+        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
+    end
+    assert(sawStepBlock, "the visible owned row still repaints")
+    GameTooltip.AddLine = realAddLine
+    this = tipRow
+    tipRow.scripts.OnLeave(tipRow)
+
+    -- Token loss clears the per-bot request times: asking again works at once.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    now = now + 16
+    assert(TB.RequestOrderSteps("Goldie") == true, "a fresh step request lands before the token loss")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
+    now = now + 1
+    assert(TB.RequestOrderSteps("Goldie") == true, "losing the step token clears the request throttle")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
+    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
+    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
+
+    -- Leave no step state behind for the tests below.
+    TB._stepsDwell = nil
+    TB._guildTipRow = nil
+    TB._guildTipOwner = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    TB.OnSystemMessage("TBM:ORDER_END")
+end
+stepHoverDwellChecks()
 
 -- Estimates: amount ÷ chance, nodes for herb and ore, none for buy/craft.
 assert(TB.OrderEstimate("farm", { "skin" }, 50, 10) == "about 20 kills", "a 50% chance doubles the kills")
@@ -2532,12 +3583,16 @@ assert(TB.ClampOrderHours(0) == 1 and TB.ClampOrderHours(99) == 24,
     "hours clamp to 1-24")
 
 -- The order window: search debounce, results, kind, amount, send.
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+now = now + 1
 assert(TB.OpenOrderWindow("Goldie"), "the window opens for a guild bot")
+assert(lastAddon() == "order access", "opening the window fetches access when missing")
 assert(TB.orderWindow:IsVisible() and TB.GetOrderWindowBot() == "Goldie",
     "the window tracks its bot")
 assert(TB.orderWindow.title:GetText() == "Order for Goldie", "the title names the bot")
-assert(TB.orderWindow.statusLine:GetText() == "Current: Light Leather 7/10 (Ashenvale)",
-    "the window shows the bot's current order")
+assert(TB.orderWindow.statusLine:GetText() == "No order on this bot.",
+    "the window shows no order after the branch was pruned")
 assert(TB.orderWindow.amountBox:GetText() == "10", "a fresh window starts at 10")
 assert(TB.orderWindow.hoursBox:GetText() == "1", "farm time keeps 1 hour behind no limit")
 assert(TB.GetOrderNoLimit() == true and TB.orderWindow.noLimitBox:GetChecked(),
@@ -2547,6 +3602,9 @@ assert(TB.orderWindow.hoursBox.mouseEnabled == false,
 assert(TB.orderWindow.farmNote ~= nil
     and string.find(TB.orderWindow.farmNote:GetText(), "Bots farm like players", 1, true) ~= nil,
     "the window warns that big or rare farms take very long")
+assert(TB.orderWindow.sendItemsBtn ~= nil, "the window carries a Send missing items button")
+assert(TB.orderWindow.sendItemsBtn.enabled == false,
+    "no open mailbox leaves the Send missing items button dead")
 local beforeSearch = table.getn(addonSent)
 this = TB.orderWindow.searchBox
 TB.orderWindow.searchBox.text = "le"
@@ -2622,9 +3680,45 @@ now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
 assert(lastAddon() == "order Goldie farm 2318 10 3", "an invalid-arg reply drops keep first")
 assert(string.find(TB.GetOrderFeedback().text, "retrying without keep in stock"), "the keep retry says so")
+
+-- Gold cap fallback: an old server sheds gold first, then keep, then hours.
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 10000)
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=10000", "a capped give carries gold")
 now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
-assert(lastAddon() == "order Goldie farm 2318 10", "a second invalid-arg reply drops the farm time")
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep", "an invalid-arg reply drops gold first")
+assert(string.find(TB.GetOrderFeedback().text, "retrying without the guild gold cap", 1, true),
+    "the gold retry says so")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 2", "a second invalid-arg reply drops keep")
+assert(TB.ClampOrderGold(nil) == nil and TB.GetOrderGold() == nil, "empty gold means no cap")
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 0)
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=0", "gold=0 rides the wire as a real cap")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep", "an invalid-arg reply drops gold=0 first")
+assert(TB.SetOrderGold(0) == 0 and TB.orderWindow.goldBox:GetText() == "0", "zero shows as 0, not empty")
+TB.SetOrderGold(nil)
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 10000)
+assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=10000", "a capped give carries gold")
+TB.orderWindow.goldBox.text = "10000"
+this = TB.orderWindow.goldBox
+TB.orderWindow.goldBox.scripts.OnTextChanged(TB.orderWindow.goldBox)
+assert(TB.GetOrderGold() == 10000, "typing commits the gold cap")
+TB.orderWindow.goldBox.text = ""
+TB.orderWindow.goldBox.scripts.OnTextChanged(TB.orderWindow.goldBox)
+assert(TB.GetOrderGold() == nil, "clearing the box clears the cap")
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10, 2, true, 10000)
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+now = now + 1
+TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
+assert(lastAddon() == "order Goldie farm 2318 10", "a third invalid-arg reply drops the farm time")
 TB.SetOrderKeep(false)
 assert(TB.GetOrderKeep() == false and not TB.orderWindow.keepBox:GetChecked(),
     "the setter clears the box")

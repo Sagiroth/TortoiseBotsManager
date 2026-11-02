@@ -6,37 +6,76 @@
 -- buttons, no window, no sends. Every CAPS line replaces the set, so the
 -- gate is re-checked on each one (as BotLoot.lua does).
 --
--- Sends (byte-exact, contract: TortoiseBots#1297 "Addon contract"):
---   "order list"                                   -> full order snapshot
---   "order search <bot> <farm|buy|craft> [cat=<category>] <text>" -> item search
---     (3+ chars, or empty text when filtering by kind; an old server
---     answering invalid to a cat= search is retried without it)
---   "order <bot> <farm|buy|craft> <itemId> <n> [hours|inf] [keep]" -> give or replace
---     (1-200, 1-24 farm hours or inf for no limit; an old server answers
---     invalid for the trailing arguments and the addon resends: keep first,
---     then a refused inf retries once as 24, then bare)
+-- Contract (TortoiseBots#1384 "Guild orders: guild bank as the crafting store"):
+-- the player sees live who does what and can step in from the addon.
+-- Sends (byte-exact):
+--   "order list"                                   -> full snapshot (orders
+--     plus TBM:ORDER_ACCESS first inside the pair)
+--   "order search <bot> <farm|buy|craft> [cat=<category>] <text>"
+--   "order <bot> <farm|buy|craft> <itemId> <n> [hours|inf] [keep] [gold=<copper>]"
+--     (gold omitted with no cap; an old server answering invalid sheds the
+--     newest trailing field first: gold, then keep, then a refused inf
+--     retries once as 24, then bare)
+--   "order rank <rankIndex>"                        -> bots' guild rank (ACK
+--     or ERR, then TBM:ORDER_ACCESS)
+--   "order access"                                  -> TBM:ORDER_ACCESS now
+--   "order reassign <subOrderBot> <newBot>"         -> hand a sub-order over
+--   "order <bot> cancel"                            -> on a parent cancels
+--     the whole branch
+--   "order <bot> steps"                             -> TBM:ORDER_STEPS_* for
+--     that bot's order (capability "guild-order-steps", memory only)
 -- Inbound:
 --   TBM:ORDER_BEGIN|<n>
---   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>|<hours>|<keep>
+--   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>|<hours>|<keep>|<parent>|<goldCap>|<step>|<need>|<carry>
 --   TBM:ORDER_END
+--   TBM:ORDER_STEPS_BEGIN|<bot>|<n>|<dropped>   (the answer to "order <bot>
+--   TBM:ORDER_STEP|<bot>|<ageSec>|<state>|<reason>|<step>|<itemId>   steps":
+--   TBM:ORDER_STEPS_END|<bot>                   oldest first, "TBM:ORDER" tokens)
+--   TBM:ORDER_ACCESS|<rankIndex>|<rankName>|<tabsOk>|<tabsDenied>|<gold 0/1>|<canSetRank 0/1>
 --   TBM:ORDER_ITEMS_BEGIN|<n>
 --   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>|<difficulty>|<category>
 --   TBM:ORDER_ITEMS_END
---   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|cancel>
+--   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|cancel|rank|reassign>
 --   TBM:ACTION_ERR|order|<code>|<message>
 -- A TBM:ORDER line inside BEGIN/END is the full list (replace the whole
 -- set); outside a pair it is a live update for one bot (update that row
 -- only). The search pair is its own stream, so an empty result is a real
--- answer. Unknown state / reason tokens are shown raw, never crash.
+-- answer. Unknown state / reason / step tokens are shown raw, never crash.
+-- The step pair is its own stream too: the addon asks on hover of a guild row
+-- (one request per bot per 15 s, cap token "guild-order-steps") and shows the
+-- newest entries at the end of the order tooltip. The server keeps at most 16
+-- entries in memory (it resets on restart, a new order or a reassign) and
+-- <dropped> counts the older ones it no longer keeps.
 -- <reason> "-" means none; <zone> "-" means none; <chance> is percent.
 -- <difficulty> is easy / medium / hard ("-" or a missing field on old
--- servers means none); <reason> and <verdict> may be "elite", "timeout" or
--- "noprogress". <keep> is keep or "-" (missing on old servers means not
+-- servers means none); <reason> and <verdict> may be "elite", "timeout",
+-- "noprogress", "needitems", "nobanker", "bankdenied", "noauctioneer" or
+-- "nolisting" (the last four ride state "working"). <keep> is keep or "-" (missing on old servers means not
 -- keep); a keep order that delivered sits in state "stocked" until the bank
--- runs low. <hours> is whole hours or "inf" for no limit (missing on old
--- servers means none); an inf order never times out, only cancel ends it.
+-- runs low. <hours> is whole hours or "inf" for no limit (missing on
+-- old servers means none); an inf order never times out, only cancel ends it.
 -- <category> is herb / ore / leather / fish / cloth / drop / other
 -- ("-" or missing on old servers means none).
+-- <parent> is the parent order's bot, or "-" for a top-level order (missing
+-- on old servers means top-level); sub-order rows go live to the root
+-- order's giver and show indented under their parent by bot name.
+-- <goldCap> is the guild gold cap in copper, or "-" for no cap. <step> is
+-- what the bot does now: bags, bank, ah, farm, craft, sub, need, deliver or
+-- "-" (missing on old servers means none). <need> lists items the player must
+-- bring as "itemId:count;..." or "-" (names come from the client item cache);
+-- new reason needitems (state waiting) means the order waits for those items:
+-- trade them, mail them or put them in the guild bank; a working row may also
+-- carry a non-empty need list.
+-- <have> counts delivered only (bank deposit or the mail hand-over to the
+-- guild master); <carry> is what the bot holds in its bags plus its mailbox,
+-- not yet delivered ("-" or a missing field on old servers means none). A
+-- `working` row with carry > 0 shows "(+N carrying)" after the progress.
+-- TBM:ORDER_ACCESS rides first inside ORDER_BEGIN/END and again after a rank
+-- change; tab lists are comma-separated 1-based tabs or "-". Rank "-" (as in
+-- "-|-|-|-|0|0") means the server leaves bot ranks alone: grey line, no rank
+-- control. Tabs "-" and "-" with a numeric rank means no unlocked guild bank
+-- yet: grey "No guild bank yet". Red is a real bank with a denied tab or
+-- gold 0.
 --
 -- Permission: the giver's guild rank must be allowed to edit officer notes
 -- (CanEditOfficerNote). Without it the Order and Cancel buttons are greyed
@@ -89,6 +128,9 @@ local REASON_LABEL = {
     nosource = "no source", norecipe = "unknown recipe", elite = "only from elite creatures",
     timeout = "farm time ran out", noprogress = "no progress - the bot found nothing to farm",
     stuck = "stuck, gave up", bagsfull = "bags full", nobank = "no bank deposit",
+    needitems = "needs items from you",
+    nobanker = "no banker in reach", bankdenied = "bank refused withdrawal",
+    noauctioneer = "no auctioneer in reach", nolisting = "nothing fitting on the AH",
 }
 local SOURCE_LABEL = { drop = "drop", skin = "skin", herb = "herb", ore = "ore", fish = "fish", craft = "craft", ah = "AH" }
 local SKILL_NAMES = {
@@ -112,6 +154,240 @@ function TB.OrderReasonLabel(reason)
     reason = trim(reason or "")
     if reason == "" or reason == "-" then return nil end
     return REASON_LABEL[string.lower(reason)] or reason
+end
+-- What the bot does now: bags (own bags and mail), bank (guild bank),
+-- ah (auction house), farm in <zone>, craft, sub (waiting for a sub-order),
+-- need (needs items from you), deliver. "-" or a missing field on old
+-- servers means none; unknown steps show raw, never crash.
+local STEP_LABEL = {
+    bags = "checking bags and mail", bank = "taking from guild bank",
+    ah = "buying on AH", farm = "farming", craft = "crafting",
+    sub = "waiting for sub-order", need = "needs items from you",
+    deliver = "delivering",
+}
+
+function TB.OrderStepLabel(order)
+    if not order then return nil end
+    local step = string.lower(trim(order.step or ""))
+    if step == "" or step == "-" then return nil end
+    if step == "farm" and order.zone then return "farming in " .. order.zone end
+    return STEP_LABEL[step] or trim(order.step)
+end
+-- Money in plain coin words: 1g 20s 5c. Used for the guild gold cap; the
+-- guild-log style colours of BotPanel would add noise in narrow rows.
+function TB.OrderGoldText(copper)
+    copper = math.floor(tonumber(copper) or 0)
+    if copper <= 0 then return "0c" end
+    local g = math.floor(copper / 10000)
+    local s = math.floor(math.mod(copper, 10000) / 100)
+    local c = math.mod(copper, 100)
+    local parts = {}
+    if g > 0 then table.insert(parts, g .. "g") end
+    if s > 0 then table.insert(parts, s .. "s") end
+    if c > 0 or table.getn(parts) == 0 then table.insert(parts, c .. "c") end
+    return table.concat(parts, " ")
+end
+
+-- Item names for a need list come from the client item cache (GetItemInfo),
+-- like the search icons: unknown ids show as "item #<id>".
+local function needName(id)
+    if GetItemInfo then
+        local name = GetItemInfo(id)
+        if name then return name end
+    end
+    return "item #" .. tostring(id)
+end
+
+-- One hint for the whole need list: "trade, mail or put in guild bank".
+function TB.OrderNeedText(order)
+    if not order or not order.need or table.getn(order.need) == 0 then return nil end
+    local parts = {}
+    for _, entry in ipairs(order.need) do
+        table.insert(parts, needName(entry.id) .. " x" .. tostring(entry.count or 0))
+    end
+    return "Needs: " .. table.concat(parts, ", ")
+        .. " (trade, mail or put in guild bank)"
+end
+
+-- ── send missing items (mailbox) ─────────────────────────────────────────
+-- The button never mails anything on its own: it fills the Send Mail form
+-- for the bot that needs items and attaches one stack from the bags. The
+-- player presses Send (items and postage are irreversible).
+local MAIL_BAGS = 5 -- bags 0..4 (backpack plus equipped bags)
+
+local function orderHasNeed(order)
+    return order and order.need and table.getn(order.need) > 0
+end
+
+-- First bot in the window's tree (root, then children depth-first) whose
+-- order needs items. Returns bot, order, or nil.
+function TB.OrderNeedTarget(rootBot)
+    rootBot = norm(rootBot)
+    if not rootBot then return nil end
+    local rootOrder = TB.GetBotOrder(rootBot)
+    if not rootOrder then return nil end
+    if orderHasNeed(rootOrder) then return rootBot, rootOrder end
+    local function visit(parentBot)
+        for _, child in ipairs(TB.OrderChildren(parentBot)) do
+            if orderHasNeed(child) then return child.bot, child end
+            local bot, order = visit(child.bot)
+            if bot then return bot, order end
+        end
+        return nil
+    end
+    return visit(rootBot)
+end
+
+-- The mail the button would fill: recipient, subject, need body. nil when
+-- the order needs nothing.
+function TB.OrderMailDraft(bot, order)
+    if not orderHasNeed(order) then return nil end
+    return {
+        to = bot,
+        subject = "Order: " .. (order.item or "item"),
+        body = TB.OrderNeedText(order),
+    }
+end
+
+-- One bag stack for the first need entry that is in bags 0..4. Sparse
+-- stacks are skipped; locked stacks are skipped. split is the need count
+-- when the stack is larger (a partial attach), else nil (whole stack).
+function TB.FindOrderNeedStack(order)
+    if not orderHasNeed(order) then return nil end
+    if not (GetContainerNumSlots and GetContainerItemLink and GetContainerItemInfo) then return nil end
+    for _, entry in ipairs(order.need) do
+        local needCount = entry.count or 0
+        if needCount > 0 then
+            for bag = 0, MAIL_BAGS - 1 do
+                local slots = GetContainerNumSlots(bag) or 0
+                for slot = 1, slots do
+                    local link = GetContainerItemLink(bag, slot)
+                    if link then
+                        local _, _, idText = string.find(link, "item:(%d+)")
+                        if tonumber(idText) == entry.id then
+                            local _, count, locked = GetContainerItemInfo(bag, slot)
+                            if not locked and count and count > 0 then
+                                local split = nil
+                                if count > needCount then split = needCount end
+                                return { bag = bag, slot = slot, id = entry.id, count = count, split = split }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- The item in the Send Mail attachment slot: 1.12 GetSendMailItem() returns
+-- itemName, itemTexture, stackCount, quality (MailFrame.lua, build 5803).
+-- Both nil when the slot is empty.
+local function sendMailItem()
+    if not GetSendMailItem then return nil, nil end
+    local name, _, count = GetSendMailItem()
+    if name == "" then name = nil end
+    return name, tonumber(count)
+end
+
+-- The globals the attach needs, by name: the pickup call for this path
+-- (split or whole stack), the attach click, the cursor probe and the
+-- read-back. Names, so the message can say which one is missing.
+local function missingMailApis(split)
+    local missing = {}
+    if split then
+        if not SplitContainerItem then table.insert(missing, "SplitContainerItem") end
+    elseif not PickupContainerItem then
+        table.insert(missing, "PickupContainerItem")
+    end
+    if not ClickSendMailItemButton then table.insert(missing, "ClickSendMailItemButton") end
+    if not CursorHasItem then table.insert(missing, "CursorHasItem") end
+    if not GetSendMailItem then table.insert(missing, "GetSendMailItem") end
+    return missing
+end
+
+-- The button is live only at an open mailbox with a bot that needs items.
+function TB.CanSendOrderItems(rootBot)
+    if not (MailFrame and MailFrame.IsVisible and MailFrame:IsVisible()) then
+        return false, "Open a mailbox first"
+    end
+    if not TB.OrderNeedTarget(rootBot) then
+        return false, "No order needs items"
+    end
+    return true, nil
+end
+
+-- Fill the form and attach one stack. Never sends. Returns true when the
+-- form was filled (with or without an attachment). A busy cursor or a filled
+-- attachment slot stops the attach: the pickup would swap one of the two
+-- items into the mail, which is worse than attaching nothing.
+function TB.SendOrderMissingItems(rootBot)
+    local bot, order = TB.OrderNeedTarget(rootBot)
+    if not bot then return false end
+    local draft = TB.OrderMailDraft(bot, order)
+    if not draft then return false end
+    -- A draft the player is already composing is left alone: with an item on
+    -- the cursor or in the attachment slot, re-addressing the form would send
+    -- that item to the bot. Check before any field changes.
+    if CursorHasItem and CursorHasItem() then
+        TB.SetOrderFeedback("Nothing changed: your cursor holds an item - drop or place it first", "error")
+        return false
+    end
+    local busyName = sendMailItem()
+    if busyName then
+        TB.SetOrderFeedback("Nothing changed: the mail already holds " .. busyName .. " - send or clear it first", "error")
+        return false
+    end
+    -- A text-only draft is the player's too: never overwrite it.
+    local function boxText(box) return box and box.GetText and box:GetText() or "" end
+    if boxText(SendMailNameEditBox) ~= "" or boxText(SendMailSubjectEditBox) ~= ""
+        or boxText(SendMailBodyEditBox) ~= "" then
+        TB.SetOrderFeedback("Nothing changed: the mail form already has text - clear it first", "error")
+        return false
+    end
+    -- D4: open the Send tab and fill the boxes (guard every global).
+    if MailFrameTab_OnClick then MailFrameTab_OnClick(2) end
+    if SendMailNameEditBox and SendMailNameEditBox.SetText then SendMailNameEditBox:SetText(draft.to) end
+    if SendMailSubjectEditBox and SendMailSubjectEditBox.SetText then SendMailSubjectEditBox:SetText(draft.subject) end
+    if SendMailBodyEditBox and SendMailBodyEditBox.SetText then SendMailBodyEditBox:SetText(draft.body) end
+    local stack = TB.FindOrderNeedStack(order)
+    if not stack then
+        TB.SetOrderFeedback("None of the needed items are in your bags", "error")
+        return true
+    end
+    local attached = stack.split or stack.count
+    local itemName = needName(stack.id)
+    -- No half-blind attach: without the pickup call, the attach click, the
+    -- cursor probe and the read-back, nothing is moved at all.
+    local missing = missingMailApis(stack.split)
+    if table.getn(missing) > 0 then
+        TB.SetOrderFeedback("Nothing attached: this client has no "
+            .. table.concat(missing, ", "), "error")
+        return true
+    end
+    -- The cursor and the attachment slot were checked empty before the form
+    -- was touched (top of this function), so the pickup cannot swap anything.
+    if stack.split then
+        SplitContainerItem(stack.bag, stack.slot, stack.split)
+    else
+        PickupContainerItem(stack.bag, stack.slot)
+    end
+    ClickSendMailItemButton()
+    -- The client is the only witness: a wrong item, a wrong count or an
+    -- item left on the cursor is an error, never "attached".
+    local sentName, sentCount = sendMailItem()
+    if CursorHasItem() or sentName ~= itemName or sentCount ~= attached then
+        if ClearCursor then ClearCursor() end
+        -- The wrong item may now sit in the attachment slot: clear the
+        -- recipient so a Send cannot mail it to the bot.
+        if SendMailNameEditBox and SendMailNameEditBox.SetText then SendMailNameEditBox:SetText("") end
+        local shown = sentName and (sentName .. " x" .. tostring(sentCount)) or "no item"
+        TB.SetOrderFeedback("Check the mail: it shows " .. shown .. " instead of " .. itemName
+            .. " x" .. tostring(attached) .. " - recipient cleared", "error")
+        return true
+    end
+    TB.SetOrderFeedback(itemName .. " x" .. tostring(attached) .. " attached - press Send", "ok")
+    return true
 end
 
 -- Difficulty estimate from the server: easy / medium / hard in plain words
@@ -186,13 +462,116 @@ function TB.OrderDropRate(kind, sources, chance)
 end
 
 -- ── model ─────────────────────────────────────────────────────────────────
--- orders[bot] = { bot, type, itemId, item, have, want, state, reason, zone, difficulty, hours, keep }
+-- orders[bot] = { bot, type, itemId, item, have, want, state, reason, zone,
+--   difficulty, hours, keep, parent, goldCap, step, need, carry }
 -- hours is a number, "inf" for no limit, or nil when the server sent none.
+-- parent is the parent order's bot, or nil for a top-level order; goldCap is
+-- guild gold in copper or nil for no cap; need is { {id, count} } of items
+-- the player must bring, or nil; carry is bags plus mail not yet delivered
+-- (nil on old servers without the field, treated as 0 in the display).
 local orders = {}
+
+-- Per-order step history, memory only: orderSteps[bot] = { entries, dropped,
+-- receivedAt, type, itemId, parent }. entries hold the server's entries
+-- oldest first; type + itemId (+ parent when the row has one) is the order
+-- identity the list belongs to. stepsReceiving buffers one bot's list
+-- between BEGIN and END; stepsAskedAt is the per-bot request throttle (one
+-- ".bot order <bot> steps" per 15 s); stepsPending keeps the order identity
+-- seen when the request went out, so a reply that lands after the bot moved
+-- to a new order is dropped instead of stamped onto it.
+local orderSteps = {}
+local stepsReceiving = nil
+local stepsAskedAt = {}
+local stepsPending = {}
+
+-- The order a step list belongs to. A new order on the same bot must not
+-- show the old order's steps, so every cached list carries its order's
+-- identity and the cache is dropped whenever the bot's current order
+-- identity differs from it.
+local function orderIdentity(order)
+    if not order then return nil end
+    local parent = order.parent
+    if parent ~= nil then parent = string.lower(trim(parent or "")) end
+    if parent == "" then parent = nil end
+    return {
+        type = string.lower(trim(order.type or "")),
+        itemId = order.itemId,
+        parent = parent,
+    }
+end
+
+local function sameOrderIdentity(a, b)
+    if not a or not b then return false end
+    return a.type == b.type and a.itemId == b.itemId and a.parent == b.parent
+end
+
+-- Tooltip-side view of one order-step record's identity: the same lowered
+-- key as orderIdentity, so a mixed-kind order ("Farm" vs "farm") still
+-- matches the row it belongs to.
+function TB.OrderStepIdentity(record)
+    if not record then return nil end
+    local parent = record.parent
+    if parent ~= nil then parent = string.lower(trim(parent or "")) end
+    if parent == "" then parent = nil end
+    return {
+        type = record.type and string.lower(trim(record.type or "")) or nil,
+        itemId = record.itemId,
+        parent = parent,
+    }
+end
 
 function TB.GetBotOrder(bot)
     bot = norm(bot)
     return bot and orders[bot] or nil
+end
+
+-- Depth in the sub-order tree: top-level is 0, each parent adds one. Missing
+-- parents (a live line ahead of the list) count as top-level, never a loop.
+function TB.OrderDepth(order)
+    local depth = 0
+    local seen = {}
+    local parent = order and order.parent or nil
+    while parent and not seen[parent] and depth < 8 do
+        seen[parent] = true
+        local row = orders[parent]
+        if not row then break end
+        depth = depth + 1
+        parent = row.parent
+    end
+    return depth
+end
+
+-- Child bots of one order, sorted for a stable tree.
+function TB.OrderChildren(bot)
+    bot = norm(bot)
+    local out = {}
+    if not bot then return out end
+    for _, order in pairs(orders) do
+        if order.parent == bot then table.insert(out, order) end
+    end
+    table.sort(out, function(a, b) return (a.bot or "") < (b.bot or "") end)
+    return out
+end
+
+-- Every row with its depth: roots first (sorted), then each branch. Sorted
+-- by name so the tree reads the same from any list order.
+function TB.GetOrderTree()
+    local roots = {}
+    for _, order in pairs(orders) do
+        if not order.parent or not orders[order.parent] then
+            table.insert(roots, order)
+        end
+    end
+    table.sort(roots, function(a, b) return (a.bot or "") < (b.bot or "") end)
+    local out = {}
+    local function visit(row, depth)
+        table.insert(out, { order = row, depth = depth })
+        for _, child in ipairs(TB.OrderChildren(row.bot)) do
+            visit(child, depth + 1)
+        end
+    end
+    for _, root in ipairs(roots) do visit(root, 0) end
+    return out
 end
 
 function TB.GetOrders()
@@ -203,11 +582,15 @@ function TB.GetOrders()
 end
 
 -- One guild-row line: item, progress, state. The reason stays in the
--- tooltip (RefreshGuildView + the row tooltip in UI.lua).
+-- tooltip (RefreshGuildView + the row tooltip in UI.lua). The live step
+-- ("taking from guild bank", "farming in Elwynn" ...) joins working and
+-- waiting rows (except needitems, whose rows name the need instead).
 function TB.OrderRowText(order)
     if not order then return "" end
     local item = order.item or ("item #" .. tostring(order.itemId or "?"))
     local progress = tostring(order.have or 0) .. "/" .. tostring(order.want or 0)
+    local carryCount = math.floor(tonumber(order.carry) or 0)
+    if carryCount > 0 then progress = progress .. " (+" .. carryCount .. " carrying)" end
     local state = string.lower(trim(order.state or ""))
     local paint = STATE_COLOR[state]
     local function word(text)
@@ -217,9 +600,15 @@ function TB.OrderRowText(order)
     local text
     if state == "working" then
         text = item .. " " .. progress
-        if order.zone then text = text .. " (" .. order.zone .. ")" end
+        local step = TB.OrderStepLabel(order)
+        if step then text = text .. " · " .. step
+        elseif order.zone then text = text .. " (" .. order.zone .. ")" end
     elseif state == "waiting" then
         text = item .. " " .. progress .. " · " .. word("Waiting")
+        if string.lower(trim(order.reason or "")) ~= "needitems" then
+            local step = TB.OrderStepLabel(order)
+            if step then text = text .. " · " .. step end
+        end
     elseif state == "delivering" then
         text = word("Delivering") .. " " .. item
     elseif state == "done" then
@@ -235,13 +624,32 @@ function TB.OrderRowText(order)
     else
         text = item .. " " .. progress .. " · " .. trim(order.state or "")
     end
+    if (state == "working" or (state == "waiting" and string.lower(trim(order.reason or "")) ~= "needitems"))
+        and order.need and table.getn(order.need) > 0
+        and not string.find(text, "needs items from you", 1, true) then -- a "need" step label already says it
+        text = text .. " · " .. "|cffffd200needs items from you|r"
+    end
     if order.keep and state ~= "stocked" then text = text .. " · " .. word("Keep") end
     if order.hours == "inf" then text = text .. " · " .. word("No limit") end
     local diff = TB.OrderDifficultyLabel(order.difficulty)
     if diff then text = text .. " · " .. diff end
     return text
 end
--- Tooltip body for a bot's order: type, progress, state, reason, zone, difficulty.
+
+-- One order-window tree line: always names the bot, indented under its
+-- parent ("  Silver: item 1/5 · ..."). A sub-order whose parent row is
+-- missing or late shows as a root (no indent) until the parent arrives,
+-- then re-indents; the name never drops.
+function TB.OrderTreeRowText(order, depth)
+    if not order then return "" end
+    depth = tonumber(depth) or TB.OrderDepth(order)
+    if depth < 0 then depth = 0 end
+    return string.rep("  ", depth) .. (order.bot or "?") .. ": " .. TB.OrderRowText(order)
+end
+-- Tooltip body for a bot's order: type, progress, state, reason, zone, step,
+-- need list, difficulty. Need items show item links like other rows, with a
+-- short hint ("trade, mail or put in guild bank"); names come from the
+-- client item cache, unknown ids show as "item #<id>".
 function TB.OrderTooltipText(order)
     if not order then return nil end
     local lines = { "Order: " .. TB.OrderTypeLabel(order.type) .. " " .. (order.item or "?")
@@ -250,17 +658,31 @@ function TB.OrderTooltipText(order)
     local reason = TB.OrderReasonLabel(order.reason)
     if reason then state = state .. " (" .. reason .. ")" end
     table.insert(lines, state)
+    local carryTip = math.floor(tonumber(order.carry) or 0)
+    if carryTip > 0 then
+        table.insert(lines, "Carrying " .. carryTip .. " (in bags and mail, not yet delivered).")
+    elseif order.carry == nil and string.lower(trim(order.state or "")) == "working"
+        and (order.want or 0) > 0 and (order.have or 0) >= order.want then
+        table.insert(lines, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail). It delivers once all are in its bags.")
+    end
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
+    local step = TB.OrderStepLabel(order)
+    if step then table.insert(lines, "Now: " .. step) end
     if order.hours == "inf" then
         table.insert(lines, "Farm time: no limit")
     elseif order.hours and order.hours > 0 then
         table.insert(lines, "Farm time: " .. math.floor(order.hours) .. " h")
+    end
+    if order.goldCap then
+        table.insert(lines, "Max guild gold: " .. TB.OrderGoldText(order.goldCap))
     end
     local diff = TB.OrderDifficultyLabel(order.difficulty)
     if diff then
         table.insert(lines, "Difficulty: " .. diff
             .. " (Rough effort for this bot: how many kills, gathers or casts it needs)")
     end
+    local need = TB.OrderNeedText(order)
+    if need then table.insert(lines, need) end
     if order.keep and string.lower(trim(order.state or "")) ~= "stocked" then
         table.insert(lines, "Keep in stock: the bot refills when the bank drops below "
             .. tostring(order.want or 0))
@@ -268,6 +690,11 @@ function TB.OrderTooltipText(order)
     if string.lower(trim(order.state or "")) == "stocked" then
         table.insert(lines, "Stocked: " .. tostring(order.want or 0) .. " in the bank, the bot refills when it drops below "
             .. tostring(order.want or 0))
+    end
+    -- The step timeline rides at the end: newest steps with their age, fetched
+    -- on hover (nothing on servers without the guild-order-steps token).
+    for _, stepLineText in ipairs(TB.OrderStepsTooltipLines(order.bot)) do
+        table.insert(lines, stepLineText)
     end
     return table.concat(lines, "\n")
 end
@@ -303,11 +730,194 @@ local function noneDash(text)
     return text
 end
 
+function TB.ParseOrderNeed(text)
+    text = trim(text or "")
+    if text == "" or text == "-" then return nil end
+    local out = {}
+    for pair in string.gfind(text, "[^;]+") do
+        local _, _, idText, countText = string.find(trim(pair), "^(%d+):(%d+)$")
+        local id = tonumber(idText)
+        local count = tonumber(countText)
+        if not id or not count or id <= 0 or count <= 0 then return nil end
+        table.insert(out, { id = math.floor(id), count = math.floor(count) })
+    end
+    if table.getn(out) == 0 then return nil end
+    return out
+end
+
+-- ── step history ──────────────────────────────────────────────────────────
+-- One bot's step timeline: ".bot order <bot> steps" is answered with
+-- TBM:ORDER_STEPS_BEGIN|<bot>|<n>|<dropped>, n TBM:ORDER_STEP lines (oldest
+-- first) and TBM:ORDER_STEPS_END|<bot>. The server keeps at most 16 entries in
+-- memory and counts the dropped older ones; the addon shows the newest ones in
+-- the order tooltip. Tokens are the TBM:ORDER ones ("-" = none, itemId 0 =
+-- none); errors ride the existing order action-error codes (no-bot, not-guild).
+local STEP_SHOWN = 8
+local STEPS_THROTTLE = 15
+-- One steps reply on the wire at a time: a resting hover on another bot waits
+-- until the current END lands (or 5 s pass), so a sweep never floods the send
+-- queue. The in-flight bot and its send time; empty means idle.
+local stepsFlightAt = nil
+local STEPS_FLIGHT_TIMEOUT = 5
+-- The most entries one reply may carry (the server's memory cap). A BEGIN
+-- count above it is refused; a reply whose valid entries fall short of its
+-- BEGIN count is discarded. stepsMissed[bot] = { identity } marks a bot whose
+-- last reply was discarded: its tooltip says so while it still shows that order.
+local STEPS_PROTOCOL_MAX = 16
+local stepsMissed = {}
+
+-- Drop a reply that cannot be trusted: free the buffer and the bot's throttle
+-- so the next hover asks again, flag the tooltip for the order the bot holds
+-- now, and repaint. The cached list stays as it was.
+local function discardSteps(bot)
+    stepsReceiving = nil
+    stepsPending[bot] = nil
+    stepsAskedAt[bot] = nil
+    if next(stepsPending) == nil then stepsFlightAt = nil end
+    stepsMissed[bot] = { identity = orderIdentity(orders[bot]) }
+    if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
+end
+
+-- TBM:ORDER_STEP|<bot>|<ageSec>|<state>|<reason>|<step>|<itemId>: exactly six
+-- fields, bot non-empty, age and itemId whole numbers >= 0.
+function TB.ParseOrderStepLine(msg)
+    if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_STEP|" then return nil end
+    local fields = splitProtocol(string.sub(msg, 16))
+    if table.getn(fields) ~= 6 then return nil end
+    local bot = norm(trim(fields[1]))
+    if not bot or bot == "" then return nil end
+    local age = tonumber(trim(fields[2]))
+    local state = trim(fields[3])
+    local itemId = tonumber(trim(fields[6]))
+    if not age or not itemId or age < 0 or itemId < 0 or state == "" then return nil end
+    return {
+        bot = bot, age = math.floor(age), state = state,
+        reason = noneDash(fields[4]), step = noneDash(fields[5]),
+        itemId = math.floor(itemId),
+    }
+end
+
+-- The cached list of one bot (entries oldest first, dropped, receivedAt), or
+-- nil when none arrived yet.
+function TB.GetOrderSteps(bot)
+    bot = norm(bot)
+    return bot and orderSteps[bot] or nil
+end
+
+-- Both gates: the order feature and the step-history token. Old servers are
+-- never asked and their tooltips stay unchanged.
+local function stepsCapable()
+    return TB.HasOrderCapability() and TB.HasServerCapability("guild-order-steps")
+end
+
+-- Ask for one bot's step list; at most one request per bot per 15 s, and
+-- only one steps request in flight at a time (a new one waits until the
+-- current END arrives or 5 s pass). A live TBM:ORDER line that changes
+-- state, reason or step clears the throttle so the next hover refetches
+-- at once.
+function TB.RequestOrderSteps(bot)
+    if not stepsCapable() then return false end
+    bot = norm(bot)
+    if not bot then return false end
+    if now() - (stepsAskedAt[bot] or -1000) < STEPS_THROTTLE then return false end
+    if stepsFlightAt and now() - stepsFlightAt < STEPS_FLIGHT_TIMEOUT then
+        local other = false
+        for pending in pairs(stepsPending) do
+            if pending ~= bot then other = true break end
+        end
+        if other then return false end
+    end
+    stepsAskedAt[bot] = now()
+    stepsPending[bot] = orderIdentity(orders[bot])
+    stepsFlightAt = now()
+    return TB.SendBotCommand("order " .. bot .. " steps")
+end
+
+-- "just now", "5m ago", "2h ago", "2h 1m ago", "3d ago".
+function TB.OrderStepAgeText(sec)
+    sec = math.floor(tonumber(sec) or 0)
+    if sec < 0 then sec = 0 end
+    if sec < 60 then return "just now" end
+    if sec < 3600 then return math.floor(sec / 60) .. "m ago" end
+    if sec < 86400 then
+        local h = math.floor(sec / 3600)
+        local m = math.floor(math.mod(sec, 3600) / 60)
+        if m == 0 then return h .. "h ago" end
+        return h .. "h " .. m .. "m ago"
+    end
+    return math.floor(sec / 86400) .. "d ago"
+end
+
+-- One entry: what the bot did (the live step while working, else the state
+-- word), which item the leg is for, and the reason in brackets.
+function TB.OrderStepText(entry)
+    if not entry then return nil end
+    local base = nil
+    if string.lower(trim(entry.state or "")) == "working" then
+        base = TB.OrderStepLabel({ step = entry.step })
+    end
+    if not base then base = TB.OrderStateLabel(entry.state) end
+    if (tonumber(entry.itemId) or 0) > 0 then
+        base = base .. ": " .. needName(entry.itemId)
+    end
+    local reason = TB.OrderReasonLabel(entry.reason)
+    if reason then base = base .. " (" .. reason .. ")" end
+    return base
+end
+
+-- The tooltip block: the newest entries first (at most 8), then one line with
+-- how many older steps are no longer kept. {} without a cache or with an
+-- empty list.
+local function stepsBlockLines(bot)
+    if not stepsCapable() then return {} end
+    local record = TB.GetOrderSteps(bot)
+    if not record or not record.entries or table.getn(record.entries) == 0 then return {} end
+    -- The cache belongs to one order: while the bot holds a different order,
+    -- show nothing until that order's own reply lands. With no current order
+    -- there is no tooltip anyway, so the stranded list still reads.
+    local current = orders[norm(bot)]
+    if current and not sameOrderIdentity(TB.OrderStepIdentity(record), TB.OrderStepIdentity(current)) then return {} end
+    local lines = { "Steps (newest first):" }
+    local entries = record.entries
+    local count = table.getn(entries)
+    local shown = 0
+    local drift = now() - (record.receivedAt or now())
+    for i = count, 1, -1 do
+        if shown >= STEP_SHOWN then break end
+        local age = (tonumber(entries[i].age) or 0) + drift
+        table.insert(lines, "  " .. TB.OrderStepAgeText(age) .. " · " .. TB.OrderStepText(entries[i]))
+        shown = shown + 1
+    end
+    local earlier = (count - shown) + (record.dropped or 0)
+    if earlier > 0 then
+        table.insert(lines, "  ... " .. earlier .. " earlier steps")
+    end
+    return lines
+end
+
+-- The step lines for a bot's tooltip: the "history incomplete, retrying" flag
+-- while its last reply was discarded for the order it holds now, then the
+-- step block. {} without the capability.
+function TB.OrderStepsTooltipLines(bot)
+    if not stepsCapable() then return {} end
+    local key = norm(bot)
+    local lines = {}
+    local missed = key and stepsMissed[key]
+    local current = key and orders[key]
+    if missed and (not current or sameOrderIdentity(missed.identity, orderIdentity(current))) then
+        table.insert(lines, "Steps: history incomplete, retrying")
+    end
+    for _, line in ipairs(stepsBlockLines(bot)) do
+        table.insert(lines, line)
+    end
+    return lines
+end
+
 function TB.ParseOrderLine(msg)
     if string.sub(msg or "", 1, 10) ~= "TBM:ORDER|" then return nil end
     local fields = splitProtocol(string.sub(msg, 11))
     local count = table.getn(fields)
-    if count < 9 or count > 12 then return nil end
+    if count < 9 then return nil end
     local bot = norm(trim(fields[1]))
     if not bot or bot == "" then return nil end
     local kind = trim(fields[2])
@@ -324,6 +934,26 @@ function TB.ParseOrderLine(msg)
         if string.lower(hoursField) == "inf" then hours = "inf"
         else hours = tonumber(hoursField) end
     end
+    local goldCap = nil
+    if count >= 14 and trim(fields[14]) ~= "-" then
+        local cap = tonumber(trim(fields[14]))
+        if cap and cap >= 0 then goldCap = math.floor(cap) end
+    end
+    local need = nil
+    if count >= 16 and trim(fields[16]) ~= "-" then
+        need = TB.ParseOrderNeed(fields[16])
+    end
+    local carry = nil
+    if count >= 17 and trim(fields[17]) ~= "-" then
+        local n = tonumber(trim(fields[17]))
+        if n and n >= 0 then carry = math.floor(n) end
+    end
+    local parent = nil
+    if count >= 13 then
+        local raw = trim(fields[13])
+        if raw ~= "" and raw ~= "-" then parent = norm(raw) end
+    end
+    if parent == bot then return nil end
     return {
         bot = bot, type = kind, itemId = math.floor(itemId), item = item,
         have = math.floor(have), want = math.floor(want), state = state,
@@ -331,7 +961,141 @@ function TB.ParseOrderLine(msg)
         difficulty = count >= 10 and noneDash(fields[10]) or nil,
         hours = hours,
         keep = count >= 12 and string.lower(trim(fields[12])) == "keep" or false,
+        parent = parent, goldCap = goldCap,
+        step = count >= 15 and noneDash(fields[15]) or nil,
+        need = need, carry = carry,
     }
+end
+
+-- TBM:ORDER_ACCESS|<rankIndex>|<rankName>|<tabsOk>|<tabsDenied>|<gold 0/1>|<canSetRank 0/1>.
+-- Rank "-" means the server leaves bot ranks alone (grey line, no control);
+-- tabs "-" and "-" with a numeric rank means no unlocked guild bank yet (grey
+-- "No guild bank yet"). Red is a real bank with a denied tab or gold 0.
+function TB.ParseOrderAccess(msg)
+    if string.sub(msg or "", 1, 17) ~= "TBM:ORDER_ACCESS|" then return nil end
+    local fields = splitProtocol(string.sub(msg, 18))
+    if table.getn(fields) ~= 6 then return nil end
+    local rankIndex = trim(fields[1])
+    if rankIndex == "" then return nil end
+    local rankNum = tonumber(rankIndex)
+    if rankIndex ~= "-" and (not rankNum or rankNum < 0) then return nil end
+    local rankName = trim(fields[2])
+    if rankName == "" then return nil end
+    local function tabs(text)
+        text = trim(text or "")
+        if text == "-" then return nil end
+        local out = {}
+        for token in string.gfind(text, "[^,]+") do
+            local n = tonumber(trim(token))
+            if not n or n < 1 then return nil end
+            table.insert(out, math.floor(n))
+        end
+        if table.getn(out) == 0 then return nil end
+        return out
+    end
+    local ok, denied = tabs(fields[3]), tabs(fields[4])
+    if fields[3] ~= "-" and not ok then return nil end
+    if fields[4] ~= "-" and not denied then return nil end
+    if trim(fields[5]) ~= "0" and trim(fields[5]) ~= "1" then return nil end
+    if trim(fields[6]) ~= "0" and trim(fields[6]) ~= "1" then return nil end
+    local out = {
+        tabsOk = ok, tabsDenied = denied,
+        gold = trim(fields[5]) == "1" and true or false,
+        canSetRank = trim(fields[6]) == "1" and true or false,
+    }
+    if rankIndex ~= "-" then out.rankIndex = math.floor(rankNum) end
+    if rankName ~= "-" then out.rankName = rankName end
+    return out
+end
+
+local orderAccess = nil
+
+function TB.GetOrderAccess()
+    return orderAccess
+end
+
+-- Header line for the order window: rank, bank tabs, gold. Numeric with a
+-- real bank and a gap (a denied tab or gold 0) shows red; "-" rank (server
+-- leaves ranks alone) and no-bank-yet stay grey; the rest stays plain.
+function TB.OrderAccessText()
+    if not orderAccess then return nil end
+    if not orderAccess.rankIndex then
+        return { text = "Bots: server does not manage the bots' rank;"
+            .. " their bank access depends on each bot's own rank", bad = false }
+    end
+    local head = "Bots: rank " .. (orderAccess.rankName or ("#" .. orderAccess.rankIndex))
+    if not orderAccess.tabsOk and not orderAccess.tabsDenied then
+        return { text = head .. " · No guild bank yet", bad = false }
+    end
+    local tail = "bank tabs " .. TB.OrderTabList(orderAccess.tabsOk)
+        .. ", gold " .. (orderAccess.gold and "yes" or "no")
+    local bad = (orderAccess.tabsDenied and true or false) or not orderAccess.gold
+    if bad then
+        local why = {}
+        if orderAccess.tabsDenied then
+            table.insert(why, "tabs " .. TB.OrderTabList(orderAccess.tabsDenied) .. " denied")
+        end
+        if not orderAccess.gold then table.insert(why, "no gold access") end
+        return { text = head .. " · " .. tail .. " (" .. table.concat(why, ", ") .. ")", bad = true }
+    end
+    return { text = head .. " · " .. tail, bad = false }
+end
+
+function TB.OrderTabList(tabs)
+    if not tabs or table.getn(tabs) == 0 then return "-" end
+    local parts = {}
+    for _, n in ipairs(tabs) do table.insert(parts, tostring(n)) end
+    return table.concat(parts, ",")
+end
+
+-- Guild ranks for the rank dropdown: index 0 is the guild master (skipped:
+-- setting bots to GM is never offered), the rest by name from the client
+-- guild API when present, else "Rank <idx>". The server's rankIndex is the
+-- same 0-based index (GetGuildRosterInfo rankIndex; 1-based GuildControl
+-- names minus one). The current bot rank is marked, not offered.
+function TB.GetOrderRankOptions()
+    local access = TB.GetOrderAccess()
+    if not access or not access.canSetRank then return {} end
+    local names = {}
+    if GuildControlGetNumRanks and GuildControlGetRankName then
+        local count = GuildControlGetNumRanks() or 0
+        for i = 2, math.min(count, 10) do
+            local name = GuildControlGetRankName(i)
+            if name and trim(name) ~= "" then names[i - 1] = name end
+        end
+    end
+    if table.getn(names) == 0 then
+        for idx = 1, 9 do names[idx] = "Rank " .. idx end
+    end
+    local out = {}
+    for idx = 1, 9 do
+        if names[idx] then
+            table.insert(out, { index = idx, name = names[idx],
+                current = access.rankIndex == idx })
+        end
+    end
+    return out
+end
+
+-- Reassign candidates: the guild bots the addon knows (claimed roster first,
+-- then any other ordered bot), excluding the worker holding the sub-order.
+-- Sorted so the menu reads the same from any list order.
+function TB.GetOrderReassignCandidates(subBot)
+    subBot = norm(subBot)
+    local seen = {}
+    local out = {}
+    local function add(name)
+        name = norm(name)
+        if not name or name == subBot or seen[name] then return end
+        seen[name] = true
+        table.insert(out, name)
+    end
+    if TB.GetClaimedBots then
+        for _, entry in ipairs(TB.GetClaimedBots() or {}) do add(entry.name) end
+    end
+    for _, order in pairs(orders) do add(order.bot) end
+    table.sort(out)
+    return out
 end
 
 function TB.ParseOrderItemLine(msg)
@@ -381,11 +1145,39 @@ function TB.ParseOrderMessage(msg)
         orderReceiving = { expected = tonumber(count), rows = {} }
         return true
     end
+    if string.sub(msg, 1, 17) == "TBM:ORDER_ACCESS|" then
+        local access = TB.ParseOrderAccess(msg)
+        if orderReceiving then
+            if access then orderReceiving.access = access end
+        elseif access then
+            orderAccess = access
+            if TB.RefreshGuildView then TB.RefreshGuildView() end
+            if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        end
+        return true
+    end
     if string.sub(msg, 1, 10) == "TBM:ORDER|" then
         local order = TB.ParseOrderLine(msg)
         if orderReceiving then
             if order then table.insert(orderReceiving.rows, order) end
         elseif order then
+            local previous = orders[order.bot]
+            -- The step list belongs to its order's identity. A new order on
+            -- the same bot drops the old list at once: hide via the identity
+            -- check by keeping only a list that matches the incoming row. A
+            -- new or changed state/reason/step also clears the throttle so
+            -- the next hover refetches.
+            if not previous
+                or not sameOrderIdentity(previous, order)
+                or string.lower(trim(previous.state or "")) ~= string.lower(trim(order.state or ""))
+                or string.lower(trim(previous.reason or "")) ~= string.lower(trim(order.reason or ""))
+                or string.lower(trim(previous.step or "")) ~= string.lower(trim(order.step or "")) then
+                stepsAskedAt[order.bot] = nil
+            end
+            if orderSteps[order.bot]
+                and not sameOrderIdentity(orderSteps[order.bot], orderIdentity(order)) then
+                orderSteps[order.bot] = nil
+            end
             orders[order.bot] = order
             if TB.RefreshGuildView then TB.RefreshGuildView() end
             if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
@@ -397,6 +1189,16 @@ function TB.ParseOrderMessage(msg)
         orderReceiving = nil
         if batch then
             commitOrderList(batch.rows)
+            -- A full list drops the step lists whose order is gone or whose
+            -- identity changed (a new order reuses the bot). A list with no
+            -- current row is stranded, not stale, so it stays readable.
+            for bot in pairs(orderSteps) do
+                local current = orders[bot]
+                if current and not sameOrderIdentity(orderSteps[bot], orderIdentity(current)) then
+                    orderSteps[bot] = nil
+                end
+            end
+            if batch.access then orderAccess = batch.access end
             if TB.SetStatus then
                 TB.SetStatus("Orders updated · " .. table.getn(batch.rows), "ok")
             end
@@ -429,6 +1231,81 @@ function TB.ParseOrderMessage(msg)
                 end
             end
             if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        end
+        return true
+    end
+    -- Step history of one bot: BEGIN opens a buffer, the ORDER_STEP lines fill
+    -- it (only for the bot the buffer belongs to), END commits it and redraws
+    -- the tooltip of the row under the cursor. The buffer carries the order
+    -- identity seen when the request went out; a reply that lands after the
+    -- bot moved to a new order is dropped at BEGIN (never buffered) and at
+    -- END (never cached), freeing the throttle so the next hover asks again.
+    -- A line for another bot, or an END without its BEGIN, is ignored; a
+    -- BEGIN replaces an open buffer. Without a pending request there is
+    -- nothing to compare against, so the reply commits as before.
+    -- The BEGIN count is the entry count the reply promises: a count above
+    -- STEPS_PROTOCOL_MAX is refused at once, and an END whose valid entries
+    -- fall short of it is discarded (discardSteps), never committed.
+    local _, _, stepBot, stepCount, stepDropped = string.find(msg, "^TBM:ORDER_STEPS_BEGIN|([^|]+)|(%d+)|(%d+)$")
+    if stepBot then
+        local bot = norm(stepBot)
+        local expected = stepsPending[bot]
+        local count = tonumber(stepCount)
+        if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+            stepsReceiving = nil
+        elseif count > STEPS_PROTOCOL_MAX then
+            discardSteps(bot)
+        else
+            stepsReceiving = { bot = bot, entries = {}, count = count, dropped = tonumber(stepDropped), expected = expected }
+        end
+        return true
+    end
+    if string.sub(msg, 1, 15) == "TBM:ORDER_STEP|" then
+        local entry = TB.ParseOrderStepLine(msg)
+        if stepsReceiving and entry and entry.bot == stepsReceiving.bot then
+            table.insert(stepsReceiving.entries, entry)
+        end
+        return true
+    end
+    local _, _, stepEndBot = string.find(msg, "^TBM:ORDER_STEPS_END|([^|]+)$")
+    if stepEndBot then
+        local bot = norm(stepEndBot)
+        if stepsReceiving and stepsReceiving.bot == bot then
+            local expected = stepsReceiving.expected
+            if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
+            elseif table.getn(stepsReceiving.entries) ~= stepsReceiving.count then
+                -- Short of the BEGIN count: entries were lost, so nothing commits.
+                discardSteps(bot)
+            else
+                -- Stamp the commit with its order's identity; a missing row means
+                -- no identity, which never matches a live order.
+                local identity = orderIdentity(orders[bot])
+                orderSteps[bot] = { entries = stepsReceiving.entries, dropped = stepsReceiving.dropped,
+                    receivedAt = now(),
+                    type = identity and identity.type or nil,
+                    itemId = identity and identity.itemId or nil,
+                    parent = identity and identity.parent or nil }
+                stepsMissed[bot] = nil
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
+                if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
+            end
+        elseif stepsPending[bot] then
+            -- The BEGIN was refused above (or the buffer was replaced), so the
+            -- tail ends nothing: a stale tail still frees the throttle so the
+            -- next hover asks again, a fresh one just clears the pending mark.
+            if not sameOrderIdentity(stepsPending[bot], orderIdentity(orders[bot])) then
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+            else
+                stepsPending[bot] = nil
+            end
+            if next(stepsPending) == nil then stepsFlightAt = nil end
         end
         return true
     end
@@ -504,7 +1381,7 @@ function TB.ClampOrderHours(hours)
     return hours
 end
 
--- A trailing-hours-or-keep give waiting for the server's answer; an
+-- A trailing-hours-or-keep-or-gold give waiting for the server's answer; an
 -- "invalid" reply means an old server that rejects the trailing argument.
 local pendingGive = nil
 
@@ -513,7 +1390,17 @@ local function isInf(hours)
     return string.lower(tostring(hours or "")) == "inf"
 end
 
-function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep)
+-- Guild gold cap for one give, in copper: nil means no cap (empty box) and
+-- rides no trailing field; 0 is a real cap (no guild gold at all) and rides
+-- gold=0. Rounds down whole copper, plain digits only.
+function TB.ClampOrderGold(copper)
+    if copper == nil or copper == "" then return nil end
+    copper = tonumber(copper)
+    if not copper or copper < 0 then return nil end
+    return math.floor(copper)
+end
+
+function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
     kind = string.lower(trim(kind or ""))
@@ -521,6 +1408,7 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep)
     if not bot or (kind ~= "farm" and kind ~= "buy" and kind ~= "craft") then return false end
     if itemId <= 0 then return false end
     amount = TB.ClampOrderAmount(amount)
+    gold = TB.ClampOrderGold(gold)
     local text = "order " .. bot .. " " .. kind .. " " .. itemId .. " " .. amount
     if hours ~= nil then
         if isInf(hours) then text = text .. " inf"
@@ -530,9 +1418,10 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep)
         if hours == nil then text = text .. " " .. TB.ClampOrderHours(orderHours) end
         text = text .. " keep"
     end
-    if hours ~= nil or keep then
+    if gold ~= nil then text = text .. " gold=" .. gold end
+    if hours ~= nil or keep or gold ~= nil then
         pendingGive = { bot = bot, kind = kind, itemId = itemId, amount = amount,
-            hours = hours, keep = keep and true or false }
+            hours = hours, keep = keep and true or false, gold = gold }
     else
         pendingGive = nil
     end
@@ -546,9 +1435,35 @@ function TB.SendOrderCancel(bot)
     return TB.SendBotCommand("order " .. bot .. " cancel")
 end
 
+-- Hand a sub-order to another guild bot: ".bot order reassign <subBot> <new>".
+-- The moved row lands live; a rank ACK repaints.
+function TB.SendOrderReassign(subBot, newBot)
+    if not TB.HasOrderCapability() then return false end
+    subBot = norm(subBot)
+    newBot = norm(newBot)
+    if not subBot or not newBot then return false end
+    return TB.SendBotCommand("order reassign " .. subBot .. " " .. newBot)
+end
+
+-- Ask for the bank-access snapshot: the server answers TBM:ORDER_ACCESS.
+function TB.RequestOrderAccess()
+    if not TB.HasOrderCapability() then return false end
+    return TB.SendBotCommand("order access")
+end
+
+-- Set the bots' guild rank: ".bot order rank <idx>". The server answers with
+-- ACK or ERR, then a fresh TBM:ORDER_ACCESS.
+function TB.SendOrderRank(rankIndex)
+    if not TB.HasOrderCapability() then return false end
+    rankIndex = math.floor(tonumber(rankIndex) or -1)
+    if rankIndex < 0 then return false end
+    return TB.SendBotCommand("order rank " .. rankIndex)
+end
+
 -- Cancel asks first: a StaticPopup names the bot and item (the BotPanel.lua
--- destroy pattern), and only Yes sends. Cancel is the only way to end a
--- keep-in-stock or no-limit order, so the dialog says so.
+-- destroy pattern), and only Yes sends. A parent cancel cancels the whole
+-- branch, so the dialog warns when the order has sub-orders. Cancel is the
+-- only way to end a keep-in-stock or no-limit order, so the dialog says so.
 function TB.ConfirmOrderCancel(bot)
     bot = norm(bot)
     if not bot then return false end
@@ -557,6 +1472,9 @@ function TB.ConfirmOrderCancel(bot)
     if order and order.item then
         text = "Cancel " .. bot .. "'s order for " .. tostring(order.want or 0)
             .. "x " .. order.item .. "?"
+    end
+    if order and table.getn(TB.OrderChildren(bot)) > 0 then
+        text = text .. "\n\nThis cancels the whole branch: the sub-orders under it go too."
     end
     text = text .. "\n\nCancelling also ends keep-in-stock and no-limit orders."
     if StaticPopupDialogs and StaticPopup_Show then
@@ -578,7 +1496,9 @@ end
 
 -- ACK routing from Comms.ParseActionMessage for the order intent. A cancel
 -- ACK drops the row at once (no live line can follow a removed order); a
--- give ACK closes the window, the live line paints the progress.
+-- rank or reassign ACK just reports and repaints (the fresh TBM:ORDER_ACCESS
+-- or moved row lands live); a give ACK closes the window, the live line
+-- paints the progress.
 function TB.OnOrderAck(packet)
     if not packet or packet.intent ~= "order" then return false end
     pendingGive = nil
@@ -586,10 +1506,48 @@ function TB.OnOrderAck(packet)
     local _, _, scopeBot = string.find(packet.scope or "", "^bot:(.+)$")
     local bot = norm(scopeBot)
     if packet.executor == "cancel" then
-        if bot then orders[bot] = nil end
+        if bot then
+            -- The whole branch goes at any depth: sweep until no row
+            -- still names a removed bot as its parent.
+            local gone = {}
+            gone[bot] = true
+            orders[bot] = nil
+            orderSteps[bot] = nil
+            local swept = true
+            while swept do
+                swept = false
+                for child, order in pairs(orders) do
+                    if order.parent and gone[order.parent] then
+                        gone[child] = true
+                        orders[child] = nil
+                        orderSteps[child] = nil
+                        swept = true
+                    end
+                end
+            end
+        end
         if TB.SetStatus then
             TB.SetStatus((bot or "Order") .. ": order cancelled.", "ok")
         end
+        if TB.RefreshGuildView then TB.RefreshGuildView() end
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        return true
+    end
+    if packet.executor == "reassign" then
+        if TB.SetStatus then
+            TB.SetStatus((bot or "Order") .. ": sub-order handed over.", "ok")
+        end
+        TB.RequestOrderList()
+        if TB.RefreshGuildView then TB.RefreshGuildView() end
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        return true
+    end
+    if packet.executor == "rank" then
+        if TB.SetStatus then
+            local _, _, want = string.find(packet.scope or "", "^rank:(.+)$")
+            TB.SetStatus("Bots' rank changed to " .. tostring(want or packet.scope) .. ".", "ok")
+        end
+        TB.RequestOrderAccess()
         if TB.RefreshGuildView then TB.RefreshGuildView() end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return true
@@ -610,11 +1568,18 @@ end
 -- text below still reports the code and message.
 function TB.OnOrderError(packet)
     if not packet or packet.intent ~= "order" then return false end
-    -- An old server rejects the trailing keep / hours arguments or cat= as
-    -- invalid: resend the same request without them, keep first, then hours
-    -- (a refused inf retries once as 24). Any other answer settles both.
+    -- An old server rejects the trailing gold / keep / hours arguments or
+    -- cat= as invalid: resend without them, gold first (newest), then keep,
+    -- then hours (a refused inf retries once as 24). The rest settles both.
     if packet.code == "invalid" and pendingGive then
         local give = pendingGive
+        if give.gold ~= nil then
+            pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
+                amount = give.amount, hours = give.hours, keep = give.keep, gold = nil }
+            TB.SetOrderFeedback("Old server: retrying without the guild gold cap...", "pending")
+            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, give.hours, give.keep)
+            return false
+        end
         if give.keep then
             pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
                 amount = give.amount, hours = give.hours, keep = false }
@@ -660,22 +1625,37 @@ end
 -- off): close the window and drop the model so no stale state lingers.
 function TB.NoteOrderCaps()
     if TB.HasOrderCapability() then
+        -- The server can lose the step history mid-session (a restart with
+        -- the token off, a session change): its memory resets, so the whole
+        -- cache goes rather than show one order's steps on another.
+        if not TB.HasServerCapability("guild-order-steps") then
+            for bot in pairs(orderSteps) do orderSteps[bot] = nil end
+            stepsReceiving = nil
+            for bot in pairs(stepsPending) do stepsPending[bot] = nil end
+            for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
+            stepsFlightAt = nil
+        end
         if TB.RefreshGuildView then TB.RefreshGuildView() end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return
     end
     for key in pairs(orders) do orders[key] = nil end
+    orderAccess = nil
+    for bot in pairs(orderSteps) do orderSteps[bot] = nil end
     lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
     orderReceiving, itemsReceiving = nil, nil
+    stepsReceiving = nil
+    for bot in pairs(stepsPending) do stepsPending[bot] = nil end
+    for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
+    stepsFlightAt = nil
     searchBot, searchCat = nil, nil
     pendingSearchCat = nil
     TB.CloseOrderWindow()
     if TB.RefreshGuildView then TB.RefreshGuildView() end
 end
 
--- ── list refresh ──────────────────────────────────────────────────────────
--- "order list" goes out when the Guild tab opens (UI.lua) and every 30 s
--- while it stays open; live TBM:ORDER lines paint progress in between.
+-- "order access" goes out when the window opens and has no snapshot yet, or
+-- right after a rank change; the list batch already carries it.
 function TB.OrderPollTick()
     if not TB.HasOrderCapability() then return false end
     if not (TB.guildFrame and TB.guildFrame:IsVisible()) then return false end
@@ -688,6 +1668,13 @@ local function ensurePollFrame()
     if pollFrame then return end
     pollFrame = CreateFrame("Frame", "TortoiseBotsManagerOrderPoll")
     pollFrame:SetScript("OnUpdate", function() TB.OrderPollTick() end)
+    -- The Send-missing-items button follows the mailbox: refresh when it
+    -- opens or closes so the button enables/disables itself (D2).
+    pollFrame:RegisterEvent("MAIL_SHOW")
+    pollFrame:RegisterEvent("MAIL_CLOSED")
+    pollFrame:SetScript("OnEvent", function()
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    end)
 end
 ensurePollFrame()
 
@@ -704,7 +1691,7 @@ local orderAmount = 10
 local orderHours = 1
 local orderNoLimit = true
 local orderKeep = false
-local selectedItemId = nil
+local orderGold = nil
 local searchPendingAt = nil
 -- A picked empty-text row clears once typing starts: the next run is a
 -- plain text search again, not another browse.
@@ -832,6 +1819,22 @@ function TB.SetOrderNoLimit(noLimit)
     end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     return orderNoLimit
+end
+
+-- Max guild gold for the give, in copper: nil means no cap (empty box);
+-- 0 is a real cap (no guild gold at all) and shows "0".
+function TB.GetOrderGold()
+    return orderGold
+end
+
+function TB.SetOrderGold(copper)
+    orderGold = TB.ClampOrderGold(copper)
+    local shown = orderGold ~= nil and tostring(orderGold) or ""
+    if win and win.goldBox and win.goldBox:GetText() ~= shown then
+        win.goldBox:SetText(shown)
+    end
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return orderGold
 end
 
 function TB.GetOrderSelection()
@@ -977,9 +1980,14 @@ local function firePendingSearch()
     TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
 end
 
+-- Dropdown menus (rank list, reassign targets): the 1.12 FrameXML set is
+-- UIDropDownMenu_Initialize / UIDropDownMenu_AddButton / ToggleDropDownMenu
+-- on a UIDropDownMenuTemplate frame anchored to the cursor. Each menu row
+-- picks, asks one confirm, then sends; the builders below stay testable
+-- without the global DropDownList frames.
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
-    win:SetWidth(OW); win:SetHeight(510)
+    win:SetWidth(OW); win:SetHeight(510 + 118)
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
@@ -1143,14 +2151,43 @@ local function createWindow()
     win.emptyMsg:SetJustifyH("CENTER")
     TB.SetTextColor(win.emptyMsg, color("muted"))
 
-    local base = 152 + RESULT_ROW_N * RESULT_ROW_H + 4
+    -- Guild bank access the bots can reach: rank, bank tabs, gold.
+    local accessLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    accessLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 4))
+    accessLabel:SetWidth(OW - 24 - 68); accessLabel:SetJustifyH("LEFT")
+    win.accessLabel = accessLabel
+
+    win.rankBtn = smallButton(win, "Rank", 56, 260, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 2),
+        "Change bots' rank", "Pick the guild rank bots get (needs rank rights).",
+        function()
+            TB.OpenOrderRankMenu(this)
+        end)
+
+    -- Live orders and sub-orders: every row names its bot and step, indented
+    -- under its parent, updating as TBM:ORDER lines land.
+    local treeLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    treeLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 20))
+    treeLabel:SetText("ORDERS")
+    treeLabel:SetWidth(OW - 24); treeLabel:SetJustifyH("LEFT")
+    TB.SetTextColor(treeLabel, color("gold"))
+
+    win.treeLines = {}
+    for i = 1, 4 do
+        local line = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        line:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 22 + (i - 1) * 12))
+        line:SetWidth(OW - 24 - 68); line:SetJustifyH("LEFT")
+        TB.SetTextColor(line, color("muted"))
+        win.treeLines[i] = line
+    end
+
+    local base = 152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 76
     local farmNote = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     farmNote:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 2))
     farmNote:SetWidth(OW - 24); farmNote:SetJustifyH("LEFT")
     farmNote:SetText("Bots farm like players: large amounts or rare drops can take very long or fail.")
     TB.SetTextColor(farmNote, color("muted"))
     win.farmNote = farmNote
-    base = 152 + RESULT_ROW_N * RESULT_ROW_H + 30
+    base = 152 + RESULT_ROW_N * RESULT_ROW_H + 30 + 76
     local amountLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     amountLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 4))
     amountLabel:SetText("AMOUNT")
@@ -1237,7 +2274,7 @@ local function createWindow()
 
     local keepBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderKeep", win, "UICheckButtonTemplate")
     keepBox:SetWidth(20); keepBox:SetHeight(20)
-    keepBox:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 26))
+    keepBox:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 22))
     keepBox:SetScript("OnClick", function()
         TB.SetOrderKeep(this:GetChecked() and true or false)
     end)
@@ -1251,9 +2288,47 @@ local function createWindow()
     TB.SetTextColor(keepLabel, color("muted"))
     win.keepLabel = keepLabel
 
+    local goldLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    goldLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 46))
+    goldLabel:SetText("MAX GUILD GOLD")
+    goldLabel:SetWidth(150); goldLabel:SetJustifyH("LEFT")
+    TB.SetTextColor(goldLabel, color("gold"))
+    win.goldLabel = goldLabel
+
+    local goldBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderGold", win, "InputBoxTemplate")
+    goldBox:SetWidth(100); goldBox:SetHeight(20)
+    goldBox:SetPoint("TOPLEFT", win, "TOPLEFT", 168, -(base + 44))
+    goldBox:SetAutoFocus(false)
+    goldBox:SetScript("OnEscapePressed", function()
+        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
+        this:ClearFocus()
+    end)
+    goldBox:SetScript("OnEnterPressed", function()
+        local text = trim(this:GetText() or "")
+        if text == "" then TB.SetOrderGold(nil)
+        else TB.SetOrderGold(tonumber(text)) end
+        this:ClearFocus()
+    end)
+    goldBox:SetScript("OnTextChanged", function()
+        local text = trim(this:GetText() or "")
+        if text == "" then
+            if orderGold ~= nil then TB.SetOrderGold(nil) end
+        else
+            local g = tonumber(text)
+            if g ~= nil and TB.ClampOrderGold(g) ~= orderGold then TB.SetOrderGold(g) end
+        end
+    end)
+    goldBox:SetScript("OnEditFocusLost", function()
+        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
+    end)
+    win.goldBox = goldBox
+    setTooltip(goldLabel, "Max guild gold",
+        { "Most the order may spend from the guild bank, in copper. Empty means no cap." })
+    setTooltip(goldBox, "Max guild gold",
+        { "Most the order may spend from the guild bank, in copper. Empty means no cap." })
     local noLimitBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderNoLimit", win, "UICheckButtonTemplate")
     noLimitBox:SetWidth(20); noLimitBox:SetHeight(20)
-    noLimitBox:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 26))
+    noLimitBox:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 22))
     noLimitBox:SetScript("OnClick", function()
         TB.SetOrderNoLimit(this:GetChecked() and true or false)
     end)
@@ -1267,7 +2342,7 @@ local function createWindow()
     TB.SetTextColor(noLimitLabel, color("muted"))
     win.noLimitLabel = noLimitLabel
 
-    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 50),
+    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 66),
         "Send order", "Give this bot the order (replaces its old one).",
         function()
             -- The boxes commit on change, but read them anyway: a valid
@@ -1279,6 +2354,14 @@ local function createWindow()
             if win.hoursBox and not orderNoLimit then
                 local h = tonumber(win.hoursBox:GetText() or "")
                 if h then TB.SetOrderHours(h) end
+            end
+            if win.goldBox then
+                local text = trim(win.goldBox:GetText() or "")
+                if text == "" then TB.SetOrderGold(nil)
+                else
+                    local g = tonumber(text)
+                    if g then TB.SetOrderGold(g) end
+                end
             end
             local item = nil
             for _, candidate in ipairs((TB.GetOrderSearch().items) or {}) do
@@ -1293,25 +2376,35 @@ local function createWindow()
                 return
             end
             local timeText = orderNoLimit and "no limit" or (orderHours .. "h")
+            local goldText = orderGold and (" " .. TB.OrderGoldText(orderGold)) or ""
             TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
-                .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "") .. ") sent, waiting for the server...", "pending")
+                .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "")
+                .. goldText .. ") sent, waiting for the server...", "pending")
             TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount,
-                orderNoLimit and "inf" or orderHours, orderKeep)
+                orderNoLimit and "inf" or orderHours, orderKeep, orderGold)
         end)
 
-    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 50),
+    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 66),
         "Cancel order", "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.",
         function()
             if windowBot then TB.ConfirmOrderCancel(windowBot) end
         end)
 
+    -- Fills the Send Mail form for the bot that needs items; the player
+    -- presses Send. Enabled only at an open mailbox with a need (D2/D3).
+    win.sendItemsBtn = smallButton(win, "Send missing items", 176, 12, -(base + 66),
+        "Send missing items", "Fill the mail form for the bot that needs items.",
+        function()
+            TB.SendOrderMissingItems(TB.GetOrderWindowBot())
+        end)
+
     win.statusLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 76))
+    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 92))
     win.statusLine:SetWidth(OW - 24); win.statusLine:SetJustifyH("LEFT")
     TB.SetTextColor(win.statusLine, color("muted"))
 
     win.feedbackLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 92))
+    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 108))
     win.feedbackLine:SetWidth(OW - 24); win.feedbackLine:SetJustifyH("LEFT")
 
     win:SetScript("OnUpdate", function()
@@ -1392,6 +2485,50 @@ function TB.RefreshOrderWindow()
     -- The box commits on change and every amount change syncs the box, so
     -- a refresh never touches it: a typed number is never rewritten here.
     local order = windowBot and TB.GetBotOrder(windowBot) or nil
+    local access = TB.GetOrderAccess()
+    local accessText = access and TB.OrderAccessText() or nil
+    if win.accessLabel then
+        if accessText then
+            win.accessLabel:SetText(accessText.text)
+            if accessText.bad then win.accessLabel:SetTextColor(1, 0.34, 0.28)
+            else win.accessLabel:SetTextColor(0.62, 0.60, 0.56) end
+            win.accessLabel:Show()
+        else
+            win.accessLabel:SetText("Bank access: waiting for the server...")
+            win.accessLabel:SetTextColor(0.62, 0.60, 0.56)
+            win.accessLabel:Show()
+        end
+    end
+    if win.rankBtn then
+        if access and access.canSetRank and access.rankIndex and TB.CanGiveOrders() then
+            win.rankBtn:Enable()
+            win.rankBtn:Show()
+        else
+            win.rankBtn:Hide()
+        end
+    end
+    if win.treeLines then
+        local tree = TB.GetOrderTree()
+        for i, line in ipairs(win.treeLines) do
+            local entry = tree[i]
+            if entry then
+                line:SetText(TB.OrderTreeRowText(entry.order, entry.depth))
+                local paint = entry.order.bot == windowBot
+                if paint then line:SetTextColor(0.95, 0.72, 0.28)
+                else line:SetTextColor(0.85, 0.85, 0.85) end
+                line:Show()
+            else
+                line:Hide()
+            end
+        end
+    end
+    if win.goldBox then
+        if TB.CanGiveOrders() then
+            win.goldBox:EnableMouse(true)
+        else
+            win.goldBox:ClearFocus()
+        end
+    end
     if win.statusLine then
         if order then
             win.statusLine:SetText("Current: " .. TB.OrderRowText(order))
@@ -1404,6 +2541,24 @@ function TB.RefreshOrderWindow()
     end
     if win.sendBtn then
         if TB.CanGiveOrders() then win.sendBtn:Enable() else win.sendBtn:Disable() end
+    end
+    if win.sendItemsBtn then
+        local canSend, mailReason = TB.CanSendOrderItems(windowBot)
+        if canSend then win.sendItemsBtn:Enable() else win.sendItemsBtn:Disable() end
+        -- The tooltip names the bot and its need, or why the button is dead.
+        win.sendItemsBtn:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Send missing items")
+            if canSend then
+                local bot, order = TB.OrderNeedTarget(windowBot)
+                local need = order and TB.OrderNeedText(order)
+                if bot and need then GameTooltip:AddLine(bot .. ": " .. need, 0.9, 0.9, 0.9, 1) end
+            elseif mailReason then
+                GameTooltip:AddLine(mailReason, 0.9, 0.9, 0.9, 1)
+            end
+            GameTooltip:Show()
+        end)
+        win.sendItemsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
     if win.keepBox and win.keepBox.SetChecked then
         win.keepBox:SetChecked(orderKeep and true or false)
@@ -1453,6 +2608,7 @@ function TB.OpenOrderWindow(bot)
         orderHours = 1
         orderNoLimit = true
         orderKeep = false
+        orderGold = nil
         orderCat = nil
         selectedItemId = nil
         feedback = nil
@@ -1462,9 +2618,13 @@ function TB.OpenOrderWindow(bot)
         if win.searchBox then win.searchBox:SetText("") end
         if win.amountBox then win.amountBox:SetText("10") end
         if win.hoursBox then win.hoursBox:SetText("1") end
+        if win.goldBox then win.goldBox:SetText("") end
         if win.noLimitBox and win.noLimitBox.SetChecked then win.noLimitBox:SetChecked(true) end
         if win.keepBox and win.keepBox.SetChecked then win.keepBox:SetChecked(false) end
     end
+    -- Bank access arrives with the list; ask for it now when the list
+    -- did not carry it yet.
+    if not TB.GetOrderAccess() then TB.RequestOrderAccess() end
     -- Anchor beside the main window, like the run window.
     win:ClearAllPoints()
     if TB.frame then
@@ -1487,4 +2647,117 @@ end
 function TB.CloseOrderWindow()
     searchPendingAt = nil
     if win then win:Hide() end
+end
+
+-- Rank menu: a dropdown listing the guild's ranks by name (guild master
+-- skipped, current bot rank marked). Picking one asks "Move all guild bots
+-- to rank <name>?" and only Yes sends `.bot order rank <idx>` with the
+-- server's 0-based rank index. The builders stay testable without the
+-- global DropDownList frames; the openers need the 1.12 dropdown API.
+function TB.BuildOrderRankMenu(addButton)
+    local options = TB.GetOrderRankOptions()
+    for _, option in ipairs(options) do
+        local label = option.name
+        if option.current then label = label .. " (current)" end
+        if option.current then
+            addButton({ text = label, notCheckable = 1, disabled = 1 })
+        else
+            addButton({ text = label, notCheckable = 1,
+                func = function() TB.ConfirmOrderRank(option.index, option.name) end })
+        end
+    end
+    return table.getn(options)
+end
+
+function TB.OpenOrderRankMenu(owner)
+    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return false end
+    if table.getn(TB.GetOrderRankOptions()) == 0 then return false end
+    if not TB._orderRankMenu then
+        TB._orderRankMenu = CreateFrame("Frame", "TortoiseBotsManagerOrderRankMenu",
+            UIParent, "UIDropDownMenuTemplate")
+    end
+    local menu = TB._orderRankMenu
+    UIDropDownMenu_Initialize(menu, function()
+        TB.BuildOrderRankMenu(UIDropDownMenu_AddButton)
+    end, "MENU")
+    ToggleDropDownMenu(1, nil, menu, "cursor")
+    return true
+end
+
+-- Reassign menu: a dropdown on the sub-order row listing the guild's bots
+-- the addon knows, excluding the worker holding the sub-order. Picking one
+-- asks first, then sends `.bot order reassign <sub> <new>`. No candidates:
+-- a short message instead of a menu.
+function TB.BuildOrderReassignMenu(subBot, addButton)
+    subBot = norm(subBot)
+    if not subBot or not orders[subBot] or not orders[subBot].parent then return 0 end
+    local names = TB.GetOrderReassignCandidates(subBot)
+    for _, name in ipairs(names) do
+        addButton({ text = name, notCheckable = 1,
+            func = function() TB.ConfirmOrderReassign(subBot, name) end })
+    end
+    return table.getn(names)
+end
+
+function TB.OpenOrderReassignMenu(subBot, owner)
+    subBot = norm(subBot)
+    if not subBot then return false end
+    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return false end
+    if table.getn(TB.GetOrderReassignCandidates(subBot)) == 0 then
+        TB.SetOrderFeedback("No other guild bots to hand it to.", "warn")
+        return false
+    end
+    if not TB._orderReassignMenu then
+        TB._orderReassignMenu = CreateFrame("Frame", "TortoiseBotsManagerOrderReassignMenu",
+            UIParent, "UIDropDownMenuTemplate")
+    end
+    local menu = TB._orderReassignMenu
+    UIDropDownMenu_Initialize(menu, function()
+        TB.BuildOrderReassignMenu(subBot, UIDropDownMenu_AddButton)
+    end, "MENU")
+    ToggleDropDownMenu(1, nil, menu, "cursor")
+    return true
+end
+
+function TB.ConfirmOrderRank(index, name)
+    index = math.floor(tonumber(index) or -1)
+    if index < 0 then return false end
+    local text = "Move all guild bots to rank " .. (name or ("#" .. index)) .. "?"
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_RANK"] = {
+            text = text,
+            button1 = "Yes",
+            button2 = "No",
+            OnAccept = function() TB.SendOrderRank(index) end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_ORDER_RANK")
+    else
+        TB.SendOrderRank(index)
+    end
+    return true
+end
+
+function TB.ConfirmOrderReassign(subBot, newBot)
+    subBot = norm(subBot)
+        newBot = norm(newBot)
+    if not subBot or not newBot or subBot == newBot then return false end
+    local text = "Hand " .. subBot .. "'s sub-order to " .. newBot .. "?"
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_ORDER_REASSIGN"] = {
+            text = text,
+            button1 = "Yes",
+            button2 = "No",
+            OnAccept = function() TB.SendOrderReassign(subBot, newBot) end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_ORDER_REASSIGN")
+    else
+        TB.SendOrderReassign(subBot, newBot)
+    end
+    return true
 end
