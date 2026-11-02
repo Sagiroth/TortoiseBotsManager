@@ -26,7 +26,7 @@
 --     that bot's order (capability "guild-order-steps", memory only)
 -- Inbound:
 --   TBM:ORDER_BEGIN|<n>
---   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>|<hours>|<keep>|<parent>|<goldCap>|<step>|<need>
+--   TBM:ORDER|<bot>|<type>|<itemId>|<item>|<have>|<want>|<state>|<reason>|<zone>|<difficulty>|<hours>|<keep>|<parent>|<goldCap>|<step>|<need>|<carry>
 --   TBM:ORDER_END
 --   TBM:ORDER_STEPS_BEGIN|<bot>|<n>|<dropped>   (the answer to "order <bot>
 --   TBM:ORDER_STEP|<bot>|<ageSec>|<state>|<reason>|<step>|<itemId>   steps":
@@ -66,8 +66,10 @@
 -- new reason needitems (state waiting) means the order waits for those items:
 -- trade them, mail them or put them in the guild bank; a working row may also
 -- carry a non-empty need list.
--- <have> counts delivered + the bot's bags + its mail; a `working` row with
--- have >= want is not deliverable yet (delivery needs the bags).
+-- <have> counts delivered only (bank deposit or the mail hand-over to the
+-- guild master); <carry> is what the bot holds in its bags plus its mailbox,
+-- not yet delivered ("-" or a missing field on old servers means none). A
+-- `working` row with carry > 0 shows "(+N carrying)" after the progress.
 -- TBM:ORDER_ACCESS rides first inside ORDER_BEGIN/END and again after a rank
 -- change; tab lists are comma-separated 1-based tabs or "-". Rank "-" (as in
 -- "-|-|-|-|0|0") means the server leaves bot ranks alone: grey line, no rank
@@ -460,11 +462,12 @@ end
 
 -- ── model ─────────────────────────────────────────────────────────────────
 -- orders[bot] = { bot, type, itemId, item, have, want, state, reason, zone,
---   difficulty, hours, keep, parent, goldCap, step, need }
+--   difficulty, hours, keep, parent, goldCap, step, need, carry }
 -- hours is a number, "inf" for no limit, or nil when the server sent none.
 -- parent is the parent order's bot, or nil for a top-level order; goldCap is
 -- guild gold in copper or nil for no cap; need is { {id, count} } of items
--- the player must bring, or nil.
+-- the player must bring, or nil; carry is bags plus mail not yet delivered
+-- (nil on old servers without the field, treated as 0 in the display).
 local orders = {}
 
 -- Per-order step history, memory only: orderSteps[bot] = { entries, dropped,
@@ -585,6 +588,8 @@ function TB.OrderRowText(order)
     if not order then return "" end
     local item = order.item or ("item #" .. tostring(order.itemId or "?"))
     local progress = tostring(order.have or 0) .. "/" .. tostring(order.want or 0)
+    local carryCount = math.floor(tonumber(order.carry) or 0)
+    if carryCount > 0 then progress = progress .. " (+" .. carryCount .. " carrying)" end
     local state = string.lower(trim(order.state or ""))
     local paint = STATE_COLOR[state]
     local function word(text)
@@ -597,9 +602,6 @@ function TB.OrderRowText(order)
         local step = TB.OrderStepLabel(order)
         if step then text = text .. " · " .. step
         elseif order.zone then text = text .. " (" .. order.zone .. ")" end
-        if (order.want or 0) > 0 and (order.have or 0) >= order.want then
-            text = text .. " · " .. "|cffffd200not all in its bags yet|r"
-        end
     elseif state == "waiting" then
         text = item .. " " .. progress .. " · " .. word("Waiting")
         if string.lower(trim(order.reason or "")) ~= "needitems" then
@@ -655,7 +657,10 @@ function TB.OrderTooltipText(order)
     local reason = TB.OrderReasonLabel(order.reason)
     if reason then state = state .. " (" .. reason .. ")" end
     table.insert(lines, state)
-    if string.lower(trim(order.state or "")) == "working"
+    local carryTip = math.floor(tonumber(order.carry) or 0)
+    if carryTip > 0 then
+        table.insert(lines, "Carrying " .. carryTip .. " (in bags and mail, not yet delivered).")
+    elseif order.carry == nil and string.lower(trim(order.state or "")) == "working"
         and (order.want or 0) > 0 and (order.have or 0) >= order.want then
         table.insert(lines, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail). It delivers once all are in its bags.")
     end
@@ -901,6 +906,11 @@ function TB.ParseOrderLine(msg)
     if count >= 16 and trim(fields[16]) ~= "-" then
         need = TB.ParseOrderNeed(fields[16])
     end
+    local carry = nil
+    if count >= 17 and trim(fields[17]) ~= "-" then
+        local n = tonumber(trim(fields[17]))
+        if n and n >= 0 then carry = math.floor(n) end
+    end
     local parent = nil
     if count >= 13 then
         local raw = trim(fields[13])
@@ -916,7 +926,7 @@ function TB.ParseOrderLine(msg)
         keep = count >= 12 and string.lower(trim(fields[12])) == "keep" or false,
         parent = parent, goldCap = goldCap,
         step = count >= 15 and noneDash(fields[15]) or nil,
-        need = need,
+        need = need, carry = carry,
     }
 end
 

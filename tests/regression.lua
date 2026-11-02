@@ -2477,25 +2477,38 @@ assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leat
     "finished rows get no need marker")
 assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|need|2319:4")) == "Light Leather 2/10 · needs items from you",
     "a working row on its need step says it once")
-assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 10/10 · checking bags and mail · |cffffd200not all in its bags yet|r",
-    "a working row at its count says the items are not all in its bags yet")
-assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|11|10|working|-|-|-|-|-|-|-|bags|-")), "not all in its bags yet", 1, true) ~= nil,
-    "a working row over its count says so too")
-assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 9/10 · checking bags and mail",
-    "a working row short of its count stays unchanged")
-assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|delivering|-|-|-|-|-|-|-|deliver|-")) == "|cffffd200Delivering|r Light Leather",
-    "a delivering row at its count stays unchanged")
-assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|waiting|grouped|-|-|-|-|-|-|craft|-")), "not all in its bags yet", 1, true) == nil,
-    "a waiting row at its count gets no marker")
-assert(string.find(TB.OrderRowText({ item = "Light Leather", have = 0, want = 0, state = "working" }), "not all in its bags yet", 1, true) == nil,
-    "a working row with no want gets no marker")
-local honestTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-"))
-local shortTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-"))
-assert(string.find(honestTip, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail).", 1, true) ~= nil
-    and string.find(shortTip, "Not deliverable yet", 1, true) == nil,
-    "the tooltip says when the count is not deliverable yet")
-assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|Ashenvale|-|-|keep|-|-|farm|-")) == "Light Leather 10/10 · farming in Ashenvale · |cffffd200not all in its bags yet|r · |cff4ecb5aKeep|r",
-    "the marker sits before keep")
+-- ── Order carry (status honesty, new 17th field) ───────────────────────────
+-- have is delivered only; carry is bags + mail, not yet delivered. Own
+-- function: chunk local limit.
+local function orderCarryChecks()
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|done|-|-|-|-|-|-|-|-|-|2")) == "Light Leather · |cff4ecb5aDone|r",
+        "delivered have=10 is done even with carry")
+    local oldLine = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-|-|-|craft|-")
+    assert(oldLine and oldLine.have == 4 and oldLine.carry == nil, "a 16-field old line still parses")
+    assert(TB.OrderRowText(oldLine) == "Light Leather 4/10 · crafting · |cff4ecb5aEasy|r", "an old line without carry shows progress only")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bags|-|3")) == "Light Leather 2/10 (+3 carrying) · checking bags and mail",
+        "a working row with carry shows both counts")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 10/10 · checking bags and mail",
+        "a working row at its count says nothing about bags")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 9/10 · checking bags and mail",
+        "a working row short of its count stays unchanged")
+    assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|waiting|grouped|-|-|-|-|-|-|craft|-|2")), "carrying", 1, true) ~= nil,
+        "a waiting row with carry still shows it")
+    assert(string.find(TB.OrderRowText({ item = "Light Leather", have = 0, want = 0, state = "working" }), "carrying", 1, true) == nil,
+        "a working row with no carry gets no marker")
+    local carryTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bags|-|3"))
+    local oldTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-"))
+    assert(string.find(carryTip, "Carrying 3 (in bags and mail, not yet delivered).", 1, true) ~= nil,
+        "the tooltip names the exact carry count")
+    assert(string.find(oldTip, "Carrying", 1, true) == nil,
+        "an old line without carry names no carry")
+    local interimTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-"))
+    assert(string.find(interimTip, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail).", 1, true) ~= nil,
+        "an old line at its count keeps the interim wording")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|Ashenvale|-|-|keep|-|-|farm|-|2")) == "Light Leather 10/10 (+2 carrying) · farming in Ashenvale · |cff4ecb5aKeep|r",
+        "the carry count sits before keep")
+end
+orderCarryChecks()
 
 -- Sub-order tree: indented rows, depth helpers, branch cancel.
 TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
