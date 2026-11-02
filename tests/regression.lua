@@ -2521,6 +2521,334 @@ assert(TB.OrderDepth(TB.GetBotOrder("Bronze")) == 1, "a late parent still indent
 assert(TB.OrderTreeRowText(TB.GetBotOrder("Bronze")) == "  Bronze: "
     .. TB.OrderRowText(TB.GetBotOrder("Bronze")), "an arriving parent re-indents the row")
 
+-- Send missing items: draft, target, stack pick, mailbox gate, fill click.
+local function sendMissingItemsBlock()
+    local calls = {}
+    local function rec(name)
+        return function(...) table.insert(calls, { name = name, args = { ... } }) end
+    end
+    local function nameSeq()
+        local out = {}
+        for _, c in ipairs(calls) do table.insert(out, c.name) end
+        return table.concat(out, ",")
+    end
+    local function hasCall(name)
+        for _, c in ipairs(calls) do
+            if c.name == name then return true end
+        end
+        return false
+    end
+    local function argsOf(name)
+        for _, c in ipairs(calls) do
+            if c.name == name then return c.args end
+        end
+        return nil
+    end
+
+    MailFrame = CreateFrame("Frame", "TortoiseBotsManagerTestMailFrame")
+    MailFrame.visible = true
+    SendMailNameEditBox = object("EditBox", MailFrame)
+    SendMailSubjectEditBox = object("EditBox", MailFrame)
+    SendMailBodyEditBox = object("EditBox", MailFrame)
+    local function clearDraft() SendMailNameEditBox:SetText(""); SendMailSubjectEditBox:SetText(""); SendMailBodyEditBox:SetText("") end
+
+    -- Bags are sparse; slots come from GetContainerNumSlots.
+    local bags, bagSlots = {}, {}
+    local function clearBags() bags = {}; bagSlots = {} end
+    local function setBag(bag, slot, id, count, name, locked)
+        bags[bag] = bags[bag] or {}
+        bags[bag][slot] = { id = id, count = count, name = name, locked = locked,
+            texture = "Interface\\Icons\\INV_Misc_Quest_ColorRed" }
+        if (bagSlots[bag] or 0) < slot then bagSlots[bag] = slot end
+    end
+    GetContainerNumSlots = function(bag) return bagSlots[bag] or 0 end
+    GetContainerItemLink = function(bag, slot)
+        local entry = (bags[bag] or {})[slot]
+        if entry then return "|cffffffff|Hitem:" .. entry.id .. ":0:0:0|h[" .. entry.name .. "]|h|r" end
+        return nil
+    end
+    GetContainerItemInfo = function(bag, slot)
+        local entry = (bags[bag] or {})[slot]
+        if entry then return entry.texture, entry.count, entry.locked end
+        return nil
+    end
+    -- The mail state the live client holds: the item on the cursor and the
+    -- one Send Mail attachment slot. A pickup or split puts the item on the
+    -- cursor, the attach click moves the cursor item into the slot, and
+    -- GetSendMailItem reads the slot back (1.12 order: name, texture,
+    -- count, quality).
+    local cursor, mailItem = nil, nil
+    local function takeCursor()
+        mailItem, cursor = cursor, nil
+    end
+    MailFrameTab_OnClick = rec("MailFrameTab_OnClick")
+    PickupContainerItem = function(bag, slot)
+        table.insert(calls, { name = "PickupContainerItem", args = { bag, slot } })
+        local entry = (bags[bag] or {})[slot]
+        cursor = entry and { name = entry.name, count = entry.count } or nil
+    end
+    SplitContainerItem = function(bag, slot, count)
+        table.insert(calls, { name = "SplitContainerItem", args = { bag, slot, count } })
+        local entry = (bags[bag] or {})[slot]
+        cursor = entry and { name = entry.name, count = count } or nil
+    end
+    ClickSendMailItemButton = function()
+        table.insert(calls, { name = "ClickSendMailItemButton" })
+        takeCursor()
+    end
+    CursorHasItem = function()
+        table.insert(calls, { name = "CursorHasItem" })
+        return cursor ~= nil
+    end
+    GetSendMailItem = function()
+        table.insert(calls, { name = "GetSendMailItem" })
+        if not mailItem then return nil end
+        return mailItem.name, "Interface\\Icons\\INV_Misc_LeatherScrap_02", mailItem.count, 1
+    end
+    ClearCursor = function()
+        table.insert(calls, { name = "ClearCursor" })
+        cursor = nil
+    end
+    SendMail = function() error("SendMail must never be called by the addon") end
+
+    -- 1. Draft from the parsed need order (item cache seeded just above).
+    local draft = TB.OrderMailDraft("Goldie", needOrder)
+    assert(draft and draft.to == "Goldie" and draft.subject == "Order: Light Leather"
+        and string.find(draft.body, "Medium Leather x4", 1, true) ~= nil,
+        "the draft fills recipient, subject and need body")
+    assert(TB.OrderMailDraft("Goldie", { item = "Light Leather", need = {} }) == nil,
+        "a needless order makes no draft")
+
+    -- 2. Target: first bot in tree order whose order needs items.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|working|-|-|-|-|-|-|-|craft|-")
+    TB.OnSystemMessage("TBM:ORDER|Silver|craft|2319|Medium Leather|1|5|working|-|-|-|-|-|Goldie|-|craft|2319:4;2320:2")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(TB.OrderNeedTarget("Goldie") == "Silver", "the target skips a needless root")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|-|-|-|-|-|-|farm|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(TB.OrderNeedTarget("Goldie") == nil, "no need anywhere means no target")
+
+    -- 3. Exact stack: count fits the need, nothing splits.
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    local stack = TB.FindOrderNeedStack(needOrder)
+    assert(stack and stack.bag == 0 and stack.slot == 3 and stack.id == 2319
+        and stack.count == 4 and stack.split == nil,
+        "an exact stack is picked whole")
+
+    -- 4. A stack larger than the need splits to the need count.
+    setBag(0, 3, 2319, 10, "Medium Leather")
+    stack = TB.FindOrderNeedStack(needOrder)
+    assert(stack and stack.count == 10 and stack.split == 4,
+        "a larger stack splits to the need")
+
+    -- 5. Locked stacks are skipped; the next needed item is used.
+    clearBags()
+    setBag(0, 1, 2319, 4, "Medium Leather", true)
+    setBag(0, 2, 2320, 2, "Cured Light Hide")
+    stack = TB.FindOrderNeedStack(needOrder)
+    assert(stack and stack.id == 2320 and stack.slot == 2 and stack.split == nil,
+        "a locked stack is skipped for the next needed item")
+
+    -- 6. Nothing in bags: no stack, but the form still fills.
+    clearBags()
+    assert(TB.FindOrderNeedStack(needOrder) == nil, "empty bags mean no stack")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4;2320:2")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(SendMailNameEditBox:GetText() == "Goldie",
+        "the form fills even when nothing can be attached")
+    assert(string.find(TB.GetOrderFeedback().text, "None of the needed items", 1, true) ~= nil,
+        "empty bags say so")
+
+    -- 7. The mailbox gate: open mailbox plus a need enables it.
+    MailFrame.visible = false
+    local can, reason = TB.CanSendOrderItems("Goldie")
+    assert(can == false and reason == "Open a mailbox first",
+        "a closed mailbox disables the button")
+    MailFrame.visible = true
+    assert(TB.CanSendOrderItems("Goldie") == true,
+        "an open mailbox with a need enables the button")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|-|-|-|-|-|-|farm|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    local can2, reason2 = TB.CanSendOrderItems("Goldie")
+    assert(can2 == false and reason2 == "No order needs items",
+        "no need disables the button")
+
+    -- 8. The click opens the Send tab, probes the cursor, picks up one
+    -- stack, attaches, then reads the attachment back from the client.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|waiting|needitems|-|-|-|-|-|-|need|2319:4;2320:2")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    cursor, mailItem = nil, nil
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,PickupContainerItem,"
+        .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
+        "the click checks the cursor first and reads the attachment back after: " .. nameSeq())
+    assert(argsOf("MailFrameTab_OnClick")[1] == 2 and argsOf("PickupContainerItem")[1] == 0
+        and argsOf("PickupContainerItem")[2] == 3,
+        "the click switches to tab 2 and picks bag 0 slot 3")
+    assert(SendMailSubjectEditBox:GetText() == "Order: Light Leather"
+        and string.find(SendMailBodyEditBox:GetText(), "Medium Leather x4", 1, true) ~= nil,
+        "the click fills subject and body")
+    assert(mailItem and mailItem.name == "Medium Leather" and mailItem.count == 4,
+        "the whole stack lands in the attachment slot")
+    local attached = TB.GetOrderFeedback()
+    assert(attached and attached.kind == "ok"
+        and attached.text == "Medium Leather x4 attached - press Send",
+        "a verified attach reports the read-back: " .. tostring(attached and attached.text))
+
+    -- 9. A split attaches exactly the need count, verified the same way.
+    clearBags()
+    setBag(0, 3, 2319, 10, "Medium Leather")
+    cursor, mailItem = nil, nil
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(nameSeq() == "CursorHasItem,GetSendMailItem,MailFrameTab_OnClick,SplitContainerItem,"
+        .. "ClickSendMailItemButton,GetSendMailItem,CursorHasItem",
+        "a larger stack splits instead of picking up: " .. nameSeq())
+    assert(argsOf("SplitContainerItem")[3] == 4 and mailItem and mailItem.count == 4,
+        "the split takes the need count and the slot shows it")
+    assert(TB.GetOrderFeedback().text == "Medium Leather x4 attached - press Send",
+        "the split reports the need count")
+
+    -- 10. The attachment slot already holds an item: nothing is picked up
+    -- (a pickup would swap that item away) and the message says why.
+    cursor, mailItem = nil, { name = "Cured Light Hide", count = 2 }
+    SendMailNameEditBox:SetText("Friend")
+    SendMailSubjectEditBox:SetText("my draft")
+    calls = {}
+    TB.SendOrderMissingItems("Goldie")
+    assert(not hasCall("PickupContainerItem") and not hasCall("SplitContainerItem")
+        and not hasCall("ClickSendMailItemButton"),
+        "an occupied attachment slot stops the attach before any pickup")
+    local busy = TB.GetOrderFeedback()
+    assert(busy and busy.kind == "error"
+        and string.find(busy.text, "the mail already holds Cured Light Hide", 1, true) ~= nil,
+        "an occupied slot says why nothing was attached: " .. tostring(busy and busy.text))
+    assert(SendMailNameEditBox:GetText() == "Friend" and SendMailSubjectEditBox:GetText() == "my draft"
+        and not hasCall("MailFrameTab_OnClick"),
+        "a draft with an attachment is left untouched (re-addressing it would mail that item to the bot)")
+
+    -- 11. An item on the cursor: nothing is moved, the held item is left alone.
+    cursor, mailItem = { name = "Cured Light Hide", count = 2 }, nil
+    SendMailNameEditBox:SetText("Friend")
+    calls = {}
+    TB.SendOrderMissingItems("Goldie")
+    assert(SendMailNameEditBox:GetText() == "Friend", "a busy cursor leaves the draft untouched")
+    assert(not hasCall("PickupContainerItem") and not hasCall("SplitContainerItem")
+        and not hasCall("ClickSendMailItemButton"),
+        "a busy cursor stops the attach before any pickup")
+    assert(cursor and cursor.name == "Cured Light Hide",
+        "the item on the cursor is left untouched")
+    local held = TB.GetOrderFeedback()
+    assert(held and held.kind == "error"
+        and string.find(held.text, "cursor", 1, true) ~= nil,
+        "a busy cursor says why nothing was attached: " .. tostring(held and held.text))
+
+    -- 12. A missing mail API attaches nothing and never claims success.
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    cursor, mailItem = nil, nil
+    local savedPickup = PickupContainerItem
+    PickupContainerItem = nil
+    calls = {}
+    clearDraft()
+    local ok, err = pcall(TB.SendOrderMissingItems, "Goldie")
+    assert(ok, "a missing PickupContainerItem must not error: " .. tostring(err))
+    assert(not hasCall("ClickSendMailItemButton") and mailItem == nil,
+        "no pickup call means no attach click")
+    local gap = TB.GetOrderFeedback()
+    assert(gap and gap.kind == "error"
+        and string.find(gap.text, "PickupContainerItem", 1, true) ~= nil
+        and string.find(gap.text, "attached - press Send", 1, true) == nil,
+        "a missing API says which one instead of reporting success: " .. tostring(gap and gap.text))
+    assert(SendMailNameEditBox:GetText() == "Goldie",
+        "the text fields still fill without the pickup API")
+    PickupContainerItem = savedPickup
+    local savedCursorProbe = CursorHasItem
+    CursorHasItem = nil
+    calls = {}
+    clearDraft()
+    pcall(TB.SendOrderMissingItems, "Goldie")
+    assert(not hasCall("PickupContainerItem") and not hasCall("ClickSendMailItemButton"),
+        "no cursor probe means no pickup and no attach")
+    assert(string.find(TB.GetOrderFeedback().text, "CursorHasItem", 1, true) ~= nil,
+        "the missing cursor probe is named")
+    CursorHasItem = savedCursorProbe
+
+    -- 13. A mismatched attach: the client is the only witness, so clear the
+    -- cursor and report an error, never "attached".
+    clearBags()
+    setBag(0, 3, 2319, 4, "Medium Leather")
+    cursor, mailItem = nil, nil
+    ClickSendMailItemButton = function()
+        table.insert(calls, { name = "ClickSendMailItemButton" })
+        cursor = nil -- the click eats the cursor item...
+        mailItem = { name = "Cured Light Hide", count = 2 } -- ...but the slot holds another
+    end
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(hasCall("ClearCursor"), "a mismatched attach clears the cursor")
+    assert(SendMailNameEditBox:GetText() == "",
+        "a mismatched attach clears the recipient so the wrong item cannot be sent to the bot")
+    local wrong = TB.GetOrderFeedback()
+    assert(wrong and wrong.kind == "error" and string.find(wrong.text, "recipient cleared", 1, true) ~= nil,
+        "a mismatched attach says the recipient was cleared: " .. tostring(wrong and wrong.text))
+
+    local wrong = TB.GetOrderFeedback()
+    assert(wrong and wrong.kind == "error"
+        and string.find(wrong.text, "Cured Light Hide x2", 1, true) ~= nil
+        and string.find(wrong.text, "attached - press Send", 1, true) == nil,
+        "a mismatched attach is an error, not attached: " .. tostring(wrong and wrong.text))
+
+    -- 10b. A text-only draft (no attachment, empty cursor) is the player's: left untouched.
+    cursor, mailItem = nil, nil
+    clearDraft()
+    SendMailBodyEditBox:SetText("hi friend")
+    calls = {}
+    TB.SendOrderMissingItems("Goldie")
+    assert(SendMailBodyEditBox:GetText() == "hi friend" and SendMailNameEditBox:GetText() == ""
+        and not hasCall("MailFrameTab_OnClick") and not hasCall("PickupContainerItem"),
+        "a text-only draft is not overwritten")
+    clearDraft()
+
+    -- 14. The click leaves the item on the cursor: same error path.
+    cursor, mailItem = nil, nil
+    ClickSendMailItemButton = function()
+        table.insert(calls, { name = "ClickSendMailItemButton" })
+    end
+    calls = {}
+    clearDraft()
+    TB.SendOrderMissingItems("Goldie")
+    assert(hasCall("ClearCursor"), "an item left on the cursor after the click is cleared")
+    assert(cursor == nil, "ClearCursor empties the cursor")
+    local stuck = TB.GetOrderFeedback()
+    assert(stuck and stuck.kind == "error"
+        and string.find(stuck.text, "attached - press Send", 1, true) == nil,
+        "an item stuck on the cursor is an error, not attached: " .. tostring(stuck and stuck.text))
+
+    -- Restore the mock globals this block defined.
+    MailFrame = nil
+    SendMailNameEditBox, SendMailSubjectEditBox, SendMailBodyEditBox = nil, nil, nil
+    GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = nil, nil, nil
+    PickupContainerItem, SplitContainerItem, ClickSendMailItemButton = nil, nil, nil
+    CursorHasItem, GetSendMailItem, ClearCursor = nil, nil, nil
+    MailFrameTab_OnClick, SendMail = nil, nil
+end
+sendMissingItemsBlock()
+
 -- Access snapshot: parse, header text, edge cases.
 TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
 TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
@@ -2828,6 +3156,9 @@ assert(TB.orderWindow.hoursBox.mouseEnabled == false,
 assert(TB.orderWindow.farmNote ~= nil
     and string.find(TB.orderWindow.farmNote:GetText(), "Bots farm like players", 1, true) ~= nil,
     "the window warns that big or rare farms take very long")
+assert(TB.orderWindow.sendItemsBtn ~= nil, "the window carries a Send missing items button")
+assert(TB.orderWindow.sendItemsBtn.enabled == false,
+    "no open mailbox leaves the Send missing items button dead")
 local beforeSearch = table.getn(addonSent)
 this = TB.orderWindow.searchBox
 TB.orderWindow.searchBox.text = "le"
