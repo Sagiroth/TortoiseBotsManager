@@ -37,9 +37,10 @@ New buttons for party orders go into `TB.C.ACTION_DEFINITIONS` in `Constants.lua
 
 ```bash
 lua5.1 tests/regression.lua .
+lua5.1 tests/lua50_syntax.lua .
 ```
 
-A mock of the 1.12 widget API runs the real addon files. The release workflow runs the same command and stops on failure.
+A mock of the 1.12 widget API runs the real addon files. `lua50_syntax.lua` tokenizes every `.toc` file and fails on Lua 5.1-only syntax (`%`, `#`, `select('#'`, `gmatch`, `goto`) that the 1.12 client rejects. The release workflow runs both commands and stops on failure.
 
 Docs check:
 
