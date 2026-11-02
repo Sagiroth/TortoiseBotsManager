@@ -47,6 +47,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y lua5.1
           lua5.1 tests/regression.lua .
+          lua5.1 tests/lua50_syntax.lua .
 
       - name: Set up Python
         uses: actions/setup-python@v5

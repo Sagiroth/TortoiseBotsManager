@@ -1058,7 +1058,7 @@ local function createWindow()
             tipTitle = ORDER_CAT_LABEL[cat],
             tip = "Only show this kind of item.",
         })
-        pill:SetPoint("TOPLEFT", win, "TOPLEFT", 12 + ((i - 1) % 4) * 80,
+        pill:SetPoint("TOPLEFT", win, "TOPLEFT", 12 + math.mod(i - 1, 4) * 80,
             -106 - math.floor((i - 1) / 4) * 22)
         local token = cat
         pill:SetScript("OnClick", function() TB.SetOrderCat(token) end)
