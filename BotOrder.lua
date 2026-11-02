@@ -49,8 +49,8 @@
 -- <reason> "-" means none; <zone> "-" means none; <chance> is percent.
 -- <difficulty> is easy / medium / hard ("-" or a missing field on old
 -- servers means none); <reason> and <verdict> may be "elite", "timeout",
--- "noprogress", "needitems", "nobanker" or "bankdenied" (the last two ride
--- state "working"). <keep> is keep or "-" (missing on old servers means not
+-- "noprogress", "needitems", "nobanker", "bankdenied", "noauctioneer" or
+-- "nolisting" (the last four ride state "working"). <keep> is keep or "-" (missing on old servers means not
 -- keep); a keep order that delivered sits in state "stocked" until the bank
 -- runs low. <hours> is whole hours or "inf" for no limit (missing on
 -- old servers means none); an inf order never times out, only cancel ends it.
@@ -130,6 +130,7 @@ local REASON_LABEL = {
     stuck = "stuck, gave up", bagsfull = "bags full", nobank = "no bank deposit",
     needitems = "needs items from you",
     nobanker = "no banker in reach", bankdenied = "bank refused withdrawal",
+    noauctioneer = "no auctioneer in reach", nolisting = "nothing fitting on the AH",
 }
 local SOURCE_LABEL = { drop = "drop", skin = "skin", herb = "herb", ore = "ore", fish = "fish", craft = "craft", ah = "AH" }
 local SKILL_NAMES = {

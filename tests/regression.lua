@@ -2460,6 +2460,8 @@ assert(TB.ClampOrderGold(12345) == 12345 and TB.ClampOrderGold(0) == 0
     and TB.ClampOrderGold("nope") == nil and TB.ClampOrderGold(nil) == nil
     and TB.ClampOrderGold("") == nil, "gold caps clamp to copper, zero, or none")
 assert(TB.OrderReasonLabel("nobanker") == "no banker in reach", "nobanker names the missing banker")
+assert(TB.OrderReasonLabel("noauctioneer") == "no auctioneer in reach", "noauctioneer names the missing auctioneer")
+assert(TB.OrderReasonLabel("nolisting") == "nothing fitting on the AH", "nolisting says the AH had nothing fitting")
 assert(TB.OrderReasonLabel("bankdenied") == "bank refused withdrawal", "bankdenied names the refused withdrawal")
 assert(string.find(TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|craft|2318|Light Leather|0|10|working|nobanker|-|-|-|-|-|-|bank|-")), "State: Working (no banker in reach)", 1, true) ~= nil,
     "bank dead-end tooltips name the reason")
