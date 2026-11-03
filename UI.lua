@@ -1731,11 +1731,10 @@ function TB.InitUI()
         local headers = {
             { text = "Name", width = 88, x = 28 },
             { text = "Level / Class", width = 82, x = 118 },
-            { text = "Gear", width = 58, x = 202 },
-            { text = "Status", width = 56, x = 262 },
-            { text = "Bag", width = 20, x = 320 },
-            { text = "Role", width = 76, x = 344 },
-            { text = "Rel", width = 34, x = 424 },
+            { text = "Gear", width = 52, x = 202 },
+            { text = "Status", width = 50, x = 256 },
+            { text = "Bag", width = 20, x = 306 },
+            { text = "Role", width = 76, x = 326 },
         }
         for _, h in ipairs(headers) do
             local fs = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1879,27 +1878,27 @@ function TB.InitUI()
 
             row.gearBadge = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             row.gearBadge:SetPoint("LEFT", row, "LEFT", 202, 7)
-            row.gearBadge:SetWidth(58)
+            row.gearBadge:SetWidth(52)
             row.gearBadge:SetJustifyH("LEFT")
 
             row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            row.status:SetPoint("LEFT", row, "LEFT", 262, 7)
-            row.status:SetWidth(56)
+            row.status:SetPoint("LEFT", row, "LEFT", 256, 7)
+            row.status:SetWidth(50)
             row.status:SetJustifyH("LEFT")
 
             -- Guild order line: the bot's current order and its progress
             -- (TB.OrderRowText); the Order/Cancel buttons sit at its right.
             row.orderLine = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             row.orderLine:SetPoint("LEFT", row, "LEFT", 28, -8)
-            row.orderLine:SetWidth(222)
+            row.orderLine:SetWidth(292)
             row.orderLine:SetJustifyH("LEFT")
 
-            local bagBtn = TB.UI.CreateIconButton(row, 20, {
+            local bagBtn = TB.UI.CreateIconButton(row, 14, {
                 point = "LEFT",
                 relTo = row,
                 relPoint = "LEFT",
-                x = 320,
-                y = 5,
+                x = 308,
+                y = 7,
                 icon = "Interface\\Buttons\\Button-Backpack-Up",
                 onClick = function()
                     local entry = this:GetParent().entry
@@ -1917,8 +1916,8 @@ function TB.InitUI()
             row.bagBtn = bagBtn
 
             local roleBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            roleBtn:SetWidth(76); roleBtn:SetHeight(20)
-            roleBtn:SetPoint("LEFT", row, "LEFT", 344, 5)
+            roleBtn:SetWidth(76); roleBtn:SetHeight(14)
+            roleBtn:SetPoint("LEFT", row, "LEFT", 326, 7)
             roleBtn:SetText("Role")
             roleBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -1941,9 +1940,9 @@ function TB.InitUI()
             row.roleBtn = roleBtn
 
             local ordBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            ordBtn:SetWidth(30); ordBtn:SetHeight(16)
-            ordBtn:SetPoint("LEFT", row, "LEFT", 252, -7)
-            ordBtn:SetText("Ord")
+            ordBtn:SetWidth(44); ordBtn:SetHeight(14)
+            ordBtn:SetPoint("LEFT", row, "LEFT", 324, -7)
+            ordBtn:SetText("Order")
             ordBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
                 if entry and TB.OpenOrderWindow then TB.OpenOrderWindow(entry.name) end
@@ -1952,9 +1951,9 @@ function TB.InitUI()
             row.ordBtn = ordBtn
 
             local cancelBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            cancelBtn:SetWidth(30); cancelBtn:SetHeight(16)
-            cancelBtn:SetPoint("LEFT", row, "LEFT", 284, -7)
-            cancelBtn:SetText("Can")
+            cancelBtn:SetWidth(50); cancelBtn:SetHeight(14)
+            cancelBtn:SetPoint("LEFT", row, "LEFT", 370, -7)
+            cancelBtn:SetText("Cancel")
             cancelBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
                 if entry and TB.ConfirmOrderCancel then TB.ConfirmOrderCancel(entry.name) end
@@ -1963,9 +1962,9 @@ function TB.InitUI()
             row.cancelBtn = cancelBtn
 
             local moveBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            moveBtn:SetWidth(24); moveBtn:SetHeight(16)
-            moveBtn:SetPoint("LEFT", row, "LEFT", 316, -7)
-            moveBtn:SetText("Mv")
+            moveBtn:SetWidth(40); moveBtn:SetHeight(14)
+            moveBtn:SetPoint("LEFT", row, "LEFT", 422, -7)
+            moveBtn:SetText("Move")
             moveBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
                 if entry and TB.OpenOrderReassignMenu then
@@ -1976,9 +1975,9 @@ function TB.InitUI()
             row.moveBtn = moveBtn
 
             local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            relBtn:SetWidth(34); relBtn:SetHeight(20)
-            relBtn:SetPoint("LEFT", row, "LEFT", 424, 0)
-            relBtn:SetText("Rel")
+            relBtn:SetWidth(56); relBtn:SetHeight(14)
+            relBtn:SetPoint("LEFT", row, "LEFT", 404, 7)
+            relBtn:SetText("Release")
             relBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
                 if entry and TB.ConfirmReleaseClaimedBot then
