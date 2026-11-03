@@ -2,6 +2,31 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.5.0 (2026-11-03)
+
+### Compatibility & Stability
+- Fixed a Lua 5.0 syntax error in the order window's category pill layout (`%` swapped for `math.mod`), so the order window and the rest of `BotOrder.lua` now load on the 1.12 client instead of failing with `')' expected near '%'` [#61](https://github.com/Sagiroth/TortoiseBotsManager/pull/61)
+- Added a Lua 5.1-only syntax test (`tests/lua50_syntax.lua`) so `%`-style regressions are caught before they ship [#61](https://github.com/Sagiroth/TortoiseBotsManager/pull/61)
+
+### Guild Orders
+- Order button on each bot row in the Guild tab opens a window to search an item or browse a kind, showing where the bot would farm, drop rate, rough kill/gather count, and a difficulty (or why it can't) [#52](https://github.com/Sagiroth/TortoiseBotsManager/pull/52)
+- Pick Farm, Buy or Craft with an amount and farm time, then send — the bot row tracks the order and its progress live, with a confirm-first Cancel button that also ends keep-in-stock and no-limit orders [#52](https://github.com/Sagiroth/TortoiseBotsManager/pull/52)
+- Sub-orders now appear indented under the order they help, updating live so you can see what each bot is doing right now [#55](https://github.com/Sagiroth/TortoiseBotsManager/pull/55)
+- New "needs items from you" list shows what the bots are still waiting for, with a short hint on what to do next [#55](https://github.com/Sagiroth/TortoiseBotsManager/pull/55)
+- Header line shows the bots' bank access: red when something is missing, grey when the server doesn't manage ranks, and "no guild bank yet" when there's no guild bank; a rank dropdown is included [#55](https://github.com/Sagiroth/TortoiseBotsManager/pull/55)
+
+### Runs & Raids
+- Run window can now bind a lead bot to your whole raid (Bind raid) and displays the raid layout the server reports: main tank, off-tanks, healers, groups and warnings [#54](https://github.com/Sagiroth/TortoiseBotsManager/pull/54)
+- New "stop before the boss" box starts a run that stops at the boss stand, and raid plans are listed after the dungeon plans [#54](https://github.com/Sagiroth/TortoiseBotsManager/pull/54)
+- Features only appear on servers with the run leader capability; old servers behave exactly as before, and GM-only commands plus raid hiring stay chat-only [#54](https://github.com/Sagiroth/TortoiseBotsManager/pull/54)
+
+### Alts & Downtime
+- New Downtime button in the Camp tab's REST card sends `.bot downtime` for your own alts: they walk to the class trainer, learn every affordable spell, sell grey junk, repair, then return and follow you again [#53](https://github.com/Sagiroth/TortoiseBotsManager/pull/53)
+- Hires and pool bots are refused by the server, and the button reports the server's answer in the status line so you see why a request was rejected [#53](https://github.com/Sagiroth/TortoiseBotsManager/pull/53)
+- Button only shows on servers advertising the new `downtime` capability [#53](https://github.com/Sagiroth/TortoiseBotsManager/pull/53)
+
+---
+
 ## Unreleased
 
 ### Camp
