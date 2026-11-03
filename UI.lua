@@ -2025,10 +2025,10 @@ function TB.InitUI()
         guildFrame.selectionLabel = selection
 
         local inviteBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
-        inviteBtn:SetWidth(110); inviteBtn:SetHeight(22)
+        inviteBtn:SetWidth(64); inviteBtn:SetHeight(22)
         inviteBtn:SetPoint("LEFT", selection, "RIGHT", 4, 0)
-        inviteBtn:SetText("Invite to Raid")
-        setButtonTooltip(inviteBtn, "Invite selected online claimed bots to your raid or party")
+        inviteBtn:SetText("Invite")
+        setButtonTooltip(inviteBtn, "Invite selected online claimed bots to your party. A full party becomes a raid.")
         inviteBtn:SetScript("OnClick", function()
             local names = TB.GetEligibleClaimedNames and TB.GetEligibleClaimedNames("invite") or {}
             if table.getn(names) > 0 then
@@ -2044,9 +2044,9 @@ function TB.InitUI()
         guildFrame.inviteBtn = inviteBtn
 
         local summonBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
-        summonBtn:SetWidth(110); summonBtn:SetHeight(22)
+        summonBtn:SetWidth(64); summonBtn:SetHeight(22)
         summonBtn:SetPoint("LEFT", inviteBtn, "RIGHT", 4, 0)
-        summonBtn:SetText("Summon to Raid")
+        summonBtn:SetText("Summon")
         setButtonTooltip(summonBtn, "Summon selected online claimed bots to your position")
         summonBtn:SetScript("OnClick", function()
             local names = TB.GetEligibleClaimedNames and TB.GetEligibleClaimedNames("summon") or {}
@@ -2069,9 +2069,9 @@ function TB.InitUI()
         guildFrame.syncBtn = syncBtn
 
         local fillBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
-        fillBtn:SetWidth(72); fillBtn:SetHeight(22)
+        fillBtn:SetWidth(56); fillBtn:SetHeight(22)
         fillBtn:SetPoint("LEFT", syncBtn, "RIGHT", 4, 0)
-        fillBtn:SetText("Fill Raid")
+        fillBtn:SetText("Fill")
         setButtonTooltip(fillBtn, "Invite online claimed bots until the raid is full (40). Needs no selection.")
         fillBtn:SetScript("OnClick", function()
             local names = TB.GetFillRaidNames and TB.GetFillRaidNames() or {}
