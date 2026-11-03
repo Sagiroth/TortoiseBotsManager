@@ -58,7 +58,12 @@ local function object(kind, parent)
         end
         self.clickButtons = {...}
     end
-    function methods:SetScript(name, callback) self.scripts[name] = callback end
+    function methods:SetScript(name, callback)
+        if self.kind == "FontString" or self.kind == "Texture" then
+            error("SetScript called on a " .. self.kind)
+        end
+        self.scripts[name] = callback
+    end
     function methods:SetBackdrop(...) end
     function methods:SetBackdropColor(...) end
     function methods:SetBackdropBorderColor(...) end

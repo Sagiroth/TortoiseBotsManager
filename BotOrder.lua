@@ -2322,8 +2322,6 @@ local function createWindow()
         this:SetText(orderGold ~= nil and tostring(orderGold) or "")
     end)
     win.goldBox = goldBox
-    setTooltip(goldLabel, "Max guild gold",
-        { "Most the order may spend from the guild bank, in copper. Empty means no cap." })
     setTooltip(goldBox, "Max guild gold",
         { "Most the order may spend from the guild bank, in copper. Empty means no cap." })
     local noLimitBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderNoLimit", win, "UICheckButtonTemplate")
