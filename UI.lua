@@ -1801,6 +1801,13 @@ function TB.InitUI()
             else
                 GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
             end
+            -- Cached professions only: a hover never sends a request.
+            if TB.HasProfessionsCapability and TB.HasProfessionsCapability() and TB.GetProfessions then
+                local profText = TB.ProfessionTooltipLine and TB.ProfessionTooltipLine(entry.name) or nil
+                if profText then
+                    GameTooltip:AddLine(profText, 1, 1, 1)
+                end
+            end
             if TB.GetBotOrder and TB.OrderTooltipText then
                 local order = TB.GetBotOrder(entry.name)
                 local orderText = order and TB.OrderTooltipText(order) or nil

@@ -35,6 +35,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `dungeon-run` | Dungeon tab and run window (server needs `DungeonSelfClear` and `RemoteCommander`); raid binds ride the same gate |
 | `loot-log` | Loot tab and the `.bot lootlog` catch-up |
 | `downtime` | Downtime button for own-alt errands (`.bot downtime`) |
+| `professions` | Professions tab in the bot panel, skill line in the guild row tooltip and the `.bot professions` send |
 
 `behavior` is also advertised; the addon does not gate on it.
 
@@ -50,6 +51,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `TBM:BOTSTATE_BEGIN` / `BOTSTATE` / `BOTSTATE_END` | Move mode lamps, party switch states, behaviour switches, live spec for role buttons |
 | `TBM:CC_ASSIGN_BEGIN` / `CC_ASSIGN` / `CC_ASSIGN_END` | CC mark icons on party rows |
 | `TBM:INV_BEGIN` / `INV_EQ` / `INV_ITEM` / `INV_END` | [Bot panel](../play/bot-panel.md) gear and bags |
+| `TBM:PROF_BEGIN` / `PROF` / `RECIPE` / `RECIPE_MISSING` / `PROF_END` | [Bot panel](../play/bot-panel.md#professions) trade skills and recipes: `.bot professions <bot>` is answered with one `PROF_BEGIN\|<bot>`, one `PROF\|<skillId>\|<value>\|<max>` line per profession, one `RECIPE\|<skillId>\|<spellId>\|<itemId or 0>\|<orange>\|<yellow>\|<green>\|<grey>\|<order>` line per known recipe (item 0 = enchant, `<order>` is `ok` or the craft-order refusal reason and is missing on older servers), one `RECIPE_MISSING\|<skillId>\|<spellId>\|<itemId or 0>\|<reqSkill>\|<recipeItemId or 0>` line per learnable-but-unknown recipe (recipeItemId 0 = trainer only), and `PROF_END\|<bot>\|<recipeCount>\|<missingCount>` (`<missingCount>` missing on older servers, read as 0). The addon keeps the reply only when both counts match the lines received. |
 | `TBM:ACTION_ACK`, `TBM:ACTION_ERR` | Status line and Log tab result of each order |
 | `TBM:RUN` | [Dungeon run](../play/dungeon-run.md) status (a stop-before-boss run appends `until boss (step N)`) |
 | `TBM:RAID_LAYOUT` | [Dungeon run](../play/dungeon-run.md) raid layout (`<bots>|<tanks>|<tankHealers>|<raidHealers>|<groups>`, tanks main first) and `warning|<text>` lines; the bind ACK scope is `raid` |

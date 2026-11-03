@@ -1651,6 +1651,27 @@ local cases = {
             TB.botPanel.spellAsk.scripts.OnClick(TB.botPanel.spellAsk)
         end,
     },
+    -- ── Professions view: one request on open, Refresh re-asks ──────
+    {
+        id = "botpanel.professions.open",
+        expected = { ".bot inv Alpha", ".bot professions Alpha" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,professions")
+            TB.OpenBotPanel("Alpha")
+            this = TB.botPanel.tabProfs
+            TB.botPanel.tabProfs.scripts.OnClick(TB.botPanel.tabProfs)
+        end,
+    },
+    {
+        id = "botpanel.professions.refresh",
+        expected = { ".bot inv Alpha", ".bot inv Alpha", ".bot professions Alpha" },
+        trigger = function()
+            TB.OpenBotPanel("Alpha", "gear")
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,professions")
+            this = TB.botPanel.refreshButton
+            TB.botPanel.refreshButton.scripts.OnClick(TB.botPanel.refreshButton)
+        end,
+    },
     {
         id = "p6.spells.parse",
         expected = { ".bot inv Alpha", ".bot command Alpha spells" },

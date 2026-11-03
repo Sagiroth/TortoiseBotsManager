@@ -298,8 +298,17 @@ end
 --   TBM:INV_EQ|<slot>|<itemId>|<durability>|<maxDurability>
 --   TBM:INV_ITEM|<bag>|<slot>|<itemId>|<count>|<flags>
 --   TBM:INV_END|<bot>|<free>|<total>
+-- Professions snapshot (reply to ".bot professions"):
+--   TBM:PROF_BEGIN|<bot>
+--   TBM:PROF|<skillId>|<value>|<max>
+--   TBM:RECIPE|<skillId>|<spellId>|<itemId or 0>|<orange>|<yellow>|<green>|<grey>[|<order>]
+--   TBM:RECIPE_MISSING|<skillId>|<spellId>|<itemId or 0>|<reqSkill>|<recipeItemId or 0>
+--   TBM:PROF_END|<bot>|<recipeCount>[|<missingCount>]
+-- The END commits only when both counts match the lines received; an old
+-- 3-field END (no missing count) commits with zero missing lines.
 local botStateReceiving = nil
 local inventoryReceiving = nil
+local professionsReceiving = nil
 
 local function parseStateFields(text)
     local state = {}
@@ -378,6 +387,57 @@ function TB.ParseBotPanelMessage(msg)
                 upgrade = string.find(flags, "u", 1, true) ~= nil,
                 noTrade = string.find(flags, "b", 1, true) ~= nil,
             })
+        end
+        return true
+    end
+    if string.sub(msg, 1, 15) == "TBM:PROF_BEGIN|" then
+        local name = TB.NormalizeName(string.sub(msg, 16)) or nil
+        if name and name ~= "" then
+            professionsReceiving = { name = name, skills = {}, recipes = {}, missing = {} }
+        else
+            professionsReceiving = nil
+        end
+        return true
+    end
+    if string.sub(msg, 1, 9) == "TBM:PROF|" then
+        local fields = splitProtocol(string.sub(msg, 10))
+        if professionsReceiving and table.getn(fields) == 3 and numberFields(fields, 1, 3) then
+            table.insert(professionsReceiving.skills, {
+                skill = tonumber(fields[1]), value = tonumber(fields[2]),
+                max = tonumber(fields[3]),
+            })
+        end
+        return true
+    end
+    if string.sub(msg, 1, 11) == "TBM:RECIPE|" then
+        local recipe = TB.ParseProfessionRecipeLine and TB.ParseProfessionRecipeLine(msg) or nil
+        if professionsReceiving and recipe then table.insert(professionsReceiving.recipes, recipe) end
+        return true
+    end
+    if string.sub(msg, 1, 19) == "TBM:RECIPE_MISSING|" then
+        local fields = splitProtocol(string.sub(msg, 20))
+        if professionsReceiving and table.getn(fields) == 5 and numberFields(fields, 1, 5) then
+            table.insert(professionsReceiving.missing, {
+                skill = tonumber(fields[1]), spell = tonumber(fields[2]),
+                item = tonumber(fields[3]), reqSkill = tonumber(fields[4]),
+                recipeItem = tonumber(fields[5]),
+            })
+        end
+        return true
+    end
+    -- Old 3-field END (no missing count) commits with zero missing lines.
+    local _, _, profEndBot, profRecipes, profMissing = string.find(msg or "", "^TBM:PROF_END|([^|]*)|(%d+)|?(%d*)$")
+    if profEndBot then
+        local batch = professionsReceiving
+        professionsReceiving = nil
+        local name = TB.NormalizeName(profEndBot) or nil
+        local wantRecipes = tonumber(profRecipes)
+        local wantMissing = (profMissing and profMissing ~= "") and tonumber(profMissing) or 0
+        if batch and name == batch.name and wantRecipes and wantMissing
+            and table.getn(batch.recipes) == wantRecipes
+            and table.getn(batch.missing) == wantMissing
+            and TB.SetProfessions then
+            TB.SetProfessions(name, { skills = batch.skills, recipes = batch.recipes, missing = batch.missing })
         end
         return true
     end
@@ -718,6 +778,7 @@ function TB.OnSystemMessage(msg)
             if TB.NoteRunCaps then TB.NoteRunCaps() end
             if TB.NoteLootCaps then TB.NoteLootCaps() end
             if TB.NoteOrderCaps then TB.NoteOrderCaps() end
+            if TB.NoteProfessionsCaps then TB.NoteProfessionsCaps() end
             if TB.Refresh then TB.Refresh() end
             TB.lastSystem = msg
             return

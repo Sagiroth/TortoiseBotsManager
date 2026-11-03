@@ -1546,7 +1546,124 @@ assert(lastAddon() == "command Alpha cast Fireball", "clicking a spell casts it 
 TB.SetSpellPending("Alpha", false)
 TB.CloseBotPanel()
 
--- ── Bot vault (P8): bank + mailbox for the panel bot ─────────────────────
+-- ── Bot professions: parse, count gate, tooltip, colour, search, Craft prefill
+TB.OnSystemMessage("TBM:TRANSPORT|party")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,professions")
+assert(TB.HasProfessionsCapability(), "the professions token enables the view")
+TB.OpenBotPanel("Alpha")
+now = now + 1
+TB.botPanel.tabProfs.scripts.OnClick(TB.botPanel.tabProfs)
+assert(TB.botPanel.profs.visible and not TB.botPanel.spells.visible, "Professions tab shows its own view")
+assert(lastAddon() == "professions Alpha", "opening the view requests the snapshot once")
+assert(TB.GetProfessions("Alpha") == nil, "no cache before the reply")
+do
+itemCache[118] = { name = "Minor Healing Potion", quality = 1, texture = "Interface\\Icons\\INV_Potion_49" }
+itemCache[2453] = { name = "Elixir of Minor Fortitude", quality = 1, texture = "Interface\\Icons\\INV_Potion_02" }
+itemCache[1710] = { name = "Recipe: Elixir of Minor Fortitude", quality = 2, texture = "Interface\\Icons\\INV_Scroll_03" }
+itemCache[3860] = { name = "Copper Ore", quality = 1, texture = "Interface\\Icons\\INV_Ore_Copper_01" }
+itemCache[765] = { name = "Silverleaf", quality = 1, texture = "Interface\\Icons\\INV_Misc_Herb_03" }
+TB.OnSystemMessage("TBM:PROF_BEGIN|Alpha")
+TB.OnSystemMessage("TBM:PROF|186|245|300")
+TB.OnSystemMessage("TBM:PROF|182|230|300")
+TB.OnSystemMessage("TBM:RECIPE|186|2651|3860|1|25|50|100|ok")
+TB.OnSystemMessage("TBM:RECIPE|182|1972|765|1|25|50|100|bound")
+TB.OnSystemMessage("TBM:RECIPE_MISSING|182|1973|118|50|0")
+TB.OnSystemMessage("TBM:RECIPE_MISSING|182|6259|2453|60|1710")
+TB.OnSystemMessage("TBM:PROF_END|Alpha|2|2")
+local profs = TB.GetProfessions("Alpha")
+assert(profs and table.getn(profs.skills) == 2 and table.getn(profs.recipes) == 2
+    and table.getn(profs.missing) == 2, "the full snapshot commits")
+assert(TB.ProfessionTooltipLine("Alpha") == "Mining 245/300, Herbalism 230/300",
+    "the guild tooltip line names each skill with value/max")
+assert(TB.ProfessionTooltipLine("Silver") == nil, "no cache means no tooltip line")
+local parsed = TB.ParseProfessionRecipeLine("TBM:RECIPE|186|2651|3860|1|25|50|100|ok")
+assert(parsed and parsed.skill == 186 and parsed.spell == 2651 and parsed.item == 3860
+    and parsed.orange == 1 and parsed.grey == 100 and parsed.order == "ok", "the 8-field RECIPE line parses")
+local legacy = TB.ParseProfessionRecipeLine("TBM:RECIPE|186|2651|3860|1|25|50|100")
+assert(legacy and legacy.order == nil and TB.ProfessionRecipeOrderable(legacy), "a missing field falls back to the itemId rule")
+assert(TB.ParseProfessionRecipeLine("TBM:RECIPE|186|2651") == nil, "a short RECIPE line drops")
+assert(TB.ProfessionRecipeColor(parsed, 245) == "grey", "past grey reads grey")
+assert(TB.ProfessionRecipeColor(parsed, 150) == "grey", "150 is past grey 100")
+assert(TB.ProfessionRecipeColor(parsed, 75) == "green", "past green reads green")
+assert(TB.ProfessionRecipeColor(parsed, 30) == "yellow", "past yellow reads yellow")
+assert(TB.ProfessionRecipeColor(parsed, 1) == "orange", "at orange stays orange")
+assert(TB.ProfessionRecipeOrderable(parsed), "an ok verdict is orderable")
+assert(TB.ProfessionRecipeOrderReason(parsed) == nil, "an ok verdict names no reason")
+local bopRecipe = TB.ParseProfessionRecipeLine("TBM:RECIPE|182|1972|765|1|25|50|100|bound")
+assert(not TB.ProfessionRecipeOrderable(bopRecipe), "a bound verdict is not orderable")
+assert(TB.ProfessionRecipeOrderReason(bopRecipe) == "Soulbound when made, cannot be handed over",
+    "a bound verdict names its plain reason")
+local enchantRecipe = TB.ParseProfessionRecipeLine("TBM:RECIPE|333|7428|0|1|25|50|100|enchant")
+assert(not TB.ProfessionRecipeOrderable(enchantRecipe), "item 0 stays unorderable with the field")
+assert(TB.ProfessionRecipeOrderReason(enchantRecipe) == "Enchants cannot be ordered yet",
+    "enchants name their plain reason")
+assert(TB.ProfessionMissingSourceText({ recipeItem = 0 }) == "Trainer", "a missing trainer recipe says Trainer")
+assert(TB.ProfessionMissingSourceText({ recipeItem = 1710 }) == "Recipe: Elixir of Minor Fortitude",
+    "a missing recipe item names its item")
+TB.OpenBotPanel("Alpha", "profs")
+local shown = 0
+for _, row in ipairs(TB.botPanel.profRows) do if row:IsVisible() then shown = shown + 1 end end
+assert(shown > 3, "headers, recipes and the missing group all render rows")
+assert(TB.botPanel.profRows[1].label:GetText() == "Mining 245/300 [||||||||..]",
+    "the first header names the skill with its bar")
+TB.botPanel.profSearch.text = "copper"
+this = TB.botPanel.profSearch
+TB.botPanel.profSearch.scripts.OnTextChanged(TB.botPanel.profSearch)
+local copperRows = 0
+for _, row in ipairs(TB.botPanel.profRows) do
+    if row:IsVisible() and row.recipe then copperRows = copperRows + 1 end
+end
+assert(copperRows == 1 and TB.botPanel.profRows[2].recipe.item == 3860,
+    "the search keeps only the matching made item")
+TB.botPanel.profSearch.text = "fortitude"
+this = TB.botPanel.profSearch
+TB.botPanel.profSearch.scripts.OnTextChanged(TB.botPanel.profSearch)
+assert(TB.botPanel.profRows[3].label:GetText() == "- Not learned yet (1)",
+    "a filtered search still shows the missing group with its count")
+TB.botPanel.profSearch.text = ""
+this = TB.botPanel.profSearch
+TB.botPanel.profSearch.scripts.OnTextChanged(TB.botPanel.profSearch)
+TB.OnSystemMessage("TBM:PROF_BEGIN|Alpha")
+TB.OnSystemMessage("TBM:PROF|186|245|300")
+TB.OnSystemMessage("TBM:RECIPE|186|2651|3860|1|25|50|100|ok")
+TB.OnSystemMessage("TBM:PROF_END|Alpha|2|0")
+assert(table.getn(TB.GetProfessions("Alpha").recipes) == 2, "a short reply does not clobber the cache")
+TB.OnSystemMessage("TBM:PROF_BEGIN|Alpha")
+TB.OnSystemMessage("TBM:RECIPE|186|2651|3860|1|25|50|100|ok")
+TB.OnSystemMessage("TBM:RECIPE_MISSING|182|1973|118|50|0")
+TB.OnSystemMessage("TBM:PROF_END|Alpha|1")
+assert(table.getn(TB.GetProfessions("Alpha").missing) == 2, "a missing count that does not match keeps the cached reply")
+canEditOfficerNote = true
+function CanEditOfficerNote() return canEditOfficerNote end
+TB.OpenBotPanel("Alpha", "profs")
+assert(TB.PrefillCraftOrder("Alpha", parsed), "the Craft button prefills a known orderable recipe")
+assert(TB.orderWindow:IsVisible() and TB.GetOrderKind() == "craft"
+    and TB.GetOrderSelection() == 3860, "prefill opens the window with Craft and the item picked")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Alpha craft 3860 10 inf", "Send gives a normal craft order")
+TB.OnSystemMessage("TBM:ACTION_ERR|order|needsprofession|That item needs a profession to use.")
+assert(string.find(TB.GetOrderFeedback().text, "That item needs a profession to use.", 1, true),
+    "a refused craft order shows the server text in the window")
+TB.CloseOrderWindow()
+TB.SetOrderKind("farm")
+assert(not TB.PrefillCraftOrder("Alpha", enchantRecipe), "enchants get no prefill")
+assert(not TB.PrefillCraftOrder("Alpha", bopRecipe), "refused verdicts get no prefill")
+assert(TB.OrderReasonLabel("cooldown") == "long recipe cooldown", "craft refusal reasons have plain labels")
+TB.OpenBotPanel("Alpha", "profs")
+assert(lastAddon() ~= "professions Alpha", "a cached reply is not re-asked on open")
+canEditOfficerNote = false
+TB.RefreshBotPanel()
+assert(not TB.botPanel.profRows[2].craft:IsVisible(), "no order right hides the Craft button")
+canEditOfficerNote = true
+TB.RefreshBotPanel()
+assert(TB.botPanel.profRows[2].craft:IsVisible() and TB.botPanel.profRows[2].craft.enabled,
+    "an orderable recipe shows an enabled Craft button")
+assert(TB.botPanel.profRows[4].craft:IsVisible() and TB.botPanel.profRows[4].craft.enabled == false,
+    "a refused recipe shows a disabled Craft button")
+TB.CloseOrderWindow()
+TB.CloseBotPanel()
+end
 TB.OpenBotPanel("Alpha")
 assert(TB.botPanel.vaultButton and TB.botPanel.vaultButton.visible, "the panel links to bank and mail")
 now = now + 1
