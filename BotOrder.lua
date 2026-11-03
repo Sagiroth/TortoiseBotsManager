@@ -131,6 +131,8 @@ local REASON_LABEL = {
     needitems = "needs items from you",
     nobanker = "no banker in reach", bankdenied = "bank refused withdrawal",
     noauctioneer = "no auctioneer in reach", nolisting = "nothing fitting on the AH",
+    enchant = "enchants cannot be ordered yet", bound = "soulbound when made",
+    needsprofession = "needs a profession to use", cooldown = "long recipe cooldown",
 }
 local SOURCE_LABEL = { drop = "drop", skin = "skin", herb = "herb", ore = "ore", fish = "fish", craft = "craft", ah = "AH" }
 local SKILL_NAMES = {
@@ -1558,7 +1560,7 @@ function TB.OnOrderAck(packet)
         TB.SetStatus(text .. ".", "ok")
     end
     if bot and TB.GetOrderWindowBot and TB.GetOrderWindowBot() == bot then
-        TB.CloseOrderWindow()
+        if TB.CloseOrderWindow then TB.CloseOrderWindow() end
     end
     if TB.RefreshGuildView then TB.RefreshGuildView() end
     return true
@@ -1650,7 +1652,7 @@ function TB.NoteOrderCaps()
     stepsFlightAt = nil
     searchBot, searchCat = nil, nil
     pendingSearchCat = nil
-    TB.CloseOrderWindow()
+    if TB.CloseOrderWindow then TB.CloseOrderWindow() end
     if TB.RefreshGuildView then TB.RefreshGuildView() end
 end
 
@@ -2645,6 +2647,32 @@ end
 function TB.CloseOrderWindow()
     searchPendingAt = nil
     if win then win:Hide() end
+end
+
+-- Professions view Craft button: opens the window with Craft picked and the
+-- recipe's item already selected. The item lands in the search cache with
+-- names the search verdicts as the source, so Send produces the normal
+-- craft order message. Hidden or disabled unless the server verdict allows
+-- it and the player may give orders.
+function TB.PrefillCraftOrder(bot, recipe)
+    bot = norm(bot)
+    if not bot or not recipe then return false end
+    local itemId = math.floor(tonumber(recipe.item) or 0)
+    if itemId <= 0 then return false end
+    if TB.ProfessionRecipeOrderable and not TB.ProfessionRecipeOrderable(recipe) then return false end
+    if not TB.OpenOrderWindow(bot) then return false end
+    TB.SetOrderKind("craft")
+    local name = nil
+    if GetItemInfo then name = GetItemInfo(itemId) end
+    name = name or ("item #" .. tostring(itemId))
+    lastSearch = { bot = windowBot, kind = "craft", text = name,
+        cat = orderCat, items = { {
+            itemId = itemId, item = name,
+            quality = nil, sources = { "craft" }, minLevel = 0,
+            skill = nil, verdict = "ok", zone = nil, chance = 0,
+        } } }
+    TB.SetOrderSelection(itemId)
+    return true
 end
 
 -- Rank menu: a dropdown listing the guild's ranks by name (guild master

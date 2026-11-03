@@ -2,8 +2,8 @@
 id: play-bot-panel
 title: Bot Panel
 category: play
-summary: The per-bot window for gear, bags, behaviour switches, spells, NPC errands, bank and mail.
-tags: [bot-panel, gear, bags, inventory, behaviour, spells, bank, mail]
+summary: The per-bot window for gear, bags, behaviour switches, spells, professions, NPC errands, bank and mail.
+tags: [bot-panel, gear, bags, inventory, behaviour, spells, professions, bank, mail]
 relates_to:
   - play-party-roster
   - play-fight-camp
@@ -28,6 +28,7 @@ Everything shown comes from the server; each click sends one request and the ser
 | Bags | Every bag item; a green **+** marks an upgrade for this bot. Click an item for the item menu. **Equip upgrades** equips everything better from new loot. | `.bot inv <bot>`, `.bot command <bot> d equip upgrades` |
 | Behaviour | Per-bot switches stored on the server (below). | `.bot behavior <bot> <key> on\|off` |
 | Spells | What the bot can cast (**Ask for spellbook**). Click a spell and the bot casts it. | `.bot command <bot> spells`, `.bot command <bot> cast <spell>` |
+| Professions | Trade skills with skill bars, known recipes coloured for this bot's skill, and a collapsed **Not learned yet** group per skill. A search box filters both lists. Needs the `professions` capability. | `.bot professions <bot>` |
 
 ### Item menu
 
@@ -59,12 +60,22 @@ Module: [item equip](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/pla
 
 Module: [`.bot behavior`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior).
 
+### Professions
+
+Opening the tab asks the server once (`.bot professions <bot>`); **Refresh** in the view, or the panel footer, asks again. The reply is cached for the session. Each skill shows its value and max with a bar. Each known recipe shows the made item (or the enchant name when there is no item) in the colour it has for this bot's skill, like in your own trade skill window: orange, yellow, green or grey (grey gives no more skill-ups). The tooltip names the reagents (item tooltip for made items, spell tooltip for enchants).
+
+Each orderable recipe has a **Craft** button that opens the [order window](party-roster-guild.md#guild-orders) with Craft and that item already picked; sending it gives a normal craft order. The button is disabled with the server's plain reason when the recipe cannot be ordered (enchants cannot be ordered yet, soulbound when made, needs a profession to use, long cooldown). Without the order feature, or without the right to give orders, the button is hidden instead.
+
+Under each skill a collapsed **Not learned yet (N)** group lists recipes the bot could still learn at its current rank: each row names the made item, the required skill and where it comes from (**Trainer**, or the recipe item that teaches it, so you know what to hand over). The search box filters known and missing recipes by item name.
+
+Hovering a [guild bot's row](party-roster-guild.md#guild-tab) shows its skills (`Mining 245/300, Herbalism 230/300`) whenever a cached reply exists; hovering never sends a request.
+
 ## Footer buttons
 
 | Button | What it does | Sends | Module |
 | :--- | :--- | :--- | :--- |
 | Trade | Opens a trade window; put items or gold in and accept, the bot accepts on its own. | `.bot item <bot> trade` | [trade](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-item-trade) |
-| Refresh | Reload gear, bags and behaviour. | `.bot inv <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
+| Refresh | Reload gear, bags, behaviour and professions. | `.bot inv <bot>`, `.bot professions <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
 | Upkeep | Restock food, drink, reagents, ammo and repairs. Bot must be online. | `.bot maintenance <bot>` | [maintenance](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-maintenance) |
 | AutoGear | Equip the best gear the bot already has in its bags. | `.bot autogear <bot>` | [autogear](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-autogear) |
 | NPC | NPC errands (below). | | |

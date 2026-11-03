@@ -307,6 +307,168 @@ function TB.SendBotCast(name, spellName)
     return TB.SendBotCommand("command " .. name .. " cast " .. spellName)
 end
 
+-- ── professions model ─────────────────────────────────────────────────────────
+-- Structured reply to ".bot professions": skills with value/max, known
+-- recipes with the 1.12 difficulty steps, and missing (learnable but
+-- unknown) recipes. Cached per bot for the session; hovering a guild row
+-- never sends, only the Professions view and Refresh ask.
+local PROF_CAP = "professions"
+local professions = {} -- [bot] = { at, skills = { { skill, value, max } },
+--   recipes = { { skill, spell, item, orange, yellow, green, grey, order } },
+--   missing = { { skill, spell, item, reqSkill, recipeItem } } }
+
+function TB.HasProfessionsCapability()
+    return TB.HasServerCapability and TB.HasServerCapability(PROF_CAP) or false
+end
+
+function TB.SetProfessions(name, snapshot)
+    name = norm(name)
+    if not name or type(snapshot) ~= "table" then return end
+    snapshot.at = now()
+    professions[name] = snapshot
+    if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(name) end
+    if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+end
+
+function TB.GetProfessions(name)
+    name = norm(name)
+    return name and professions[name] or nil
+end
+
+function TB.RequestProfessions(name)
+    if not TB.HasProfessionsCapability() then return false end
+    name = norm(name)
+    if not name then return false end
+    return TB.SendBotCommand("professions " .. name)
+end
+
+-- Drop the cache when the token vanishes mid-session (server swapped),
+-- like the run/loot/order views do.
+function TB.NoteProfessionsCaps()
+    if TB.HasProfessionsCapability() then
+        if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+        return
+    end
+    for key in pairs(professions) do professions[key] = nil end
+    if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+end
+
+-- TBM:RECIPE|<skillId>|<spellId>|<itemId or 0>|<orange>|<yellow>|<green>|<grey>[|<order>].
+-- The order field is the server's craft-order verdict (ok or a reason
+-- token); a missing field (older server) falls back to the itemId rule.
+function TB.ParseProfessionRecipeLine(msg)
+    if string.sub(msg or "", 1, 11) ~= "TBM:RECIPE|" then return nil end
+    local text = string.sub(msg, 12)
+    local fields = {}
+    local start = 1
+    while true do
+        local at = string.find(text, "|", start, true)
+        if at then
+            table.insert(fields, string.sub(text, start, at - 1))
+            start = at + 1
+        else
+            table.insert(fields, string.sub(text, start))
+            break
+        end
+    end
+    local count = table.getn(fields)
+    if count ~= 7 and count ~= 8 then return nil end
+    for i = 1, 7 do
+        if not fields[i] or not string.find(fields[i], "^%d+$") then return nil end
+    end
+    local order = nil
+    if count == 8 then
+        order = TB.Trim(fields[8] or "")
+        if order == "" then return nil end
+        order = string.lower(order)
+    end
+    return {
+        skill = tonumber(fields[1]), spell = tonumber(fields[2]),
+        item = tonumber(fields[3]),
+        orange = tonumber(fields[4]), yellow = tonumber(fields[5]),
+        green = tonumber(fields[6]), grey = tonumber(fields[7]),
+        order = order,
+    }
+end
+
+-- Trade-skill difficulty for the bot's current skill: a recipe turns yellow
+-- once skill passes orange (no longer orange), green once it passes yellow,
+-- grey once it passes green. Below or at orange it stays orange.
+function TB.ProfessionRecipeColor(recipe, skillValue)
+    if not recipe then return nil end
+    skillValue = tonumber(skillValue)
+    if not skillValue then return nil end
+    if skillValue >= (tonumber(recipe.grey) or 0) then return "grey" end
+    if skillValue >= (tonumber(recipe.green) or 0) then return "green" end
+    if skillValue >= (tonumber(recipe.yellow) or 0) then return "yellow" end
+    return "orange"
+end
+
+-- The server's verdict decides the Craft button. A missing
+-- field (older server) falls back to today's itemId rule.
+local RECIPE_ORDER_REASON = {
+    ok = nil,
+    norecipe = "The bot does not know this recipe",
+    enchant = "Enchants cannot be ordered yet",
+    bound = "Soulbound when made, cannot be handed over",
+    needsprofession = "Needs a profession to use",
+    cooldown = "Long cooldown, cannot be ordered",
+}
+
+function TB.ProfessionRecipeOrderable(recipe)
+    if not recipe then return false end
+    if recipe.order then return recipe.order == "ok" end
+    return (tonumber(recipe.item) or 0) > 0
+end
+
+function TB.ProfessionRecipeOrderReason(recipe)
+    if not recipe then return nil end
+    if recipe.order then
+        if recipe.order == "ok" then return nil end
+        return RECIPE_ORDER_REASON[recipe.order] or recipe.order
+    end
+    if (tonumber(recipe.item) or 0) <= 0 then
+        return RECIPE_ORDER_REASON.enchant
+    end
+    return nil
+end
+
+-- Trade-skill names, mirroring the order search's SKILL_NAMES (BotOrder.lua).
+local PROFESSION_NAMES = {
+    ["129"] = "First Aid", ["164"] = "Blacksmithing", ["165"] = "Leatherworking",
+    ["171"] = "Alchemy", ["182"] = "Herbalism", ["185"] = "Cooking",
+    ["186"] = "Mining", ["197"] = "Tailoring", ["202"] = "Engineering",
+    ["333"] = "Enchanting", ["356"] = "Fishing", ["393"] = "Skinning",
+}
+
+function TB.ProfessionSkillName(skillId)
+    return PROFESSION_NAMES[tostring(skillId or "")] or ("Skill " .. tostring(skillId or "?"))
+end
+
+-- Guild row tooltip line: "Mining 245/300, Blacksmithing 230/300". Skills
+-- only (no recipe counts); nil without a cached reply.
+function TB.ProfessionTooltipLine(name)
+    local snapshot = TB.GetProfessions and TB.GetProfessions(name) or nil
+    if not snapshot or not snapshot.skills or table.getn(snapshot.skills) == 0 then return nil end
+    local parts = {}
+    for _, skill in ipairs(snapshot.skills) do
+        table.insert(parts, TB.ProfessionSkillName(skill.skill)
+            .. " " .. tostring(skill.value) .. "/" .. tostring(skill.max))
+    end
+    return table.concat(parts, ", ")
+end
+
+-- Missing row source: "Trainer" when taught only by a trainer
+-- (recipeItem 0), else the recipe item name (client cache or the id).
+function TB.ProfessionMissingSourceText(missing)
+    if not missing or (tonumber(missing.recipeItem) or 0) <= 0 then return "Trainer" end
+    if GetItemInfo then
+        local name = GetItemInfo(missing.recipeItem)
+        if name then return name end
+    end
+    return "item #" .. tostring(missing.recipeItem)
+end
+
 -- ── item helpers ────────────────────────────────────────────────────────────
 -- Vanilla GetItemInfo: name, link ("item:id:0:0:0"), quality, level, type,
 -- subtype, stack, equipLoc, texture. Nil until the client cached the item.
@@ -412,6 +574,9 @@ local currentBot
 local currentView = "gear"
 local bagPage = 1
 local spellPage = 1
+local profPage = 1
+local profSearch = ""
+local profCollapsed = {} -- [skillId] = true while its "Not learned yet" group stays shut
 local pendingGive = nil       -- { bot, bag, slot } awaiting the trade window
 local behaviorPending = {}    -- [bot .. "|" .. key] = true
 local pendingLink = nil       -- { bot, verb, id, label } awaiting the client item cache
@@ -825,14 +990,16 @@ local function createPanel()
     close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
     close:SetScript("OnClick", function() TB.CloseBotPanel() end)
 
-    panel.tabGear = makeTab(panel, "Gear", 10, 68, "gear")
-    panel.tabBags = makeTab(panel, "Bags", 82, 76, "bags")
-    panel.tabBehavior = makeTab(panel, "Behaviour", 162, 78, "behavior")
-    panel.tabSpells = makeTab(panel, "Spells", 244, 76, "spells")
+    panel.tabGear = makeTab(panel, "Gear", 10, 58, "gear")
+    panel.tabBags = makeTab(panel, "Bags", 72, 58, "bags")
+    panel.tabBehavior = makeTab(panel, "Behaviour", 134, 62, "behavior")
+    panel.tabSpells = makeTab(panel, "Spells", 200, 56, "spells")
+    panel.tabProfs = makeTab(panel, "Professions", 260, 60, "profs")
     setTooltip(panel.tabGear, "Gear", { "What the bot wears. Click a slot to unequip." })
     setTooltip(panel.tabBags, "Bags", { "Everything in the bot's bags. Click an item to equip it or take it." })
     setTooltip(panel.tabBehavior, "Behaviour", { "Per-bot combat habits, stored on the server." })
     setTooltip(panel.tabSpells, "Spells", { "What this bot can cast. Click a spell to cast it." })
+    setTooltip(panel.tabProfs, "Professions", { "Trade skills, recipes and what the bot could still learn.", "Asks the server once; Refresh asks again." })
 
     -- Gear view: paper doll around the bot's 3D model.
     local gear = CreateFrame("Frame", nil, panel)
@@ -998,6 +1165,102 @@ local function createPanel()
     nextBtn:SetScript("OnClick", function() spellPage = spellPage + 1; TB.RefreshBotPanel() end)
     panel.spellNext = nextBtn
 
+    -- Professions view: skills with value/max, known recipes under each,
+    -- and a collapsed "Not learned yet" group per skill. One text search
+    -- filters both. Footer Refresh re-asks the server; the view itself
+    -- asks once when it has no cache yet.
+    local PROF_ROWS = 9
+    local profsView = CreateFrame("Frame", nil, panel)
+    profsView:SetAllPoints(panel)
+    panel.profs = profsView
+    local profTitle = profsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    profTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -78)
+    profTitle:SetText("Trade skills and recipes (from the server)")
+    TB.SetTextColor(profTitle, color("gold"))
+    local search = CreateFrame("EditBox", "TortoiseBotsManagerProfessionsSearch", profsView, "InputBoxTemplate")
+    search:SetWidth(PW - 24); search:SetHeight(20)
+    search:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -96)
+    search:SetAutoFocus(false)
+    search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+    search:SetScript("OnTextChanged", function()
+        profSearch = TB.Trim(this:GetText() or "")
+        profPage = 1
+        TB.RefreshBotPanel()
+    end)
+    panel.profSearch = search
+    panel.profRows = {}
+    for i = 1, PROF_ROWS do
+        local row = CreateFrame("Button", nil, profsView)
+        row:SetWidth(PW - 24); row:SetHeight(20)
+        row:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -120 - (i - 1) * 22)
+        row:EnableMouse(true)
+        row:RegisterForClicks("LeftButtonUp")
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetWidth(16); row.icon:SetHeight(16)
+        row.icon:SetPoint("LEFT", row, "LEFT", 2, 0)
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.label:SetPoint("LEFT", row, "LEFT", 22, 0)
+        row.label:SetWidth(196); row.label:SetJustifyH("LEFT")
+        row.craft = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+        row.craft:SetWidth(44); row.craft:SetHeight(16)
+        row.craft:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        row.craft:SetText("Craft")
+        row:SetScript("OnClick", function()
+            if this.group and this.groupSkill then
+                profCollapsed[this.groupSkill] = not profCollapsed[this.groupSkill]
+                TB.RefreshBotPanel()
+            end
+        end)
+        row.craft:SetScript("OnClick", function()
+            local recipe = this:GetParent().recipe
+            if recipe and currentBot and TB.PrefillCraftOrder then
+                TB.PrefillCraftOrder(currentBot, recipe)
+            end
+        end)
+        row.craft:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+            local recipe = this:GetParent().recipe
+            if recipe and not TB.ProfessionRecipeOrderable(recipe) then
+                GameTooltip:SetText(TB.ProfessionRecipeOrderReason(recipe) or "Cannot order")
+            else
+                GameTooltip:SetText("Craft order")
+                GameTooltip:AddLine("Opens the order window with Craft and this item picked.", 0.9, 0.9, 0.9, 1)
+            end
+            GameTooltip:Show()
+        end)
+        row.craft:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        table.insert(panel.profRows, row)
+    end
+    local profEmpty = profsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    profEmpty:SetPoint("TOPLEFT", profsView, "TOPLEFT", 12, -195)
+    profEmpty:SetWidth(260); profEmpty:SetJustifyH("CENTER")
+    profEmpty:SetText("Open this view to ask the bot for its professions.")
+    TB.SetTextColor(profEmpty, color("muted"))
+    panel.profEmpty = profEmpty
+    local profAsk = TB.StyleButton(CreateFrame("Button", nil, profsView, "UIPanelButtonTemplate"))
+    profAsk:SetWidth(150); profAsk:SetHeight(22)
+    profAsk:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
+    setTooltip(profAsk, "Refresh professions", { "Asks the bot for its skills and recipes again." })
+    profAsk:SetScript("OnClick", function()
+        if currentBot then TB.RequestProfessions(currentBot) end
+    end)
+    panel.profAsk = profAsk
+    local profPrev = TB.StyleButton(CreateFrame("Button", nil, profsView, "UIPanelButtonTemplate"))
+    profPrev:SetWidth(26); profPrev:SetHeight(20)
+    profPrev:SetPoint("LEFT", profAsk, "RIGHT", 6, 0)
+    profPrev:SetText("<")
+    profPrev:SetScript("OnClick", function() profPage = profPage - 1; TB.RefreshBotPanel() end)
+    panel.profPrev = profPrev
+    local profPageText = profsView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    profPageText:SetPoint("LEFT", profPrev, "RIGHT", 2, 0)
+    profPageText:SetWidth(52); profPageText:SetJustifyH("CENTER")
+    panel.profPageText = profPageText
+    local profNext = TB.StyleButton(CreateFrame("Button", nil, profsView, "UIPanelButtonTemplate"))
+    profNext:SetWidth(26); profNext:SetHeight(20)
+    profNext:SetPoint("LEFT", profPageText, "RIGHT", 2, 0)
+    profNext:SetText(">")
+    profNext:SetScript("OnClick", function() profPage = profPage + 1; TB.RefreshBotPanel() end)
+    panel.profNext = profNext
     -- Footer: trade, refresh, NPC errands, vault, upkeep, gear-up, every view.
     local trade = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     trade:SetWidth(44); trade:SetHeight(22)
@@ -1015,9 +1278,10 @@ local function createPanel()
     refresh:SetWidth(56); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 3, 0)
     refresh:SetText("Refresh")
-    setTooltip(refresh, "Refresh", { "Reload gear, bags and behaviour from the server." })
+    setTooltip(refresh, "Refresh", { "Reload gear, bags, behaviour and professions from the server." })
     refresh:SetScript("OnClick", function()
         if currentBot then TB.RequestInventory(currentBot) end
+        if currentBot then TB.RequestProfessions(currentBot) end
         if TB.PollList then TB.PollList(true) end
     end)
     panel.refreshButton = refresh
@@ -1250,12 +1514,217 @@ local function renderSpells()
     end
 end
 
+-- One filter for known and missing rows: the made item name for known
+-- recipes, the made item and the recipe item for missing ones.
+-- Spell/enchant names are not searchable in 1.12 (no spell-name lookup
+-- exists on the client).
+local function profMatches(recipe, missing, query)
+    if not query or query == "" then return true end
+    query = string.lower(query)
+    if recipe then
+        local id = tonumber(recipe.item) or 0
+        if id > 0 and GetItemInfo then
+            local name = GetItemInfo(id)
+            if name and string.find(string.lower(name), query, 1, true) then return true end
+        end
+        return false
+    end
+    if missing then
+        -- Both the made item and the recipe item identify the row: the
+        -- label names the product, the source names what to hand over.
+        for _, id in ipairs({ tonumber(missing.item) or 0, tonumber(missing.recipeItem) or 0 }) do
+            if id > 0 and GetItemInfo then
+                local name = GetItemInfo(id)
+                if name and string.find(string.lower(name), query, 1, true) then return true end
+            end
+        end
+        return false
+    end
+    return true
+end
+
+-- Flat row list behind the pager: one header row per skill with a text
+-- skill bar, known recipes under it, then the collapsed "Not learned
+-- yet (N)" group when the skill has missing recipes.
+local function profFlatRows()
+    local flat = {}
+    local snapshot = currentBot and professions[currentBot] or nil
+    if not snapshot then return flat end
+    local knownBySkill, missingBySkill = {}, {}
+    for _, recipe in ipairs(snapshot.recipes or {}) do
+        local list = knownBySkill[recipe.skill]
+        if not list then list = {}; knownBySkill[recipe.skill] = list end
+        if profMatches(recipe, nil, profSearch) then table.insert(list, recipe) end
+    end
+    for _, entry in ipairs(snapshot.missing or {}) do
+        local list = missingBySkill[entry.skill]
+        if not list then list = {}; missingBySkill[entry.skill] = list end
+        if profMatches(nil, entry, profSearch) then table.insert(list, entry) end
+    end
+    for _, skill in ipairs(snapshot.skills or {}) do
+        table.insert(flat, { kind = "skill", skill = skill })
+        for _, recipe in ipairs(knownBySkill[skill.skill] or {}) do
+            table.insert(flat, { kind = "recipe", skill = skill, recipe = recipe })
+        end
+        local missing = missingBySkill[skill.skill] or {}
+        if table.getn(missing) > 0 then
+            table.insert(flat, { kind = "group", skill = skill, count = table.getn(missing) })
+            if not profCollapsed[skill.skill] then
+                for _, entry in ipairs(missing) do
+                    table.insert(flat, { kind = "missing", skill = skill, missing = entry })
+                end
+            end
+        end
+    end
+    return flat
+end
+
+local function renderProfs()
+    local snapshot = currentBot and professions[currentBot] or nil
+    local flat = (snapshot and profFlatRows()) or {}
+    local perPage = table.getn(panel.profRows)
+    local pages = math.max(1, math.ceil(table.getn(flat) / perPage))
+    if profPage > pages then profPage = pages end
+    if profPage < 1 then profPage = 1 end
+    for i, row in ipairs(panel.profRows) do
+        local entry = flat[(profPage - 1) * perPage + i]
+        row.group = nil
+        row.groupSkill = nil
+        row.recipe = nil
+        if not entry then
+            row:Hide()
+        elseif entry.kind == "skill" then
+            local skill = entry.skill
+            local max = tonumber(skill.max) or 0
+            local filled = max > 0 and math.floor((tonumber(skill.value) or 0) / max * 10 + 0.5) or 0
+            row.icon:SetTexture(nil)
+            row.label:SetText(TB.ProfessionSkillName(skill.skill) .. " " .. tostring(skill.value)
+                .. "/" .. tostring(skill.max) .. " [" .. string.rep("|", filled)
+                .. string.rep(".", 10 - filled) .. "]")
+            row.label:SetTextColor(0.95, 0.72, 0.28)
+            row.craft:Hide()
+            row:Show()
+            row:Enable()
+        elseif entry.kind == "group" then
+            row.icon:SetTexture(nil)
+            local open = not profCollapsed[entry.skill.skill]
+            row.label:SetText((open and "- " or "+ ") .. "Not learned yet (" .. entry.count .. ")")
+            row.label:SetTextColor(0.62, 0.60, 0.56)
+            row.group = true
+            row.groupSkill = entry.skill.skill
+            row.craft:Hide()
+            row:Show()
+            row:Enable()
+        else
+            local recipe = entry.recipe
+            local missing = entry.missing
+            local skillValue = tonumber(entry.skill.value) or 0
+            -- Missing rows name the made item (what the recipe teaches);
+            -- the source suffix says Trainer or names the recipe item.
+            local id = (recipe and (tonumber(recipe.item) or 0))
+                or (missing and (tonumber(missing.item) or 0)) or 0
+            local name, texture = nil, nil
+            if id > 0 then
+                local itemName, _, _, itemTexture = itemInfo(id)
+                name, texture = itemName, itemTexture
+                if not texture then requestItem(id) end
+                if not name then name = "item #" .. tostring(id) end
+                texture = texture or "Interface\\Icons\\INV_Misc_QuestionMark"
+            else
+                name = (missing and "spell #") or "enchant #"
+                name = name .. tostring((recipe and recipe.spell) or (missing and missing.spell) or 0)
+                texture = "Interface\\Icons\\INV_Misc_QuestionMark"
+            end
+            row.icon:SetTexture(texture)
+            if recipe then
+                local colorName = TB.ProfessionRecipeColor(recipe, skillValue) or "orange"
+                row.label:SetText(name or "")
+                if colorName == "orange" then row.label:SetTextColor(1, 0.5, 0)
+                elseif colorName == "yellow" then row.label:SetTextColor(1, 0.82, 0.1)
+                elseif colorName == "green" then row.label:SetTextColor(0.30, 0.90, 0.45)
+                else row.label:SetTextColor(0.62, 0.60, 0.56) end
+            else
+                row.label:SetText(name or "")
+                row.label:SetTextColor(0.45, 0.45, 0.45)
+            end
+            row.recipe = recipe
+            if missing then
+                row.label:SetText((name or "") .. " (" .. tostring(missing.reqSkill)
+                    .. ", " .. TB.ProfessionMissingSourceText(missing) .. ")")
+            end
+            -- Without the order feature or the right to give orders the
+            -- button hides instead; per the server verdict a
+            -- refused recipe shows the button disabled with the plain
+            -- reason in its tooltip.
+            local canFeature = TB.HasOrderCapability and TB.HasOrderCapability()
+                and TB.CanGiveOrders and TB.CanGiveOrders()
+            if recipe and canFeature and TB.ProfessionRecipeOrderable(recipe) then
+                row.craft:Show()
+                row.craft:Enable()
+            elseif recipe and canFeature then
+                row.craft:Show()
+                row.craft:Disable()
+            else
+                row.craft:Hide()
+            end
+            row:SetScript("OnEnter", function()
+                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                if recipe and (tonumber(recipe.item) or 0) > 0 then
+                    if GameTooltip.SetHyperlink then
+                        GameTooltip:SetHyperlink("item:" .. recipe.item .. ":0:0:0")
+                    else
+                        GameTooltip:SetText(name or "")
+                    end
+                elseif recipe then
+                    if GameTooltip.SetHyperlink then
+                        GameTooltip:SetHyperlink("enchant:" .. recipe.spell)
+                    else
+                        GameTooltip:SetText(name or "")
+                    end
+                elseif missing and (tonumber(missing.recipeItem) or 0) > 0 then
+                    if GameTooltip.SetHyperlink then
+                        GameTooltip:SetHyperlink("item:" .. missing.recipeItem .. ":0:0:0")
+                    else
+                        GameTooltip:SetText(name or "")
+                    end
+                else
+                    GameTooltip:SetText(name or "")
+                end
+                if recipe and not TB.ProfessionRecipeOrderable(recipe) then
+                    local reason = TB.ProfessionRecipeOrderReason(recipe)
+                    if reason then GameTooltip:AddLine(reason, 0.9, 0.9, 0.9, 1) end
+                end
+                GameTooltip:Show()
+            end)
+            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            row:Show()
+            row:Enable()
+        end
+    end
+    if not snapshot then
+        if TB.HasProfessionsCapability() then
+            panel.profEmpty:SetText("Open this view to ask the bot for its professions.")
+        else
+            panel.profEmpty:SetText("The server does not list professions (no capability).")
+        end
+        panel.profEmpty:Show()
+    elseif table.getn(flat) == 0 then
+        panel.profEmpty:SetText(profSearch ~= "" and "No recipes match the search." or "No professions.")
+        panel.profEmpty:Show()
+    else
+        panel.profEmpty:Hide()
+    end
+    panel.profPageText:SetText(profPage .. " / " .. pages)
+    if profPage > 1 then panel.profPrev:Enable() else panel.profPrev:Disable() end
+    if profPage < pages then panel.profNext:Enable() else panel.profNext:Disable() end
+end
+
 function TB.RefreshBotPanel()
     if not panel or not panel:IsVisible() or not currentBot then return end
     local inv = TB.GetInventory(currentBot)
     renderHeader(inv)
-    panel.gear:Hide(); panel.bags:Hide(); panel.behavior:Hide(); panel.spells:Hide()
-    panel.tabGear:Enable(); panel.tabBags:Enable(); panel.tabBehavior:Enable(); panel.tabSpells:Enable()
+    panel.gear:Hide(); panel.bags:Hide(); panel.behavior:Hide(); panel.spells:Hide(); panel.profs:Hide()
+    panel.tabGear:Enable(); panel.tabBags:Enable(); panel.tabBehavior:Enable(); panel.tabSpells:Enable(); panel.tabProfs:Enable()
     if currentView == "bags" then
         panel.bags:Show(); panel.tabBags:Disable()
         renderBags(inv)
@@ -1265,6 +1734,12 @@ function TB.RefreshBotPanel()
     elseif currentView == "spells" then
         panel.spells:Show(); panel.tabSpells:Disable()
         renderSpells()
+    elseif currentView == "profs" then
+        panel.profs:Show(); panel.tabProfs:Disable()
+        -- Ask once on open (no cache yet); Refresh and the view's own
+        -- button re-ask. Never on a timer, never on hover.
+        if not professions[currentBot] then TB.RequestProfessions(currentBot) end
+        renderProfs()
     else
         panel.gear:Show(); panel.tabGear:Disable()
         renderGear(inv)
@@ -1288,7 +1763,7 @@ function TB.OpenBotPanel(name, view)
     if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.CloseOrderWindow then TB.CloseOrderWindow() end
     if TB.SetMode then TB.SetMode("full") end
-    if currentBot ~= name then bagPage = 1; spellPage = 1 end
+    if currentBot ~= name then bagPage = 1; spellPage = 1; profPage = 1; profSearch = "" end
     currentBot = name
     if view then currentView = view end
     hideMenu()

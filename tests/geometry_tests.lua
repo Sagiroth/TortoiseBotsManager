@@ -770,7 +770,7 @@ return function()
                     end
                 end
                 local tabs = {}
-                for _, key in ipairs({ "tabGear", "tabBags", "tabBehavior", "tabSpells" }) do
+                for _, key in ipairs({ "tabGear", "tabBags", "tabBehavior", "tabSpells", "tabProfs" }) do
                     if panel[key] then table.insert(tabs, { key, panel[key] }) end
                 end
                 childrenInside("BotPanel", panel, pr, tabs, cache, 2)
@@ -889,12 +889,28 @@ return function()
                     end
                     TB.SetSpellPending("Alpha", false)
                 end
+                if panel.profRows then
+                    local rows = {}
+                    for i, row in ipairs(panel.profRows) do
+                        table.insert(rows, { "prof" .. i, row })
+                    end
+                    childrenInside("BotPanel profs", panel, pr, rows, cache, 2)
+                    noOverlaps("BotPanel prof rows", rows, cache)
+                    if panel.profSearch and panel.profAsk and panel.profPrev
+                        and panel.profPageText and panel.profNext then
+                        local bottom = { { "search", panel.profSearch },
+                            { "ask", panel.profAsk },
+                            { "prev", panel.profPrev },
+                            { "page", panel.profPageText },
+                            { "next", panel.profNext } }
+                        childrenInside("BotPanel profs", panel, pr, bottom, cache, 2)
+                    end
+                end
             end
             TB.CloseBotPanel()
         end
     end
 
-    -- ── Item menu ────────────────────────────────────────────────────
     do
         local cache = {}
         if TB.OpenBotPanel then
