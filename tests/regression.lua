@@ -4206,6 +4206,109 @@ end
 TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
 assert(TB.GetBotOrder("Goldie") == nil, "the last confirm clears the row")
 TB.CloseOrderWindow()
+
+-- ── Player Buy cap + order preview (TBM guild-order-nobuy) ─────────────────
+-- Older servers send no token: Buy stays allowed, like today.
+assert(TB.PlayerBuyAllowed() == true, "no token means Buy stays allowed")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+assert(TB.PlayerBuyAllowed() == true, "guild-orders without the token keeps Buy")
+now = now + 1
+assert(TB.SendOrderGive("Goldie", "buy", 2318, 10) == true, "Buy sends without the token")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-nobuy")
+assert(TB.PlayerBuyAllowed() == false, "the nobuy token refuses player Buy")
+assert(TB.SendOrderGive("Goldie", "buy", 2318, 10) == false, "Buy never goes out while refused")
+now = now + 1
+assert(TB.SendOrderGive("Goldie", "farm", 2318, 10) == true, "Farm still sends while Buy is refused")
+assert(TB.RequestOrderPreview("Goldie", "buy", 2318, 10) == false, "Buy previews never go out")
+now = now + 1
+assert(TB.RequestOrderPreview("Goldie", "farm", 2318, 10) == true, "Farm previews go out")
+assert(lastAddon() == "order Goldie preview farm 2318 10", "the preview names bot, kind, item and amount")
+-- A repeat while the answer is missing reuses the pending one, never queues two.
+local beforePreview = table.getn(addonSent)
+assert(TB.RequestOrderPreview("Goldie", "farm", 2318, 10) == true, "a repeat answers true")
+assert(table.getn(addonSent) == beforePreview, "a repeat sends nothing twice")
+-- A refused Buy give shows the server text in the window.
+assert(TB.OpenOrderWindow("Goldie"), "the window reopens for the Buy refusal")
+TB.OnSystemMessage("TBM:ACTION_ERR|order|buy-disabled|Buy orders are turned off on this server. Give a Farm or Craft order instead.")
+assert(string.find(TB.GetOrderFeedback().text, "Buy orders are turned off", 1, true),
+    "a refused Buy order shows the server text in the window")
+TB.CloseOrderWindow()
+-- The window hides Buy while the token is up and shows Farm instead.
+assert(TB.OpenOrderWindow("Goldie"), "the window reopens under the token")
+TB.SetOrderKind("buy")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-nobuy")
+assert(TB.GetOrderKind() == "farm", "landing the token leaves Buy for Farm")
+assert(TB.orderWindow.kindPills.buy:IsVisible() == false, "the Buy pill hides while Buy is refused")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+assert(TB.PlayerBuyAllowed() == true, "losing the token allows Buy again")
+assert(TB.orderWindow.kindPills.buy:IsVisible(), "the Buy pill returns with the token gone")
+TB.CloseOrderWindow()
+
+-- Preview lines parse strictly: eleven fields, eleven colon counts, sane numbers.
+local previewLine = "TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:3:1:2:2:Ashenvale:1:0:1:1;2320:2:0:0:0:0:-:0:0:2:0|40|-"
+local preview = TB.ParseOrderPreviewLine(previewLine)
+assert(preview and preview.bot == "Goldie" and preview.kind == "craft"
+    and preview.itemId == 3860 and preview.want == 5 and preview.missing == 5
+    and preview.minutes == 40 and preview.goldCap == nil
+    and table.getn(preview.reagents) == 2, "preview lines parse")
+assert(preview.reagents[1].itemId == 2319 and preview.reagents[1].need == 8
+    and preview.reagents[1].bags == 3 and preview.reagents[1].farm == 2
+    and preview.reagents[1].zone == "Ashenvale" and preview.reagents[1].player == 1,
+    "reagent rows carry held, farm, zone and player counts")
+assert(preview.reagents[2].sub == 2 and preview.reagents[2].player == 0,
+    "sub-order rows parse")
+assert(TB.ParseOrderPreviewLine("TBM:ORDER_PREVIEW|Goldie|craft|3860") == nil,
+    "a short preview line is dropped")
+assert(TB.ParseOrderPreviewLine("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|nope|40|-") == nil,
+    "a bad reagent list drops the preview line")
+assert(TB.ParseOrderPreviewReagent("2319:8:3:1:2:2:Ashenvale:1:0:1") == nil,
+    "a short reagent row is dropped")
+itemCache[2319] = { name = "Iron Bar", quality = 1, texture = "Interface\\Icons\\INV_Ingot_02" }
+itemCache[2320] = { name = "Cured Light Hide", quality = 1, texture = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01" }
+local previewText = TB.OrderPreviewText(preview)
+assert(string.find(previewText, "Goldie makes 5 Iron Buckle.", 1, true),
+    "the preview names the bot, verb, amount and item: " .. tostring(previewText))
+assert(string.find(previewText, "Has: 6 Iron Bar", 1, true)
+    and string.find(previewText, "Will farm: 2 Iron Bar (Ashenvale)", 1, true)
+    and string.find(previewText, "May buy: 1 Iron Bar", 1, true)
+    and string.find(previewText, "Asks guild bots: 1 Iron Bar, 2 Cured Light Hide", 1, true)
+    and string.find(previewText, "You need to send: 1 Iron Bar", 1, true)
+    and string.find(previewText, "Rough time: about 40 min.", 1, true),
+    "the preview says has, farm, buy, sub-orders, player need and time: " .. tostring(previewText))
+local farmPreview = TB.ParseOrderPreviewLine(
+    "TBM:ORDER_PREVIEW|Thorgar|farm|2318|Light Leather|10|4|easy|Ashenvale|2318:10:6:0:0:4:Ashenvale:0:0:0:0|20|-")
+assert(string.find(TB.OrderPreviewText(farmPreview), "Thorgar gets 10 Light Leather.", 1, true)
+    and string.find(TB.OrderPreviewText(farmPreview), "You need to send: nothing.", 1, true),
+    "a farm preview uses gets and names no player need")
+local cappedPreview = TB.ParseOrderPreviewLine(
+    "TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|-|40|20000")
+assert(string.find(TB.OrderPreviewText(cappedPreview), "Spends at most: 2g.", 1, true),
+    "a capped preview names the gold cap")
+-- The reply commits only for the pending pick; anything else is ignored.
+assert(TB.OpenOrderWindow("Goldie"), "the window reopens for the preview reply")
+TB.SetOrderKind("farm")
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+this = TB.orderWindow.resultRows[1]
+TB.orderWindow.resultRows[1].scripts.OnClick(TB.orderWindow.resultRows[1])
+assert(TB.GetOrderSelection() == 2318, "the window picks the item")
+assert(lastAddon() == "order Goldie preview farm 2318 10", "picking asks the preview at once")
+assert(string.find(TB.orderWindow.previewLine:GetText(), "asking the server", 1, true),
+    "the panel says it is asking")
+TB.OnSystemMessage("TBM:ORDER_PREVIEW|Silver|farm|2318|Light Leather|10|4|easy|Ashenvale|-|20|-")
+assert(TB.GetOrderPreview() == nil, "another bot's reply commits nothing")
+TB.OnSystemMessage("TBM:ORDER_PREVIEW|Goldie|farm|2318|Light Leather|10|4|easy|Ashenvale|2318:10:6:0:0:4:Ashenvale:0:0:0:0|20|-")
+assert(TB.GetOrderPreview() ~= nil, "the matching reply commits")
+assert(string.find(TB.orderWindow.previewLine:GetText(), "Goldie gets 10 Light Leather.", 1, true),
+    "the panel shows the preview above Send")
+TB.SetOrderAmount(25)
+assert(TB.GetOrderPreview() == nil, "an amount change clears the stale preview")
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(lastAddon() == "order Goldie preview farm 2318 25", "the pause re-asks once for the new amount")
+TB.CloseOrderWindow()
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,

@@ -1499,7 +1499,7 @@ return function()
                 local items = {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
                     "hoursBox", "noLimitBox", "noLimitLabel", "keepBox", "sendBtn", "cancelBtn", "farmNote",
-                    "goldLabel", "goldBox", "accessLabel", "rankBtn" }) do
+                    "goldLabel", "goldBox", "accessLabel", "rankBtn", "previewLine" }) do
                     if win[key] then
                         table.insert(items, { key, win[key] })
                         if win[key].kind == "Button" then

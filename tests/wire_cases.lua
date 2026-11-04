@@ -49,8 +49,10 @@ local function executeTrigger(triggerFn)
     return cmds
 end
 
--- Clear any leftover queued commands and batches from earlier test suites
-drainQueue()
+-- Clear any leftover queued commands and batches from earlier test suites.
+-- The initial clear drains until empty (not just five ticks): suites that
+-- send more commands queue deeper than one fixed drain.
+for _ = 1, 10 do drainQueue() end
 local rbf = frames["TortoiseBotsManagerRosterBatchFrame"]
 local safety = 0
 while TB.IsRosterBatchActive and TB.IsRosterBatchActive() and safety < 10 do
@@ -1280,7 +1282,8 @@ local cases = {
     },
     {
         id = "guild.order.give.default",
-        expected = { ".bot order search Wirebot farm leather", ".bot order Wirebot farm 2318 10 inf" },
+        expected = { ".bot order search Wirebot farm leather", ".bot order Wirebot preview farm 2318 10",
+            ".bot order Wirebot farm 2318 10 inf" },
         trigger = function()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
             TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|0")
