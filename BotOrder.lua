@@ -103,6 +103,13 @@ function TB.HasOrderCapability()
     return TB.HasServerCapability and TB.HasServerCapability(CAP) or false
 end
 
+-- Player Buy orders are refused while the server sends guild-order-nobuy.
+-- Servers without the token keep today's behaviour (Buy allowed).
+function TB.PlayerBuyAllowed()
+    if not TB.HasServerCapability then return true end
+    return not TB.HasServerCapability("guild-order-nobuy")
+end
+
 -- The 1.12 client reports officer-note rights per rank; the server checks
 -- the same right. A missing API (or no guild) means no orders.
 function TB.CanGiveOrders()
@@ -1125,6 +1132,160 @@ function TB.ParseOrderItemLine(msg)
     }
 end
 
+-- ── order preview ─────────────────────────────────────────────────────────
+-- TBM:ORDER_PREVIEW|<bot>|<type>|<itemId>|<item>|<want>|<missing>|<difficulty>|<zone>|<reagents>|<minutes>|<goldCap>
+-- <reagents> is "itemId:need:bags:mail:bank:farm:zone:ah:vendor:sub:player;..."
+-- or "-" (zone "-" means none; names come from the server, no client map).
+-- <goldCap> is copper or "-" for no cap. A refusal rides the existing order
+-- ACTION_ERR codes (buy-disabled, norecipe, ...), never a preview line.
+local orderPreview = nil
+local previewPending = nil
+-- A re-ask after the amount changes, fired once typing pauses.
+local previewDueAt = nil
+
+-- One reagent row: exactly eleven colon fields, ids and counts whole >= 0.
+function TB.ParseOrderPreviewReagent(text)
+    local fields = {}
+    local start = 1
+    while true do
+        local at = string.find(text or "", ":", start, true)
+        if at then
+            table.insert(fields, string.sub(text, start, at - 1))
+            start = at + 1
+        else
+            table.insert(fields, string.sub(text or "", start))
+            break
+        end
+    end
+    if table.getn(fields) ~= 11 then return nil end
+    local itemId = tonumber(trim(fields[1]))
+    local need = tonumber(trim(fields[2]))
+    local bags = tonumber(trim(fields[3]))
+    local mail = tonumber(trim(fields[4]))
+    local bank = tonumber(trim(fields[5]))
+    local farm = tonumber(trim(fields[6]))
+    local zone = trim(fields[7])
+    local ah = tonumber(trim(fields[8]))
+    local vendor = tonumber(trim(fields[9]))
+    local sub = tonumber(trim(fields[10]))
+    local player = tonumber(trim(fields[11]))
+    if not itemId or not need or not bags or not mail or not bank or not farm
+        or zone == "" or not ah or not vendor or not sub or not player then return nil end
+    if itemId <= 0 or need <= 0 then return nil end
+    if bags < 0 or mail < 0 or bank < 0 or farm < 0 then return nil end
+    if ah < 0 or vendor < 0 or sub < 0 or player < 0 then return nil end
+    if zone == "-" then zone = nil end
+    return {
+        itemId = math.floor(itemId), need = math.floor(need),
+        bags = math.floor(bags), mail = math.floor(mail), bank = math.floor(bank),
+        farm = math.floor(farm), zone = zone,
+        ah = math.floor(ah), vendor = math.floor(vendor), sub = math.floor(sub),
+        player = math.floor(player),
+    }
+end
+
+function TB.ParseOrderPreviewReagents(text)
+    text = trim(text or "")
+    if text == "" or text == "-" then return {} end
+    local out = {}
+    for token in string.gfind(text, "[^;]+") do
+        local row = TB.ParseOrderPreviewReagent(trim(token))
+        if not row then return nil end
+        table.insert(out, row)
+    end
+    if table.getn(out) == 0 then return nil end
+    return out
+end
+
+-- TBM:ORDER_PREVIEW| plus its eleven fields.
+function TB.ParseOrderPreviewLine(msg)
+    if string.sub(msg or "", 1, 18) ~= "TBM:ORDER_PREVIEW|" then return nil end
+    local fields = splitProtocol(string.sub(msg, 19))
+    if table.getn(fields) ~= 11 then return nil end
+    local bot = norm(trim(fields[1]))
+    local kind = trim(fields[2])
+    local itemId = tonumber(trim(fields[3]))
+    local item = trim(fields[4])
+    local want = tonumber(trim(fields[5]))
+    local missing = tonumber(trim(fields[6]))
+    if not bot or bot == "" or kind == "" then return nil end
+    if not itemId or item == "" or not want or not missing then return nil end
+    if itemId <= 0 or want <= 0 or want > 200 or missing < 0 then return nil end
+    local reagents = TB.ParseOrderPreviewReagents(fields[9])
+    if not reagents then return nil end
+    local minutes = tonumber(trim(fields[10]))
+    if not minutes or minutes < 0 then return nil end
+    local goldCap = nil
+    if trim(fields[11]) ~= "-" then
+        goldCap = tonumber(trim(fields[11]))
+        if not goldCap or goldCap < 0 then return nil end
+        goldCap = math.floor(goldCap)
+    end
+    local difficulty = trim(fields[7])
+    if difficulty == "" or difficulty == "-" then difficulty = nil end
+    local zone = trim(fields[8])
+    if zone == "" or zone == "-" then zone = nil end
+    return {
+        bot = bot, kind = kind, itemId = math.floor(itemId), item = item,
+        want = math.floor(want), missing = math.floor(missing),
+        difficulty = difficulty, zone = zone, reagents = reagents,
+        minutes = math.floor(minutes), goldCap = goldCap,
+    }
+end
+
+function TB.GetOrderPreview()
+    return orderPreview
+end
+
+-- Drop the shown and pending preview (pick changed, bot switched, Buy lost
+-- its token): the panel hides until the next request answers.
+function TB.ClearOrderPreview()
+    orderPreview = nil
+    previewPending = nil
+    previewDueAt = nil
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+end
+
+-- Plain-words preview for the panel above Send: what the bot makes, has,
+-- farms, buys, asks for and needs from the player, plus time and gold cap.
+function TB.OrderPreviewText(preview)
+    if not preview then return nil end
+    local verb = "gets"
+    if string.lower(trim(preview.kind or "")) == "craft" then verb = "makes" end
+    local lines = {}
+    table.insert(lines, (preview.bot or "?") .. " " .. verb .. " " .. tostring(preview.want or 0)
+        .. " " .. (preview.item or "?") .. ".")
+    local has, farm, ah, sub, player = {}, {}, {}, {}, {}
+    for _, row in ipairs(preview.reagents or {}) do
+        local name = needName(row.itemId)
+        local held = (row.bags or 0) + (row.mail or 0) + (row.bank or 0)
+        if held > 0 then table.insert(has, held .. " " .. name) end
+        if (row.farm or 0) > 0 then
+            table.insert(farm, row.farm .. " " .. name
+                .. (row.zone and (" (" .. row.zone .. ")") or ""))
+        end
+        if (row.ah or 0) > 0 then table.insert(ah, row.ah .. " " .. name) end
+        if (row.vendor or 0) > 0 then table.insert(ah, row.vendor .. " " .. name .. " (shop)") end
+        if (row.sub or 0) > 0 then table.insert(sub, row.sub .. " " .. name) end
+        if (row.player or 0) > 0 then table.insert(player, row.player .. " " .. name) end
+    end
+    if table.getn(has) > 0 then table.insert(lines, "Has: " .. table.concat(has, ", ") .. ".") end
+    if table.getn(farm) > 0 then table.insert(lines, "Will farm: " .. table.concat(farm, ", ") .. ".") end
+    if table.getn(ah) > 0 then table.insert(lines, "May buy: " .. table.concat(ah, ", ") .. ".") end
+    if table.getn(sub) > 0 then table.insert(lines, "Asks guild bots: " .. table.concat(sub, ", ") .. ".") end
+    if table.getn(player) > 0 then
+        table.insert(lines, "You need to send: " .. table.concat(player, ", ") .. ".")
+    else
+        table.insert(lines, "You need to send: nothing.")
+    end
+    if (preview.minutes or 0) > 0 then
+        table.insert(lines, "Rough time: about " .. tostring(preview.minutes) .. " min.")
+    end
+    if preview.goldCap then
+        table.insert(lines, "Spends at most: " .. TB.OrderGoldText(preview.goldCap) .. ".")
+    end
+    return table.concat(lines, " ")
+end
 -- Last completed search: { bot, kind, text, cat, items }.
 local lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
 local searchBot, searchKind, searchText, searchCat = nil, "farm", "", nil
@@ -1234,6 +1395,23 @@ function TB.ParseOrderMessage(msg)
             end
             if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         end
+        return true
+    end
+    -- Order preview: one line per request, committed only while it answers
+    -- the pending pick (bot, kind, item, amount). Anything else is ignored.
+    if string.sub(msg, 1, 18) == "TBM:ORDER_PREVIEW|" then
+        local preview = TB.ParseOrderPreviewLine(msg)
+        -- A reply for another bot leaves the pending pick alone; a reply
+        -- for its bot answers it (committing only on a full match).
+        if preview and previewPending and preview.bot == previewPending.bot then
+            if string.lower(trim(preview.kind or "")) == previewPending.kind
+                and preview.itemId == previewPending.itemId
+                and preview.want == previewPending.amount then
+                orderPreview = preview
+            end
+            previewPending = nil
+        end
+        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return true
     end
     -- Step history of one bot: BEGIN opens a buffer, the ORDER_STEP lines fill
@@ -1369,6 +1547,27 @@ function TB.SendOrderSearch(bot, kind, text, cat)
     return TB.SendBotCommand(line)
 end
 
+-- Ask what the bot would do for one pick: farm and craft only, one request
+-- per pick change (never on a timer). Buy previews would promise finished
+-- goods the server refuses, so they never go out.
+function TB.RequestOrderPreview(bot, kind, itemId, amount)
+    if not TB.HasOrderCapability() then return false end
+    bot = norm(bot)
+    kind = string.lower(trim(kind or ""))
+    itemId = math.floor(tonumber(itemId) or 0)
+    amount = TB.ClampOrderAmount(amount)
+    if not bot or (kind ~= "farm" and kind ~= "craft") then return false end
+    if itemId <= 0 then return false end
+    -- One request per pick: a repeat while the answer is still missing
+    -- (double click, refresh race) reuses the pending one, never queues two.
+    if previewPending and previewPending.bot == bot and previewPending.kind == kind
+        and previewPending.itemId == itemId and previewPending.amount == amount then
+        return true
+    end
+    previewPending = { bot = bot, kind = kind, itemId = itemId, amount = amount }
+    return TB.SendBotCommand("order " .. bot .. " preview " .. kind .. " " .. itemId .. " " .. amount)
+end
+
 function TB.ClampOrderAmount(amount)
     amount = math.floor(tonumber(amount) or 0)
     if amount < AMOUNT_MIN then amount = AMOUNT_MIN end
@@ -1408,6 +1607,7 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold)
     kind = string.lower(trim(kind or ""))
     itemId = math.floor(tonumber(itemId) or 0)
     if not bot or (kind ~= "farm" and kind ~= "buy" and kind ~= "craft") then return false end
+    if kind == "buy" and not TB.PlayerBuyAllowed() then return false end
     if itemId <= 0 then return false end
     amount = TB.ClampOrderAmount(amount)
     gold = TB.ClampOrderGold(gold)
@@ -1637,6 +1837,13 @@ function TB.NoteOrderCaps()
             for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
             stepsFlightAt = nil
         end
+        -- The server can refuse player Buy orders mid-session (a restart
+        -- with the flag off): leave Buy and show Farm instead, so no Buy
+        -- give or preview goes out after the token lands.
+        if not TB.PlayerBuyAllowed() and TB.GetOrderKind and TB.GetOrderKind() == "buy" then
+            TB.SetOrderKind("farm")
+            if TB.ClearOrderPreview then TB.ClearOrderPreview() end
+        end
         if TB.RefreshGuildView then TB.RefreshGuildView() end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return
@@ -1716,6 +1923,8 @@ function TB.SetOrderKind(kind)
     if kind == orderKind then return true end
     orderKind = kind
     selectedItemId = nil
+    orderPreview = nil
+    previewPending = nil
     lastSearch = { bot = windowBot, kind = kind, text = "", cat = orderCat, items = {} }
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     -- A new kind re-runs a valid search at once: verdicts differ per kind
@@ -1750,6 +1959,8 @@ function TB.SetOrderCat(cat)
     if cat == orderCat then return true end
     orderCat = cat
     selectedItemId = nil
+    orderPreview = nil
+    previewPending = nil
     searchTouched = false
     if cat then
         searchPendingAt = nil
@@ -1777,6 +1988,13 @@ function TB.SetOrderAmount(amount)
     orderAmount = TB.ClampOrderAmount(amount)
     if win and win.amountBox and win.amountBox:GetText() ~= tostring(orderAmount) then
         win.amountBox:SetText(tostring(orderAmount))
+    end
+    -- The estimate follows the amount: a shown preview re-asks once typing
+    -- pauses (same 0.6 s pause as the search), never per keystroke or timer.
+    if selectedItemId and (orderPreview or previewPending) then
+        orderPreview = nil
+        previewPending = nil
+        previewDueAt = now() + SEARCH_DEBOUNCE
     end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
     return orderAmount
@@ -1846,6 +2064,14 @@ end
 function TB.SetOrderSelection(itemId)
     itemId = tonumber(itemId)
     selectedItemId = itemId and math.floor(itemId) or nil
+    -- A fresh pick asks at once: farm and craft only, Buy has no preview.
+    orderPreview = nil
+    previewPending = nil
+    previewDueAt = nil
+    if selectedItemId and windowBot
+        and (orderKind == "farm" or orderKind == "craft") then
+        TB.RequestOrderPreview(windowBot, orderKind, selectedItemId, orderAmount)
+    end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
 end
 
@@ -1982,6 +2208,15 @@ local function firePendingSearch()
     TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
 end
 
+-- The preview re-ask goes out after the same pause, once per amount change.
+local function firePendingPreview()
+    if not previewDueAt or now() < previewDueAt then return end
+    previewDueAt = nil
+    if not (win and windowBot and selectedItemId) then return end
+    if orderKind ~= "farm" and orderKind ~= "craft" then return end
+    TB.RequestOrderPreview(windowBot, orderKind, selectedItemId, orderAmount)
+end
+
 -- Dropdown menus (rank list, reassign targets): the 1.12 FrameXML set is
 -- UIDropDownMenu_Initialize / UIDropDownMenu_AddButton / ToggleDropDownMenu
 -- on a UIDropDownMenuTemplate frame anchored to the cursor. Each menu row
@@ -1989,7 +2224,7 @@ end
 -- without the global DropDownList frames.
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
-    win:SetWidth(OW); win:SetHeight(510 + 118)
+    win:SetWidth(OW); win:SetHeight(510 + 178)
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
@@ -2342,7 +2577,15 @@ local function createWindow()
     TB.SetTextColor(noLimitLabel, color("muted"))
     win.noLimitLabel = noLimitLabel
 
-    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 66),
+    -- What the bot would do for the current pick, asked on selection (never
+    -- on a timer). Two lines above Send; hidden until a pick has a preview.
+    local previewLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    previewLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 68))
+    previewLine:SetWidth(OW - 24); previewLine:SetJustifyH("LEFT")
+    TB.SetTextColor(previewLine, color("muted"))
+    win.previewLine = previewLine
+
+    win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 96),
         "Send order", "Give this bot the order (replaces its old one).",
         function()
             -- The boxes commit on change, but read them anyway: a valid
@@ -2384,7 +2627,7 @@ local function createWindow()
                 orderNoLimit and "inf" or orderHours, orderKeep, orderGold)
         end)
 
-    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 66),
+    win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 96),
         "Cancel order", "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.",
         function()
             if windowBot then TB.ConfirmOrderCancel(windowBot) end
@@ -2392,23 +2635,24 @@ local function createWindow()
 
     -- Fills the Send Mail form for the bot that needs items; the player
     -- presses Send. Enabled only at an open mailbox with a need (D2/D3).
-    win.sendItemsBtn = smallButton(win, "Send missing items", 176, 12, -(base + 66),
+    win.sendItemsBtn = smallButton(win, "Send missing items", 176, 12, -(base + 96),
         "Send missing items", "Fill the mail form for the bot that needs items.",
         function()
             TB.SendOrderMissingItems(TB.GetOrderWindowBot())
         end)
 
     win.statusLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 92))
+    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 122))
     win.statusLine:SetWidth(OW - 24); win.statusLine:SetJustifyH("LEFT")
     TB.SetTextColor(win.statusLine, color("muted"))
 
     win.feedbackLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 108))
+    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 138))
     win.feedbackLine:SetWidth(OW - 24); win.feedbackLine:SetJustifyH("LEFT")
 
     win:SetScript("OnUpdate", function()
         firePendingSearch()
+        firePendingPreview()
         -- Uncached items re-render once the client has them.
         if uncachedAt and now() - uncachedAt > 1 then
             uncachedAt = nil
@@ -2425,6 +2669,11 @@ function TB.RefreshOrderWindow()
     win.title:SetText("Order for " .. (windowBot or "?"))
     for kind, pill in pairs(win.kindPills or {}) do
         if pill.SetActive then pill:SetActive(kind == orderKind) end
+        -- No Buy option while the server refuses player Buy orders. Older
+        -- servers without the cap keep today's pills.
+        if kind == "buy" then
+            if TB.PlayerBuyAllowed() then pill:Show() else pill:Hide() end
+        end
     end
     for cat, pill in pairs(win.catPills or {}) do
         if pill.SetActive then pill:SetActive(cat == (orderCat or "all")) end
@@ -2580,6 +2829,23 @@ function TB.RefreshOrderWindow()
             win.hoursBox:SetTextColor(1, 1, 1)
         end
     end
+    if win.previewLine then
+        local previewText = nil
+        if orderPreview and orderPreview.bot == windowBot
+            and string.lower(trim(orderPreview.kind or "")) == string.lower(trim(orderKind or ""))
+            and orderPreview.itemId == selectedItemId
+            and orderPreview.want == orderAmount then
+            previewText = TB.OrderPreviewText(orderPreview)
+        elseif previewPending then
+            previewText = "Preview: asking the server..."
+        end
+        if previewText then
+            win.previewLine:SetText(previewText)
+            win.previewLine:Show()
+        else
+            win.previewLine:Hide()
+        end
+    end
     if win.feedbackLine then
         if feedback then
             win.feedbackLine:SetText(feedback.text)
@@ -2613,6 +2879,9 @@ function TB.OpenOrderWindow(bot)
         selectedItemId = nil
         feedback = nil
         searchPendingAt = nil
+        orderPreview = nil
+        previewPending = nil
+        previewDueAt = nil
         searchTouched = false
         lastSearch = { bot = bot, kind = orderKind, text = "", cat = nil, items = {} }
         if win.searchBox then win.searchBox:SetText("") end
