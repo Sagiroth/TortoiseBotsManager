@@ -2,6 +2,27 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.6.0 (2026-11-04)
+
+### Guild Orders
+- The order window now previews the bot's plan in plain words before you press Send: current stock, what it will farm and where, possible purchases, guild requests, and what you must hand over. [#64](https://github.com/Sagiroth/TortoiseBotsManager/pull/64)
+- Buy is hidden when the server refuses player Buy orders, matching the fairer guild order rules instead of offering a dead option. [#64](https://github.com/Sagiroth/TortoiseBotsManager/pull/64)
+
+### Professions & Crafting
+- New Professions tab in the bot panel: skill bars per profession, known recipes coloured by skill (orange, yellow, green, grey), reagents in the tooltip, and a Refresh to re-query the server. [#63](https://github.com/Sagiroth/TortoiseBotsManager/pull/63)
+- Collapsed "Not learned yet" group per profession tells you whether a recipe comes from a trainer or which recipe item to hand over. [#63](https://github.com/Sagiroth/TortoiseBotsManager/pull/63)
+- Search box filters both learned and unlearned recipe lists. [#63](https://github.com/Sagiroth/TortoiseBotsManager/pull/63)
+- Guild tab row tooltips now show the bot's professions with skill once the panel has fetched them. [#63](https://github.com/Sagiroth/TortoiseBotsManager/pull/63)
+
+### UI & Controls
+- Guild tab order buttons are no longer cramped `Ord` / `Can` / `Mv` / `Rel` labels squeezed under the status; they read clearly now. [#62](https://github.com/Sagiroth/TortoiseBotsManager/pull/62)
+- Bottom bar no longer says "Invite to Raid" and "Summon to Raid" when a plain party works too. [#62](https://github.com/Sagiroth/TortoiseBotsManager/pull/62)
+
+### Fixes
+- Opening the order window no longer throws a Lua error (`BotOrder.lua:1938: attempt to call method 'SetScript'`); the tooltip no longer lands on a plain text label that 1.12 can't script. [#62](https://github.com/Sagiroth/TortoiseBotsManager/pull/62)
+
+---
+
 ## v1.5.0 (2026-11-03)
 
 ### Compatibility & Stability
