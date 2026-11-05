@@ -1883,6 +1883,37 @@ assert(table.getn(TB.GetClaimedBots("silver")) == 1 and TB.GetClaimedBots("silve
 assert(table.getn(TB.GetClaimedBots("mage")) == 1 and TB.GetClaimedBots("mage")[1].name == "Bronze",
     "search filter must find bot by class name")
 
+-- Row professions: old 8-field rows keep working, new rows parse profs and
+-- the filter matches profession names like name/class
+parsedProfs = TB.ParseClaimedProfs("333:300;197:275")
+assert(parsedProfs and table.getn(parsedProfs) == 2 and parsedProfs[1].skill == 333
+    and parsedProfs[1].value == 300 and parsedProfs[2].skill == 197, "profs field must parse into skill/value pairs")
+assert(table.getn(TB.ParseClaimedProfs("-")) == 0, "a dash means no professions")
+assert(table.getn(TB.ParseClaimedProfs("")) == 0, "an empty field means no professions")
+assert(TB.ParseClaimedProfs("333") == nil, "a pair without a value must not parse")
+assert(TB.ParseClaimedProfs("333:abc") == nil, "a non-numeric value must not parse")
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|2")
+TB.OnSystemMessage("TBM:CLAIMED|301|Enchantee|8|60|online|0|Ironforge|1|333:300;197:275")
+TB.OnSystemMessage("TBM:CLAIMED|302|Plain|1|60|online|0|Ironforge|1|-")
+TB.OnSystemMessage("TBM:CLAIMED_END")
+profed = TB.GetClaimedBots()
+assert(table.getn(profed) == 2, "profs snapshot must replace the rows")
+assert(TB.ClaimedProfsLine(profed[1]) == "Enchanting 300, Tailoring 275",
+    "the guild tooltip line names the row professions with skill")
+assert(TB.ClaimedProfsLine(profed[2]) == nil, "a dash means no tooltip line")
+assert(table.getn(TB.GetClaimedBots("enchant")) == 1 and TB.GetClaimedBots("enchant")[1].name == "Enchantee",
+    "search filter must match profession names")
+assert(table.getn(TB.GetClaimedBots("tail")) == 1, "profession match must work on substrings")
+assert(table.getn(TB.GetClaimedBots("mine")) == 0, "an unknown profession must leave no rows")
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|1")
+TB.OnSystemMessage("TBM:CLAIMED|303|Bad|1|60|online|0|Ironforge|1|333")
+assert(table.getn(TB.GetClaimedBots()) == 2, "a malformed profs field drops the batch, keeping the last good list")
+-- Back to the original rows for the UI block below.
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|3")
+TB.OnSystemMessage("TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1")
+TB.OnSystemMessage("TBM:CLAIMED|202|Silver|5|45|online|1|Duskwood|0")
+TB.OnSystemMessage("TBM:CLAIMED|203|Bronze|8|20|offline|0|-|0")
+TB.OnSystemMessage("TBM:CLAIMED_END")
 -- UI rendering on Guild tab
 TB.ShowTab("guild")
 assert(not TB.guildFrame.emptyMsg:IsVisible(), "empty message must be hidden when bots exist")

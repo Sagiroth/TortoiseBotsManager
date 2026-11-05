@@ -55,7 +55,7 @@ Alts that play on their own in the world are marked as alt-bots. Module: [alt-bo
 
 Wandering bots you claimed into your guild with `/ginvite`, kept as raid alts. The list comes from the server's claimed-bot snapshot (needs the `claimed-roster` capability).
 
-Hovering a bot's row shows its professions with skill (`Mining 245/300, Blacksmithing 230/300`) whenever the [bot panel](bot-panel.md#professions) already fetched them (needs the `professions` capability); hovering never sends a request.
+Hovering a bot's row shows its professions with skill from the snapshot (`Enchanting 300, Tailoring 275`; older servers send no field, and the [bot panel](bot-panel.md#professions) cache stays the fallback when the row has none). Hovering never sends a request. The search box also matches profession names: typing "enchant" leaves only bots with Enchanting.
 
 ### Guild orders
 
