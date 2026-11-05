@@ -4370,30 +4370,41 @@ local function enchantOrderChecks()
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
     TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
 
-    -- Meet ACK/ERR ride the window feedback and the status line like other orders.
+    -- Meet ACK/ERR follow the lead contract: "meet coming/later/gathering"
+    -- ACKs (plus a plain system text line that paints the status), and
+    -- notcapital/noorder/busy ERRs with the text to show.
     assert(TB.OpenOrderWindow("Goldie"), "the window reopens for the Meet reply")
     now = now + 1
     assert(TB.SendOrderMeet("Goldie") == true, "the reply Meet sends")
-    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|meet")
-    assert(TB.lastActionAck and TB.lastActionAck.executor == "meet", "the Meet ACK routes")
+    -- The ACK detail paints the rows (meetBtn visibility) while the plain
+    -- system text the server sends alongside stays a chat line: the ACK must
+    -- not stamp its own status text over it.
+    local said = nil
+    local realSetStatus = TB.SetStatus
+    TB.SetStatus = function(msg) said = msg end
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|meet coming")
+    assert(TB.lastActionAck and TB.lastActionAck.executor == "meet coming",
+        "the coming ACK routes and repaints the rows")
+    assert(said == nil, "the coming ACK paints no status of its own")
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|meet later")
+    assert(TB.lastActionAck and TB.lastActionAck.executor == "meet later", "the later ACK routes")
+    assert(said == nil, "the later ACK paints no status of its own")
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|meet gathering")
+    assert(TB.lastActionAck and TB.lastActionAck.executor == "meet gathering",
+        "the gathering ACK routes")
+    assert(said == nil, "the gathering ACK paints no status of its own")
     TB.OnSystemMessage("TBM:ACTION_ERR|order|notcapital|Meet me in Stormwind.")
-    assert(TB.GetOrderFeedback() ~= nil
-        and string.find(TB.GetOrderFeedback().text, "Meet me in Stormwind.", 1, true) ~= nil,
-        "the window shows the notcapital text")
-    TB.OnSystemMessage("TBM:ACTION_ERR|order|later|I will come when I am out.")
-    assert(string.find(TB.GetOrderFeedback().text, "when I am out", 1, true) ~= nil,
-        "the window shows the later text")
-    TB.OnSystemMessage("TBM:ACTION_ERR|order|gathering|Still gathering, I will tell you.")
-    assert(string.find(TB.GetOrderFeedback().text, "Still gathering", 1, true) ~= nil,
-        "the window shows the gathering text")
-    TB.OnSystemMessage("TBM:ACTION_ERR|order|coming|On my way.")
-    assert(string.find(TB.GetOrderFeedback().text, "On my way.", 1, true) ~= nil,
-        "the window shows the coming text")
-    TB.OnSystemMessage("TBM:ACTION_ERR|order|noorder|No enchant order on Goldie.")
-    assert(string.find(TB.GetOrderFeedback().text, "No enchant order", 1, true) ~= nil,
+    assert(TB.lastActionError and TB.lastActionError.code == "notcapital", "the notcapital error routes")
+    TB.SetStatus = realSetStatus
+    assert(string.find(TB.GetOrderFeedback().text, "Meet me in Stormwind.", 1, true) ~= nil,
+        "the window shows the notcapital text too")
+    TB.OnSystemMessage("TBM:ACTION_ERR|order|noorder|That bot has no enchant order from you.")
+    assert(TB.lastActionError and TB.lastActionError.code == "noorder"
+        and string.find(TB.GetOrderFeedback().text, "no enchant order from you", 1, true) ~= nil,
         "the window shows the noorder text")
-    TB.OnSystemMessage("TBM:ACTION_ERR|order|busy|Another order runs on Goldie.")
-    assert(string.find(TB.GetOrderFeedback().text, "Another order runs", 1, true) ~= nil,
+    TB.OnSystemMessage("TBM:ACTION_ERR|order|busy|Goldie is busy with an enchant order for Other.")
+    assert(TB.lastActionError and TB.lastActionError.code == "busy"
+        and string.find(TB.GetOrderFeedback().text, "is busy with an enchant order", 1, true) ~= nil,
         "the window shows the busy text")
     TB.CloseOrderWindow()
 

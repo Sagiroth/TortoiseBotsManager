@@ -41,8 +41,11 @@
 --   TBM:ORDER_ENCHANTS_BEGIN|<n>, TBM:ORDER_ENCHANT|<spellId>|<name>|<slot>|<reqSkill>|<verdict>|<reagents>,
 --   TBM:ORDER_ENCHANTS_END (the answer to "order search <bot> enchant <text>"; <reagents> is
 --   itemId:need:have per reagent, ";" between rows, "-" when none)
---   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|enchant|cancel|rank|reassign|meet>
---   TBM:ACTION_ERR|order|<code>|<message>
+--   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|enchant|cancel|rank|reassign>
+--   TBM:ACTION_ACK|order|bot:<Bot>|1|meet coming|meet later|meet gathering (plus
+--   the same words as plain system text, which paints the status line)
+--   TBM:ACTION_ERR|order|<notcapital|noorder|busy>|<message> (the message
+--   shows as-is; the row repaints from the live TBM:ORDER line)
 -- A TBM:ORDER line inside BEGIN/END is the full list (replace the whole
 -- set); outside a pair it is a live update for one bot (update that row
 -- only). The search pair is its own stream, so an empty result is a real
@@ -1922,13 +1925,14 @@ function TB.OnOrderAck(packet)
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return true
     end
-    if packet.executor == "meet" then
-        if TB.SetStatus then
-            TB.SetStatus((bot or "Order") .. ": coming to you.", "ok")
+    if string.sub(packet.executor or "", 1, 5) == "meet " then
+        local detail = string.sub(packet.executor, 6)
+        if detail == "coming" or detail == "later" or detail == "gathering" then
+            if TB.RefreshGuildView then TB.RefreshGuildView() end
+            if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+            return true
         end
-        if TB.RefreshGuildView then TB.RefreshGuildView() end
-        if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
-        return true
+        return false
     end
     if packet.executor == "enchant" then
         if TB.SetStatus then
