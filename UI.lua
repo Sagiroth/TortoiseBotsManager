@@ -2009,6 +2009,19 @@ function TB.InitUI()
                 if entry and TB.SendOrderMeet then TB.SendOrderMeet(entry.name) end
             end)
             setButtonTooltip(meetBtn, "Ask the bot to walk to you for the enchant trade.", "Meet")
+            meetBtn.tooltipExtra = function()
+                local why = this and this.meetWhy or nil
+                if why then return why end
+                if this and not this.enabled and TB.OrderMeetState and this:GetParent() then
+                    local entry = this:GetParent().entry
+                    local order = entry and TB.GetBotOrder and TB.GetBotOrder(entry.name) or nil
+                    if order then
+                        local _, reason = TB.OrderMeetState(order)
+                        return reason
+                    end
+                end
+                return nil
+            end
             row.meetBtn = meetBtn
 
             local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -2111,6 +2124,15 @@ function TB.InitUI()
         end)
         guildFrame.fillBtn = fillBtn
 
+        local orderBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
+        orderBtn:SetWidth(56); orderBtn:SetHeight(22)
+        orderBtn:SetPoint("LEFT", fillBtn, "RIGHT", 4, 0)
+        orderBtn:SetText("Order")
+        setButtonTooltip(orderBtn, "Pick a recipe, see which guild bots know it, then order.", "Guild order")
+        orderBtn:SetScript("OnClick", function()
+            if TB.OpenGuildOrderWindow then TB.OpenGuildOrderWindow() end
+        end)
+        guildFrame.orderBtn = orderBtn
         guildFrame.guildBar = bar
         return guildFrame
     end
@@ -2466,10 +2488,15 @@ function TB.InitUI()
                 end
                 local showMeet = orderCap and order and TB.OrderNeedsMeet
                     and TB.OrderNeedsMeet(order) or false
+                local meetOk, meetWhy = false, nil
+                if showMeet and TB.OrderMeetState then
+                    meetOk, meetWhy = TB.OrderMeetState(order)
+                end
                 if row.meetBtn then
                     if showMeet then
                         row.meetBtn:Show()
-                        if mayOrder then row.meetBtn:Enable() else row.meetBtn:Disable() end
+                        if mayOrder and meetOk then row.meetBtn:Enable() else row.meetBtn:Disable() end
+                        row.meetBtn.meetWhy = meetWhy
                     else
                         row.meetBtn:Hide()
                     end
@@ -2519,6 +2546,16 @@ function TB.InitUI()
         if frame.fillBtn then
             local fillable = TB.GetFillRaidNames and TB.GetFillRaidNames() or {}
             if table.getn(fillable) > 0 then frame.fillBtn:Enable() else frame.fillBtn:Disable() end
+        end
+        if frame.orderBtn then
+            local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+            local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+            if orderCap then
+                frame.orderBtn:Show()
+                if mayOrder then frame.orderBtn:Enable() else frame.orderBtn:Disable() end
+            else
+                frame.orderBtn:Hide()
+            end
         end
     end
 
