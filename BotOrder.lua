@@ -6,6 +6,32 @@
 -- buttons, no window, no sends. Every CAPS line replaces the set, so the
 -- gate is re-checked on each one (as BotLoot.lua does).
 --
+-- Contract (TortoiseBots#1525 "Guild orders: who-can-make, materials I bring"):
+-- the guild-wide pick-a-bot mode, per-enchant search, and the bring= ticks.
+-- Sends (byte-exact, all gated on the guild-orders capability like above):
+--   "order search <craft|enchant> <text>"             -> guild-wide matches
+--     (no bot: a first argument of farm|buy|craft|enchant means no bot)
+--   "order search <Bot> enchant <text>"               -> that bot's enchants
+--   "order <bot> preview <craft> <itemId> <n> [bring=<id>,<id>]"
+--     (craft only: unticked reagents ride no field; old servers answering
+--     invalid shed the bring field first, then the pending-give tail)
+--   "order <bot> <farm|buy|craft> <itemId> <n> [hours|inf] [keep] [gold=<copper>] [bring=<id>,<id>]"
+--     (same order as today, bring last; give retry sheds bring first)
+-- Inbound:
+--   TBM:ORDER_WHO_BEGIN|<kind>|<n>, then per match
+--   TBM:ORDER_WHO|<kind>|<id>|<name>|<quality>|<slot>|<reqSkill>|<bots>,
+--   then TBM:ORDER_WHO_END. <kind> craft|enchant; <bots> is
+--   "name:skill:have:need:busy;..." online bots only, skill high to low,
+--   busy 1 while that bot runs an order ("-" or empty = none). At most 30.
+--   TBM:ORDER_ENCHANTS_BEGIN|<n>, then per match
+--   TBM:ORDER_ENCHANT|<spellId>|<name>|<slot>|<reqSkill>|<verdict>|<reagents>,
+--   then TBM:ORDER_ENCHANTS_END. <verdict> ok or a reason token;
+--   <reagents> is "itemId:need:have;..." per reagent ("-" or empty = none).
+--   TBM:ORDER_PREVIEW| and TBM:ORDER| each carry ONE new trailing <bring>
+--   field: ticked itemIds joined by ",", or "-" (missing on old servers
+--   means nothing ticked).
+-- A who or enchants pair for another bot (or the other kind) never touches
+-- the shown rows; an empty pair is a real answer.
 -- Contract (TortoiseBots#1384 "Guild orders: guild bank as the crafting store"):
 -- the player sees live who does what and can step in from the addon.
 -- Sends (byte-exact):
@@ -753,6 +779,48 @@ function TB.ParseOrderNeed(text)
     if table.getn(out) == 0 then return nil end
     return out
 end
+-- Ticked "I bring it" reagent ids for the craft preview. Resets on pick,
+-- bot switch and preview commit; auto-ticks fill from the player's bags.
+-- Declared here (before ParseOrderMessage) so the preview commit can seed
+-- the ticks; the window setters below reuse the same locals.
+local resetOrderBring
+local orderBring = {}
+function TB.GetOrderBring()
+    local out = {}
+    for _, id in ipairs(orderBring or {}) do table.insert(out, id) end
+    return out
+end
+function TB.SetOrderBring(ids)
+    local seen, out = {}, {}
+    for _, id in ipairs(ids or {}) do
+        id = math.floor(tonumber(id) or 0)
+        if id > 0 and not seen[id] then seen[id] = true table.insert(out, id) end
+    end
+    table.sort(out)
+    orderBring = out
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return TB.GetOrderBring()
+end
+function TB.ToggleOrderBring(itemId)
+    itemId = math.floor(tonumber(itemId) or 0)
+    if itemId <= 0 then return TB.GetOrderBring() end
+    local out = {}
+    local found = false
+    for _, id in ipairs(orderBring or {}) do
+        if id == itemId then found = true
+        else table.insert(out, id) end
+    end
+    if not found then table.insert(out, itemId) end
+    return TB.SetOrderBring(out)
+end
+resetOrderBring = function(reagents)
+    local out = {}
+    for _, row in ipairs(reagents or {}) do
+        if TB.OrderBringAutoTicked(row) then table.insert(out, row.itemId) end
+    end
+    orderBring = {}
+    return TB.SetOrderBring(out)
+end
 
 -- ── step history ──────────────────────────────────────────────────────────
 -- One bot's step timeline: ".bot order <bot> steps" is answered with
@@ -951,6 +1019,12 @@ function TB.ParseOrderLine(msg)
     local need = nil
     if count >= 16 and trim(fields[16]) ~= "-" then
         need = TB.ParseOrderNeed(fields[16])
+        if not need then return nil end
+    end
+    local bring = {}
+    if count >= 18 then
+        bring = TB.ParseOrderBring(fields[18])
+        if not bring then return nil end
     end
     local carry = nil
     if count >= 17 and trim(fields[17]) ~= "-" then
@@ -972,8 +1046,57 @@ function TB.ParseOrderLine(msg)
         keep = count >= 12 and string.lower(trim(fields[12])) == "keep" or false,
         parent = parent, goldCap = goldCap,
         step = count >= 15 and noneDash(fields[15]) or nil,
-        need = need, carry = carry,
+        need = need, carry = carry, bring = bring,
     }
+end
+-- ── materials I bring ─────────────────────────────────────────────────────
+-- Ticks for the craft preview: ticked ids joined by "," or "-" when none.
+-- Missing GetContainer* APIs mean no bags, never a crash.
+function TB.OrderBagCount(itemId)
+    itemId = math.floor(tonumber(itemId) or 0)
+    if itemId <= 0 then return 0 end
+    if not (GetContainerNumSlots and GetContainerItemLink and GetContainerItemInfo) then
+        return 0
+    end
+    local total = 0
+    for bag = 0, MAIL_BAGS - 1 do
+        local slots = GetContainerNumSlots(bag) or 0
+        for slot = 1, slots do
+            local link = GetContainerItemLink(bag, slot)
+            if link then
+                local _, _, idText = string.find(link, "item:(%d+)")
+                if tonumber(idText) == itemId then
+                    local _, count, locked = GetContainerItemInfo(bag, slot)
+                    if not locked and count and count > 0 then
+                        total = total + math.floor(count)
+                    end
+                end
+            end
+        end
+    end
+    return total
+end
+-- Auto-tick when the player's own bags hold the full need count of a
+-- reagent: with only part of it the bot still sources the rest, so the
+-- row stays unticked.
+function TB.OrderBringAutoTicked(reagent)
+    if not reagent then return false end
+    local need = tonumber(reagent.need) or 0
+    if need <= 0 then return false end
+    return TB.OrderBagCount(reagent.itemId) >= need
+end
+function TB.OrderBringTicked(bring, itemId)
+    itemId = math.floor(tonumber(itemId) or 0)
+    for _, id in ipairs(bring or {}) do
+        if id == itemId then return true end
+    end
+    return false
+end
+function TB.OrderBringText(bring)
+    if not bring or table.getn(bring) == 0 then return "-" end
+    local parts = {}
+    for _, id in ipairs(bring) do table.insert(parts, tostring(id)) end
+    return table.concat(parts, ",")
 end
 
 -- TBM:ORDER_ACCESS|<rankIndex>|<rankName>|<tabsOk>|<tabsDenied>|<gold 0/1>|<canSetRank 0/1>.
@@ -1106,6 +1229,123 @@ function TB.GetOrderReassignCandidates(subBot)
     table.sort(out)
     return out
 end
+-- ── guild-wide search (who-can-make) ──────────────────────────────────────
+-- TBM:ORDER_WHO|<kind>|<id>|<name>|<quality>|<slot>|<reqSkill>|<bots>:
+-- seven fields after the prefix; bots is "name:skill:have:need:busy;...",
+-- "-" when no bot knows it. Enchant matches sort by reqSkill up on the
+-- server; craft keeps today's server order.
+function TB.ParseOrderWhoBots(text)
+    text = trim(text or "")
+    if text == "" or text == "-" then return {} end
+    local out = {}
+    for token in string.gfind(text, "[^;]+") do
+        local _, _, name, skillText, haveText, needText, busyText =
+            string.find(trim(token), "^([^:]+):(%d+):(%d+):(%d+):(%d+)$")
+        local bot = norm(name)
+        local skill, have, need, busy = tonumber(skillText), tonumber(haveText),
+            tonumber(needText), tonumber(busyText)
+        if not bot or bot == "" or not skill or not have or not need or not busy then
+            return nil
+        end
+        if busy ~= 0 and busy ~= 1 then return nil end
+        table.insert(out, { bot = bot, skill = math.floor(skill),
+            have = math.floor(have), need = math.floor(need), busy = busy == 1 })
+    end
+    if table.getn(out) == 0 then return nil end
+    return out
+end
+function TB.ParseOrderWhoLine(msg)
+    if string.sub(msg or "", 1, 14) ~= "TBM:ORDER_WHO|" then return nil end
+    local fields = splitProtocol(string.sub(msg, 15))
+    if table.getn(fields) ~= 7 then return nil end
+    local kind = string.lower(trim(fields[1]))
+    if kind ~= "craft" and kind ~= "enchant" then return nil end
+    local id = tonumber(trim(fields[2]))
+    local name = trim(fields[3])
+    if not id or id <= 0 or name == "" then return nil end
+    local quality = nil
+    if trim(fields[4]) ~= "-" then
+        quality = tonumber(trim(fields[4]))
+        if not quality then return nil end
+        quality = math.floor(quality)
+    end
+    local slot = noneDash(fields[5])
+    local reqSkill = tonumber(trim(fields[6]))
+    if not reqSkill or reqSkill < 0 then return nil end
+    local bots = TB.ParseOrderWhoBots(fields[7])
+    if not bots then return nil end
+    return { kind = kind, id = math.floor(id), item = name, quality = quality,
+        slot = slot, reqSkill = math.floor(reqSkill), bots = bots }
+end
+-- TBM:ORDER_ENCHANT|<spellId>|<name>|<slot>|<reqSkill>|<verdict>|<reagents>:
+-- six fields after the prefix; reagents is "itemId:need:have;...".
+function TB.ParseOrderEnchantReagents(text)
+    text = trim(text or "")
+    if text == "" or text == "-" then return {} end
+    local out = {}
+    for token in string.gfind(text, "[^;]+") do
+        local _, _, idText, needText, haveText = string.find(trim(token), "^(%d+):(%d+):(%d+)$")
+        local id, need, have = tonumber(idText), tonumber(needText), tonumber(haveText)
+        if not id or not need or not have or id <= 0 or need <= 0 or have < 0 then
+            return nil
+        end
+        table.insert(out, { itemId = math.floor(id), need = math.floor(need), have = math.floor(have) })
+    end
+    if table.getn(out) == 0 then return nil end
+    return out
+end
+function TB.ParseOrderEnchantLine(msg)
+    if string.sub(msg or "", 1, 18) ~= "TBM:ORDER_ENCHANT|" then return nil end
+    local fields = splitProtocol(string.sub(msg, 19))
+    if table.getn(fields) ~= 6 then return nil end
+    local spellId = tonumber(trim(fields[1]))
+    local name = trim(fields[2])
+    local slot = trim(fields[3])
+    local reqSkill = tonumber(trim(fields[4]))
+    local verdict = trim(fields[5])
+    if not spellId or spellId <= 0 or name == "" or slot == "" then return nil end
+    if not reqSkill or reqSkill < 0 or verdict == "" then return nil end
+    local reagents = TB.ParseOrderEnchantReagents(fields[6])
+    if not reagents then return nil end
+    return { spellId = math.floor(spellId), item = name, slot = slot,
+        reqSkill = math.floor(reqSkill), verdict = verdict, reagents = reagents }
+end
+-- Last guild-wide search: { kind, text, rows }; last per-bot enchant
+-- search: { bot, text, rows }. Rows arrive in server order, capped at 30.
+local WHO_MAX = 30
+local lastWhoSearch = { kind = "craft", text = "", rows = {} }
+local whoReceiving, whoBot, whoKind, whoText = nil, nil, nil, nil
+local lastEnchantSearch = { bot = nil, text = "", rows = {} }
+local enchantsReceiving, enchantBot, enchantText = nil, nil, nil
+function TB.GetOrderWhoSearch()
+    return { kind = lastWhoSearch.kind, text = lastWhoSearch.text, rows = lastWhoSearch.rows or {} }
+end
+function TB.GetOrderEnchantSearch()
+    return { bot = lastEnchantSearch.bot, text = lastEnchantSearch.text, rows = lastEnchantSearch.rows or {} }
+end
+-- One who-can-make row for the pick-a-bot list: name (+ slot and required
+-- skill for enchant), then each bot "name skill have/need" with a busy mark.
+function TB.OrderWhoBotText(entry)
+    if not entry then return nil end
+    local parts = {}
+    for _, bot in ipairs(entry.bots or {}) do
+        local text = bot.bot .. " " .. tostring(bot.skill or 0)
+            .. " " .. tostring(bot.have or 0) .. "/" .. tostring(bot.need or 0)
+        if bot.busy then text = text .. " (busy)" end
+        table.insert(parts, text)
+    end
+    return table.concat(parts, ", ")
+end
+function TB.OrderWhoRowText(entry)
+    if not entry then return "" end
+    local head = entry.item or ("item #" .. tostring(entry.id or "?"))
+    if entry.kind == "enchant" then
+        head = head .. " (" .. (entry.slot or "?") .. " " .. tostring(entry.reqSkill or 0) .. ")"
+    end
+    local bots = TB.OrderWhoBotText(entry)
+    if not bots or bots == "" then return head .. " - no guild bot knows it" end
+    return head .. " - " .. bots
+end
 
 function TB.ParseOrderItemLine(msg)
     if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_ITEM|" then return nil end
@@ -1138,6 +1378,8 @@ end
 -- or "-" (zone "-" means none; names come from the server, no client map).
 -- <goldCap> is copper or "-" for no cap. A refusal rides the existing order
 -- ACTION_ERR codes (buy-disabled, norecipe, ...), never a preview line.
+-- A trailing <bring> field ("id,id" or "-", missing on old servers) names
+-- the reagents the player ticks as "I bring it".
 local orderPreview = nil
 local previewPending = nil
 -- A re-ask after the amount changes, fired once typing pauses.
@@ -1197,11 +1439,25 @@ function TB.ParseOrderPreviewReagents(text)
     return out
 end
 
--- TBM:ORDER_PREVIEW| plus its eleven fields.
+-- TBM:ORDER_PREVIEW| plus its eleven fields and the trailing <bring> tick
+-- list ("id,id", "-" or missing on old servers).
+function TB.ParseOrderBring(text)
+    text = trim(text or "")
+    if text == "" or text == "-" then return {} end
+    local out = {}
+    for token in string.gfind(text, "[^,]+") do
+        local id = tonumber(trim(token))
+        if not id or id <= 0 then return nil end
+        table.insert(out, math.floor(id))
+    end
+    if table.getn(out) == 0 then return nil end
+    return out
+end
 function TB.ParseOrderPreviewLine(msg)
     if string.sub(msg or "", 1, 18) ~= "TBM:ORDER_PREVIEW|" then return nil end
     local fields = splitProtocol(string.sub(msg, 19))
-    if table.getn(fields) ~= 11 then return nil end
+    local count = table.getn(fields)
+    if count ~= 11 and count ~= 12 then return nil end
     local bot = norm(trim(fields[1]))
     local kind = trim(fields[2])
     local itemId = tonumber(trim(fields[3]))
@@ -1221,15 +1477,16 @@ function TB.ParseOrderPreviewLine(msg)
         if not goldCap or goldCap < 0 then return nil end
         goldCap = math.floor(goldCap)
     end
-    local difficulty = trim(fields[7])
-    if difficulty == "" or difficulty == "-" then difficulty = nil end
-    local zone = trim(fields[8])
-    if zone == "" or zone == "-" then zone = nil end
+    local bring = {}
+    if count == 12 then
+        bring = TB.ParseOrderBring(fields[12])
+        if not bring then return nil end
+    end
     return {
         bot = bot, kind = kind, itemId = math.floor(itemId), item = item,
         want = math.floor(want), missing = math.floor(missing),
         difficulty = difficulty, zone = zone, reagents = reagents,
-        minutes = math.floor(minutes), goldCap = goldCap,
+        minutes = math.floor(minutes), goldCap = goldCap, bring = bring,
     }
 end
 
@@ -1397,8 +1654,85 @@ function TB.ParseOrderMessage(msg)
         end
         return true
     end
+    -- Who-can-make rows: BEGIN opens a buffer for a (kind, text) search, the
+    -- WHO lines fill it, END commits or drops the answer (over-cap answers
+    -- drop whole). A pair for another kind answers the other pick list, so
+    -- the shown rows only move for the current pick-a-bot search.
+    local _, _, whoBeginKind, whoBeginCount = string.find(msg, "^TBM:ORDER_WHO_BEGIN|([^|]+)|(%d+)$")
+    if whoBeginKind then
+        whoReceiving = { kind = string.lower(trim(whoBeginKind)),
+            expected = tonumber(whoBeginCount), rows = {} }
+        return true
+    end
+    if string.sub(msg, 1, 14) == "TBM:ORDER_WHO|" then
+        local entry = TB.ParseOrderWhoLine(msg)
+        if whoReceiving and entry and entry.kind == whoReceiving.kind then
+            if table.getn(whoReceiving.rows) < WHO_MAX then
+                table.insert(whoReceiving.rows, entry)
+            end
+        end
+        return true
+    end
+    if msg == "TBM:ORDER_WHO_END" then
+        local batch = whoReceiving
+        whoReceiving = nil
+        if batch then
+            if batch.expected and table.getn(batch.rows) > batch.expected then
+                batch.rows = {}
+            end
+            -- The shown rows follow the BEGIN kind, not the last request: a
+            -- late pair for the other kind replaces the rows with its own
+            -- answer (never stale rows under a new pill).
+            lastWhoSearch = { kind = batch.kind, text = whoText, rows = batch.rows }
+            if TB.SetStatus then
+                if table.getn(batch.rows) == 0 then
+                    TB.SetStatus("No matching recipes.", "muted")
+                else
+                    TB.SetStatus("Order search · " .. table.getn(batch.rows) .. " recipes", "ok")
+                end
+            end
+            if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        end
+        return true
+    end
+    -- Per-bot enchant rows: BEGIN opens a buffer for a bot, the ENCHANT
+    -- lines fill it in server (reqSkill-up) order, END commits for the
+    -- current pick-a-bot bot only.
+    local _, _, enchantsBeginBot, enchantsBeginCount = string.find(msg, "^TBM:ORDER_ENCHANTS_BEGIN|(%d+)$")
+    if enchantsBeginBot then
+        enchantsReceiving = { expected = tonumber(enchantsBeginBot), rows = {} }
+        return true
+    end
+    if string.sub(msg, 1, 18) == "TBM:ORDER_ENCHANT|" then
+        local entry = TB.ParseOrderEnchantLine(msg)
+        if enchantsReceiving and entry then table.insert(enchantsReceiving.rows, entry) end
+        return true
+    end
+    if msg == "TBM:ORDER_ENCHANTS_END" then
+        local batch = enchantsReceiving
+        enchantsReceiving = nil
+        if batch then
+            if batch.expected and table.getn(batch.rows) > batch.expected then
+                batch.rows = {}
+            end
+            if enchantBot then
+                lastEnchantSearch = { bot = enchantBot, text = enchantText, rows = batch.rows }
+                if TB.SetStatus then
+                    if table.getn(batch.rows) == 0 then
+                        TB.SetStatus("No matching enchants.", "muted")
+                    else
+                        TB.SetStatus("Order search · " .. table.getn(batch.rows) .. " enchants", "ok")
+                    end
+                end
+            end
+            if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        end
+        return true
+    end
     -- Order preview: one line per request, committed only while it answers
     -- the pending pick (bot, kind, item, amount). Anything else is ignored.
+    -- The commit seeds the bring ticks: the server's list first, else
+    -- auto-tick what the bags hold in full.
     if string.sub(msg, 1, 18) == "TBM:ORDER_PREVIEW|" then
         local preview = TB.ParseOrderPreviewLine(msg)
         -- A reply for another bot leaves the pending pick alone; a reply
@@ -1408,6 +1742,12 @@ function TB.ParseOrderMessage(msg)
                 and preview.itemId == previewPending.itemId
                 and preview.want == previewPending.amount then
                 orderPreview = preview
+                if preview.bring and table.getn(preview.bring) > 0 then
+                    orderBring = {}
+                    TB.SetOrderBring(preview.bring)
+                else
+                    resetOrderBring(preview.reagents)
+                end
             end
             previewPending = nil
         end
@@ -1546,11 +1886,34 @@ function TB.SendOrderSearch(bot, kind, text, cat)
     if cat then pendingSearchCat = { bot = bot, kind = kind, text = text } end
     return TB.SendBotCommand(line)
 end
+-- Guild-wide search (no bot): ".bot order search <craft|enchant> <text>".
+-- The reply rides TBM:ORDER_WHO_BEGIN/WHO/END for the current pick-a-bot
+-- kind only. Enchant needs no minimum text on the wire here; the window
+-- keeps its 3-letter gate, matching today's farm/craft searches.
+function TB.SendOrderWhoSearch(kind, text)
+    if not TB.HasOrderCapability() then return false end
+    kind = string.lower(trim(kind or ""))
+    if kind ~= "craft" and kind ~= "enchant" then return false end
+    text = trim(text or "")
+    if string.len(text) < SEARCH_MIN then return false end
+    whoBot, whoKind, whoText = nil, kind, text
+    return TB.SendBotCommand("order search " .. kind .. " " .. text)
+end
+-- Per-bot enchant search: ".bot order search <Bot> enchant <text>".
+function TB.SendOrderEnchantSearch(bot, text)
+    if not TB.HasOrderCapability() then return false end
+    bot = norm(bot)
+    text = trim(text or "")
+    if not bot then return false end
+    if string.len(text) < SEARCH_MIN then return false end
+    enchantBot, enchantText = bot, text
+    return TB.SendBotCommand("order search " .. bot .. " enchant " .. text)
+end
 
 -- Ask what the bot would do for one pick: farm and craft only, one request
 -- per pick change (never on a timer). Buy previews would promise finished
 -- goods the server refuses, so they never go out.
-function TB.RequestOrderPreview(bot, kind, itemId, amount)
+function TB.RequestOrderPreview(bot, kind, itemId, amount, bring)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
     kind = string.lower(trim(kind or ""))
@@ -1558,14 +1921,20 @@ function TB.RequestOrderPreview(bot, kind, itemId, amount)
     amount = TB.ClampOrderAmount(amount)
     if not bot or (kind ~= "farm" and kind ~= "craft") then return false end
     if itemId <= 0 then return false end
+    local bringText = TB.OrderBringText(bring)
+    if bringText == "-" then bringText = nil end
     -- One request per pick: a repeat while the answer is still missing
     -- (double click, refresh race) reuses the pending one, never queues two.
     if previewPending and previewPending.bot == bot and previewPending.kind == kind
-        and previewPending.itemId == itemId and previewPending.amount == amount then
+        and previewPending.itemId == itemId and previewPending.amount == amount
+        and (previewPending.bring or nil) == bringText then
         return true
     end
-    previewPending = { bot = bot, kind = kind, itemId = itemId, amount = amount }
-    return TB.SendBotCommand("order " .. bot .. " preview " .. kind .. " " .. itemId .. " " .. amount)
+    previewPending = { bot = bot, kind = kind, itemId = itemId, amount = amount,
+        bring = bringText }
+    local line = "order " .. bot .. " preview " .. kind .. " " .. itemId .. " " .. amount
+    if bringText then line = line .. " bring=" .. bringText end
+    return TB.SendBotCommand(line)
 end
 
 function TB.ClampOrderAmount(amount)
@@ -1601,7 +1970,7 @@ function TB.ClampOrderGold(copper)
     return math.floor(copper)
 end
 
-function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold)
+function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold, bring)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
     kind = string.lower(trim(kind or ""))
@@ -1611,6 +1980,8 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold)
     if itemId <= 0 then return false end
     amount = TB.ClampOrderAmount(amount)
     gold = TB.ClampOrderGold(gold)
+    local bringText = TB.OrderBringText(bring)
+    if bringText == "-" then bringText = nil end
     local text = "order " .. bot .. " " .. kind .. " " .. itemId .. " " .. amount
     if hours ~= nil then
         if isInf(hours) then text = text .. " inf"
@@ -1621,9 +1992,10 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold)
         text = text .. " keep"
     end
     if gold ~= nil then text = text .. " gold=" .. gold end
-    if hours ~= nil or keep or gold ~= nil then
+    if bringText then text = text .. " bring=" .. bringText end
+    if hours ~= nil or keep or gold ~= nil or bringText then
         pendingGive = { bot = bot, kind = kind, itemId = itemId, amount = amount,
-            hours = hours, keep = keep and true or false, gold = gold }
+            hours = hours, keep = keep and true or false, gold = gold, bring = bringText }
     else
         pendingGive = nil
     end
@@ -1770,35 +2142,43 @@ end
 -- text below still reports the code and message.
 function TB.OnOrderError(packet)
     if not packet or packet.intent ~= "order" then return false end
-    -- An old server rejects the trailing gold / keep / hours arguments or
-    -- cat= as invalid: resend without them, gold first (newest), then keep,
-    -- then hours (a refused inf retries once as 24). The rest settles both.
+    -- An old server rejects the trailing bring / gold / keep / hours
+    -- arguments or cat= as invalid: resend without them, bring first
+    -- (newest), then gold, then keep, then hours (a refused inf retries
+    -- once as 24). The rest settles both.
     if packet.code == "invalid" and pendingGive then
         local give = pendingGive
+        if give.bring ~= nil then
+            pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
+                amount = give.amount, hours = give.hours, keep = give.keep, gold = give.gold }
+            TB.SetOrderFeedback("Old server: retrying without the materials you bring...", "pending")
+            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, give.hours, give.keep, give.gold)
+            return false
+        end
         if give.gold ~= nil then
             pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
-                amount = give.amount, hours = give.hours, keep = give.keep, gold = nil }
+                amount = give.amount, hours = give.hours, keep = give.keep, gold = nil, bring = give.bring }
             TB.SetOrderFeedback("Old server: retrying without the guild gold cap...", "pending")
-            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, give.hours, give.keep)
+            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, give.hours, give.keep, nil, give.bring)
             return false
         end
         if give.keep then
             pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
-                amount = give.amount, hours = give.hours, keep = false }
+                amount = give.amount, hours = give.hours, keep = false, bring = give.bring }
             TB.SetOrderFeedback("Old server: retrying without keep in stock...", "pending")
-            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, give.hours)
+            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, give.hours, false, nil, give.bring)
             return false
         end
         if isInf(give.hours) then
             pendingGive = { bot = give.bot, kind = give.kind, itemId = give.itemId,
-                amount = give.amount, hours = HOURS_MAX, keep = false }
+                amount = give.amount, hours = HOURS_MAX, keep = false, bring = give.bring }
             TB.SetOrderFeedback("Old server: no time limit refused, retrying with 24 hours...", "pending")
-            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, HOURS_MAX)
+            TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, HOURS_MAX, false, nil, give.bring)
             return false
         end
         pendingGive = nil
         TB.SetOrderFeedback("Old server: retrying without farm time...", "pending")
-        TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount)
+        TB.SendOrderGive(give.bot, give.kind, give.itemId, give.amount, nil, false, nil, give.bring)
         return false
     end
     if packet.code == "invalid" and pendingSearchCat then
@@ -1852,7 +2232,11 @@ function TB.NoteOrderCaps()
     orderAccess = nil
     for bot in pairs(orderSteps) do orderSteps[bot] = nil end
     lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
+    lastWhoSearch = { kind = "craft", text = "", rows = {} }
+    lastEnchantSearch = { bot = nil, text = "", rows = {} }
     orderReceiving, itemsReceiving = nil, nil
+    whoReceiving, enchantsReceiving = nil, nil
+    whoBot, whoKind, whoText, enchantBot, enchantText = nil, nil, nil, nil, nil
     stepsReceiving = nil
     for bot in pairs(stepsPending) do stepsPending[bot] = nil end
     for bot in pairs(stepsAskedAt) do stepsAskedAt[bot] = nil end
@@ -1908,6 +2292,43 @@ local searchTouched = false
 local feedback = nil
 local uncachedAt = nil
 local scanTip = nil
+-- Pick-a-bot (guild-wide) mode: no windowBot, type Craft/Enchant, WHO rows
+-- with a per-row bot click. Enchant rows also keep the bot's per-bot search
+-- (spellId carry-over for a later task).
+local orderGuild = false
+local orderEnchantBot = nil
+local orderEnchantSpell = nil
+function TB.IsOrderGuildMode()
+    return (win and win:IsVisible() and orderGuild) and true or false
+end
+function TB.GetOrderEnchantPick()
+    return orderEnchantBot, orderEnchantSpell
+end
+-- Window-scoped bring edits: the early SetOrderBring only stores; these
+-- also re-ask the preview so the panel follows the tick.
+local function resendBringPreview()
+    if win and windowBot and selectedItemId
+        and (orderKind == "farm" or orderKind == "craft")
+        and (orderPreview or previewPending) then
+        orderPreview = nil
+        previewPending = nil
+        previewDueAt = now() + SEARCH_DEBOUNCE
+    end
+end
+-- Manual bring edits from the checkboxes: store, then re-ask the preview so
+-- the panel follows the tick. Defined after win/preview locals exist.
+function TB.SetOrderBringNow(ids)
+    local kept = TB.SetOrderBring(ids)
+    resendBringPreview()
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return kept
+end
+function TB.ToggleOrderBringNow(itemId)
+    local kept = TB.ToggleOrderBring(itemId)
+    resendBringPreview()
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return kept
+end
 
 function TB.GetOrderWindowBot()
     return (win and win:IsVisible()) and windowBot or nil
@@ -2070,7 +2491,7 @@ function TB.SetOrderSelection(itemId)
     previewDueAt = nil
     if selectedItemId and windowBot
         and (orderKind == "farm" or orderKind == "craft") then
-        TB.RequestOrderPreview(windowBot, orderKind, selectedItemId, orderAmount)
+        TB.RequestOrderPreview(windowBot, orderKind, selectedItemId, orderAmount, orderBring)
     end
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
 end
@@ -2191,8 +2612,19 @@ end
 
 local function firePendingSearch()
     if not searchPendingAt or now() < searchPendingAt then return end
-    if not (win and windowBot and win.searchBox) then return end
+    if not (win and win.searchBox) then return end
     local text = trim(win.searchBox:GetText() or "")
+    if orderGuild then
+        if string.len(text) < SEARCH_MIN then
+            lastWhoSearch = { kind = lastWhoSearch.kind, text = text, rows = {} }
+            TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
+            if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+            return
+        end
+        TB.SendOrderWhoSearch(lastWhoSearch.kind, text)
+        return
+    end
+    if not windowBot then return end
     if string.len(text) < SEARCH_MIN and (not orderCat or not TB.OrderCatBrowsable(orderCat)) then
         lastSearch = { bot = windowBot, kind = orderKind, text = text, cat = nil, items = {} }
         selectedItemId = nil
@@ -2207,14 +2639,13 @@ local function firePendingSearch()
     end
     TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
 end
-
 -- The preview re-ask goes out after the same pause, once per amount change.
 local function firePendingPreview()
     if not previewDueAt or now() < previewDueAt then return end
     previewDueAt = nil
     if not (win and windowBot and selectedItemId) then return end
     if orderKind ~= "farm" and orderKind ~= "craft" then return end
-    TB.RequestOrderPreview(windowBot, orderKind, selectedItemId, orderAmount)
+    TB.RequestOrderPreview(windowBot, orderKind, selectedItemId, orderAmount, orderBring)
 end
 
 -- Dropdown menus (rank list, reassign targets): the 1.12 FrameXML set is
@@ -2266,8 +2697,16 @@ local function createWindow()
     search:SetScript("OnEnterPressed", function()
         searchPendingAt = nil
         this:ClearFocus()
+        local text = trim(this:GetText() or "")
+        if orderGuild then
+            if string.len(text) >= SEARCH_MIN then
+                TB.SendOrderWhoSearch(lastWhoSearch.kind, text)
+            else
+                TB.SetOrderFeedback("Type at least 3 letters to search.", "muted")
+            end
+            return
+        end
         if win and windowBot then
-            local text = trim(this:GetText() or "")
             if string.len(text) >= SEARCH_MIN
                 or (orderCat and TB.OrderCatBrowsable(orderCat)) then
                 TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
@@ -2293,9 +2732,35 @@ local function createWindow()
         })
         pill:SetPoint("TOPLEFT", win, "TOPLEFT", 12 + (i - 1) * 106, -80)
         local kind = entry[2]
-        pill:SetScript("OnClick", function() TB.SetOrderKind(kind) end)
+        pill:SetScript("OnClick", function()
+            if orderGuild and (kind == "craft" or kind == "enchant") then
+                TB.SetGuildOrderKind(kind)
+            else
+                TB.SetOrderKind(kind)
+            end
+        end)
         win.kindPills[kind] = pill
     end
+-- Guild-mode type switch: the Craft/Enchant pills pick the WHO stream, not
+-- today's per-bot kind. Farm/Buy stay per-bot only and leave guild mode.
+function TB.SetGuildOrderKind(kind)
+    kind = string.lower(trim(kind or ""))
+    if kind ~= "craft" and kind ~= "enchant" then return false end
+    lastWhoSearch.kind = kind
+    selectedItemId = nil
+    -- The search goes out on Enter or after the typing pause, never on the
+    -- pill click: the box still holds the other kind's text at click time.
+    if win and win.searchBox then
+        lastWhoSearch = { kind = kind, text = trim(win.searchBox:GetText() or ""), rows = {} }
+    else
+        lastWhoSearch = { kind = kind, text = "", rows = {} }
+    end
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return true
+end
+function TB.GetGuildOrderKind()
+    return lastWhoSearch.kind
+end
 
     win.catPills = {}
     for i, cat in ipairs(ORDER_CATS) do
@@ -2380,6 +2845,22 @@ local function createWindow()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         table.insert(win.resultRows, row)
+    end
+    -- Pick-a-bot clicks: one small button per knowing bot lives inside the
+    -- row, laid out after RefreshOrderWindow names them. Buttons are reused
+    -- across rows (at most three drawn per row for space); extras fold into
+    -- the row detail line ("+N more").
+    win.botBtns = {}
+    for i = 1, RESULT_ROW_N * 3 do
+        local b = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
+        b:SetWidth(52); b:SetHeight(14)
+        b:SetText("")
+        b:SetScript("OnClick", function()
+            local entry, bot = this.whoEntry, this.whoBot
+            if entry and bot then TB.PickGuildOrderBot(entry, bot) end
+        end)
+        b:Hide()
+        win.botBtns[i] = b
     end
 
     win.emptyMsg = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -2584,6 +3065,28 @@ local function createWindow()
     previewLine:SetWidth(OW - 24); previewLine:SetJustifyH("LEFT")
     TB.SetTextColor(previewLine, color("muted"))
     win.previewLine = previewLine
+    -- "I bring it" ticks: one checkbox per craft reagent above the preview
+    -- line. The row names the reagent and its need count; auto-tick when
+    -- the player's bags hold the full need, manual toggle otherwise.
+    -- At most four rows fit; extras fold into the preview text.
+    win.bringRows = {}
+    for i = 1, 4 do
+        local box = CreateFrame("CheckButton", "TortoiseBotsManagerOrderBring" .. i, win, "UICheckButtonTemplate")
+        box:SetWidth(16); box:SetHeight(16)
+        box:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 68 + (i - 1) * 15))
+        box:SetScript("OnClick", function()
+            local id = this.bringId
+            if id then TB.ToggleOrderBringNow(id) end
+        end)
+        box:Hide()
+        local label = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("LEFT", box, "RIGHT", 2, 0)
+        label:SetWidth(OW - 24 - 22); label:SetJustifyH("LEFT")
+        TB.SetTextColor(label, color("muted"))
+        label:Hide()
+        box.bringLabel = label
+        win.bringRows[i] = box
+    end
 
     win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 96),
         "Send order", "Give this bot the order (replaces its old one).",
@@ -2624,7 +3127,7 @@ local function createWindow()
                 .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "")
                 .. goldText .. ") sent, waiting for the server...", "pending")
             TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount,
-                orderNoLimit and "inf" or orderHours, orderKeep, orderGold)
+                orderNoLimit and "inf" or orderHours, orderKeep, orderGold, orderBring)
         end)
 
     win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 96),
@@ -2666,18 +3169,125 @@ end
 
 function TB.RefreshOrderWindow()
     if not win or not win:IsVisible() then return end
-    win.title:SetText("Order for " .. (windowBot or "?"))
+    if orderGuild then
+        win.title:SetText("Order for the guild: pick a bot")
+    else
+        win.title:SetText("Order for " .. (windowBot or "?"))
+    end
     for kind, pill in pairs(win.kindPills or {}) do
-        if pill.SetActive then pill:SetActive(kind == orderKind) end
-        -- No Buy option while the server refuses player Buy orders. Older
-        -- servers without the cap keep today's pills.
-        if kind == "buy" then
-            if TB.PlayerBuyAllowed() then pill:Show() else pill:Hide() end
+        if orderGuild then
+            -- Craft/Enchant pick the WHO stream; Farm and Buy stay per-bot.
+            if kind == "craft" or kind == "enchant" then
+                if pill.SetActive then pill:SetActive(kind == lastWhoSearch.kind) end
+                pill:Show()
+            else
+                pill:Hide()
+            end
+        else
+            if pill.SetActive then pill:SetActive(kind == orderKind) end
+            -- No Buy option while the server refuses player Buy orders. Older
+            -- servers without the cap keep today's pills.
+            if kind == "buy" then
+                if TB.PlayerBuyAllowed() then pill:Show() else pill:Hide() end
+            end
         end
     end
     for cat, pill in pairs(win.catPills or {}) do
-        if pill.SetActive then pill:SetActive(cat == (orderCat or "all")) end
+        if orderGuild then
+            pill:Hide()
+        else
+            if pill.SetActive then pill:SetActive(cat == (orderCat or "all")) end
+            pill:Show()
+        end
     end
+    if orderGuild then
+        TB.RefreshGuildOrderRows()
+    else
+        TB.RefreshPerBotOrderRows()
+    end
+end
+-- WHO rows for pick-a-bot mode: name (+ slot and reqSkill on enchant),
+-- bots "name skill have/need" with a busy marker, clickable per bot.
+function TB.RefreshGuildOrderRows()
+    local search = TB.GetOrderWhoSearch()
+    local rows = {}
+    if search.kind == lastWhoSearch.kind then rows = search.rows or {} end
+    local total = table.getn(rows)
+    FauxScrollFrame_Update(win.results, total, RESULT_ROW_N, RESULT_ROW_H)
+    local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(win.results)) or 0
+    local used = 0
+    for i = 1, RESULT_ROW_N do
+        local row = win.resultRows[i]
+        local entry = rows[offset + i]
+        if entry then
+            row.whoEntry = entry
+            row.item = nil
+            local head = entry.item or ("item #" .. tostring(entry.id or "?"))
+            if entry.kind == "enchant" then
+                head = head .. " (" .. (entry.slot or "?") .. " " .. tostring(entry.reqSkill or 0) .. ")"
+            elseif entry.reqSkill and entry.reqSkill > 0 then
+                head = head .. " (" .. tostring(entry.reqSkill) .. ")"
+            end
+            row.name:SetText(head)
+            row.name:SetTextColor(1, 1, 1)
+            local bots = entry.bots or {}
+            local extra = 0
+            if table.getn(bots) > 3 then extra = table.getn(bots) - 3 end
+            if table.getn(bots) == 0 then
+                row.detail:SetText("no guild bot knows it")
+            else
+                local line = TB.OrderWhoBotText({ bots = bots })
+                if extra > 0 then line = line .. " (+" .. extra .. " more)" end
+                row.detail:SetText(line)
+            end
+            row.detail:SetTextColor(0.85, 0.85, 0.85)
+            row.icon:SetTexture(itemTexture(entry.id))
+            row.sel:Hide()
+            row:Show()
+            for j = 1, 3 do
+                used = used + 1
+                local b = win.botBtns and win.botBtns[used] or nil
+                local bot = bots[j]
+                if b and bot then
+                    b.whoEntry, b.whoBot = entry, bot.bot
+                    b:SetText(bot.bot)
+                    b:SetPoint("TOPLEFT", row, "TOPLEFT", 38 + (j - 1) * 58, -18)
+                    if TB.CanGiveOrders() then b:Enable() else b:Disable() end
+                    b:Show()
+                elseif b then
+                    b.whoEntry, b.whoBot = nil, nil
+                    b:Hide()
+                end
+            end
+        else
+            row.whoEntry = nil
+            row.item = nil
+            row:Hide()
+        end
+    end
+    if win.botBtns then
+        for i = used + 1, table.getn(win.botBtns) do win.botBtns[i]:Hide() end
+    end
+    if win.emptyMsg then
+        if total == 0 then
+            local text = trim(win.searchBox:GetText() or "")
+            if string.len(text) < SEARCH_MIN then
+                win.emptyMsg:SetText("Type at least 3 letters to search.")
+            elseif search.kind == lastWhoSearch.kind then
+                win.emptyMsg:SetText("No matching recipes.")
+            else
+                win.emptyMsg:SetText("Searching...")
+            end
+            win.emptyMsg:Show()
+        else
+            win.emptyMsg:Hide()
+        end
+    end
+    TB.RefreshOrderChrome(nil)
+    TB.RefreshOrderBringRows()
+end
+-- Today's per-bot rows, split out so guild mode can share the chrome.
+function TB.RefreshPerBotOrderRows()
     local search = TB.GetOrderSearch()
     local items = {}
     if search.bot == windowBot and search.kind == orderKind
@@ -2693,6 +3303,7 @@ function TB.RefreshOrderWindow()
         local row = win.resultRows[i]
         local item = items[offset + i]
         if item then
+            row.whoEntry = nil
             row.item = item
             if item.itemId == selectedItemId then foundSelected = true end
             local cant = string.lower(trim(item.verdict or "")) ~= "ok"
@@ -2707,6 +3318,7 @@ function TB.RefreshOrderWindow()
             if item.itemId == selectedItemId then row.sel:Show() else row.sel:Hide() end
             row:Show()
         else
+            row.whoEntry = nil
             row.item = nil
             row:Hide()
         end
@@ -2731,9 +3343,15 @@ function TB.RefreshOrderWindow()
             win.emptyMsg:Hide()
         end
     end
-    -- The box commits on change and every amount change syncs the box, so
-    -- a refresh never touches it: a typed number is never rewritten here.
+    if win.botBtns then
+        for _, b in ipairs(win.botBtns) do b:Hide() end
+    end
     local order = windowBot and TB.GetBotOrder(windowBot) or nil
+    TB.RefreshOrderChrome(order)
+    TB.RefreshOrderBringRows()
+end
+-- Shared chrome below the rows: access, rank, tree, boxes, preview, bring.
+function TB.RefreshOrderChrome(order)
     local access = TB.GetOrderAccess()
     local accessText = access and TB.OrderAccessText() or nil
     if win.accessLabel then
@@ -2779,7 +3397,9 @@ function TB.RefreshOrderWindow()
         end
     end
     if win.statusLine then
-        if order then
+        if orderGuild then
+            win.statusLine:SetText("Pick a bot to open its order flow.")
+        elseif order then
             win.statusLine:SetText("Current: " .. TB.OrderRowText(order))
         else
             win.statusLine:SetText("No order on this bot.")
@@ -2789,18 +3409,19 @@ function TB.RefreshOrderWindow()
         if order and TB.CanGiveOrders() then win.cancelBtn:Enable() else win.cancelBtn:Disable() end
     end
     if win.sendBtn then
-        if TB.CanGiveOrders() then win.sendBtn:Enable() else win.sendBtn:Disable() end
+        if orderGuild then win.sendBtn:Disable()
+        elseif TB.CanGiveOrders() then win.sendBtn:Enable() else win.sendBtn:Disable() end
     end
     if win.sendItemsBtn then
         local canSend, mailReason = TB.CanSendOrderItems(windowBot)
-        if canSend then win.sendItemsBtn:Enable() else win.sendItemsBtn:Disable() end
+        if canSend and not orderGuild then win.sendItemsBtn:Enable() else win.sendItemsBtn:Disable() end
         -- The tooltip names the bot and its need, or why the button is dead.
         win.sendItemsBtn:SetScript("OnEnter", function()
             GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
             GameTooltip:SetText("Send missing items")
             if canSend then
-                local bot, order = TB.OrderNeedTarget(windowBot)
-                local need = order and TB.OrderNeedText(order)
+                local bot, needOrder = TB.OrderNeedTarget(windowBot)
+                local need = needOrder and TB.OrderNeedText(needOrder)
                 if bot and need then GameTooltip:AddLine(bot .. ": " .. need, 0.9, 0.9, 0.9, 1) end
             elseif mailReason then
                 GameTooltip:AddLine(mailReason, 0.9, 0.9, 0.9, 1)
@@ -2811,11 +3432,11 @@ function TB.RefreshOrderWindow()
     end
     if win.keepBox and win.keepBox.SetChecked then
         win.keepBox:SetChecked(orderKeep and true or false)
-        if TB.CanGiveOrders() then win.keepBox:Enable() else win.keepBox:Disable() end
+        if TB.CanGiveOrders() and not orderGuild then win.keepBox:Enable() else win.keepBox:Disable() end
     end
     if win.noLimitBox and win.noLimitBox.SetChecked then
         win.noLimitBox:SetChecked(orderNoLimit and true or false)
-        if TB.CanGiveOrders() then win.noLimitBox:Enable() else win.noLimitBox:Disable() end
+        if TB.CanGiveOrders() and not orderGuild then win.noLimitBox:Enable() else win.noLimitBox:Disable() end
     end
     -- No time limit greys the hours box: unfocused, unclickable, dimmed.
     -- The kept number returns when the box is ticked off.
@@ -2854,6 +3475,36 @@ function TB.RefreshOrderWindow()
             win.feedbackLine:Hide()
         end
     end
+    TB.RefreshOrderBringRows()
+end
+-- Bring checkboxes: one row per craft reagent of the shown preview, hidden
+-- otherwise. The tick follows the preview's <bring> list; a new preview
+-- auto-ticks what the bags hold in full.
+function TB.RefreshOrderBringRows()
+    local reagents = nil
+    if win and not orderGuild and orderKind == "craft" and orderPreview
+        and orderPreview.bot == windowBot
+        and string.lower(trim(orderPreview.kind or "")) == "craft"
+        and orderPreview.itemId == selectedItemId
+        and orderPreview.want == orderAmount then
+        reagents = orderPreview.reagents or {}
+    end
+    for i, box in ipairs(win and win.bringRows or {}) do
+        local row = reagents and reagents[i] or nil
+        if row then
+            local name = needName(row.itemId)
+            box.bringId = row.itemId
+            box.bringLabel:SetText("I bring it: " .. name .. " x" .. tostring(row.need or 0))
+            if box.SetChecked then box:SetChecked(TB.OrderBringTicked(orderBring, row.itemId)) end
+            if box.bringLabel then box.bringLabel:Show() end
+            if TB.CanGiveOrders() then box:Enable() else box:Disable() end
+            box:Show()
+        else
+            box.bringId = nil
+            if box.bringLabel then box.bringLabel:Hide() end
+            box:Hide()
+        end
+    end
 end
 
 function TB.OpenOrderWindow(bot)
@@ -2867,7 +3518,8 @@ function TB.OpenOrderWindow(bot)
     if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseBotPanel then TB.CloseBotPanel() end
-    local switched = windowBot ~= bot
+    local switched = windowBot ~= bot or orderGuild
+    orderGuild = false
     windowBot = bot
     if switched then
         orderAmount = 10
@@ -2883,6 +3535,8 @@ function TB.OpenOrderWindow(bot)
         previewPending = nil
         previewDueAt = nil
         searchTouched = false
+        orderBring = {}
+        orderEnchantBot, orderEnchantSpell = nil, nil
         lastSearch = { bot = bot, kind = orderKind, text = "", cat = nil, items = {} }
         if win.searchBox then win.searchBox:SetText("") end
         if win.amountBox then win.amountBox:SetText("10") end
@@ -2910,6 +3564,79 @@ function TB.OpenOrderWindow(bot)
     end
     win:Show()
     TB.RefreshOrderWindow()
+    return true
+end
+-- "Order" button above the Guild list: pick-a-bot mode, no bot pinned.
+-- Craft/Enchant pills switch the WHO stream; a bot click opens the normal
+-- per-bot flow for that bot and item (enchant: bot pinned, spell carried
+-- for the later task, "coming soon" until that task lands).
+function TB.OpenGuildOrderWindow()
+    if not TB.HasOrderCapability() then return false end
+    if not win then createWindow() end
+    if TB.CloseVault then TB.CloseVault() end
+    if TB.CloseNpc then TB.CloseNpc() end
+    if TB.CloseRunWindow then TB.CloseRunWindow() end
+    if TB.CloseServerInfo then TB.CloseServerInfo() end
+    if TB.CloseBotPanel then TB.CloseBotPanel() end
+    orderGuild = true
+    windowBot = nil
+    orderEnchantBot, orderEnchantSpell = nil, nil
+    selectedItemId = nil
+    orderPreview = nil
+    previewPending = nil
+    previewDueAt = nil
+    searchPendingAt = nil
+    searchTouched = false
+    orderBring = {}
+    if not TB.GetOrderAccess() then TB.RequestOrderAccess() end
+    win:ClearAllPoints()
+    if TB.frame then
+        local right = TB.frame.GetRight and TB.frame:GetRight()
+        local screen = GetScreenWidth and GetScreenWidth()
+        local scale = (TB.frame.GetScale and TB.frame:GetScale()) or 1
+        if right and screen and (right + OW + 4) * scale > screen then
+            win:SetPoint("TOPRIGHT", TB.frame, "TOPLEFT", -4, 0)
+        else
+            win:SetPoint("TOPLEFT", TB.frame, "TOPRIGHT", 4, 0)
+        end
+    else
+        win:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+    win:Show()
+    TB.RefreshOrderWindow()
+    return true
+end
+-- A WHO bot click: craft previews that item for that bot; enchant pins the
+-- bot, keeps the spell id and pre-selects it ("coming soon" covers sending).
+function TB.PickGuildOrderBot(entry, bot)
+    if not entry or not bot then return false end
+    bot = norm(bot)
+    if not bot then return false end
+    if entry.kind == "enchant" then
+        if not TB.OpenOrderWindow(bot) then return false end
+        orderGuild = false
+        windowBot = bot
+        orderEnchantBot, orderEnchantSpell = bot, entry.id
+        lastEnchantSearch = { bot = bot, text = entry.item or "", rows = {} }
+        TB.SetOrderKind("craft")
+        TB.SetOrderFeedback("Enchant orders coming soon: " .. bot .. " knows "
+            .. (entry.item or ("spell #" .. tostring(entry.id or "?"))) .. ".", "muted")
+        return true
+    end
+    if not TB.OpenOrderWindow(bot) then return false end
+    orderGuild = false
+    windowBot = bot
+    TB.SetOrderKind("craft")
+    orderGuild = false
+    windowBot = bot
+    local name = entry.item or ("item #" .. tostring(entry.id or "?"))
+    lastSearch = { bot = windowBot, kind = "craft", text = name,
+        cat = orderCat, items = { {
+            itemId = entry.id, item = name,
+            quality = entry.quality, sources = { "craft" }, minLevel = 0,
+            skill = nil, verdict = "ok", zone = nil, chance = 0,
+        } } }
+    TB.SetOrderSelection(entry.id)
     return true
 end
 

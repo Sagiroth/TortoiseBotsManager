@@ -2097,6 +2097,15 @@ function TB.InitUI()
         end)
         guildFrame.fillBtn = fillBtn
 
+        local orderBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
+        orderBtn:SetWidth(56); orderBtn:SetHeight(22)
+        orderBtn:SetPoint("LEFT", fillBtn, "RIGHT", 4, 0)
+        orderBtn:SetText("Order")
+        setButtonTooltip(orderBtn, "Pick a recipe, see which guild bots know it, then order.", "Guild order")
+        orderBtn:SetScript("OnClick", function()
+            if TB.OpenGuildOrderWindow then TB.OpenGuildOrderWindow() end
+        end)
+        guildFrame.orderBtn = orderBtn
         guildFrame.guildBar = bar
         return guildFrame
     end
@@ -2490,6 +2499,16 @@ function TB.InitUI()
         if frame.fillBtn then
             local fillable = TB.GetFillRaidNames and TB.GetFillRaidNames() or {}
             if table.getn(fillable) > 0 then frame.fillBtn:Enable() else frame.fillBtn:Disable() end
+        end
+        if frame.orderBtn then
+            local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+            local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+            if orderCap then
+                frame.orderBtn:Show()
+                if mayOrder then frame.orderBtn:Enable() else frame.orderBtn:Disable() end
+            else
+                frame.orderBtn:Hide()
+            end
         end
     end
 
