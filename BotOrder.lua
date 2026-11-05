@@ -12,7 +12,10 @@
 --   "order list"                                   -> full snapshot (orders
 --     plus TBM:ORDER_ACCESS first inside the pair)
 --   "order search <bot> <farm|buy|craft> [cat=<category>] <text>"
+--   "order search <bot> enchant <text>"
 --   "order <bot> <farm|buy|craft> <itemId> <n> [hours|inf] [keep] [gold=<copper>]"
+--   "order <bot> enchant <spellId>"
+--   "order <bot> meet" (walk to the giver for the enchant trade)
 --     (gold omitted with no cap; an old server answering invalid sheds the
 --     newest trailing field first: gold, then keep, then a refused inf
 --     retries once as 24, then bare)
@@ -35,8 +38,14 @@
 --   TBM:ORDER_ITEMS_BEGIN|<n>
 --   TBM:ORDER_ITEM|<itemId>|<item>|<quality>|<sources>|<minLevel>|<skill>|<verdict>|<zone>|<chance>|<difficulty>|<category>
 --   TBM:ORDER_ITEMS_END
---   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|cancel|rank|reassign>
---   TBM:ACTION_ERR|order|<code>|<message>
+--   TBM:ORDER_ENCHANTS_BEGIN|<n>, TBM:ORDER_ENCHANT|<spellId>|<name>|<slot>|<reqSkill>|<verdict>|<reagents>,
+--   TBM:ORDER_ENCHANTS_END (the answer to "order search <bot> enchant <text>"; <reagents> is
+--   itemId:need:have per reagent, ";" between rows, "-" when none)
+--   TBM:ACTION_ACK|order|bot:<Bot>|1|<farm|buy|craft|enchant|cancel|rank|reassign>
+--   TBM:ACTION_ACK|order|bot:<Bot>|1|meet coming|meet later|meet gathering (plus
+--   the same words as plain system text, which paints the status line)
+--   TBM:ACTION_ERR|order|<notcapital|noorder|busy>|<message> (the message
+--   shows as-is; the row repaints from the live TBM:ORDER line)
 -- A TBM:ORDER line inside BEGIN/END is the full list (replace the whole
 -- set); outside a pair it is a live update for one bot (update that row
 -- only). The search pair is its own stream, so an empty result is a real
@@ -120,14 +129,16 @@ function TB.CanGiveOrders()
 end
 
 -- ── labels ────────────────────────────────────────────────────────────────
-local TYPE_LABEL = { farm = "Farm", buy = "Buy", craft = "Craft" }
+local TYPE_LABEL = { farm = "Farm", buy = "Buy", craft = "Craft", enchant = "Enchant" }
 local STATE_LABEL = {
     working = "Working", waiting = "Waiting", delivering = "Delivering",
     done = "Done", stocked = "Stocked", mailed = "Mailed", noskill = "No skill", cant = "Can't",
+    ready = "Ready", coming = "Coming", enchanting = "Enchanting",
 }
 local STATE_COLOR = {
     working = "|cff4ecb5a", waiting = "|cffffd200", delivering = "|cffffd200",
     done = "|cff4ecb5a", stocked = "|cff4ecb5a", mailed = "|cffffd200", noskill = "|cffff5050", cant = "|cffff5050",
+    ready = "|cff4ecb5a", coming = "|cffffd200", enchanting = "|cffffd200",
 }
 local REASON_LABEL = {
     grouped = "in a group", noskill = "missing profession", lowskill = "skill too low",
@@ -157,6 +168,25 @@ end
 function TB.OrderStateLabel(state)
     state = trim(state)
     return STATE_LABEL[string.lower(state)] or state
+end
+-- The capital an enchant order meets in, by the player's faction: Stormwind
+-- for the Alliance, Orgrimmar for the Horde. UnitFactionGroup is missing in
+-- the harness and on some clients, so anything but Horde reads Alliance.
+function TB.OrderCapital()
+    if UnitFactionGroup then
+        local faction = UnitFactionGroup("player")
+        if faction and string.lower(faction) == "horde" then return "Orgrimmar" end
+    end
+    return "Stormwind"
+end
+
+-- Unfinished enchant orders are the ones that still need Meet: anything but
+-- done (and cant/noskill, which end the order the same way). Unknown states
+-- show the button too, never hide it on a new token.
+function TB.OrderNeedsMeet(order)
+    if not order or string.lower(trim(order.type or "")) ~= "enchant" then return false end
+    local state = string.lower(trim(order.state or ""))
+    return state ~= "done" and state ~= "cant" and state ~= "noskill"
 end
 
 function TB.OrderReasonLabel(reason)
@@ -630,6 +660,12 @@ function TB.OrderRowText(order)
         text = item .. " · " .. word("No skill")
     elseif state == "cant" then
         text = item .. " · " .. word("Can't")
+    elseif state == "ready" then
+        text = item .. " · " .. word("Ready") .. " - come to " .. TB.OrderCapital() .. " and press Meet"
+    elseif state == "coming" then
+        text = item .. " · " .. word("On the way to you")
+    elseif state == "enchanting" then
+        text = item .. " · " .. word("Trade open - put your item in Will not be traded")
     else
         text = item .. " " .. progress .. " · " .. trim(order.state or "")
     end
@@ -1296,9 +1332,23 @@ function TB.GetOrderSearch()
         cat = lastSearch.cat, items = lastSearch.items or {} }
 end
 
+-- Orders already announced as ready, by bot: one on-screen message and one
+-- sound per order. Cleared when the order leaves ready (or is replaced), so
+-- a later ready on a new order announces again; a login replay of an
+-- already-ready order stays silent because the announce happened before.
+local readyAnnounced = {}
+
 local function commitOrderList(rows)
     for key in pairs(orders) do orders[key] = nil end
     for _, order in ipairs(rows) do orders[order.bot] = order end
+    -- A full list replaces identities: ready notices announced for an old
+    -- order stay announced only while the same order is still there.
+    for bot in pairs(readyAnnounced) do
+        if not orders[bot] or string.lower(trim(orders[bot].state or "")) ~= "ready"
+            or string.lower(trim(orders[bot].type or "")) ~= "enchant" then
+            readyAnnounced[bot] = nil
+        end
+    end
 end
 
 function TB.ParseOrderMessage(msg)
@@ -1325,6 +1375,12 @@ function TB.ParseOrderMessage(msg)
             if order then table.insert(orderReceiving.rows, order) end
         elseif order then
             local previous = orders[order.bot]
+            local wasState = previous and string.lower(trim(previous.state or "")) or nil
+            local nowState = string.lower(trim(order.state or ""))
+            local sameOrder = previous and sameOrderIdentity(previous, order)
+            if previous and (not sameOrder or wasState ~= nowState) then
+                if readyAnnounced then readyAnnounced[order.bot] = nil end
+            end
             -- The step list belongs to its order's identity. A new order on
             -- the same bot drops the old list at once: hide via the identity
             -- check by keeping only a list that matches the incoming row. A
@@ -1342,6 +1398,10 @@ function TB.ParseOrderMessage(msg)
                 orderSteps[order.bot] = nil
             end
             orders[order.bot] = order
+            if nowState == "ready" and string.lower(trim(order.type or "")) == "enchant"
+                and (not sameOrder or wasState ~= "ready") then
+                TB.AnnounceOrderReady(order.bot)
+            end
             if TB.RefreshGuildView then TB.RefreshGuildView() end
             if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         end
@@ -1370,6 +1430,35 @@ function TB.ParseOrderMessage(msg)
         end
         return true
     end
+    local _, _, enchantCount = string.find(msg, "^TBM:ORDER_ENCHANTS_BEGIN|(%d+)$")
+    if enchantCount then
+        itemsReceiving = { expected = tonumber(enchantCount), rows = {}, enchant = true }
+        return true
+    end
+    if string.sub(msg, 1, 18) == "TBM:ORDER_ENCHANT|" then
+        local row = TB.ParseOrderEnchantLine(msg)
+        if itemsReceiving and itemsReceiving.enchant and row then
+            table.insert(itemsReceiving.rows, row)
+        end
+        return true
+    end
+    if msg == "TBM:ORDER_ENCHANTS_END" then
+        local batch = itemsReceiving
+        itemsReceiving = nil
+        if batch and batch.enchant then
+            lastSearch = { bot = searchBot, kind = searchKind, text = searchText,
+                cat = searchCat, items = batch.rows }
+            if TB.SetStatus then
+                if table.getn(batch.rows) == 0 then
+                    TB.SetStatus("No matching enchants.", "muted")
+                else
+                    TB.SetStatus("Order search · " .. table.getn(batch.rows) .. " enchants", "ok")
+                end
+            end
+            if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+        end
+        return true
+    end
     local _, _, itemCount = string.find(msg, "^TBM:ORDER_ITEMS_BEGIN|(%d+)$")
     if itemCount then
         itemsReceiving = { expected = tonumber(itemCount), rows = {} }
@@ -1377,7 +1466,9 @@ function TB.ParseOrderMessage(msg)
     end
     if string.sub(msg, 1, 15) == "TBM:ORDER_ITEM|" then
         local item = TB.ParseOrderItemLine(msg)
-        if itemsReceiving and item then table.insert(itemsReceiving.rows, item) end
+        if itemsReceiving and not itemsReceiving.enchant and item then
+            table.insert(itemsReceiving.rows, item)
+        end
         return true
     end
     if msg == "TBM:ORDER_ITEMS_END" then
@@ -1492,6 +1583,37 @@ function TB.ParseOrderMessage(msg)
     return false
 end
 
+-- One-time ready notice for the player's own enchant order: highlight is
+-- the row repaint above; the message and sound fire once per order, never on
+-- every list refresh. UIErrorsFrame is the addon's notice frame (Core shows
+-- status text beside it); ReadyCheck is a stock 1.12 sound.
+function TB.AnnounceOrderReady(bot)
+    bot = norm(bot)
+    if not bot then return false end
+    readyAnnounced = readyAnnounced or {}
+    if readyAnnounced[bot] then return false end
+    readyAnnounced[bot] = true
+    local order = orders[bot]
+    local name = (order and order.item) or "enchant"
+    local capital = TB.OrderCapital()
+    local text = bot .. ": " .. name .. " is ready - come to " .. capital .. " and press Meet"
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        UIErrorsFrame:AddMessage(text, 1, 0.82, 0)
+    elseif RaidWarningFrame and RaidWarningFrame.AddMessage then
+        RaidWarningFrame:AddMessage(text, 1, 0.82, 0)
+    end
+    if PlaySound then PlaySound("ReadyCheck") end
+    if TB.SetStatus then TB.SetStatus(text, "ok") end
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return true
+end
+
+function TB.OrderReadyAnnounced(bot)
+    bot = norm(bot)
+    return bot and readyAnnounced and readyAnnounced[bot] or false
+end
+
 -- ── sends ─────────────────────────────────────────────────────────────────
 function TB.RequestOrderList()
     if not TB.HasOrderCapability() then return false end
@@ -1527,6 +1649,44 @@ function TB.OrderCatLabel(cat)
     return ORDER_CAT_LABEL[cat] or cat
 end
 
+-- Enchant catalogue rows: TBM:ORDER_ENCHANT|<spellId>|<name>|<slot>|<reqSkill>|<verdict>|<reagents>.
+-- <reagents> is itemId:need:have per reagent, ';' between rows, '-' when
+-- none. <slot> is the enchant slot token (bracer, chest, boots, cloak,
+-- gloves, shield, weapon, 2hweapon) or '-'; <reqSkill> the required
+-- profession skill. Sorted by required skill, then name.
+function TB.ParseOrderEnchantReagents(text)
+    text = trim(text or "")
+    if text == "" or text == "-" then return {} end
+    local out = {}
+    for token in string.gfind(text, "[^;]+") do
+        local _, _, idText, needText, haveText = string.find(trim(token), "^(%d+):(%d+):(%d+)$")
+        local id = tonumber(idText)
+        local need = tonumber(needText)
+        local have = tonumber(haveText)
+        if not id or not need or not have or id <= 0 or need <= 0 then return nil end
+        table.insert(out, { itemId = math.floor(id), need = math.floor(need), have = math.floor(have) })
+    end
+    if table.getn(out) == 0 then return nil end
+    return out
+end
+
+function TB.ParseOrderEnchantLine(msg)
+    if string.sub(msg or "", 1, 18) ~= "TBM:ORDER_ENCHANT|" then return nil end
+    local fields = splitProtocol(string.sub(msg, 19))
+    if table.getn(fields) ~= 6 then return nil end
+    local spellId = tonumber(trim(fields[1]))
+    local name = trim(fields[2])
+    local verdict = trim(fields[5])
+    if not spellId or spellId <= 0 or name == "" or verdict == "" then return nil end
+    local reagents = TB.ParseOrderEnchantReagents(fields[6])
+    if not reagents then return nil end
+    return {
+        itemId = math.floor(spellId), item = name,
+        slot = noneDash(fields[3]), skill = noneDash(fields[4]),
+        verdict = verdict, reagents = reagents,
+    }
+end
+
 function TB.SendOrderSearch(bot, kind, text, cat)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
@@ -1535,6 +1695,14 @@ function TB.SendOrderSearch(bot, kind, text, cat)
     cat = string.lower(trim(cat or ""))
     if cat == "all" or cat == "" then cat = nil end
     if cat and not ORDER_CAT_LABEL[cat] then return false end
+    -- Enchant searches carry no cat filter and need no 3-letter gate: even
+    -- empty text lists the bot's enchants.
+    if kind == "enchant" then
+        searchBot, searchKind, searchText, searchCat = bot, kind, text, nil
+        local line = "order search " .. bot .. " " .. kind
+        if text ~= "" then line = line .. " " .. text end
+        return TB.SendBotCommand(line)
+    end
     if string.len(text) < SEARCH_MIN then
         -- Big kinds need text too; small kinds may browse empty.
         if not cat or not TB.OrderCatBrowsable(cat) then return false end
@@ -1606,9 +1774,12 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold)
     bot = norm(bot)
     kind = string.lower(trim(kind or ""))
     itemId = math.floor(tonumber(itemId) or 0)
-    if not bot or (kind ~= "farm" and kind ~= "buy" and kind ~= "craft") then return false end
+    if not bot or (kind ~= "farm" and kind ~= "buy" and kind ~= "craft" and kind ~= "enchant") then return false end
     if kind == "buy" and not TB.PlayerBuyAllowed() then return false end
     if itemId <= 0 then return false end
+    if kind == "enchant" then
+        return TB.SendBotCommand("order " .. bot .. " enchant " .. itemId)
+    end
     amount = TB.ClampOrderAmount(amount)
     gold = TB.ClampOrderGold(gold)
     local text = "order " .. bot .. " " .. kind .. " " .. itemId .. " " .. amount
@@ -1754,6 +1925,27 @@ function TB.OnOrderAck(packet)
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
         return true
     end
+    if string.sub(packet.executor or "", 1, 5) == "meet " then
+        local detail = string.sub(packet.executor, 6)
+        if detail == "coming" or detail == "later" or detail == "gathering" then
+            if TB.RefreshGuildView then TB.RefreshGuildView() end
+            if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+            return true
+        end
+        return false
+    end
+    if packet.executor == "enchant" then
+        if TB.SetStatus then
+            local text = "Enchant order accepted"
+            if bot then text = bot .. ": " .. text end
+            TB.SetStatus(text .. ".", "ok")
+        end
+        if bot and TB.GetOrderWindowBot and TB.GetOrderWindowBot() == bot then
+            if TB.CloseOrderWindow then TB.CloseOrderWindow() end
+        end
+        if TB.RefreshGuildView then TB.RefreshGuildView() end
+        return true
+    end
     if TB.SetStatus then
         local text = TB.OrderTypeLabel(packet.executor) .. " order accepted"
         if bot then text = bot .. ": " .. text end
@@ -1823,6 +2015,15 @@ function TB.OnOrderError(packet)
     return false
 end
 
+-- One enchant order's Meet: the bot leaves the capital inn and walks over.
+-- Sent from the guild row's Meet button the same way as the other commands.
+function TB.SendOrderMeet(bot)
+    if not TB.HasOrderCapability() then return false end
+    bot = norm(bot)
+    if not bot then return false end
+    return TB.SendBotCommand("order " .. bot .. " meet")
+end
+
 -- The capability can disappear mid-session (a restart with the feature
 -- off): close the window and drop the model so no stale state lingers.
 function TB.NoteOrderCaps()
@@ -1849,6 +2050,7 @@ function TB.NoteOrderCaps()
         return
     end
     for key in pairs(orders) do orders[key] = nil end
+    for bot in pairs(readyAnnounced) do readyAnnounced[bot] = nil end
     orderAccess = nil
     for bot in pairs(orderSteps) do orderSteps[bot] = nil end
     lastSearch = { bot = nil, kind = "farm", text = "", cat = nil, items = {} }
@@ -1917,9 +2119,11 @@ function TB.GetOrderKind()
     return orderKind
 end
 
+local ORDER_KINDS = { farm = true, buy = true, craft = true, enchant = true }
+
 function TB.SetOrderKind(kind)
     kind = string.lower(trim(kind or ""))
-    if kind ~= "farm" and kind ~= "buy" and kind ~= "craft" then return false end
+    if not ORDER_KINDS[kind] then return false end
     if kind == orderKind then return true end
     orderKind = kind
     selectedItemId = nil
@@ -1930,14 +2134,13 @@ function TB.SetOrderKind(kind)
     -- A new kind re-runs a valid search at once: verdicts differ per kind
     -- (a craft search refuses unknown recipes, a farm search does not).
     -- Small kinds may browse with empty text; big kinds need 3+ letters.
+    -- Enchant searches carry no cat filter.
+    orderCat = nil
     if win and windowBot and win.searchBox then
         local text = trim(win.searchBox:GetText() or "")
-        if orderCat and TB.OrderCatBrowsable(orderCat) then
+        if orderKind == "enchant" then
             searchPendingAt = nil
-            TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
-        elseif orderCat and string.len(text) >= SEARCH_MIN then
-            searchPendingAt = nil
-            TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
+            TB.SendOrderSearch(windowBot, orderKind, text)
         elseif string.len(text) >= SEARCH_MIN then
             TB.SendOrderSearch(windowBot, orderKind, text)
         end
@@ -2064,7 +2267,7 @@ end
 function TB.SetOrderSelection(itemId)
     itemId = tonumber(itemId)
     selectedItemId = itemId and math.floor(itemId) or nil
-    -- A fresh pick asks at once: farm and craft only, Buy has no preview.
+    -- A fresh pick asks at once: farm and craft only, Buy and Enchant have no preview.
     orderPreview = nil
     previewPending = nil
     previewDueAt = nil
@@ -2162,6 +2365,30 @@ function TB.OrderItemDetail(item, kind, amount, level)
     return table.concat(parts, " · ")
 end
 
+-- Second line of an enchant result: name, slot, required skill, verdict,
+-- reagents with have/need. Keep to the shared ORDER_ENCHANT shape: rows
+-- carry spellId as itemId, the verdict token, and itemId:need:have rows.
+function TB.OrderEnchantDetail(row)
+    if not row then return "" end
+    if string.lower(trim(row.verdict or "")) ~= "ok" then
+        local reason = TB.OrderReasonLabel(row.verdict)
+        return "Can't: " .. (reason or row.verdict)
+    end
+    local parts = {}
+    if row.slot then table.insert(parts, row.slot) end
+    local skill = TB.OrderSkillLabel(row.skill)
+    if skill then table.insert(parts, skill) end
+    local reagents = {}
+    for _, reagent in ipairs(row.reagents or {}) do
+        local name = nil
+        if GetItemInfo then name = GetItemInfo(reagent.itemId) end
+        name = name or ("item #" .. tostring(reagent.itemId))
+        table.insert(reagents, name .. " " .. tostring(reagent.have or 0) .. "/" .. tostring(reagent.need or 0))
+    end
+    if table.getn(reagents) > 0 then table.insert(parts, table.concat(reagents, ", ")) end
+    return table.concat(parts, " · ")
+end
+
 local function setTooltip(button, title, lines)
     button:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
@@ -2193,6 +2420,10 @@ local function firePendingSearch()
     if not searchPendingAt or now() < searchPendingAt then return end
     if not (win and windowBot and win.searchBox) then return end
     local text = trim(win.searchBox:GetText() or "")
+    if orderKind == "enchant" then
+        TB.SendOrderSearch(windowBot, orderKind, text)
+        return
+    end
     if string.len(text) < SEARCH_MIN and (not orderCat or not TB.OrderCatBrowsable(orderCat)) then
         lastSearch = { bot = windowBot, kind = orderKind, text = text, cat = nil, items = {} }
         selectedItemId = nil
@@ -2268,7 +2499,9 @@ local function createWindow()
         this:ClearFocus()
         if win and windowBot then
             local text = trim(this:GetText() or "")
-            if string.len(text) >= SEARCH_MIN
+            if orderKind == "enchant" then
+                TB.SendOrderSearch(windowBot, orderKind, text)
+            elseif string.len(text) >= SEARCH_MIN
                 or (orderCat and TB.OrderCatBrowsable(orderCat)) then
                 TB.SendOrderSearch(windowBot, orderKind, text, orderCat)
             elseif orderCat then
@@ -2282,16 +2515,20 @@ local function createWindow()
     search:SetScript("OnTextChanged", function() armSearch() end)
     win.searchBox = search
 
-    local kinds = { { "Farm", "farm" }, { "Buy", "buy" }, { "Craft", "craft" } }
+    local kinds = { { "Farm", "farm" }, { "Buy", "buy" }, { "Craft", "craft" }, { "Enchant", "enchant" } }
     win.kindPills = {}
+    local kindWidths = { 76, 56, 76, 96 }
+    local kindX = 12
     for i, entry in ipairs(kinds) do
-        local pill = TB.UI.CreateTogglePill(win, entry[1], 100, 22, {
+        local pill = TB.UI.CreateTogglePill(win, entry[1], kindWidths[i], 22, {
             tipTitle = entry[1],
             tip = entry[2] == "farm" and "Gather or kill for the items."
                 or (entry[2] == "buy" and "Buy on the auction house first, farm the rest."
-                    or "Craft from materials, farming what is missing."),
+                    or (entry[2] == "craft" and "Craft from materials, farming what is missing."
+                        or "Search this bot's enchants and order one (spell id).")),
         })
-        pill:SetPoint("TOPLEFT", win, "TOPLEFT", 12 + (i - 1) * 106, -80)
+        pill:SetPoint("TOPLEFT", win, "TOPLEFT", kindX, -80)
+        kindX = kindX + kindWidths[i] + 4
         local kind = entry[2]
         pill:SetScript("OnClick", function() TB.SetOrderKind(kind) end)
         win.kindPills[kind] = pill
@@ -2618,6 +2855,14 @@ local function createWindow()
                 TB.SetOrderFeedback("This bot can't get it.", "warn")
                 return
             end
+            if orderKind == "enchant" then
+                if selectedItemId and windowBot then
+                    TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
+                        .. " sent, waiting for the server...", "pending")
+                    TB.SendOrderGive(windowBot, "enchant", selectedItemId)
+                end
+                return
+            end
             local timeText = orderNoLimit and "no limit" or (orderHours .. "h")
             local goldText = orderGold and (" " .. TB.OrderGoldText(orderGold)) or ""
             TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
@@ -2696,12 +2941,22 @@ function TB.RefreshOrderWindow()
             row.item = item
             if item.itemId == selectedItemId then foundSelected = true end
             local cant = string.lower(trim(item.verdict or "")) ~= "ok"
-            row.icon:SetTexture(itemTexture(item.itemId))
+            if orderKind == "enchant" then
+                row.icon:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+            else
+                row.icon:SetTexture(itemTexture(item.itemId))
+            end
             -- No quality escape when greyed: inline |cff codes override
             -- SetTextColor in the 1.12 client.
-            if cant then row.name:SetText(item.item) else row.name:SetText(qualityHex(item.quality) .. item.item .. "|r") end
+            if cant then row.name:SetText(item.item)
+            elseif orderKind == "enchant" then row.name:SetText(item.item)
+            else row.name:SetText(qualityHex(item.quality) .. item.item .. "|r") end
             if cant then row.name:SetTextColor(0.45, 0.45, 0.45) else row.name:SetTextColor(1, 1, 1) end
-            row.detail:SetText(TB.OrderItemDetail(item, orderKind, orderAmount, level))
+            if orderKind == "enchant" then
+                row.detail:SetText(TB.OrderEnchantDetail(item))
+            else
+                row.detail:SetText(TB.OrderItemDetail(item, orderKind, orderAmount, level))
+            end
             if cant then row.detail:SetTextColor(0.45, 0.45, 0.45)
             else row.detail:SetTextColor(0.85, 0.85, 0.85) end
             if item.itemId == selectedItemId then row.sel:Show() else row.sel:Hide() end
@@ -2722,7 +2977,8 @@ function TB.RefreshOrderWindow()
                 win.emptyMsg:SetText("Type at least 3 letters to search.")
             elseif search.bot == windowBot and search.kind == orderKind
                 and (search.cat or nil) == (orderCat or nil) then
-                win.emptyMsg:SetText("No matching items.")
+                if orderKind == "enchant" then win.emptyMsg:SetText("No matching enchants.")
+                else win.emptyMsg:SetText("No matching items.") end
             else
                 win.emptyMsg:SetText("Searching...")
             end
@@ -2809,18 +3065,22 @@ function TB.RefreshOrderWindow()
         end)
         win.sendItemsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
-    if win.keepBox and win.keepBox.SetChecked then
-        win.keepBox:SetChecked(orderKeep and true or false)
-        if TB.CanGiveOrders() then win.keepBox:Enable() else win.keepBox:Disable() end
+    local isEnchantKind = orderKind == "enchant"
+    if win.amountBox then
+        if isEnchantKind then win.amountBox:EnableMouse(false) else win.amountBox:EnableMouse(true) end
     end
-    if win.noLimitBox and win.noLimitBox.SetChecked then
-        win.noLimitBox:SetChecked(orderNoLimit and true or false)
-        if TB.CanGiveOrders() then win.noLimitBox:Enable() else win.noLimitBox:Disable() end
+    if win.amountMinus then
+        if isEnchantKind then win.amountMinus:Disable() else win.amountMinus:Enable() end
     end
-    -- No time limit greys the hours box: unfocused, unclickable, dimmed.
-    -- The kept number returns when the box is ticked off.
+    if win.amountPlus then
+        if isEnchantKind then win.amountPlus:Disable() else win.amountPlus:Enable() end
+    end
     if win.hoursBox then
-        if orderNoLimit then
+        if isEnchantKind then
+            win.hoursBox:ClearFocus()
+            win.hoursBox:EnableMouse(false)
+            win.hoursBox:SetTextColor(0.5, 0.5, 0.5)
+        elseif orderNoLimit then
             win.hoursBox:ClearFocus()
             win.hoursBox:EnableMouse(false)
             win.hoursBox:SetTextColor(0.5, 0.5, 0.5)
@@ -2829,9 +3089,40 @@ function TB.RefreshOrderWindow()
             win.hoursBox:SetTextColor(1, 1, 1)
         end
     end
+    if win.keepBox and win.keepBox.SetChecked then
+        win.keepBox:SetChecked(orderKeep and true or false)
+        if isEnchantKind then win.keepBox:Disable()
+        elseif TB.CanGiveOrders() then win.keepBox:Enable() else win.keepBox:Disable() end
+    end
+    if win.noLimitBox and win.noLimitBox.SetChecked then
+        win.noLimitBox:SetChecked(orderNoLimit and true or false)
+        if isEnchantKind then win.noLimitBox:Disable()
+        elseif TB.CanGiveOrders() then win.noLimitBox:Enable() else win.noLimitBox:Disable() end
+    end
+    if win.goldBox then
+        if isEnchantKind then win.goldBox:EnableMouse(false)
+        elseif TB.CanGiveOrders() then win.goldBox:EnableMouse(true) end
+    end
+    if win.keepLabel then
+        if isEnchantKind then win.keepLabel:SetTextColor(0.5, 0.5, 0.5)
+        else TB.SetTextColor(win.keepLabel, color("muted")) end
+    end
+    if win.noLimitLabel then
+        if isEnchantKind then win.noLimitLabel:SetTextColor(0.5, 0.5, 0.5)
+        else TB.SetTextColor(win.noLimitLabel, color("muted")) end
+    end
+    if win.goldLabel then
+        if isEnchantKind then win.goldLabel:SetTextColor(0.5, 0.5, 0.5)
+        else TB.SetTextColor(win.goldLabel, color("gold")) end
+    end
+    if win.farmNote then
+        if isEnchantKind then win.farmNote:SetText("Meet the bot in Stormwind or Orgrimmar to trade the enchant.")
+        else win.farmNote:SetText("Bots farm like players: large amounts or rare drops can take very long or fail.") end
+    end
     if win.previewLine then
         local previewText = nil
-        if orderPreview and orderPreview.bot == windowBot
+        if isEnchantKind then previewText = nil
+        elseif orderPreview and orderPreview.bot == windowBot
             and string.lower(trim(orderPreview.kind or "")) == string.lower(trim(orderKind or ""))
             and orderPreview.itemId == selectedItemId
             and orderPreview.want == orderAmount then
@@ -2870,6 +3161,7 @@ function TB.OpenOrderWindow(bot)
     local switched = windowBot ~= bot
     windowBot = bot
     if switched then
+        orderKind = "farm"
         orderAmount = 10
         orderHours = 1
         orderNoLimit = true

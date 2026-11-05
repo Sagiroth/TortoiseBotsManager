@@ -1997,6 +1997,20 @@ function TB.InitUI()
             setButtonTooltip(relBtn, "Release this bot back to the wandering bot pool (/gkick)")
             row.relBtn = relBtn
 
+            -- Enchant Meet: same-slot twin of Release (only one shows). The
+            -- giver's own order row shows Meet until the order finishes; the
+            -- click sends "order <bot> meet" like the other order commands.
+            local meetBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+            meetBtn:SetWidth(56); meetBtn:SetHeight(14)
+            meetBtn:SetPoint("LEFT", row, "LEFT", 404, 7)
+            meetBtn:SetText("Meet")
+            meetBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.SendOrderMeet then TB.SendOrderMeet(entry.name) end
+            end)
+            setButtonTooltip(meetBtn, "Ask the bot to walk to you for the enchant trade.", "Meet")
+            row.meetBtn = meetBtn
+
             local hl = row:CreateTexture(nil, "HIGHLIGHT")
             hl:SetAllPoints(row)
             hl:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.08)
@@ -2449,6 +2463,21 @@ function TB.InitUI()
                     else
                         row.cancelBtn:Hide()
                     end
+                end
+                local showMeet = orderCap and order and TB.OrderNeedsMeet
+                    and TB.OrderNeedsMeet(order) or false
+                if row.meetBtn then
+                    if showMeet then
+                        row.meetBtn:Show()
+                        if mayOrder then row.meetBtn:Enable() else row.meetBtn:Disable() end
+                    else
+                        row.meetBtn:Hide()
+                    end
+                end
+                if row.relBtn then
+                    -- Meet borrows this slot on unfinished enchant rows; the
+                    -- other rows always show Release for claimed bots.
+                    if showMeet then row.relBtn:Hide() else row.relBtn:Show() end
                 end
                 if row.moveBtn then
                     if orderCap and order and order.parent and mayOrder then
