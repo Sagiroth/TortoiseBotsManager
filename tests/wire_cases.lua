@@ -2695,6 +2695,54 @@ local cases = {
         end,
     },
     {
+        id = "guild.order.search.who",
+        expected = { ".bot order search craft buckle" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderWhoSearch("craft", "buckle")
+        end,
+    },
+    {
+        id = "guild.order.search.who.enchant",
+        expected = { ".bot order search enchant bracer stam" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderWhoSearch("enchant", "bracer stam")
+        end,
+    },
+    {
+        id = "guild.order.search.enchant",
+        expected = { ".bot order search Goldie enchant bracer" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderEnchantSearch("Goldie", "bracer")
+        end,
+    },
+    {
+        id = "guild.order.preview.bring",
+        expected = { ".bot order Goldie preview craft 3860 5 bring=2319,2320" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.RequestOrderPreview("Goldie", "craft", 3860, 5, { 2319, 2320 })
+        end,
+    },
+    {
+        id = "guild.order.give.bring",
+        expected = { ".bot order Goldie craft 3860 5 inf bring=2319" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "craft", 3860, 5, "inf", false, nil, { 2319 })
+        end,
+    },
+    {
+        id = "guild.order.give.bring.gold",
+        expected = { ".bot order Goldie craft 3860 5 2 keep gold=500 bring=2319" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+            TB.SendOrderGive("Goldie", "craft", 3860, 5, 2, true, 500, { 2319 })
+        end,
+    },
+    {
         id = "run.exclusive",
         expected = { ".bot inv Alpha", ".bot command Alpha bank", ".bot run list", ".bot run status", ".bot run list", ".bot run status" },
         trigger = function()
