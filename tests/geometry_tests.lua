@@ -1558,6 +1558,62 @@ return function()
                         end
                     end
                 end
+                -- Guild mode: bot buttons and bring rows sit inside the card
+                -- and clear the result rows.
+                if TB.OpenGuildOrderWindow then
+                    TB.OpenGuildOrderWindow()
+                    TB.SetGuildOrderKind("craft")
+                    TB.OnSystemMessage("TBM:ORDER_WHO_BEGIN|craft|1")
+                    TB.OnSystemMessage("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|Goldie:165:3:3:0")
+                    TB.OnSystemMessage("TBM:ORDER_WHO_END")
+                    local gfilled = {}
+                    for i, row in ipairs(win.resultRows or {}) do
+                        if row:IsVisible() then table.insert(gfilled, { "grow" .. i, row }) end
+                    end
+                    if table.getn(gfilled) ~= 1 then
+                        bad("OrderWindow: 1 guild row must show, got " .. table.getn(gfilled))
+                    end
+                    local gbtns = {}
+                    for i, b in ipairs(win.botBtns or {}) do
+                        if b:IsVisible() then table.insert(gbtns, { "gbot" .. i, b }) end
+                    end
+                    if table.getn(gbtns) == 0 then
+                        bad("OrderWindow: guild rows must show bot buttons")
+                    end
+                    for _, entry in ipairs(gbtns) do labelFits("OrderWindow " .. entry[1], entry[2], nil, 6) end
+                    childrenInside("OrderWindow guild rows", win, wr, gfilled, cache, 2)
+                    childrenInside("OrderWindow guild bots", win, wr, gbtns, cache, 2)
+                    noOverlaps("OrderWindow guild rows", gfilled, cache)
+                    if TB.SetOrderBring then
+                        TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|0")
+                        TB.OpenOrderWindow("Goldie")
+                        TB.SetOrderKind("craft")
+                        GetContainerNumSlots = function() return 0 end
+                        GetContainerItemLink = function() return nil end
+                        GetContainerItemInfo = function() return nil end
+                        TB.SendOrderSearch("Goldie", "craft", "buckle")
+                        TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+                        TB.OnSystemMessage("TBM:ORDER_ITEM|3860|Iron Buckle|2|craft|1|-|ok|-|0")
+                        TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+                        TB.SetOrderAmount(5)
+                        local savedDelay = TB.C and TB.C.SEND_DELAY
+                        if TB.C then TB.C.SEND_DELAY = 0 end
+                        TB.SetOrderSelection(3860)
+                        if TB.C then TB.C.SEND_DELAY = savedDelay end
+                        TB.OnSystemMessage("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:3:1:2:2:Ashenvale:1:0:1:1|40|-|-")
+                        TB.RefreshOrderWindow()
+                        local shown = {}
+                        for i, box in ipairs(win.bringRows or {}) do
+                            if box:IsVisible() then table.insert(shown, { "bring" .. i, box }) end
+                        end
+                        if table.getn(shown) == 0 then
+                            bad("OrderWindow: craft previews must show bring rows")
+                        end
+                        GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = nil, nil, nil
+                        TB.SetOrderBring({})
+                        TB.CloseOrderWindow()
+                    end
+                end
             end
             TB.CloseOrderWindow()
             TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")

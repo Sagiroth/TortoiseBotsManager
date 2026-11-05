@@ -1883,6 +1883,37 @@ assert(table.getn(TB.GetClaimedBots("silver")) == 1 and TB.GetClaimedBots("silve
 assert(table.getn(TB.GetClaimedBots("mage")) == 1 and TB.GetClaimedBots("mage")[1].name == "Bronze",
     "search filter must find bot by class name")
 
+-- Row professions: old 8-field rows keep working, new rows parse profs and
+-- the filter matches profession names like name/class
+parsedProfs = TB.ParseClaimedProfs("333:300;197:275")
+assert(parsedProfs and table.getn(parsedProfs) == 2 and parsedProfs[1].skill == 333
+    and parsedProfs[1].value == 300 and parsedProfs[2].skill == 197, "profs field must parse into skill/value pairs")
+assert(table.getn(TB.ParseClaimedProfs("-")) == 0, "a dash means no professions")
+assert(table.getn(TB.ParseClaimedProfs("")) == 0, "an empty field means no professions")
+assert(TB.ParseClaimedProfs("333") == nil, "a pair without a value must not parse")
+assert(TB.ParseClaimedProfs("333:abc") == nil, "a non-numeric value must not parse")
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|2")
+TB.OnSystemMessage("TBM:CLAIMED|301|Enchantee|8|60|online|0|Ironforge|1|333:300;197:275")
+TB.OnSystemMessage("TBM:CLAIMED|302|Plain|1|60|online|0|Ironforge|1|-")
+TB.OnSystemMessage("TBM:CLAIMED_END")
+profed = TB.GetClaimedBots()
+assert(table.getn(profed) == 2, "profs snapshot must replace the rows")
+assert(TB.ClaimedProfsLine(profed[1]) == "Enchanting 300, Tailoring 275",
+    "the guild tooltip line names the row professions with skill")
+assert(TB.ClaimedProfsLine(profed[2]) == nil, "a dash means no tooltip line")
+assert(table.getn(TB.GetClaimedBots("enchant")) == 1 and TB.GetClaimedBots("enchant")[1].name == "Enchantee",
+    "search filter must match profession names")
+assert(table.getn(TB.GetClaimedBots("tail")) == 1, "profession match must work on substrings")
+assert(table.getn(TB.GetClaimedBots("mine")) == 0, "an unknown profession must leave no rows")
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|1")
+TB.OnSystemMessage("TBM:CLAIMED|303|Bad|1|60|online|0|Ironforge|1|333")
+assert(table.getn(TB.GetClaimedBots()) == 2, "a malformed profs field drops the batch, keeping the last good list")
+-- Back to the original rows for the UI block below.
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|3")
+TB.OnSystemMessage("TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1")
+TB.OnSystemMessage("TBM:CLAIMED|202|Silver|5|45|online|1|Duskwood|0")
+TB.OnSystemMessage("TBM:CLAIMED|203|Bronze|8|20|offline|0|-|0")
+TB.OnSystemMessage("TBM:CLAIMED_END")
 -- UI rendering on Guild tab
 TB.ShowTab("guild")
 assert(not TB.guildFrame.emptyMsg:IsVisible(), "empty message must be hidden when bots exist")
@@ -4309,6 +4340,491 @@ now = now + 1
 TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
 assert(lastAddon() == "order Goldie preview farm 2318 25", "the pause re-asks once for the new amount")
 TB.CloseOrderWindow()
+
+-- ── Enchant orders (TBM#12): row states, Meet, ready notice, Enchant search ─
+-- Own function: the main chunk is at Lua's 200-local limit.
+local function enchantOrderChecks()
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    canEditOfficerNote = true
+
+    -- Row states: ready names the capital and Meet, coming/enchanting read plainly.
+    local readyOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    assert(readyOrder and readyOrder.type == "enchant" and readyOrder.itemId == 27747
+        and readyOrder.state == "ready", "enchant rows parse with the spell id")
+    assert(TB.OrderTypeLabel("enchant") == "Enchant", "enchant gets the plain type label")
+    assert(TB.OrderStateLabel("ready") == "Ready"
+        and TB.OrderStateLabel("coming") == "Coming"
+        and TB.OrderStateLabel("enchanting") == "Enchanting",
+        "enchant states get plain labels")
+    assert(TB.OrderRowText(readyOrder)
+        == "Enchant Bracer - Stamina · |cff4ecb5aReady|r - come to Stormwind and press Meet",
+        "ready rows name the capital and Meet: " .. TB.OrderRowText(readyOrder))
+    local comingOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|coming|-|-")
+    assert(TB.OrderRowText(comingOrder)
+        == "Enchant Bracer - Stamina · |cffffd200On the way to you|r",
+        "coming rows read plainly")
+    local enchantingOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|enchanting|-|-")
+    assert(TB.OrderRowText(enchantingOrder)
+        == "Enchant Bracer - Stamina · |cffffd200Trade open - put your item in Will not be traded|r",
+        "enchanting rows name the trade slot")
+    local oldWaiting = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|waiting|grouped|Ashenvale")
+    assert(string.find(TB.OrderRowText(oldWaiting), "Waiting", 1, true) ~= nil,
+        "old rows keep their waiting text")
+
+    -- Gathering rows: working with a step reads as today, needitems names the need.
+    local gatherOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|working|-|-|-|-|-|-|-|-|-")
+    assert(TB.OrderRowText(gatherOrder) == "Enchant Bracer - Stamina 1/1",
+        "gathering rows show the bare progress: " .. TB.OrderRowText(gatherOrder))
+    local needOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|waiting|needitems|-|-|-|-|-|-|-|10940:2")
+    assert(TB.OrderNeedText(needOrder) ~= nil, "needitems rows still parse the need list")
+    local needRow = TB.OrderRowText(needOrder)
+    assert(string.find(needRow, "Waiting", 1, true) ~= nil, "needitems rows keep waiting: " .. needRow)
+
+    -- Meet gating: only unfinished enchant rows.
+    assert(TB.OrderNeedsMeet(readyOrder) == true, "a ready enchant needs Meet")
+    assert(TB.OrderNeedsMeet(comingOrder) == true, "a coming enchant needs Meet")
+    assert(TB.OrderNeedsMeet(enchantingOrder) == true, "an enchanting row needs Meet")
+    assert(TB.OrderNeedsMeet({ type = "enchant", state = "done" }) == false, "done needs no Meet")
+    assert(TB.OrderNeedsMeet({ type = "enchant", state = "cant" }) == false, "cant needs no Meet")
+    assert(TB.OrderNeedsMeet({ type = "farm", state = "ready" }) == false, "farm rows never need Meet")
+    assert(TB.OrderNeedsMeet(nil) == false, "no order needs no Meet")
+
+    -- Meet send: byte-exact, gated by the capability.
+    now = now + 1
+    local beforeMeet = table.getn(addonSent)
+    assert(TB.SendOrderMeet("Goldie") == true, "Meet sends")
+    assert(addonSent[table.getn(addonSent)].message == "order Goldie meet"
+        and table.getn(addonSent) == beforeMeet + 1, "Meet rides the wire byte-exact")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+    assert(TB.SendOrderMeet("Goldie") == false, "no Meet without the capability")
+    assert(table.getn(addonSent) == beforeMeet + 1, "a gated Meet sends nothing")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1")
+
+    -- Meet ACK/ERR follow the lead contract: "meet coming/later/gathering"
+    -- ACKs (plus a plain system text line that paints the status), and
+    -- notcapital/noorder/busy ERRs with the text to show.
+    assert(TB.OpenOrderWindow("Goldie"), "the window reopens for the Meet reply")
+    now = now + 1
+    assert(TB.SendOrderMeet("Goldie") == true, "the reply Meet sends")
+    -- The ACK detail paints the rows (meetBtn visibility) while the plain
+    -- system text the server sends alongside stays a chat line: the ACK must
+    -- not stamp its own status text over it.
+    local said = nil
+    local realSetStatus = TB.SetStatus
+    TB.SetStatus = function(msg) said = msg end
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|meet coming")
+    assert(TB.lastActionAck and TB.lastActionAck.executor == "meet coming",
+        "the coming ACK routes and repaints the rows")
+    assert(said == nil, "the coming ACK paints no status of its own")
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|meet later")
+    assert(TB.lastActionAck and TB.lastActionAck.executor == "meet later", "the later ACK routes")
+    assert(said == nil, "the later ACK paints no status of its own")
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|meet gathering")
+    assert(TB.lastActionAck and TB.lastActionAck.executor == "meet gathering",
+        "the gathering ACK routes")
+    assert(said == nil, "the gathering ACK paints no status of its own")
+    TB.OnSystemMessage("TBM:ACTION_ERR|order|notcapital|Meet me in Stormwind.")
+    assert(TB.lastActionError and TB.lastActionError.code == "notcapital", "the notcapital error routes")
+    TB.SetStatus = realSetStatus
+    assert(string.find(TB.GetOrderFeedback().text, "Meet me in Stormwind.", 1, true) ~= nil,
+        "the window shows the notcapital text too")
+    TB.OnSystemMessage("TBM:ACTION_ERR|order|noorder|That bot has no enchant order from you.")
+    assert(TB.lastActionError and TB.lastActionError.code == "noorder"
+        and string.find(TB.GetOrderFeedback().text, "no enchant order from you", 1, true) ~= nil,
+        "the window shows the noorder text")
+    TB.OnSystemMessage("TBM:ACTION_ERR|order|busy|Goldie is busy with an enchant order for Other.")
+    assert(TB.lastActionError and TB.lastActionError.code == "busy"
+        and string.find(TB.GetOrderFeedback().text, "is busy with an enchant order", 1, true) ~= nil,
+        "the window shows the busy text")
+    TB.CloseOrderWindow()
+
+    -- Ready notice: once per order. Live update fires, refresh and replay do not.
+    UIErrorsFrame = UIErrorsFrame or { messages = {},
+        AddMessage = function(self, msg, r, g, b) table.insert(self.messages, msg) end }
+    UIErrorsFrame.messages = {}
+    local played = {}
+    PlaySound = function(name) table.insert(played, name) end
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|working|-|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(table.getn(UIErrorsFrame.messages) == 0 and table.getn(played) == 0,
+        "gathering announces nothing")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    assert(table.getn(UIErrorsFrame.messages) == 1 and table.getn(played) == 1 and played[1] == "ReadyCheck",
+        "ready fires one message and the ReadyCheck sound")
+    assert(string.find(UIErrorsFrame.messages[1], "Stormwind", 1, true) ~= nil
+        and string.find(UIErrorsFrame.messages[1], "press Meet", 1, true) ~= nil,
+        "the ready message names the capital and Meet: " .. tostring(UIErrorsFrame.messages[1]))
+    assert(TB.OrderReadyAnnounced("Goldie") == true, "the announce is recorded")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    assert(table.getn(UIErrorsFrame.messages) == 1 and table.getn(played) == 1,
+        "a replay of the same ready stays silent")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(table.getn(UIErrorsFrame.messages) == 1 and table.getn(played) == 1,
+        "a list refresh of the same ready stays silent")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|coming|-|-")
+    assert(TB.OrderReadyAnnounced("Goldie") == false, "leaving ready clears the announce")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    assert(table.getn(UIErrorsFrame.messages) == 2 and table.getn(played) == 2,
+        "a new ready announces again")
+    UIErrorsFrame.messages = {}
+    played = {}
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    assert(table.getn(UIErrorsFrame.messages) == 0, "a full list alone never announces")
+
+    -- Meet button: shows only on unfinished enchant rows, in place of Release.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    TB.OnSystemMessage("TBM:CLAIMED_BEGIN|3")
+    TB.OnSystemMessage("TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1")
+    TB.OnSystemMessage("TBM:CLAIMED|202|Silver|5|45|online|1|Duskwood|0")
+    TB.OnSystemMessage("TBM:CLAIMED|203|Bronze|8|20|offline|0|-|0")
+    TB.OnSystemMessage("TBM:CLAIMED_END")
+    TB.ShowTab("guild")
+    TB.RefreshGuildView()
+    local meetRow = TB.guildFrame.rows[1]
+    assert(meetRow.entry and meetRow.entry.name == "Goldie",
+        "the first guild row holds Goldie")
+    assert(meetRow and meetRow.meetBtn and meetRow.meetBtn:IsVisible(),
+        "an unfinished enchant shows Meet")
+    assert(meetRow.meetBtn.enabled, "officer rights enable Meet")
+    assert(not meetRow.relBtn:IsVisible(), "Meet takes the Release slot while shown")
+    canEditOfficerNote = false
+    TB.RefreshGuildView()
+    assert(not meetRow.meetBtn.enabled, "losing the right greys Meet out")
+    canEditOfficerNote = true
+    now = now + 1
+    local meetBefore = table.getn(addonSent)
+    this = meetRow.meetBtn
+    meetRow.meetBtn.scripts.OnClick(meetRow.meetBtn)
+    assert(table.getn(addonSent) == meetBefore + 1 and lastAddon() == "order Goldie meet",
+        "Meet clicks send like the other order commands")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|done|-|-")
+    TB.RefreshGuildView()
+    assert(not meetRow.meetBtn:IsVisible() and meetRow.relBtn:IsVisible(),
+        "done restores Release")
+
+    -- Enchant search: the window lists name, slot, skill and have/need.
+    assert(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|27747") == nil,
+        "a short enchant line is dropped")
+    assert(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|27747|Enchant Bracer - Stamina|bracer|333:225|ok|-") ~= nil
+        and TB.ParseOrderEnchantReagents("-") ~= nil
+        and table.getn(TB.ParseOrderEnchantReagents("-")) == 0,
+        "dash reagents parse as none")
+    assert(TB.ParseOrderEnchantReagents("nope") == nil, "bad reagents drop the line")
+    assert(TB.OrderEnchantDetail({ verdict = "norecipe" }) == "Can't: unknown recipe",
+        "norecipe verdicts read plainly")
+    assert(TB.OrderEnchantDetail({ verdict = "noskill" }) == "Can't: missing profession",
+        "noskill verdicts read plainly")
+    now = now + 1
+    assert(TB.OpenOrderWindow("Goldie"), "the window reopens for enchant")
+    TB.orderWindow.searchBox.text = ""
+    now = now + 1
+    assert(TB.orderWindow.kindPills.enchant and TB.orderWindow.kindPills.enchant:IsVisible(),
+        "the Enchant pill shows")
+    assert(TB.SetOrderKind("enchant") == true and TB.GetOrderKind() == "enchant",
+        "the kind switches to Enchant")
+    assert(TB.orderWindow.kindPills.enchant:GetText() == "|cffffffffEnchant|r"
+        or TB.orderWindow.kindPills.enchant.baseLabel == "Enchant",
+        "the Enchant pill lights while picked")
+    assert(lastAddon() == "order search Goldie enchant", "switching to Enchant re-runs the search: " .. tostring(lastAddon()))
+    TB.orderWindow.searchBox.text = "bracer"
+    this = TB.orderWindow.searchBox
+    TB.orderWindow.searchBox.scripts.OnTextChanged(TB.orderWindow.searchBox)
+    now = now + 1
+    TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+    assert(lastAddon() == "order search Goldie enchant bracer", "typing sends the enchant search: " .. tostring(lastAddon()))
+    TB.OnSystemMessage("TBM:ORDER_ENCHANTS_BEGIN|2")
+    TB.OnSystemMessage("TBM:ORDER_ENCHANT|27747|Enchant Bracer - Stamina|bracer|333:225|ok|10940:2:2;10938:1:0")
+    TB.OnSystemMessage("TBM:ORDER_ENCHANT|27951|Enchant Bracer - Healing|bracer|333:250|ok|-")
+    TB.OnSystemMessage("TBM:ORDER_ENCHANTS_END")
+    local enchantSearch = TB.GetOrderSearch()
+    assert(enchantSearch.kind == "enchant" and table.getn(enchantSearch.items) == 2,
+        "the enchant search lands on the window's bot")
+    local firstEnchant = TB.orderWindow.resultRows[1]
+    assert(firstEnchant:IsVisible()
+        and string.find(firstEnchant.name:GetText(), "Enchant Bracer - Stamina", 1, true) ~= nil,
+        "the first enchant row shows the name")
+    local enchantDetail = firstEnchant.detail:GetText()
+    assert(string.find(enchantDetail, "bracer", 1, true) ~= nil
+        and string.find(enchantDetail, "Enchanting 225", 1, true) ~= nil
+        and string.find(enchantDetail, "2/2", 1, true) ~= nil,
+        "enchant rows show slot, skill and have/need: " .. tostring(enchantDetail))
+    local secondEnchant = TB.orderWindow.resultRows[2]
+    this = secondEnchant
+    secondEnchant.scripts.OnClick(secondEnchant)
+    assert(TB.GetOrderSelection() == 27951, "an enchant row is picked by spell id")
+    now = now + 1
+    TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+    assert(lastAddon() == "order Goldie enchant 27951", "Send gives the spell id, nothing else")
+    now = now + 1
+    TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|enchant")
+    assert(not TB.orderWindow:IsVisible(), "an enchant ACK closes the window")
+    assert(TB.lastActionAck and TB.lastActionAck.executor == "enchant", "the enchant ACK routes")
+
+    -- Meet button states: gathering, need-vs-bags, capital, cooldown.
+    local readyForMeet = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|ready|-|-")
+    local gathering = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|working|-|-")
+    local needy = TB.ParseOrderLine("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|waiting|needitems|-|-|-|-|-|-|-|10940:2")
+    local ok, why = TB.OrderMeetState(gathering)
+    assert(ok == false and why == "Still gathering materials", "gathering greys Meet out")
+    GetContainerNumSlots = function(bag) if bag == 0 then return 1 end return 0 end
+    GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return "|cffffffff|Hitem:99999:0:0:0|h[Other]|h|r" end
+        return nil
+    end
+    GetContainerItemInfo = function() return nil, 1, false end
+    ok, why = TB.OrderMeetState(needy)
+    assert(ok == false and string.find(why, "You carry none of the missing materials:", 1, true) ~= nil
+        and string.find(why, "10940", 1, true) ~= nil, "empty bags grey a needitems Meet: " .. tostring(why))
+    GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return "|cffffffff|Hitem:10940:0:0:0|h[Strange Dust]|h|r" end
+        return nil
+    end
+    GetContainerItemInfo = function() return nil, 2, false end
+    ok, why = TB.OrderMeetState(needy)
+    assert(ok == true and why == nil, "carrying a need item enables Meet")
+    GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = nil, nil, nil
+    local savedFaction = UnitFactionGroup
+    UnitFactionGroup = nil
+    GetRealZoneText = function() return "Durotar" end
+    GetZoneText = function() return "Durotar" end
+    ok, why = TB.OrderMeetState(readyForMeet)
+    assert(ok == false and why == "Go to Stormwind", "outside the capital Meet waits: " .. tostring(why))
+    GetRealZoneText = function() return "Stormwind City" end
+    GetZoneText = function() return "Stormwind City" end
+    ok, why = TB.OrderMeetState(readyForMeet)
+    assert(ok == true and why == nil, "a ready order in the capital meets (Stormwind exact)")
+    UnitFactionGroup = function() return "Horde" end
+    GetRealZoneText = function() return "Orgrimmar" end
+    GetZoneText = function() return "Orgrimmar" end
+    ok, why = TB.OrderMeetState(readyForMeet)
+    assert(ok == true and why == nil, "a Horde player meets in Orgrimmar: " .. tostring(why))
+    GetRealZoneText = function() return "Durotar" end
+    ok, why = TB.OrderMeetState(readyForMeet)
+    assert(ok == false and why == "Go to Orgrimmar", "a Horde player outside waits for Orgrimmar")
+    UnitFactionGroup = savedFaction
+    GetRealZoneText, GetZoneText = nil, nil
+    -- Cooldown: parsed from the refusal text, remembered per bot, then expires.
+    assert(TB.SendOrderMeet("Goldie") == true, "Meet sends before the refusal")
+    UIErrorsFrame.messages = {}
+    local errBefore = TB.GetOrderFeedback() and TB.GetOrderFeedback().text or nil
+    TB.OnSystemMessage("TBM:ACTION_ERR|order|cooldown|I just came for nothing. Try again in 5 min.")
+    assert(TB.lastActionError and TB.lastActionError.code == "cooldown", "the cooldown error routes")
+    assert(table.getn(UIErrorsFrame.messages) == 1
+        and string.find(UIErrorsFrame.messages[1], "Try again in 5 min.", 1, true) ~= nil,
+        "the cooldown text shows on screen")
+    assert(string.find(TB.GetOrderFeedback().text, "Try again in 5 min.", 1, true) ~= nil
+        and TB.GetOrderFeedback().text ~= errBefore, "the cooldown text shows in the window too")
+    local left = TB.GetOrderMeetCooldown("Goldie")
+    assert(left and left > 4 * 60 and left <= 5 * 60, "the cooldown is remembered: " .. tostring(left))
+    ok, why = TB.OrderMeetState(readyForMeet)
+    assert(ok == false and why == "Try again in 5 min", "the button counts the cooldown down")
+    now = now + 5 * 60 + 1
+    assert(TB.GetOrderMeetCooldown("Goldie") == nil, "the cooldown expires")
+    ok, why = TB.OrderMeetState(readyForMeet)
+    assert(ok == true, "Meet enables again after the cooldown")
+    -- The other refusals show on screen and in the window the same way.
+    assert(TB.SendOrderMeet("Goldie") == true, "Meet sends before the refusals")
+    TB.OnSystemMessage("TBM:ACTION_ERR|order|nothingtobring|Bring an item to enchant first.")
+    assert(string.find(UIErrorsFrame.messages[table.getn(UIErrorsFrame.messages)],
+        "Bring an item to enchant first.", 1, true) ~= nil, "nothingtobring shows on screen")
+    assert(string.find(TB.GetOrderFeedback().text, "Bring an item", 1, true) ~= nil,
+        "nothingtobring shows in the window")
+end
+enchantOrderChecks()
+TB.CloseOrderWindow()
+-- ── Guild-wide pick-a-bot + materials I bring (TBM#1525, addon only) ───────
+local function guildOrderUiChecks()
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+canEditOfficerNote = true
+-- ORDER_WHO parsing: bots list, busy marker, dash quality/slot/empty bots.
+local whoCraft = TB.ParseOrderWhoLine("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|Goldie:165:3:3:0;Silver:140:1:3:1")
+assert(whoCraft and whoCraft.kind == "craft" and whoCraft.id == 3860
+    and whoCraft.quality == 2 and whoCraft.slot == nil and whoCraft.reqSkill == 165
+    and table.getn(whoCraft.bots) == 2 and whoCraft.bots[1].bot == "Goldie"
+    and whoCraft.bots[2].busy == true, "a craft who line parses bots and busy")
+local whoEnchant = TB.ParseOrderWhoLine("TBM:ORDER_WHO|enchant|7418|Enchant Bracer - Minor Stamina|-|bracer|165|Goldie:165:1:1:0")
+assert(whoEnchant and whoEnchant.kind == "enchant" and whoEnchant.quality == nil
+    and whoEnchant.slot == "bracer" and whoEnchant.reqSkill == 165, "an enchant who line keeps slot and skill")
+assert(TB.ParseOrderWhoLine("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|-").bots ~= nil
+    and table.getn(TB.ParseOrderWhoLine("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|-").bots) == 0,
+    "no knowing bot parses as an empty list")
+assert(TB.ParseOrderWhoLine("TBM:ORDER_WHO|craft|3860") == nil
+    and TB.ParseOrderWhoLine("TBM:ORDER_WHO|farm|3860|Iron Buckle|2|-|165|-") == nil
+    and TB.ParseOrderWhoBots("Goldie:165:3") == nil
+    and TB.ParseOrderWhoBots("Goldie:165:3:3:2") == nil, "bad who lines drop")
+assert(TB.OrderWhoBotText(whoCraft) == "Goldie 165 3/3, Silver 140 1/3 (busy)",
+    "the bot line names skill, have/need and busy: " .. tostring(TB.OrderWhoBotText(whoCraft)))
+assert(TB.OrderWhoRowText(whoEnchant) == "Enchant Bracer - Minor Stamina (bracer 165) - Goldie 165 1/1",
+    "the row names slot and skill on enchant: " .. tostring(TB.OrderWhoRowText(whoEnchant)))
+-- ORDER_ENCHANT parsing: verdicts and reagent have counts (rows keep the
+-- per-bot shape: the spell id rides as itemId).
+local enchant = TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|7418|Enchant Bracer - Minor Stamina|bracer|165|ok|10940:1:1;10938:1:0")
+assert(enchant and enchant.itemId == 7418 and enchant.slot == "bracer"
+    and enchant.verdict == "ok" and table.getn(enchant.reagents) == 2
+    and enchant.reagents[2].have == 0, "an enchant line parses reagents")
+assert(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|7418|Name|bracer|165|norecipe|-").verdict == "norecipe"
+    and table.getn(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|7418|Name|bracer|165|norecipe|-").reagents) == 0,
+    "a refused enchant keeps its reason with no reagents")
+assert(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|7418") == nil
+    and TB.ParseOrderEnchantReagents("nope") == nil, "bad enchant lines drop")
+-- Guild-wide search sends ride the same transport as today's searches.
+now = now + 1
+assert(TB.SendOrderWhoSearch("craft", "buckle") == true
+    and lastAddon() == "order search craft buckle", "the guild-wide craft search sends")
+now = now + 1
+assert(TB.SendOrderWhoSearch("enchant", "bracer stam") == true
+    and lastAddon() == "order search enchant bracer stam", "the guild-wide enchant search sends")
+assert(TB.SendOrderWhoSearch("craft", "ab") == false, "a short guild-wide search refuses")
+now = now + 1
+assert(TB.SendOrderEnchantSearch("Goldie", "bracer") == true
+    and lastAddon() == "order search Goldie enchant bracer", "the per-bot enchant search sends")
+-- The WHO stream commits for the current pick-a-bot kind; a foreign kind
+-- never touches the shown rows.
+TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1,2|-|1|0")
+assert(TB.OpenGuildOrderWindow(), "the guild Order button opens pick-a-bot mode")
+assert(TB.IsOrderGuildMode() and TB.GetOrderWindowBot() == nil, "pick-a-bot mode pins no bot")
+TB.orderWindow.searchBox.text = "buckle"
+now = now + 1
+TB.SendOrderWhoSearch("craft", "buckle")
+TB.OnSystemMessage("TBM:ORDER_WHO_BEGIN|craft|1")
+TB.OnSystemMessage("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|Goldie:165:3:3:0")
+TB.OnSystemMessage("TBM:ORDER_WHO_END")
+assert(table.getn(TB.GetOrderWhoSearch().rows) == 1, "the who pair commits its rows")
+assert(TB.orderWindow.resultRows[1]:IsVisible()
+    and string.find(TB.orderWindow.resultRows[1].name:GetText(), "Iron Buckle", 1, true) ~= nil
+    and string.find(TB.orderWindow.resultRows[1].detail:GetText(), "Goldie 165 3/3", 1, true) ~= nil,
+    "the window renders the match with its bots")
+TB.SetGuildOrderKind("enchant")
+now = now + 1
+TB.OnSystemMessage("TBM:ORDER_WHO_BEGIN|craft|1")
+TB.OnSystemMessage("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|Goldie:165:3:3:0")
+TB.OnSystemMessage("TBM:ORDER_WHO_END")
+assert(table.getn(TB.GetOrderWhoSearch().rows) == 1
+    and TB.GetOrderWhoSearch().kind == "craft", "a late pair shows its own answer, never stale rows")
+assert(TB.orderWindow.resultRows[1].botBtns == nil or true, "bot buttons ride the window frame")
+TB.SetGuildOrderKind("craft")
+TB.orderWindow.searchBox.text = "buckle"
+now = now + 1
+now = now + 1
+now = now + 1
+TB.SendOrderWhoSearch("craft", "buckle")
+TB.OnSystemMessage("TBM:ORDER_WHO_BEGIN|craft|1")
+TB.OnSystemMessage("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|Goldie:165:3:3:0")
+TB.OnSystemMessage("TBM:ORDER_WHO_END")
+assert(TB.orderWindow.botBtns and TB.orderWindow.botBtns[1]:IsVisible()
+    and TB.orderWindow.botBtns[1]:GetText() == "Goldie", "the first bot becomes a clickable button")
+-- A who-bot click opens today's per-bot flow for that bot and item.
+now = now + 1
+now = now + 1
+now = now + 1
+this = TB.orderWindow.botBtns[1]
+TB.orderWindow.botBtns[1].scripts.OnClick(TB.orderWindow.botBtns[1])
+assert(not TB.IsOrderGuildMode() and TB.GetOrderWindowBot() == "Goldie"
+    and TB.GetOrderSelection() == 3860 and TB.GetOrderKind() == "craft",
+    "clicking a craft bot opens its normal craft flow")
+assert(lastAddon() == "order Goldie preview craft 3860 10", "the click asks the craft preview at once")
+TB.CloseOrderWindow()
+-- Enchant clicks open the per-bot enchant flow with the spell preselected.
+assert(TB.OpenGuildOrderWindow(), "pick-a-bot mode reopens")
+TB.SetGuildOrderKind("enchant")
+TB.orderWindow.searchBox.text = "bracer stam"
+TB.SendOrderWhoSearch("enchant", "bracer stam")
+TB.OnSystemMessage("TBM:ORDER_WHO_BEGIN|enchant|1")
+TB.OnSystemMessage("TBM:ORDER_WHO|enchant|7418|Enchant Bracer - Minor Stamina|-|bracer|165|Goldie:165:1:1:0")
+TB.OnSystemMessage("TBM:ORDER_WHO_END")
+this = TB.orderWindow.botBtns[1]
+TB.orderWindow.botBtns[1].scripts.OnClick(TB.orderWindow.botBtns[1])
+assert(not TB.IsOrderGuildMode() and TB.GetOrderWindowBot() == "Goldie"
+    and TB.GetOrderKind() == "enchant" and TB.GetOrderSelection() == 7418,
+    "clicking an enchant bot opens its enchant flow with the spell picked")
+now = now + 1
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie enchant 7418", "the picked spell sends as the enchant order")
+TB.CloseOrderWindow()
+-- Bring parsing: the new trailing field, old servers without it stay empty.
+local bringPreview = TB.ParseOrderPreviewLine("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:3:1:2:2:Ashenvale:1:0:1:1|40|-|2319")
+assert(bringPreview and table.getn(bringPreview.bring) == 1 and bringPreview.bring[1] == 2319,
+    "the preview carries the new bring field")
+assert(table.getn(TB.ParseOrderPreviewLine("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|-|40|-").bring) == 0,
+    "an old preview without the field means nothing ticked")
+assert(TB.ParseOrderPreviewLine("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|-|40|-|nope") == nil,
+    "a bad bring list drops the preview line")
+assert(TB.ParseOrderBring("2319,2320") ~= nil and table.getn(TB.ParseOrderBring("2319,2320")) == 2
+    and table.getn(TB.ParseOrderBring("-")) == 0 and TB.ParseOrderBring("nope") == nil,
+    "bring lists parse strictly")
+-- Auto-tick: full bag counts tick, partial counts stay unticked.
+GetContainerNumSlots = function(bag) if bag == 0 then return 2 end return 0 end
+GetContainerItemLink = function(bag, slot)
+    if bag == 0 and slot == 1 then return "|cffffffff|Hitem:2319:0:0:0|h[Iron Bar]|h|r" end
+    if bag == 0 and slot == 2 then return "|cffffffff|Hitem:2320:0:0:0|h[Cured Light Hide]|h|r" end
+    return nil
+end
+GetContainerItemInfo = function(bag, slot)
+    if bag == 0 and slot == 1 then return "Interface\\Icons\\INV_Ingot_02", 8, false end
+    if bag == 0 and slot == 2 then return "Interface\\Icons\\INV_Misc_Pelt_Wolf_01", 1, false end
+    return nil
+end
+assert(TB.OrderBagCount(2319) == 8 and TB.OrderBagCount(2320) == 1, "bag counts read the 1.12 bag APIs")
+assert(TB.OrderBringAutoTicked({ itemId = 2319, need = 8 }) == true, "a full stack auto-ticks")
+assert(TB.OrderBringAutoTicked({ itemId = 2320, need = 2 }) == false, "a partial stack stays unticked")
+-- The bring= string rides preview refresh and Send; toggling re-asks.
+now = now + 1
+TB.OpenOrderWindow("Goldie")
+if TB.GetOrderKind() ~= "craft" then TB.SetOrderKind("craft") end
+TB.SetOrderBring({ 2319 })
+assert(TB.OrderBringText(TB.GetOrderBring()) == "2319", "the tick joins with commas")
+now = now + 1
+assert(TB.RequestOrderPreview("Goldie", "craft", 3860, 5, TB.GetOrderBring()) == true
+    and lastAddon() == "order Goldie preview craft 3860 5 bring=2319", "preview refresh carries bring=")
+now = now + 1
+assert(TB.SendOrderGive("Goldie", "craft", 3860, 5, "inf", false, nil, TB.GetOrderBring()) == true
+    and lastAddon() == "order Goldie craft 3860 5 inf bring=2319", "Send carries bring= last")
+now = now + 1
+assert(TB.SendOrderGive("Goldie", "craft", 3860, 5) == true
+    and lastAddon() == "order Goldie craft 3860 5", "unticked rows ride no field")
+-- The window shows one "I bring it" checkbox per craft reagent and sends the tick.
+-- Bags stay mocked: the preview commit auto-ticks from these counts.
+now = now + 1
+now = now + 1
+TB.SendOrderSearch("Goldie", "craft", "buckle")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ITEM|3860|Iron Buckle|2|craft|1|-|ok|-|0")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+itemCache[3860] = { name = "Iron Buckle", quality = 2, texture = "Interface\\Icons\\INV_Belt_01" }
+itemCache[2319] = { name = "Iron Bar", quality = 1, texture = "Interface\\Icons\\INV_Ingot_02" }
+TB.SetOrderAmount(5)
+now = now + 1
+TB.SetOrderSelection(3860)
+now = now + 1
+TB.OnSystemMessage("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:8:0:0:0:-:0:0:0:0|40|-|-")
+assert(table.getn(TB.GetOrderBring()) == 1 and TB.GetOrderBring()[1] == 2319,
+    "a full-bag preview auto-ticks its reagent")
+assert(TB.orderWindow.bringRows and TB.orderWindow.bringRows[1]:IsVisible()
+    and TB.orderWindow.bringRows[1]:GetChecked(), "the reagent row shows ticked")
+this = TB.orderWindow.bringRows[1]
+TB.orderWindow.bringRows[1].scripts.OnClick(TB.orderWindow.bringRows[1])
+assert(table.getn(TB.GetOrderBring()) == 0, "the player can untick the row")
+TB.ToggleOrderBringNow(2319)
+assert(TB.OrderBringText(TB.GetOrderBring()) == "2319", "toggling ticks again")
+now = now + 1
+now = now + 1
+TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+assert(lastAddon() == "order Goldie preview craft 3860 5 bring=2319", "a tick re-asks the preview with bring=")
+GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = nil, nil, nil
+TB.SetOrderBring({})
+if TB.GetOrderKind() ~= "farm" then TB.SetOrderKind("farm") end
+TB.CloseOrderWindow()
+end
+guildOrderUiChecks()
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,

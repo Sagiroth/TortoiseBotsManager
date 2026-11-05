@@ -1801,12 +1801,15 @@ function TB.InitUI()
             else
                 GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
             end
-            -- Cached professions only: a hover never sends a request.
-            if TB.HasProfessionsCapability and TB.HasProfessionsCapability() and TB.GetProfessions then
-                local profText = TB.ProfessionTooltipLine and TB.ProfessionTooltipLine(entry.name) or nil
-                if profText then
-                    GameTooltip:AddLine(profText, 1, 1, 1)
-                end
+            -- Row professions from the CLAIMED snapshot ride the row itself;
+            -- the cached Professions snapshot stays the fallback (it carries
+            -- skill max). A hover never sends a request.
+            local profText = TB.ClaimedProfsLine and TB.ClaimedProfsLine(entry) or nil
+            if not profText and TB.HasProfessionsCapability and TB.HasProfessionsCapability() and TB.GetProfessions then
+                profText = TB.ProfessionTooltipLine and TB.ProfessionTooltipLine(entry.name) or nil
+            end
+            if profText then
+                GameTooltip:AddLine(profText, 1, 1, 1)
             end
             if TB.GetBotOrder and TB.OrderTooltipText then
                 local order = TB.GetBotOrder(entry.name)
@@ -1994,6 +1997,33 @@ function TB.InitUI()
             setButtonTooltip(relBtn, "Release this bot back to the wandering bot pool (/gkick)")
             row.relBtn = relBtn
 
+            -- Enchant Meet: same-slot twin of Release (only one shows). The
+            -- giver's own order row shows Meet until the order finishes; the
+            -- click sends "order <bot> meet" like the other order commands.
+            local meetBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+            meetBtn:SetWidth(56); meetBtn:SetHeight(14)
+            meetBtn:SetPoint("LEFT", row, "LEFT", 404, 7)
+            meetBtn:SetText("Meet")
+            meetBtn:SetScript("OnClick", function()
+                local entry = this:GetParent().entry
+                if entry and TB.SendOrderMeet then TB.SendOrderMeet(entry.name) end
+            end)
+            setButtonTooltip(meetBtn, "Ask the bot to walk to you for the enchant trade.", "Meet")
+            meetBtn.tooltipExtra = function()
+                local why = this and this.meetWhy or nil
+                if why then return why end
+                if this and not this.enabled and TB.OrderMeetState and this:GetParent() then
+                    local entry = this:GetParent().entry
+                    local order = entry and TB.GetBotOrder and TB.GetBotOrder(entry.name) or nil
+                    if order then
+                        local _, reason = TB.OrderMeetState(order)
+                        return reason
+                    end
+                end
+                return nil
+            end
+            row.meetBtn = meetBtn
+
             local hl = row:CreateTexture(nil, "HIGHLIGHT")
             hl:SetAllPoints(row)
             hl:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.08)
@@ -2094,6 +2124,15 @@ function TB.InitUI()
         end)
         guildFrame.fillBtn = fillBtn
 
+        local orderBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
+        orderBtn:SetWidth(56); orderBtn:SetHeight(22)
+        orderBtn:SetPoint("LEFT", fillBtn, "RIGHT", 4, 0)
+        orderBtn:SetText("Order")
+        setButtonTooltip(orderBtn, "Pick a recipe, see which guild bots know it, then order.", "Guild order")
+        orderBtn:SetScript("OnClick", function()
+            if TB.OpenGuildOrderWindow then TB.OpenGuildOrderWindow() end
+        end)
+        guildFrame.orderBtn = orderBtn
         guildFrame.guildBar = bar
         return guildFrame
     end
@@ -2447,6 +2486,26 @@ function TB.InitUI()
                         row.cancelBtn:Hide()
                     end
                 end
+                local showMeet = orderCap and order and TB.OrderNeedsMeet
+                    and TB.OrderNeedsMeet(order) or false
+                local meetOk, meetWhy = false, nil
+                if showMeet and TB.OrderMeetState then
+                    meetOk, meetWhy = TB.OrderMeetState(order)
+                end
+                if row.meetBtn then
+                    if showMeet then
+                        row.meetBtn:Show()
+                        if mayOrder and meetOk then row.meetBtn:Enable() else row.meetBtn:Disable() end
+                        row.meetBtn.meetWhy = meetWhy
+                    else
+                        row.meetBtn:Hide()
+                    end
+                end
+                if row.relBtn then
+                    -- Meet borrows this slot on unfinished enchant rows; the
+                    -- other rows always show Release for claimed bots.
+                    if showMeet then row.relBtn:Hide() else row.relBtn:Show() end
+                end
                 if row.moveBtn then
                     if orderCap and order and order.parent and mayOrder then
                         row.moveBtn:Show()
@@ -2487,6 +2546,16 @@ function TB.InitUI()
         if frame.fillBtn then
             local fillable = TB.GetFillRaidNames and TB.GetFillRaidNames() or {}
             if table.getn(fillable) > 0 then frame.fillBtn:Enable() else frame.fillBtn:Disable() end
+        end
+        if frame.orderBtn then
+            local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+            local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+            if orderCap then
+                frame.orderBtn:Show()
+                if mayOrder then frame.orderBtn:Enable() else frame.orderBtn:Disable() end
+            else
+                frame.orderBtn:Hide()
+            end
         end
     end
 

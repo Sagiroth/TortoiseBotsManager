@@ -269,6 +269,7 @@ local function commitClaimedSnapshot(rows)
                 status = status,
                 online = online,
                 enteredWorld = enteredWorld,
+                profs = row.profs,
             }
             claimedState[name] = entry
             table.insert(claimedBots, entry)
@@ -435,7 +436,8 @@ function TB.ParseRosterMessage(msg)
 
     fields = protocolFields(msg, "TBM:CLAIMED|")
     if fields then
-        if not claimedReceiving or table.getn(fields) ~= 8 then
+        local count = table.getn(fields)
+        if not claimedReceiving or (count ~= 8 and count ~= 9) then
             claimedReceiving = nil
             return true, "error", { code = "malformed_claimed_row", message = "Malformed claimed bot row." }
         end
@@ -445,6 +447,17 @@ function TB.ParseRosterMessage(msg)
             or (group ~= "0" and group ~= "1") or (gearLocked ~= "0" and gearLocked ~= "1") then
             claimedReceiving = nil
             return true, "error", { code = "malformed_claimed_row", message = "Malformed claimed bot row." }
+        end
+        -- Trailing professions from newer servers ("skillId:value;..." or "-");
+        -- older servers send no field and keep no professions.
+        local profs = nil
+        if count == 9 then
+            profs = TB.ParseClaimedProfs and TB.ParseClaimedProfs(fields[9]) or nil
+            if fields[9] ~= "-" and fields[9] ~= "" and profs == nil then
+                claimedReceiving = nil
+                return true, "error", { code = "malformed_claimed_row", message = "Malformed claimed bot row." }
+            end
+            if profs and table.getn(profs) == 0 then profs = nil end
         end
         local normalized = normalize(name)
         if not normalized or claimedReceiving.names[normalized] then
@@ -461,6 +474,7 @@ function TB.ParseRosterMessage(msg)
             group = (group == "1"),
             location = location,
             gearLocked = (gearLocked == "1"),
+            profs = profs,
         })
         return true, "claimed_row", normalized
     end
@@ -1091,12 +1105,58 @@ gf:SetScript("OnEvent", function()
 end)
 
 -- ── Claimed guild bots model & helpers ───────────────────────────────────────
+-- Parses the trailing `<profs>` field of a TBM:CLAIMED row into
+-- { { skill, value } } ("skillId:value;..." or "-"). Returns nil on
+-- malformed input, never a partial list.
+function TB.ParseClaimedProfs(text)
+    text = TB.Trim(text or "")
+    if text == "" or text == "-" then return {} end
+    local out = {}
+    for pair in string.gfind(text, "([^;]+)") do
+        local at = string.find(pair, ":", 1, true)
+        if not at then return nil end
+        local skill, value = string.sub(pair, 1, at - 1), string.sub(pair, at + 1)
+        if not string.find(skill, "^%d+$") or not string.find(value, "^%d+$") then return nil end
+        table.insert(out, { skill = tonumber(skill), value = tonumber(value) })
+    end
+    if table.getn(out) == 0 then return nil end
+    return out
+end
+
+-- Guild search box also matches profession names ("enchant" leaves only
+-- bots with Enchanting): substring over the row's own profs, like the
+-- name/class match. Needs BotPanel's id->name table; without it only the
+-- cached snapshot can name professions.
+function TB.ClaimedMatchesProfession(bot, filter)
+    if not bot or not bot.profs or table.getn(bot.profs) == 0 then return false end
+    if not TB.ProfessionSkillName then return false end
+    for _, skill in ipairs(bot.profs) do
+        local name = string.lower(TB.ProfessionSkillName(skill.skill) or "")
+        if name ~= "" and string.find(name, filter, 1, true) then return true end
+    end
+    return false
+end
+
+-- Guild row tooltip line from the CLAIMED snapshot: "Enchanting 300,
+-- Tailoring 275". Skill values only (the row carries no max); nil without
+-- row professions.
+function TB.ClaimedProfsLine(bot)
+    if not bot or not bot.profs or table.getn(bot.profs) == 0 then return nil end
+    if not TB.ProfessionSkillName then return nil end
+    local parts = {}
+    for _, skill in ipairs(bot.profs) do
+        table.insert(parts, TB.ProfessionSkillName(skill.skill) .. " " .. tostring(skill.value))
+    end
+    return table.concat(parts, ", ")
+end
+
 function TB.GetClaimedBots(filter)
     local out = {}
     filter = filter and string.lower(TB.Trim(filter)) or ""
     for _, bot in ipairs(claimedBots) do
         if filter == "" or string.find(string.lower(bot.name), filter, 1, true)
-            or string.find(string.lower(bot.className or ""), filter, 1, true) then
+            or string.find(string.lower(bot.className or ""), filter, 1, true)
+            or TB.ClaimedMatchesProfession(bot, filter) then
             table.insert(out, bot)
         end
     end
