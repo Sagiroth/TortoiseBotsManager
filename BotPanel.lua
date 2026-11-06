@@ -342,6 +342,132 @@ function TB.RequestProfessions(name)
     return TB.SendBotCommand("professions " .. name)
 end
 
+-- ── conjured services model ─────────────────────────────────────────────────
+-- Reply to ".bot service <bot>" (mages: food, water, portals; warlocks:
+-- healthstones). Cached per bot for the session; the panel asks once on
+-- open for a mage or warlock, Refresh asks again.
+local services = {} -- [bot] = { at, food, water, healthstone, portals = { { spell, city } } }
+
+function TB.SetService(name, snapshot)
+    name = norm(name)
+    if not name or type(snapshot) ~= "table" then return end
+    snapshot.at = now()
+    services[name] = snapshot
+    if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+end
+
+function TB.GetService(name)
+    name = norm(name)
+    return name and services[name] or nil
+end
+
+function TB.RequestService(name)
+    name = norm(name)
+    if not name then return false end
+    return TB.SendBotCommand("service " .. name)
+end
+
+-- TBM:SERVICE|<bot>|<food 0/1>|<water 0/1>|<healthstone 0/1>|<portals>.
+-- <portals> is "-" or comma-separated "<spellId>:<city>" pairs.
+-- A malformed line returns nil and never clobbers the cache; a malformed
+-- portal entry is skipped while the rest of the line still parses.
+function TB.ParseServiceLine(msg)
+    if string.sub(msg or "", 1, 12) ~= "TBM:SERVICE|" then return nil end
+    local text = string.sub(msg, 13)
+    local fields = {}
+    local start = 1
+    while true do
+        local at = string.find(text, "|", start, true)
+        if at then
+            table.insert(fields, string.sub(text, start, at - 1))
+            start = at + 1
+        else
+            table.insert(fields, string.sub(text, start))
+            break
+        end
+    end
+    if table.getn(fields) ~= 5 then return nil end
+    local name = norm(fields[1])
+    if not name or name == "" then return nil end
+    for i = 2, 4 do
+        if not string.find(fields[i] or "", "^[01]$") then return nil end
+    end
+    local portals = {}
+    local tail = TB.Trim(fields[5] or "")
+    if tail ~= "" and tail ~= "-" then
+        local pos = 1
+        while true do
+            local comma = string.find(tail, ",", pos, true)
+            local entry = TB.Trim(string.sub(tail, pos, (comma and comma - 1) or string.len(tail)))
+            local _, _, spell, city = string.find(entry, "^(%d+):(.+)$")
+            city = city and TB.Trim(city) or ""
+            if spell and city ~= "" then
+                table.insert(portals, { spell = tonumber(spell), city = city })
+            end
+            if not comma then break end
+            pos = comma + 1
+        end
+        if table.getn(portals) == 0 then return nil end
+    end
+    return {
+        name = name,
+        food = fields[2] == "1",
+        water = fields[3] == "1",
+        healthstone = fields[4] == "1",
+        portals = portals,
+    }
+end
+
+function TB.ConsumeServiceLine(msg)
+    local snapshot = TB.ParseServiceLine(msg)
+    if not snapshot then return false end
+    TB.SetService(snapshot.name, {
+        food = snapshot.food, water = snapshot.water,
+        healthstone = snapshot.healthstone, portals = snapshot.portals,
+    })
+    return true
+end
+
+-- Portal menu: one dropdown row per city the cached service reply lists.
+-- The builder stays testable without the DropDownList frames; the opener
+-- needs the 1.12 dropdown API. Picking a city sends the portal order.
+function TB.GetServicePortalOptions(name)
+    local snapshot = TB.GetService(norm(name))
+    return snapshot and snapshot.portals or {}
+end
+
+function TB.BuildServicePortalMenu(name, addButton)
+    local options = TB.GetServicePortalOptions(name)
+    for _, option in ipairs(options) do
+        local spell, city = option.spell, option.city
+        addButton({ text = city, notCheckable = 1,
+            func = function()
+                if TB.SendBotCommand then
+                    TB.SendBotCommand("service " .. norm(name) .. " portal " .. tostring(spell))
+                end
+            end })
+    end
+    return table.getn(options)
+end
+
+function TB.OpenServicePortalMenu(name)
+    name = norm(name)
+    if not name then return false end
+    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return false end
+    if table.getn(TB.GetServicePortalOptions(name)) == 0 then return false end
+    if not TB._servicePortalMenu then
+        TB._servicePortalMenu = CreateFrame("Frame", "TortoiseBotsManagerServicePortalMenu",
+            UIParent, "UIDropDownMenuTemplate")
+    end
+    local menu = TB._servicePortalMenu
+    local bot = name
+    UIDropDownMenu_Initialize(menu, function()
+        TB.BuildServicePortalMenu(bot, UIDropDownMenu_AddButton)
+    end, "MENU")
+    ToggleDropDownMenu(1, nil, menu, "cursor")
+    return true
+end
+
 -- Drop the cache when the token vanishes mid-session (server swapped),
 -- like the run/loot/order views do.
 function TB.NoteProfessionsCaps()
@@ -558,6 +684,12 @@ local function botClassId(name)
     return entry and entry.classId or nil
 end
 
+-- Only mages (8) and warlocks (9) answer ".bot service".
+function TB.ServiceWanted(name)
+    local classId = botClassId(name)
+    return classId == 8 or classId == 9
+end
+
 local function setTooltip(button, title, lines)
     button:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
@@ -701,6 +833,10 @@ function TB.OnBotPanelAck(packet)
             text = intent .. " accepted"
         end
         if TB.SetStatus then TB.SetStatus(text, "ok") end
+        return true
+    end
+    if intent == "service portal" then
+        if TB.SetStatus then TB.SetStatus("Portal open by " .. botName .. ".", "ok") end
         return true
     end
     local _, _, key = string.find(intent, "^behavior%s+(%S+)$")
@@ -1261,6 +1397,40 @@ local function createPanel()
     profNext:SetText(">")
     profNext:SetScript("OnClick", function() profPage = profPage + 1; TB.RefreshBotPanel() end)
     panel.profNext = profNext
+    -- Service row: conjured goods for mages and warlocks, above the footer.
+    local food = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
+    food:SetWidth(88); food:SetHeight(20)
+    food:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 54)
+    food:SetText("Food & Water")
+    setTooltip(food, "Food & Water", {
+        "The bot opens a trade with conjured food and water in it.",
+        "Accept the trade to take it.",
+    })
+    food:SetScript("OnClick", function() TB.SendItemOrder("trade") end)
+    panel.foodButton = food
+
+    local stone = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
+    stone:SetWidth(80); stone:SetHeight(20)
+    stone:SetPoint("LEFT", food, "RIGHT", 3, 0)
+    stone:SetText("Healthstone")
+    setTooltip(stone, "Healthstone", {
+        "The bot opens a trade with a healthstone in it.",
+        "Accept the trade to take it.",
+    })
+    stone:SetScript("OnClick", function() TB.SendItemOrder("trade") end)
+    panel.healthstoneButton = stone
+
+    local portal = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
+    portal:SetWidth(56); portal:SetHeight(20)
+    portal:SetPoint("LEFT", stone, "RIGHT", 3, 0)
+    portal:SetText("Portal")
+    setTooltip(portal, "Portal", {
+        "The bot opens a portal. Pick where it goes.",
+    })
+    portal:SetScript("OnClick", function()
+        if currentBot then TB.OpenServicePortalMenu(currentBot) end
+    end)
+    panel.portalButton = portal
     -- Footer: trade, refresh, NPC errands, vault, upkeep, gear-up, every view.
     local trade = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     trade:SetWidth(44); trade:SetHeight(22)
@@ -1278,10 +1448,11 @@ local function createPanel()
     refresh:SetWidth(56); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 3, 0)
     refresh:SetText("Refresh")
-    setTooltip(refresh, "Refresh", { "Reload gear, bags, behaviour and professions from the server." })
+    setTooltip(refresh, "Refresh", { "Reload gear, bags, behaviour, conjured goods and professions from the server." })
     refresh:SetScript("OnClick", function()
         if currentBot then TB.RequestInventory(currentBot) end
         if currentBot then TB.RequestProfessions(currentBot) end
+        if currentBot and TB.ServiceWanted(currentBot) then TB.RequestService(currentBot) end
         if TB.PollList then TB.PollList(true) end
     end)
     panel.refreshButton = refresh
@@ -1387,6 +1558,29 @@ local function renderHeader(inv)
     panel.moneyText:SetText(inv and formatMoney(inv.money) or "")
     local bagCount = inv and table.getn(inv.items) or 0
     panel.tabBags:SetText(inv and ("Bags (" .. bagCount .. ")") or "Bags")
+end
+
+-- Service row: mage food/water and portals, warlock healthstones. Hidden
+-- unless the cached reply says the bot can do it; asked once on open.
+local function renderService()
+    local snapshot = currentBot and services[currentBot] or nil
+    local classId = currentBot and botClassId(currentBot) or nil
+    local online = TB.GetBotState(currentBot) ~= nil or botUnit(currentBot) ~= nil
+    local showFood = classId == 8 and snapshot and (snapshot.food or snapshot.water)
+    local showStone = classId == 9 and snapshot and snapshot.healthstone
+    local showPortal = classId == 8 and snapshot and table.getn(snapshot.portals or {}) > 0
+    if panel.foodButton then
+        if showFood then panel.foodButton:Show() else panel.foodButton:Hide() end
+        if online then panel.foodButton:Enable() else panel.foodButton:Disable() end
+    end
+    if panel.healthstoneButton then
+        if showStone then panel.healthstoneButton:Show() else panel.healthstoneButton:Hide() end
+        if online then panel.healthstoneButton:Enable() else panel.healthstoneButton:Disable() end
+    end
+    if panel.portalButton then
+        if showPortal then panel.portalButton:Show() else panel.portalButton:Hide() end
+        if online then panel.portalButton:Enable() else panel.portalButton:Disable() end
+    end
 end
 
 local function renderGear(inv)
@@ -1744,6 +1938,7 @@ function TB.RefreshBotPanel()
         panel.gear:Show(); panel.tabGear:Disable()
         renderGear(inv)
     end
+    renderService()
     local online = TB.GetBotState(currentBot) ~= nil or botUnit(currentBot) ~= nil
     if online then panel.tradeButton:Enable() else panel.tradeButton:Disable() end
     if online then panel.upkeepButton:Enable() else panel.upkeepButton:Disable() end
@@ -1784,6 +1979,10 @@ function TB.OpenBotPanel(name, view)
     panel:Show()
     TB.RefreshBotPanel()
     TB.RequestInventory(name)
+    -- Ask once for a mage or warlock with no cached reply; Refresh asks
+    -- again. Never on a timer, never on hover. The ask travels with the
+    -- inventory request, so one open is one extra line at most.
+    if TB.ServiceWanted(name) and not services[name] then TB.RequestService(name) end
     return true
 end
 
