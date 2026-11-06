@@ -731,10 +731,10 @@ CreateRosterBar = function(parent)
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetPoint("TOPLEFT", TB.scroll, "BOTTOMLEFT", 0, -4)
     bar:SetWidth(W - (C.PAD or 10) * 2)
-    bar:SetHeight(34)
+    bar:SetHeight(62)
 
     local selection = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    selection:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    selection:SetPoint("LEFT", bar, "LEFT", 0, 16)
     selection:SetWidth(95)
     selection:SetJustifyH("LEFT")
     TB.selectionLabel = selection
@@ -769,8 +769,15 @@ CreateRosterBar = function(parent)
         tip = "Invite online bots until the party is full (5). Needs no selection.",
     })
     fill:SetPoint("LEFT", summon, "RIGHT", C.GAP_BTN or 4, 0)
+    local altsummary = TB.UI.CreateButton(bar, "Alt summary", 88, 22, {
+        onClick = function()
+            if TB.RequestAltSummary then TB.RequestAltSummary() end
+        end,
+        tip = "Ask each alt-bot playing on its own what it did while you were away. The answers appear in the Log tab, one line per alt-bot.",
+    })
+    altsummary:SetPoint("LEFT", bar, "LEFT", 0, -14)
 
-    TB.lifecycleButtons = { login = login, logout = logout, invite = invite, kick = kick, summon = summon, fill = fill }
+    TB.lifecycleButtons = { login = login, logout = logout, invite = invite, kick = kick, summon = summon, fill = fill, altsummary = altsummary }
     TB.rosterBar = bar
     return bar
 end

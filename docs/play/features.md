@@ -34,12 +34,14 @@ Every feature, where to find it, and what the server needs. "Always" means any T
 | Quest accept/share, grind | Camp | Always | [Quests](fight-and-camp.md#quests) | [commands](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/README.md) |
 | Bot roles by spec, your own role | Party | Always | [Party tab](party-roster-guild.md#party-tab) | [role](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role) |
 | Log in/out, invite, kick, summon, fill party | Roster | Always | [Roster tab](party-roster-guild.md#roster-tab) | [roster and hiring](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md) |
+| Alt summary: one line per alt-bot playing alone | Roster | Always | [Roster tab](party-roster-guild.md#roster-tab) | |
 | Claimed guild bots, fill raid | Guild | `claimed-roster` | [Guild tab](party-roster-guild.md#guild-tab) | [guilds](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/world/social.md#autonomous-guild-formation) |
 | Guild orders (farm, buy, craft) with live progress | Guild | `guild-orders` | [Guild orders](party-roster-guild.md#guild-orders) | |
 | Raid helpers, custom raid tactics | Raid (in a raid) | Always | [Raid tab](party-roster-guild.md#raid-tab) | [raid tactics](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/dungeons-and-raids.md#raid-tactics--boss-mechanics) |
 | Gear, bags, item menu, trade, upkeep, autogear | Bot panel | `inventory` | [Bot panel](bot-panel.md) | [bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-panel-commands) |
 | Per-bot behaviour switches | Bot panel | Always | [Behaviour](bot-panel.md#behaviour-switches) | [behavior](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior) |
 | Spells, NPC errands, flights, bank, mail | Bot panel | Always | [Bot panel](bot-panel.md#npc-errands) | [bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md) |
+| Conjured food, water, healthstones, portals | Bot panel (mage or warlock) | Always | [Conjured goods](bot-panel.md#conjured-goods) | [service](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md) |
 | Dungeon run (Preview) | Dungeon | `dungeon-run` | [Dungeon run](dungeon-run.md) (binds raids too: main-tank bind, layout, stop before the boss) | [run leader](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/commander.md#run-leader-bot-run) |
 | Loot and roll history | Loot | `loot-log` | [Loot history](loot-history.md) | [loot history](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/addon.md#protocol-grammar--semantics) |
 | Mini bar and favourites | Header | Always | [Mini bar](controls.md#mini-bar) | |

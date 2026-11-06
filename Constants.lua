@@ -452,6 +452,7 @@ TB.C.ACTION_LABELS = {
     ["item unequip"]       = "Unequip",
     ["item give"]          = "Give",
     ["item trade"]         = "Trade",
+    ["service portal"]     = "Portal",
     ["cast Disenchant"]    = "Disenchant",
     ["sendmail"]           = "Send by mail",
     ["bank"]               = "Put to bank",

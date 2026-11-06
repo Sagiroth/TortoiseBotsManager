@@ -29,6 +29,7 @@ local rosterSnapshotCount = 0
 local rosterSnapshotError = nil
 local receiving = nil
 local ccReceiving = nil
+local altsumReceiving = nil
 local claimedReceiving = nil
 local legacyState = {}
 local ccAssignments = {}
@@ -290,6 +291,27 @@ local function commitClaimedSnapshot(rows)
     if TB.Refresh then TB.Refresh() end
 end
 
+-- Alt-bot summary (reply to ".bot alts"): one TBM:ALTSUM|<name>|<text>
+-- line per alt-bot playing on its own, then TBM:ALTSUM_END|<count>.
+-- The text is a ready sentence and may hold item links, so only the first
+-- two fields split on "|".
+local function commitAltSummary(rows)
+    local count = table.getn(rows)
+    if count == 0 then
+        if TB.LogMessage then TB.LogMessage("No alt-bots are playing on their own.") end
+        if TB.SetStatus then TB.SetStatus("No alt-bots are playing on their own.", "muted") end
+        return
+    end
+    for _, row in ipairs(rows) do
+        if TB.LogMessage then TB.LogMessage(row.text) end
+    end
+    if TB.SetStatus then
+        local label = "Alt summary · " .. count .. " alt-bot"
+        if count ~= 1 then label = label .. "s" end
+        TB.SetStatus(label, "ok")
+    end
+end
+
 -- Called by Comms.lua for each structured line.  Return true for every
 -- TBM-prefixed line, including malformed lines, so legacy text handlers do not
 -- reinterpret a protocol error as a bot name.
@@ -424,6 +446,28 @@ function TB.ParseRosterMessage(msg)
         return true, "altbots"
     end
 
+    -- Alt-bot summary lines, collected until TBM:ALTSUM_END commits them.
+    -- A malformed row is dropped but still claimed, so legacy text handlers
+    -- never reinterpret a protocol line as a bot name.
+    if string.sub(msg, 1, 14) == "TBM:ALTSUM_END" then
+        local batch = altsumReceiving
+        altsumReceiving = nil
+        commitAltSummary(batch and batch.rows or {})
+        return true, "altsum_end"
+    end
+    if string.sub(msg, 1, 10) == "TBM:ALTSUM" then
+        if string.sub(msg, 1, 11) == "TBM:ALTSUM|" then
+            altsumReceiving = altsumReceiving or { rows = {} }
+            local _, _, rawName, text = string.find(msg, "^TBM:ALTSUM|([^|]*)|(.*)$")
+            local name = normalize(rawName)
+            text = TB.Trim(text or "")
+            if name and text ~= "" then
+                table.insert(altsumReceiving.rows, { name = name, text = text })
+            end
+        end
+        return true
+    end
+
     fields = protocolFields(msg, "TBM:CLAIMED_BEGIN|")
     if fields then
         if table.getn(fields) ~= 1 or not string.find(fields[1], "^%d+$") then
@@ -503,6 +547,13 @@ function TB.ParseRosterMessage(msg)
     end
 
     return false
+end
+
+-- Ask every alt-bot playing on its own what it did while the player was
+-- away. The server answers with TBM:ALTSUM lines and TBM:ALTSUM_END.
+function TB.RequestAltSummary()
+    if TB.SetStatus then TB.SetStatus("Asking your alt-bots for a summary…", "pending") end
+    return TB.SendBotCommand("alts")
 end
 
 function TB.HasRosterSnapshot()

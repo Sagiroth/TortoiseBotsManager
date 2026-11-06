@@ -226,6 +226,8 @@ assert(chatFilters.CHAT_MSG_SYSTEM and chatFilters.CHAT_MSG_SAY and chatFilters.
 assert(chatFilters.CHAT_MSG_SAY(nil, nil, ".bot action stay") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ACTION_ACK|stay|party|2|-") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:VERSION|2026-09-25-v7") == true
+    and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ALTSUM|Alpha|Alpha: level 23.") == true
+    and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ALTSUM_END|1") == true
     and not chatFilters.CHAT_MSG_SYSTEM(nil, nil, "A critical server error"), "chat noise must be hidden locally")
 assert(chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Bot Arcana queued for login; it will follow Valguard after entering the world.") == true,
     "bot login announcement must be intercepted")
@@ -344,6 +346,7 @@ TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
 TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
 TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
 TB.OnSystemMessage("TBM:ROSTER_END")
+
 
 -- Clients that double "|A"/"|T" pairs on server-delivered chat must still parse.
 TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
@@ -1440,6 +1443,128 @@ assert(TB.botPanel.tradeButton.width == 44 and TB.botPanel.refreshButton.width =
     "footer buttons must keep their layout widths")
 assert(TB.botPanel.vaultButton.text == "Bank" and TB.botPanel.gearUpButton.text == "AutoGear",
     "footer buttons must carry their short labels")
+
+-- Conjured services: mages offer Food & Water plus portals, warlocks a healthstone.
+serviceMageLine = "TBM:SERVICE|Gandalf|1|1|0|10059:Stormwind,11416:Ironforge"
+assert(TB.ParseServiceLine(serviceMageLine).food and not TB.ParseServiceLine(serviceMageLine).healthstone
+    and table.getn(TB.ParseServiceLine(serviceMageLine).portals) == 2
+    and TB.ParseServiceLine(serviceMageLine).portals[2].spell == 11416
+    and TB.ParseServiceLine(serviceMageLine).portals[2].city == "Ironforge",
+    "a mage service line must parse food and both portals")
+assert(TB.ParseServiceLine("TBM:SERVICE|Hexxy|0|0|1|-").healthstone
+    and table.getn(TB.ParseServiceLine("TBM:SERVICE|Hexxy|0|0|1|-").portals) == 0,
+    "a warlock line with no portals must parse")
+assert(TB.ParseServiceLine("TBM:SERVICE|Hexxy|1|0") == nil
+    and TB.ParseServiceLine("TBM:SERVICE|Hexxy|2|0|0|-") == nil
+    and TB.ParseServiceLine("TBM:SERVICE|Hexxy|0|0|0|bogus") == nil
+    and TB.ParseServiceLine("TBM:INV_BEGIN|Hexxy|5") == nil,
+    "malformed service lines must not parse")
+assert(TB.GetService("Hexxy") == nil, "a rejected line must not clobber the cache")
+assert(TB.C.ACTION_LABELS["service portal"] == "Portal", "the portal intent must have a plain label")
+serviceSavedMembers, serviceSavedClass = partyMembers, partyClassName
+partyMembers = { "Magebot" }
+partyClassName = "Mage"
+assert(TB.ServiceWanted("Magebot") and not TB.ServiceWanted("Alpha"),
+    "only mages and warlocks want the service ask")
+now = now + 1
+TB.OpenBotPanel("Magebot", "bags")
+assert(not TB.botPanel.foodButton.visible and not TB.botPanel.portalButton.visible
+    and not TB.botPanel.healthstoneButton.visible, "no service buttons before the reply")
+serviceBeforeOpen = table.getn(addonSent)
+for serviceDrain = 1, 5 do
+    now = now + 1
+    serviceQueue = frames["TortoiseBotsManagerQueueFrame"]
+    if serviceQueue and serviceQueue.scripts and serviceQueue.scripts.OnUpdate then
+        this, arg1 = serviceQueue, 0.5
+        serviceQueue.scripts.OnUpdate(serviceQueue)
+    end
+end
+serviceSawOpen = false
+for serviceI = serviceBeforeOpen + 1, table.getn(addonSent) do
+    if addonSent[serviceI].message == "service Magebot" then serviceSawOpen = true end
+end
+assert(serviceSawOpen, "opening the panel asks once for a mage")
+TB.OnSystemMessage("TBM:SERVICE|Magebot|1|1|0|10059:Stormwind,11416:Ironforge")
+assert(TB.GetService("Magebot").water and table.getn(TB.GetService("Magebot").portals) == 2,
+    "the service reply must land in the cache")
+assert(TB.botPanel.foodButton.visible and TB.botPanel.foodButton.enabled
+    and TB.botPanel.portalButton.visible and TB.botPanel.portalButton.enabled
+    and not TB.botPanel.healthstoneButton.visible, "a mage offers food and portals, no healthstone")
+now = now + 1
+this = TB.botPanel.foodButton
+TB.botPanel.foodButton.scripts.OnClick(TB.botPanel.foodButton)
+assert(lastAddon() == "item Magebot trade", "Food & Water trades like the Trade button")
+servicePortalRows = {}
+assert(TB.BuildServicePortalMenu("Magebot", function(info) table.insert(servicePortalRows, info) end) == 2
+    and servicePortalRows[1].text == "Stormwind" and servicePortalRows[2].text == "Ironforge",
+    "the portal menu lists the cached cities")
+assert(not TB.OpenServicePortalMenu("Magebot"), "no dropdown API in the test client")
+now = now + 1
+servicePortalRows[1].func()
+assert(lastAddon() == "service Magebot portal 10059", "picking a city sends the portal order")
+serviceStatusSaid = nil
+serviceRealSetStatus = TB.SetStatus
+TB.SetStatus = function(msg) serviceStatusSaid = msg end
+TB.OnSystemMessage("TBM:ACTION_ACK|service portal|bot:Magebot|1|1")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "service portal"
+    and string.find(serviceStatusSaid or "", "Portal", 1, true), "the portal ACK names the bot's portal")
+TB.OnSystemMessage("TBM:ACTION_ERR|service portal|refused|No portal trainer nearby")
+assert(TB.lastActionError and TB.lastActionError.intent == "service portal"
+    and string.find(serviceStatusSaid or "", "Portal", 1, true), "the portal ERR keeps the plain label")
+TB.SetStatus = serviceRealSetStatus
+now = now + 1
+this = TB.botPanel.refreshButton
+serviceBeforeRefresh = table.getn(addonSent)
+TB.botPanel.refreshButton.scripts.OnClick(TB.botPanel.refreshButton)
+for _ = 1, 5 do
+    now = now + 1
+    serviceQueue = frames["TortoiseBotsManagerQueueFrame"]
+    if serviceQueue and serviceQueue.scripts and serviceQueue.scripts.OnUpdate then
+        this, arg1 = serviceQueue, 0.5
+        serviceQueue.scripts.OnUpdate(serviceQueue)
+    end
+end
+serviceSawRefresh = false
+for serviceI = serviceBeforeRefresh + 1, table.getn(addonSent) do
+    if addonSent[serviceI].message == "service Magebot" then serviceSawRefresh = true end
+end
+assert(serviceSawRefresh, "Refresh asks the service again for a mage")
+now = now + 1
+TB.OpenBotPanel("Magebot", "bags")
+for _ = 1, 5 do
+    now = now + 1
+    serviceQueue = frames["TortoiseBotsManagerQueueFrame"]
+    if serviceQueue and serviceQueue.scripts and serviceQueue.scripts.OnUpdate then
+        this, arg1 = serviceQueue, 0.5
+        serviceQueue.scripts.OnUpdate(serviceQueue)
+    end
+end
+assert(lastAddon() == "inv Magebot", "a cached reply is not re-asked on open")
+partyMembers = { "Hexxy" }
+partyClassName = "Warlock"
+now = now + 1
+TB.OpenBotPanel("Hexxy", "bags")
+for _ = 1, 5 do
+    now = now + 1
+    serviceQueue = frames["TortoiseBotsManagerQueueFrame"]
+    if serviceQueue and serviceQueue.scripts and serviceQueue.scripts.OnUpdate then
+        this, arg1 = serviceQueue, 0.5
+        serviceQueue.scripts.OnUpdate(serviceQueue)
+    end
+end
+assert(lastAddon() == "service Hexxy", "opening the panel asks once for a warlock")
+TB.OnSystemMessage("TBM:SERVICE|Hexxy|0|0|1|-")
+assert(TB.botPanel.healthstoneButton.visible and not TB.botPanel.foodButton.visible
+    and not TB.botPanel.portalButton.visible, "a warlock offers a healthstone only")
+assert(TB.BuildServicePortalMenu("Hexxy", function(info) end) == 0, "a warlock offers no portals")
+now = now + 1
+this = TB.botPanel.healthstoneButton
+TB.botPanel.healthstoneButton.scripts.OnClick(TB.botPanel.healthstoneButton)
+assert(lastAddon() == "item Hexxy trade", "Healthstone trades like the Trade button")
+partyMembers, partyClassName = serviceSavedMembers, serviceSavedClass
+TB.OpenBotPanel("Alpha", "bags")
+assert(not TB.botPanel.foodButton.visible and not TB.botPanel.healthstoneButton.visible
+    and not TB.botPanel.portalButton.visible, "other classes show no service buttons")
 TB.CloseBotPanel()
 
 -- ── Bot NPC errands (P10): talk/bind/learn/flights for the panel bot ──────
@@ -4837,6 +4962,10 @@ dofile(root .. "/tests/wire_cases.lua")({
     setDead = function(unit, dead) deadUnits[unit] = dead end,
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
     seedItem = function(id, item) itemCache[id] = item end,
+})
+dofile(root .. "/tests/altsum_tests.lua")({
+    sent = sent,
+    advanceTime = function(dt) now = now + (dt or 1) end,
 })
 
 dofile(root .. "/tests/geometry_tests.lua")()
