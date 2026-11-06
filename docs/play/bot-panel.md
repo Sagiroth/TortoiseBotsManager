@@ -75,11 +75,23 @@ Hovering a [guild bot's row](party-roster-guild.md#guild-tab) shows its skills (
 | Button | What it does | Sends | Module |
 | :--- | :--- | :--- | :--- |
 | Trade | Opens a trade window; put items or gold in and accept, the bot accepts on its own. | `.bot item <bot> trade` | [trade](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-item-trade) |
-| Refresh | Reload gear, bags, behaviour and professions. | `.bot inv <bot>`, `.bot professions <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
+| Refresh | Reload gear, bags, behaviour, conjured goods and professions. | `.bot inv <bot>`, `.bot professions <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
 | Upkeep | Restock food, drink, reagents, ammo and repairs. Bot must be online. | `.bot maintenance <bot>` | [maintenance](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-maintenance) |
 | AutoGear | Equip the best gear the bot already has in its bags. | `.bot autogear <bot>` | [autogear](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-autogear) |
 | NPC | NPC errands (below). | | |
 | Bank | Bank and mailbox lists (below). | | |
+
+## Conjured goods
+
+Mages conjure food and water and open portals; warlocks conjure healthstones. When the panel opens
+for a mage or warlock it asks the server once (`.bot service <bot>`) and caches the answer for the
+session; **Refresh** asks again. The buttons only show when the bot can do it.
+
+| Button | What it does | Sends |
+| :--- | :--- | :--- |
+| Food & Water | The bot opens a trade with conjured food and water in it. Accept to take it. | `.bot item <bot> trade` |
+| Healthstone | The bot opens a trade with a healthstone in it. Accept to take it. | `.bot item <bot> trade` |
+| Portal | Pick a city from the dropdown; the bot opens a portal there. | `.bot service <bot> portal <spellId>` |
 
 ## NPC errands
 

@@ -298,6 +298,9 @@ end
 --   TBM:INV_EQ|<slot>|<itemId>|<durability>|<maxDurability>
 --   TBM:INV_ITEM|<bag>|<slot>|<itemId>|<count>|<flags>
 --   TBM:INV_END|<bot>|<free>|<total>
+-- Service snapshot (reply to ".bot service", mages and warlocks):
+--   TBM:SERVICE|<bot>|<food 0/1>|<water 0/1>|<healthstone 0/1>|<portals>
+-- <portals> is "-" or comma-separated "<spellId>:<city>" pairs.
 -- Professions snapshot (reply to ".bot professions"):
 --   TBM:PROF_BEGIN|<bot>
 --   TBM:PROF|<skillId>|<value>|<max>
@@ -357,6 +360,10 @@ function TB.ParseBotPanelMessage(msg)
         return true
     end
 
+    if string.sub(msg, 1, 12) == "TBM:SERVICE|" then
+        if TB.ConsumeServiceLine then return TB.ConsumeServiceLine(msg) end
+        return true
+    end
     if string.sub(msg, 1, 14) == "TBM:INV_BEGIN|" then
         local fields = splitProtocol(string.sub(msg, 15))
         local name = fields[1] and TB.NormalizeName(fields[1]) or nil
