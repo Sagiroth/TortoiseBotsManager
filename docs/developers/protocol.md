@@ -48,6 +48,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `TBM:CAPS`, `TBM:VERSION` | Feature gates, server version in the header and Info window |
 | `TBM:ROSTER_BEGIN` / `ROSTER` / `ROSTER_END`, `TBM:ROSTER_ERROR` | [Roster tab](../play/party-roster-guild.md#roster-tab); the server is the only roster authority |
 | `TBM:ALTBOTS` | Alt-bot markers on the roster |
+| `TBM:ALTSUM` / `TBM:ALTSUM_END` | Alt-bot summary: `.bot alts` is answered with one `ALTSUM\|<name>\|<text>` sentence per alt-bot playing alone, then `ALTSUM_END\|<count>`; each sentence shows in the Log tab, count 0 says no alt-bots are out |
 | `TBM:CLAIMED_BEGIN` / `CLAIMED` / `CLAIMED_END` | [Guild tab](../play/party-roster-guild.md#guild-tab): `CLAIMED\|<guid>\|<name>\|<class>\|<level>\|<state>\|<grouped>\|<loc>\|<locked>[\|<profs>]` (`<profs>` lists `skillId:value` pairs joined by `;`, or `-`; missing on older servers) |
 | `TBM:BOTSTATE_BEGIN` / `BOTSTATE` / `BOTSTATE_END` | Move mode lamps, party switch states, behaviour switches, live spec for role buttons |
 | `TBM:CC_ASSIGN_BEGIN` / `CC_ASSIGN` / `CC_ASSIGN_END` | CC mark icons on party rows |

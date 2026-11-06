@@ -654,7 +654,7 @@ function TB.OnCommandSent(cmd)
         if TB.SetStatus then TB.SetStatus("Summoning " .. name .. "…", "pending") end
     end
     if TB.Refresh then TB.Refresh() end
-    if verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" and verb ~= "order" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
+    if verb ~= "action" and verb ~= "strategy" and verb ~= "lootlog" and verb ~= "order" and verb ~= "alts" then TB.RequestPollSoon((C and C.POLL_AFTER_CMD) or 1.4) end
 end
 
 -- ── inbound (CHAT_MSG_SYSTEM) ───────────────────────────────────────────────

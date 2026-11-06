@@ -51,6 +51,8 @@ Tick rows and use the bar below. Mixed selections only act on the rows where the
 
 Alts that play on their own in the world are marked as alt-bots. Module: [alt-bots](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#alt-bots-autonomous-alts).
 
+**Alt summary** (below the bar, needs no selection): asks every alt-bot playing on its own what it did while you were away (`.bot alts`). Each answer appears in the [Log tab](controls.md#log-tab) as its own sentence, one line per alt-bot (levels, gold, quests, deaths, notable loot, where it is now). When none are out, the status line says so.
+
 ## Guild tab
 
 Wandering bots you claimed into your guild with `/ginvite`, kept as raid alts. The list comes from the server's claimed-bot snapshot (needs the `claimed-roster` capability).
