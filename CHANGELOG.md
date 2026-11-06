@@ -2,6 +2,25 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.7.0 (2026-11-06)
+
+### Guild Professions & Search
+- Search the whole guild for “who can make this”; bots are sorted by skill. [#65](https://github.com/Sagiroth/TortoiseBotsManager/pull/65)
+- Guild tab now shows professions. [#65](https://github.com/Sagiroth/TortoiseBotsManager/pull/65)
+
+### Orders & Materials
+- Added Enchant and Disenchant order types. [#65](https://github.com/Sagiroth/TortoiseBotsManager/pull/65)
+- Craft and enchant orders now have checkboxes for materials you bring. [#65](https://github.com/Sagiroth/TortoiseBotsManager/pull/65)
+
+### UI & Controls
+- Meet button is greyed out with a tooltip explaining why: not in the capital, still gathering, nothing to bring, or cooldown. [#65](https://github.com/Sagiroth/TortoiseBotsManager/pull/65)
+- Enchant-ready state now gets a highlight and sound. [#65](https://github.com/Sagiroth/TortoiseBotsManager/pull/65)
+
+### Validation & Testing
+- Addon regression tests pass; server side was live-tested with a headless client; real game client was not verified. [#65](https://github.com/Sagiroth/TortoiseBotsManager/pull/65)
+
+---
+
 ## v1.6.0 (2026-11-04)
 
 ### Guild Orders
