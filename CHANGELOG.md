@@ -2,6 +2,21 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v1.8.0 (2026-11-06)
+
+### Roster & Lifecycle
+- Added an "Alt summary" to the Roster tab so you can see what your alt-bots did while you were away, instead of inspecting each one by hand [#66](https://github.com/Sagiroth/TortoiseBotsManager/pull/66)
+
+### Tactical & Actions
+- Mage bots now expose a "Food & Water" button that opens a trade and drops the goods straight in [#66](https://github.com/Sagiroth/TortoiseBotsManager/pull/66)
+- Mage bots now expose a "Portal" button listing the cities that mage actually knows — pulled from the server — so you just pick a destination [#66](https://github.com/Sagiroth/TortoiseBotsManager/pull/66)
+- Warlock bots now expose a "Healthstone" button [#66](https://github.com/Sagiroth/TortoiseBotsManager/pull/66)
+
+### UI & Controls
+- Action buttons only appear when the selected bot can actually perform the action, keeping the panel clean and unambiguous [#66](https://github.com/Sagiroth/TortoiseBotsManager/pull/66)
+
+---
+
 ## v1.7.0 (2026-11-06)
 
 ### Guild Professions & Search
