@@ -226,6 +226,8 @@ assert(chatFilters.CHAT_MSG_SYSTEM and chatFilters.CHAT_MSG_SAY and chatFilters.
 assert(chatFilters.CHAT_MSG_SAY(nil, nil, ".bot action stay") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ACTION_ACK|stay|party|2|-") == true
     and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:VERSION|2026-09-25-v7") == true
+    and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ALTSUM|Alpha|Alpha: level 23.") == true
+    and chatFilters.CHAT_MSG_SYSTEM(nil, nil, "TBM:ALTSUM_END|1") == true
     and not chatFilters.CHAT_MSG_SYSTEM(nil, nil, "A critical server error"), "chat noise must be hidden locally")
 assert(chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Bot Arcana queued for login; it will follow Valguard after entering the world.") == true,
     "bot login announcement must be intercepted")
@@ -344,6 +346,7 @@ TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
 TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
 TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
 TB.OnSystemMessage("TBM:ROSTER_END")
+
 
 -- Clients that double "|A"/"|T" pairs on server-delivered chat must still parse.
 TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
@@ -4837,6 +4840,10 @@ dofile(root .. "/tests/wire_cases.lua")({
     setDead = function(unit, dead) deadUnits[unit] = dead end,
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
     seedItem = function(id, item) itemCache[id] = item end,
+})
+dofile(root .. "/tests/altsum_tests.lua")({
+    sent = sent,
+    advanceTime = function(dt) now = now + (dt or 1) end,
 })
 
 dofile(root .. "/tests/geometry_tests.lua")()
