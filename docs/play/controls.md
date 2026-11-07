@@ -15,7 +15,7 @@ relates_to:
 
 **Mini** in the window header (or `/tbm mini`) swaps the window for a small draggable bar. **+** (or `/tbm full`) brings the window back; the choice survives a reload.
 
-- Category icons (Engage, Pull & Focus, Move, Party switches, Tactics, Camp) open a flyout with the same actions as the [Fight and Camp tabs](fight-and-camp.md).
+- Category icons (Engage, Pull & Focus, Move, Party switches, Tactics, Camp) open a flyout with the same actions as the [Fight and Camp tabs](fight-and-camp.md). The short bar under a category turns gold while its flyout is open; a thin line separates the categories from your favourites.
 - **Right-click** an action in a flyout to pin it as a favourite on the bar; right-click a favourite to remove it.
 - Actions follow the same rules as in the window: enemy-target actions are grey without an enemy target.
 
@@ -51,6 +51,8 @@ Hand-typed `.bot` commands keep working next to the addon. Module: [all commands
 Left-click opens or closes the window, right-click refreshes the roster, drag to move. The tooltip shows how many bots are online.
 
 ## Info window
+
+The window header shows the addon version once, next to the title, and under it the credit and, when the server module reports a semantic version (`1.12.0`), that version. The footer at the bottom of the window is the status line: the last reply or reason, green when it worked, red when it did not.
 
 **Info** in the window header shows what the server has switched on (dungeon runs, hiring, world buffs and more) and the module version. The **All** tab searches every bot setting by name. Sends `.bot features` and `.bot features all <text>`. Module: [`.bot features`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-features).
 

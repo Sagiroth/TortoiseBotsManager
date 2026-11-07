@@ -886,23 +886,23 @@ assert(TB.partyFrame.rows[2].ccMark == "moon" and TB.partyFrame.rows[2].ccIcon:I
     "Party view must show the assigned CC icon beside each bot")
 assert(TB.partyFrame.rows[2].ccIcon.texture[1] == "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5",
     "Party CC icon must match the assigned raid mark")
-assert(TB.partyFrame.rows[2].ccIcon.point[1] == "BOTTOMRIGHT"
-    and TB.partyFrame.rows[2].roleButtons[4].point[5] == 8,
-    "CC icon must be reflowed below the role-button row")
+assert(TB.partyFrame.rows[2].ccIcon.point[1] == "RIGHT"
+    and TB.partyFrame.rows[2].roleButtons[1].point[5] == 0,
+    "CC icon keeps its own column right of the role picker")
 
 -- Four-role rows reserve the lower-right CC column instead of letting the
 -- fourth role button obscure the assigned mark (Druid is the current case).
 partyClassName = "Druid"
 TB.RefreshPartyView()
 local druidRow = TB.partyFrame.rows[2]
+-- The CC mark sits at RIGHT -64 (18px wide): its left edge is x=398.
 assert(druidRow.roleButtons[4]:IsVisible()
-    and druidRow.roleButtons[4].width == 70
-    and druidRow.roleButtons[4].point[4] + druidRow.roleButtons[4].width <= 440,
+    and druidRow.roleButtons[4].width == 60
+    and druidRow.roleButtons[4].point[4] + druidRow.roleButtons[4].width <= 398,
     "Four-role rows must leave a dedicated column for the CC icon")
-assert(druidRow.ccIcon.point[1] == "BOTTOMRIGHT"
-    and druidRow.ccIcon.point[5] == 4
-    and druidRow.ccLabel.point[1] == "BOTTOMRIGHT",
-    "CC indicator must occupy the lower-right row slot")
+assert(druidRow.ccIcon.point[1] == "RIGHT"
+    and druidRow.ccIcon.point[4] == -64,
+    "CC indicator must keep its own slot left of Summon")
 
 -- ── addon command transport ────────────────────────────────────────────────
 -- UI commands travel as addon messages only while the server says the core
@@ -971,20 +971,29 @@ assert(table.getn(addonSent) == beforeNoneAddon
     and table.getn(sent) == beforeNoneChat + 1 and sent[table.getn(sent)] == ".bot action stay",
     "the none verdict must keep using .bot chat")
 
--- Version line: addon version on load, server version from TBM:VERSION.
-assert(TB.versionLine and TB.versionLine.text == "TBM " .. TB.version .. " · server ? · by Sagiroth",
-    "window must show addon version with unknown server before any reply")
+-- Version: the addon version once (title); the line under it keeps the
+-- credit and shows the server module only as a semantic version.
+assert(TB.versionLine and TB.versionLine.text == "by Sagiroth",
+    "before any reply the line carries only the credit")
 assert(TB.versionTitle and string.find(TB.versionTitle.text, "v" .. TB.version, 1, true),
     "window title must carry the addon version")
+assert(not string.find(TB.versionLine.text, TB.version, 1, true),
+    "the addon version must not repeat under the title")
+TB.OnSystemMessage("TBM:VERSION|1.12.0")
+assert(TB.serverVersion == "1.12.0", "TBM:VERSION must record the server build")
+assert(TB.versionLine.text == "by Sagiroth  ·  server module v1.12.0",
+    "a semantic module version shows as vX.Y.Z")
 TB.OnSystemMessage("TBM:VERSION|2026-09-25-v7")
 assert(TB.serverVersion == "2026-09-25-v7", "TBM:VERSION must record the server build")
-assert(TB.versionLine.text == "TBM " .. TB.version .. " · server 2026-09-25-v7 · by Sagiroth",
-    "window must show both versions after the roster trailer")
+assert(TB.versionLine.text == "by Sagiroth  ·  server module connected",
+    "a dated build id stays out of the header")
+assert(TB.FormatSemver("v2.0.1") == "v2.0.1" and TB.FormatSemver("2026-09-25-v7") == nil,
+    "only semantic versions format")
 TB.OnSystemMessage("TBM:TRANSPORT|party")
 TB.serverVersion = nil
 if TB.RefreshVersionLine then TB.RefreshVersionLine() end
-assert(TB.versionLine.text == "TBM " .. TB.version .. " · server ? · by Sagiroth",
-    "window must fall back to server ? without a version reply")
+assert(TB.versionLine.text == "by Sagiroth",
+    "window must fall back to the credit alone without a version reply")
 TB.OnSystemMessage("TBM:VERSION|2026-09-25-v7")
 -- Older servers stay silent: unknown commands must not clobber the version.
 TB.OnSystemMessage("Unknown bot command 'version'. Try .bot help")
@@ -2427,7 +2436,7 @@ now = now + 1
 this = TB.tabLoot
 TB.tabLoot.scripts.OnClick(TB.tabLoot)
 assert(TB.lootFrame:IsVisible(), "the Loot tab shows its page")
-assert(TB.lootRows and table.getn(TB.lootRows) == 11, "the Loot tab owns its scroll rows")
+assert(TB.lootRows and table.getn(TB.lootRows) == 15, "the Loot tab owns its scroll rows")
 
 -- Catch-up on login starts from the stored cursor.
 event, arg1 = "PLAYER_LOGIN", nil

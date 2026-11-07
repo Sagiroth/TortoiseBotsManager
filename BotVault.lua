@@ -193,7 +193,7 @@ local function setTooltip(button, title, lines)
 end
 
 local function makeTab(parent, label, x, width, view)
-    local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
+    local b = TB.StyleTab(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(width); b:SetHeight(20)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -36)
     b:SetText(label)
@@ -226,15 +226,18 @@ local function createVault()
         end
     end)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerBotVault") end
-    TB.ApplyBackdrop(vault, 0.98, 1.0)
+    TB.ApplySurface(vault, "window")
+    TB.AddWindowHeader(vault, 30)
+    TB.AddHairline(vault, -56, 1)
 
     local name = vault:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    name:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -10)
+    name:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -9)
+    TB.StyleTitle(name, 14)
     name:SetWidth(VW - 50); name:SetJustifyH("LEFT")
     vault.nameText = name
 
     local close = CreateFrame("Button", nil, vault, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", vault, "TOPRIGHT", -2, -2)
+    TB.StyleCloseButton(close, -7, -6)
     close:SetScript("OnClick", function() TB.CloseVault() end)
 
     vault.tabBank = makeTab(vault, "Bank", 10, 68, "bank")

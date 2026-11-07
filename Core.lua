@@ -16,18 +16,31 @@ TB.version = (C and C.VERSION) or TB.version or "0.1.0"
 TB.ADDON_NAME = "TortoiseBotsManager"
 TB.serverVersion = TB.serverVersion or nil
 
--- Window version line: "TBM <addon version> · server <server version>".
--- Older servers never send TBM:VERSION, so the server half stays "?".
+-- Semantic versions read "v1.2.3"; any other build string (an older
+-- module's dated build id) has no place in the header and returns nil.
+function TB.FormatSemver(version)
+    if not version then return nil end
+    local _, _, core = string.find(tostring(version), "^[vV]?(%d+%.%d+%.?%d*[%w%.%-]*)$")
+    if core then return "v" .. core end
+    return nil
+end
+
+-- Header: the addon version once, in the title; the line under it carries
+-- the credit and, when the server module reports a semantic version, that.
 function TB.RefreshVersionLine()
     local addonVersion = TB.version or "?"
-    local serverVersion = TB.serverVersion or "?"
-    local text = "TBM " .. tostring(addonVersion) .. " · server " .. tostring(serverVersion)
-        .. " · by " .. (TB.C.AUTHOR or "Sagiroth")
+    local moduleVersion = TB.FormatSemver(TB.serverVersion)
+    local text = "by " .. (TB.C.AUTHOR or "Sagiroth")
+    if moduleVersion then
+        text = text .. "  ·  server module " .. moduleVersion
+    elseif TB.serverVersion then
+        text = text .. "  ·  server module connected"
+    end
     if TB.versionLine and TB.versionLine.SetText then
         TB.versionLine:SetText(text)
     end
     if TB.versionTitle and TB.versionTitle.SetText then
-        TB.versionTitle:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cffffd200v"
+        TB.versionTitle:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cff8c8270v"
             .. tostring(addonVersion) .. "|r")
     end
 end

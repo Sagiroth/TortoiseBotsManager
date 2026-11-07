@@ -454,7 +454,7 @@ end
 TB.LootRowText = rowText
 
 local LOOT_ROW_H = 18
-local LOOT_ROW_N = 11
+local LOOT_ROW_N = 15
 
 function TB.CreateLootTab(parent)
     tab = CreateFrame("Frame", nil, parent)
@@ -462,13 +462,13 @@ function TB.CreateLootTab(parent)
     local tw = (C.PANEL_W or 500) - (C.PAD or 10) * 2
     tab:SetWidth(tw); tab:SetHeight(325)
 
-    local title = tab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("TOPLEFT", tab, "TOPLEFT", 6, 0)
-    title:SetText("|cffd8a657Loot history|r")
+    if TB.UI and TB.UI.CreateHeading then
+        TB.UI.CreateHeading(tab, "Loot history", "What your party bots looted or rolled")
+    end
 
-    local clearBtn = TB.StyleButton(CreateFrame("Button", nil, tab, "UIPanelButtonTemplate"))
-    clearBtn:SetWidth(65); clearBtn:SetHeight(18)
-    clearBtn:SetPoint("TOPRIGHT", tab, "TOPRIGHT", -24, 2)
+    local clearBtn = TB.StyleButton(CreateFrame("Button", nil, tab, "UIPanelButtonTemplate"), "mode")
+    clearBtn:SetWidth(56); clearBtn:SetHeight(18)
+    clearBtn:SetPoint("TOPRIGHT", tab, "TOPRIGHT", 0, 2)
     clearBtn:SetText("Clear")
     if TB.UI and TB.UI.SetTooltip then
         TB.UI.SetTooltip(clearBtn, "Wipe this character's stored loot history")
@@ -481,7 +481,7 @@ function TB.CreateLootTab(parent)
 
     -- Filter row: bot, item, source searches plus the quality and row-type
     -- steppers. Every filter combines with the others.
-    local function searchBox(name, x, width, key, tip)
+    local function searchBox(name, x, width, key, tip, hint)
         local box = CreateFrame("EditBox", name, tab, "InputBoxTemplate")
         box:SetWidth(width); box:SetHeight(20)
         box:SetPoint("TOPLEFT", tab, "TOPLEFT", x, -20)
@@ -492,18 +492,19 @@ function TB.CreateLootTab(parent)
             if TB.SetLootFilter then TB.SetLootFilter(key, this:GetText()) end
         end)
         if tip and TB.UI and TB.UI.SetTooltip then TB.UI.SetTooltip(box, tip) end
+        if TB.StyleEditBox then TB.StyleEditBox(box, hint) end
         return box
     end
-    tab.botSearch = searchBox("TortoiseBotsManagerLootBotSearch", 6, 76, "bot", "Show only this bot")
-    tab.itemSearch = searchBox("TortoiseBotsManagerLootItemSearch", 86, 112, "item", "Show only items with this name")
-    tab.sourceSearch = searchBox("TortoiseBotsManagerLootSourceSearch", 202, 84, "source", "Show only this source")
+    tab.botSearch = searchBox("TortoiseBotsManagerLootBotSearch", 0, 82, "bot", "Show only this bot", "Bot")
+    tab.itemSearch = searchBox("TortoiseBotsManagerLootItemSearch", 86, 112, "item", "Show only items with this name", "Item")
+    tab.sourceSearch = searchBox("TortoiseBotsManagerLootSourceSearch", 202, 84, "source", "Show only this source", "Source")
 
     local function stepper(x, width, label, set, tip)
         local row = CreateFrame("Frame", nil, tab)
         row:SetWidth(width); row:SetHeight(18)
         row:SetPoint("TOPLEFT", tab, "TOPLEFT", x, -22)
         row:EnableMouse(true)
-        local minus = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+        local minus = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"), "mode")
         minus:SetWidth(20); minus:SetHeight(18)
         minus:SetPoint("LEFT", row, "LEFT", 0, 0)
         minus:SetText("-")
@@ -511,7 +512,7 @@ function TB.CreateLootTab(parent)
         text:SetPoint("LEFT", minus, "RIGHT", 2, 0)
         text:SetWidth(width - 44)
         text:SetJustifyH("CENTER")
-        local plus = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+        local plus = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"), "mode")
         plus:SetWidth(20); plus:SetHeight(18)
         plus:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         plus:SetText("+")
@@ -537,7 +538,7 @@ function TB.CreateLootTab(parent)
         if q > 6 then q = -1 end
         if TB.SetLootFilter then TB.SetLootFilter("quality", q) end
     end, "Item quality")
-    tab.typeStep = stepper(394, 76, function()
+    tab.typeStep = stepper(404, 76, function()
         local t = (TB.GetLootFilters and TB.GetLootFilters().rowType) or "all"
         if t == "items" then return "Items" end
         if t == "rolls" then return "Rolls" end
@@ -553,8 +554,8 @@ function TB.CreateLootTab(parent)
     end, "Row type: items, rolls, or all")
 
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLootScroll", tab, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -44)
-    scroll:SetWidth(tw)
+    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -46)
+    scroll:SetWidth(tw - 22)
     scroll:SetHeight(LOOT_ROW_N * LOOT_ROW_H + 4)
     scroll:SetScript("OnVerticalScroll", function()
         FauxScrollFrame_OnVerticalScroll(LOOT_ROW_H, TB.RefreshLootView)
@@ -564,11 +565,12 @@ function TB.CreateLootTab(parent)
     local rows = {}
     for i = 1, LOOT_ROW_N do
         local row = CreateFrame("Frame", nil, tab)
-        row:SetWidth(tw - 20)
+        row:SetWidth(tw - 22)
         row:SetHeight(LOOT_ROW_H)
         row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(i - 1) * LOOT_ROW_H)
+        if TB.UI and TB.UI.StripeRow then TB.UI.StripeRow(row, i) end
         local line = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        line:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -2)
+        line:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -3)
         line:SetPoint("RIGHT", row, "RIGHT", -4, 0)
         line:SetJustifyH("LEFT")
         line:SetHeight(14)

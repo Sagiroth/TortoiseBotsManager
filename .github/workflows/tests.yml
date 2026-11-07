@@ -1,0 +1,42 @@
+name: Tests
+
+# Every push and pull request: the checks that keep Lua errors out of the
+# 1.12 client. The release workflow runs the same list before it packages.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lua:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua 5.1 (lua5.1 + luac5.1)
+        run: sudo apt-get update -qq && sudo apt-get install -y lua5.1
+
+      - name: Regression tests (wire output, layout geometry)
+        run: lua5.1 tests/regression.lua .
+
+      - name: Lua 5.0 syntax and 32-upvalue limit
+        run: lua5.1 tests/lua50_syntax.lua .
+
+      - name: Lint (globals, 1.12 API, Lua 5.0 library, varargs)
+        run: |
+          lua5.1 tests/lint.lua .
+          lua5.1 tests/lint_selftest.lua .
+
+      - name: UI smoke test (every window, tab and event handler)
+        run: sh tests/ui_smoke.sh .
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Docs check
+        run: |
+          pip install pyyaml
+          python3 tools/verify_okf.py
