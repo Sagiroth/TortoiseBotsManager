@@ -2,6 +2,22 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.0.0 (2026-11-07)
+
+### Stability & Reliability
+- Fixed the `too many upvalues (limit=32)` Lua error that hit on load in v1.8.0 — the 1.12 client runs Lua 5.0, which caps functions at 32 upvalues, so the offending parse function was split to comply [#67](https://github.com/Sagiroth/TortoiseBotsManager/pull/67)
+- The fix is isolated in its own commit (`c21290e`) so it can be cherry-picked to `main` as a standalone hotfix if you need it sooner [#67](https://github.com/Sagiroth/TortoiseBotsManager/pull/67)
+
+### UI & Controls
+- Every addon window has been redesigned — cleaner layout and presentation across the board [#67](https://github.com/Sagiroth/TortoiseBotsManager/pull/67)
+- Zero behavioral drift: buttons send the same commands in the same order as before, so existing habits and macros still work [#67](https://github.com/Sagiroth/TortoiseBotsManager/pull/67)
+
+### Tooling & QA
+- Added a 1.12-targeted lint plus a UI smoke test that catch upvalue-limit and load-time errors before they reach the game client [#67](https://github.com/Sagiroth/TortoiseBotsManager/pull/67)
+- CI workflow now runs on every push and pull request, so regressions get flagged automatically instead of in-game [#67](https://github.com/Sagiroth/TortoiseBotsManager/pull/67)
+
+---
+
 ## v1.8.0 (2026-11-06)
 
 ### Roster & Lifecycle
