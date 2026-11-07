@@ -1,0 +1,344 @@
+-- tools/preview/scenes.lua
+-- Loads the addon on the recording mock, fills it with a believable party,
+-- roster and guild, and writes one JSON scene per window and tab.
+--
+--   lua5.1 tools/preview/scenes.lua <repo root> <out dir>
+--   node tools/preview/render.js <out dir>
+--
+-- Scenes are layout previews, not game screenshots: icons and textures come
+-- from the render step, fonts and colours from the font objects below.
+
+local root = arg[1] or "."
+local out = arg[2] or "preview-out"
+dofile(root .. "/tools/preview/mock.lua")
+
+-- ── load the addon in .toc order ─────────────────────────────────────────
+local toc = io.open(root .. "/TortoiseBotsManager.toc"):read("*a")
+for line in string.gfind(toc, "[^\r\n]+") do
+    if not string.find(line, "^##") and string.find(line, "%.lua%s*$") then
+        local file = string.gsub(line, "%s+$", "")
+        dofile(root .. "/" .. file)
+    end
+end
+
+local TB = TortoiseBots
+TortoiseBotsDB = TortoiseBotsDB or {}
+event, arg1 = "ADDON_LOADED", "TortoiseBotsManager"
+local core = Mock.frames["TortoiseBotsManagerCoreFrame"]
+this = core
+core.scripts.OnEvent(core)
+
+local function sys(msg) TB.OnSystemMessage(msg) end
+local function feed(lines) for _, l in ipairs(lines) do sys(l) end end
+
+local function tick(n)
+    for _ = 1, n or 3 do
+        Mock.now = Mock.now + 1
+        for _, o in ipairs(Mock.objects) do
+            if o.scripts and o.scripts.OnUpdate and o.kind ~= "Texture" then
+                this, arg1 = o, 1
+                pcall(o.scripts.OnUpdate, o)
+            end
+        end
+    end
+end
+
+-- ── world: a five-man party of your bots, a roster, a guild ─────────────
+feed({
+    "TBM:VERSION|1.12.0",
+    "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service",
+})
+Mock.world.party = {
+    { name = "Thalgrim", class = "Warrior", level = 60 },
+    { name = "Seraphine", class = "Priest", level = 60 },
+    { name = "Vexmora", class = "Mage", level = 59 },
+    { name = "Bramblewood", class = "Druid", level = 60 },
+}
+local gw = Mock.frames["TortoiseBotsManagerGroupWatcher"]
+if gw and gw.scripts.OnEvent then event = "PARTY_MEMBERS_CHANGED"; this = gw; pcall(gw.scripts.OnEvent, gw) end
+feed({
+    "TBM:ROSTER_BEGIN|9",
+    "TBM:ROSTER|101|Thalgrim|1|online|1|Elwynn Forest",
+    "TBM:ROSTER|102|Seraphine|5|online|1|Elwynn Forest",
+    "TBM:ROSTER|103|Vexmora|8|online|1|Elwynn Forest",
+    "TBM:ROSTER|104|Bramblewood|11|online|1|Elwynn Forest",
+    "TBM:ROSTER|105|Kaelthor|2|online|0|Ironforge",
+    "TBM:ROSTER|106|Nightwhisper|4|offline|0|Stormwind City",
+    "TBM:ROSTER|107|Grimtotem|7|offline|0|Orgrimmar",
+    "TBM:ROSTER|108|Felbrand|9|online|0|Duskwood",
+    "TBM:ROSTER|109|Arrowind|3|offline|0|Westfall",
+    "TBM:ROSTER_END",
+    "TBM:ALTBOTS|Felbrand",
+    "TBM:BOTSTATE_BEGIN|4",
+    "TBM:BOTSTATE|Thalgrim|move=follow,loot=on,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,specs=protection",
+    "TBM:BOTSTATE|Seraphine|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on,specs=holy",
+    "TBM:BOTSTATE|Vexmora|move=follow,loot=on,aoe=on,autocc=on,savemana=off,boost=on,threat=on,potions=on,specs=frost",
+    "TBM:BOTSTATE|Bramblewood|move=follow,loot=off,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,specs=restoration",
+    "TBM:BOTSTATE_END",
+    "TBM:CC_ASSIGN_BEGIN|1",
+    "TBM:CC_ASSIGN|Vexmora|moon",
+    "TBM:CC_ASSIGN_END",
+    "TBM:CLAIMED_BEGIN|6",
+    "TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1",
+    "TBM:CLAIMED|202|Silverleaf|5|45|online|1|Duskwood|0",
+    "TBM:CLAIMED|203|Ironhide|2|60|online|0|Blackrock Mountain|1",
+    "TBM:CLAIMED|204|Mistral|7|52|offline|0|Tanaris|0",
+    "TBM:CLAIMED|205|Stitchwork|9|60|online|0|Stormwind City|1",
+    "TBM:CLAIMED|206|Fenwick|3|38|offline|0|Stranglethorn Vale|0",
+    "TBM:CLAIMED_END",
+    "TBM:ORDER_ACCESS|2|Raider|1,2|-|1|1",
+    "TBM:ORDER_BEGIN|2",
+    "TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale",
+    "TBM:ORDER|Ironhide|craft|3860|Mithril Casing|1|2|waiting|-|Ironforge",
+    "TBM:ORDER_END",
+})
+for _, l in ipairs({
+    "Thalgrim: Following you in shield formation.",
+    "Seraphine: Drinking — 62% mana.",
+    "Vexmora queued for login (following Valguard)",
+    "Bramblewood: Rebuffed Mark of the Wild on 4 party members.",
+    "Strategy change: +aoe on 4 bots",
+    "Kaelthor logout requested",
+}) do if TB.LogMessage then pcall(TB.LogMessage, l) end end
+
+-- ── JSON ────────────────────────────────────────────────────────────────
+local function esc(s)
+    s = string.gsub(s, "\\", "\\\\")
+    s = string.gsub(s, '"', '\\"')
+    s = string.gsub(s, "\n", "\\n")
+    s = string.gsub(s, "\r", "")
+    s = string.gsub(s, "\t", " ")
+    s = string.gsub(s, "[%z\1-\31]", "")
+    return s
+end
+local function enc(v)
+    local t = type(v)
+    if t == "nil" then return "null" end
+    if t == "boolean" then return v and "true" or "false" end
+    if t == "number" then
+        if v ~= v or v == math.huge or v == -math.huge then return "0" end
+        return string.format("%.4f", v)
+    end
+    if t == "string" then return '"' .. esc(v) .. '"' end
+    if t == "table" then
+        if v.id and v.kind then return tostring(v.id) end
+        local n = table.getn(v)
+        local parts = {}
+        if n > 0 then
+            for i = 1, n do parts[i] = enc(v[i]) end
+            return "[" .. table.concat(parts, ",") .. "]"
+        end
+        for k, x in pairs(v) do
+            if type(x) ~= "function" then table.insert(parts, '"' .. esc(tostring(k)) .. '":' .. enc(x)) end
+        end
+        return "{" .. table.concat(parts, ",") .. "}"
+    end
+    return "null"
+end
+
+local FIELDS = { "kind", "name", "template", "width", "height", "shown", "strata", "level", "alpha",
+    "backdrop", "bdColor", "bdBorder", "layer", "file", "color", "texCoord", "vertex", "blend", "font",
+    "text", "textColor", "justifyH", "justifyV", "enabled", "checked", "disabledTextColor",
+    "highlightTextColor", "isButtonText", "stateKey", "isInput", "isScrollBar", "scale", "fontSize",
+    "lockHighlight", "isActive", "flatKind", "barColor", "value", "min", "max", "disabledFont" }
+
+local function dump(name, roots, note)
+    local parts = {}
+    for _, o in ipairs(Mock.objects) do
+        local rec = { '"id":' .. o.id }
+        if o.parent then table.insert(rec, '"parent":' .. o.parent.id) end
+        for _, f in ipairs(FIELDS) do
+            local v = o[f]
+            if v ~= nil and type(v) ~= "function" then table.insert(rec, '"' .. f .. '":' .. enc(v)) end
+        end
+        if o.normalTex then table.insert(rec, '"normalTex":' .. o.normalTex.id) end
+        if o.pushedTex then table.insert(rec, '"pushedTex":' .. o.pushedTex.id) end
+        if o.disabledTex then table.insert(rec, '"disabledTex":' .. o.disabledTex.id) end
+        if o.highlightTex then table.insert(rec, '"highlightTex":' .. o.highlightTex.id) end
+        if o.checkedTex then table.insert(rec, '"checkedTex":' .. o.checkedTex.id) end
+        if o.fontString then table.insert(rec, '"fontString":' .. o.fontString.id) end
+        local pts = {}
+        for _, p in ipairs(o.points or {}) do
+            table.insert(pts, string.format('{"point":"%s","rel":%s,"relPoint":"%s","x":%s,"y":%s}',
+                p.point, p.rel and p.rel.id or "null", p.relPoint or p.point, enc(p.x or 0), enc(p.y or 0)))
+        end
+        table.insert(rec, '"points":[' .. table.concat(pts, ",") .. "]")
+        table.insert(parts, "{" .. table.concat(rec, ",") .. "}")
+    end
+    local rootIds = {}
+    for _, r in ipairs(roots) do if r then table.insert(rootIds, tostring(r.id)) end end
+    local f = io.open(out .. "/" .. name .. ".json", "w")
+    f:write('{"name":"' .. name .. '","note":"' .. esc(note or "") .. '","uiparent":' .. UIParent.id
+        .. ',"roots":[' .. table.concat(rootIds, ",") .. '],"objects":[' .. table.concat(parts, ",") .. "]}")
+    f:close()
+    io.write("scene " .. name .. "\n")
+end
+
+local function scene(name, fn)
+    local ok, err = pcall(fn)
+    if not ok then io.write("scene " .. name .. " FAILED: " .. tostring(err) .. "\n") end
+end
+
+local function hideSatellites()
+    for _, n in ipairs({ "CloseBotPanel", "CloseRunWindow", "CloseOrderWindow", "CloseServerInfo", "CloseNpc", "CloseVault" }) do
+        if TB[n] then pcall(TB[n]) end
+    end
+    if TB.ccMenu then TB.ccMenu:Hide() end
+end
+
+local main = TB.frame
+main:ClearAllPoints()
+main:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 40, -40)
+main:Show()
+TB.Refresh()
+
+local function tab(name, target)
+    hideSatellites()
+    if TB.SetMode then TB.SetMode("full") end
+    main:Show()
+    Mock.world.target = target
+    TB.ShowTab(name)
+    TB.Refresh()
+    tick(2)
+end
+
+scene("fight", function() tab("actions", nil); dump("fight", { main }, "Fight tab, no target") end)
+scene("fight-target", function()
+    tab("actions", { name = "Defias Pillager", player = false, class = "Rogue" })
+    dump("fight-target", { main }, "Fight tab with an enemy target")
+end)
+scene("fight-bot", function()
+    tab("actions", { name = "Seraphine", player = true, class = "Priest" })
+    dump("fight-bot", { main }, "Fight tab with one of your bots targeted")
+end)
+scene("ccmenu", function()
+    tab("actions", nil)
+    TB.ToggleCcMenu()
+    dump("ccmenu", { main, TB.ccMenu }, "CC marks panel")
+end)
+scene("camp", function() tab("camp", nil); dump("camp", { main }, "Camp tab") end)
+scene("party", function() tab("party", nil); dump("party", { main }, "Party tab") end)
+scene("roster", function()
+    tab("roster", nil)
+    if TB.ToggleRosterSelection then TB.ToggleRosterSelection("Kaelthor", true); TB.ToggleRosterSelection("Nightwhisper", true) end
+    TB.Refresh()
+    dump("roster", { main }, "Roster tab, two bots selected")
+end)
+scene("guild", function()
+    tab("guild", nil)
+    if TB.ToggleClaimedSelection then TB.ToggleClaimedSelection("Goldie", true) end
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
+    dump("guild", { main }, "Guild tab with orders")
+end)
+scene("log", function() tab("log", nil); dump("log", { main }, "Log tab") end)
+scene("loot", function()
+    feed({
+        "TBM:LOOT_BEGIN|4|",
+        "TBM:LOOT|2026-10-27 12:00:01|Thalgrim|StoreLootAction|12640|Lionheart Helm|corpse|General Drakkisath|4",
+        "TBM:LOOT|2026-10-27 12:00:02|Vexmora|LootMoney|812|1550|corpse|Kobold Vermin|",
+        "TBM:LOOT|2026-10-27 12:00:05|Seraphine|StoreLootAction|13340|Cape of the Black Baron|corpse|Baron Rivendare|3",
+        "TBM:LOOT|2026-10-27 12:01:11|Bramblewood|StoreLootAction|2589|Linen Cloth|corpse|Defias Thug|1",
+        "TBM:LOOT_END|",
+    })
+    tab("loot", nil)
+    dump("loot", { main }, "Loot tab")
+end)
+scene("dungeon", function()
+    tab("dungeon", nil)
+    dump("dungeon", { main, TB.runWindow }, "Dungeon tab and run window")
+end)
+scene("raid", function()
+    Mock.world.raid = 12
+    tab("raid", nil)
+    dump("raid", { main }, "Raid tab")
+    Mock.world.raid = 0
+    if TB.UpdateRaidTab then TB.UpdateRaidTab() end
+end)
+
+-- Bot panel
+feed({
+    "TBM:INV_BEGIN|Seraphine|1234567",
+    "TBM:INV_EQ|1|12640|90|100",
+    "TBM:INV_EQ|5|2586|40|50",
+    "TBM:INV_EQ|15|13340|0|0",
+    "TBM:INV_EQ|13|11815|0|0",
+    "TBM:INV_EQ|16|19019|100|125",
+    "TBM:INV_ITEM|255|1|6948|1|b",
+    "TBM:INV_ITEM|255|2|858|5|u",
+    "TBM:INV_ITEM|255|3|2589|20|",
+    "TBM:INV_ITEM|255|4|1201|1|eu",
+    "TBM:INV_ITEM|20|1|4306|12|",
+    "TBM:INV_ITEM|20|2|13340|1|e",
+    "TBM:INV_END|Seraphine|30|46",
+    "TBM:PROF_BEGIN|Seraphine",
+    "TBM:PROF|186|245|300",
+    "TBM:PROF|182|230|300",
+    "TBM:RECIPE|186|2651|3860|1|25|50|100|ok",
+    "TBM:RECIPE|182|1972|765|1|25|50|100|bound",
+    "TBM:RECIPE_MISSING|182|1973|118|50|0",
+    "TBM:RECIPE_MISSING|182|6259|2453|60|1710",
+    "TBM:PROF_END|Seraphine|2|2",
+})
+for _, view in ipairs({ "gear", "bags", "behavior", "spells", "profs" }) do
+    scene("panel-" .. view, function()
+        tab("party", nil)
+        TB.OpenBotPanel("Seraphine", view)
+        tick(1)
+        if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+        dump("panel-" .. view, { main, TB.botPanel }, "Bot panel: " .. view)
+    end)
+end
+scene("npc", function()
+    tab("party", nil)
+    TB.OpenBotPanel("Seraphine", "gear")
+    TB.OpenNpc("Seraphine")
+    dump("npc", { main, TB.botPanel, TB.npcFrame or TB.npcWindow }, "NPC errands")
+end)
+scene("vault", function()
+    tab("party", nil)
+    TB.OpenBotPanel("Seraphine", "gear")
+    TB.OpenVault("Seraphine", "bank")
+    dump("vault", { main, TB.botPanel, TB.vaultFrame or TB.vaultWindow }, "Bank and mail")
+end)
+scene("order", function()
+    tab("guild", nil)
+    feed({
+        "TBM:ORDER_ITEMS_BEGIN|2",
+        "TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70",
+        "TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|ok|Ashenvale|50",
+        "TBM:ORDER_ITEMS_END",
+    })
+    TB.OpenOrderWindow("Goldie")
+    tick(1)
+    dump("order", { main, TB.orderWindow }, "Order window for one bot")
+end)
+scene("guild-order", function()
+    tab("guild", nil)
+    TB.OpenGuildOrderWindow()
+    feed({
+        "TBM:ORDER_WHO_BEGIN|1",
+        "TBM:ORDER_WHO|craft|3860|Mithril Casing|2|-|165|Goldie:165:3:3:0;Ironhide:140:1:3:1",
+        "TBM:ORDER_WHO_END",
+    })
+    tick(1)
+    dump("guild-order", { main, TB.orderWindow }, "Guild order window")
+end)
+scene("info", function()
+    tab("actions", nil)
+    feed({ "TBM:FEATURE|dungeon-run|on|Dungeon runs", "TBM:FEATURE|hire-max|4|Hires per player",
+        "TBM:FEATURE|world-buffs|off|World buffs", "TBM:FEATURE|loot-log|on|Loot history" })
+    TB.OpenServerInfo()
+    dump("info", { main, TB.serverInfo or TB.infoFrame or TB.serverInfoFrame }, "Server info")
+end)
+scene("mini", function()
+    hideSatellites()
+    TortoiseBotsDB.miniFavorites = { "attack", "stop", "pull", "focus skull", "follow", "aoe" }
+    TortoiseBotsDB.miniFavoritesOwn = true
+    TB.SetMode("mini")
+    if TB.LayoutMiniBar then TB.LayoutMiniBar() end
+    Mock.world.target = { name = "Defias Pillager", player = false }
+    TB.Refresh()
+    if TB.OpenMiniCategory then pcall(TB.OpenMiniCategory, "engage") end
+    dump("mini", { TB.miniBar, TB.miniFlyout }, "Mini bar with the Engage flyout open")
+    TB.SetMode("full")
+end)
