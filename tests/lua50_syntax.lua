@@ -9,6 +9,8 @@
 --   select('#' select does not exist in 5.0
 --   gmatch     string.gmatch / :gmatch( (5.0: string.gfind)
 --   goto       reserved in neither 5.0 nor 5.1; kept on the list as a house rule
+-- It also fails on any function with more than 32 upvalues (5.0's limit; see
+-- the end of this file).
 -- Strings and comments are skipped, so '%s' patterns and "# drop" text pass.
 
 local root = arg[1] or "."
@@ -163,9 +165,40 @@ for _, rel in ipairs(files) do
     end
 end
 
+-- Compiler limits. Lua 5.0 refuses a function with more than 32 upvalues
+-- ("too many upvalues (limit=32)") where 5.1 allows 60, so a file that loads
+-- here can still fail in the client. luac5.1 (shipped with the lua5.1
+-- package) lists every function with its upvalue and register counts; 5.0
+-- shares the 250-register and 200-local limits, so only upvalues differ.
+local MAX_UPVALUES_50 = 32
+local luac = os.getenv("LUAC") or "luac5.1"
+local probe = io.popen(luac .. " -v 2>&1")
+local version = probe and probe:read("*a") or ""
+if probe then probe:close() end
+if not string.find(version, "Lua") then
+    table.insert(problems, "luac5.1 not found: cannot check the Lua 5.0 upvalue limit (set LUAC=...)")
+else
+    for _, rel in ipairs(files) do
+        local path = root .. "/" .. rel
+        local pipe = io.popen(luac .. " -l -p '" .. path .. "' 2>&1")
+        local listing = pipe and pipe:read("*a") or ""
+        if pipe then pipe:close() end
+        local where = nil
+        for line in string.gmatch(listing, "[^\n]+") do
+            local _, _, span = string.find(line, "^%a+ <[^:]+:(%d+,%d+)>")
+            if span then where = span end
+            local _, _, ups = string.find(line, "(%d+) upvalues?,")
+            if ups and tonumber(ups) > MAX_UPVALUES_50 then
+                table.insert(problems, string.format("%s:%s: %s upvalues, the 1.12 client allows %d"
+                    .. " (split the function)", rel, where or "?", ups, MAX_UPVALUES_50))
+            end
+        end
+    end
+end
+
 if table.getn(problems) > 0 then
     for _, p in ipairs(problems) do print("FAIL: " .. p) end
     print(string.format("FAIL: Lua 5.0 syntax check, %d problem(s) in %d file(s)", table.getn(problems), scanned))
     os.exit(1)
 end
-print(string.format("PASS: Lua 5.0 syntax check, %d .toc files scanned, no 5.1-only syntax", scanned))
+print(string.format("PASS: Lua 5.0 syntax check, %d .toc files scanned, no 5.1-only syntax, upvalues within %d", scanned, MAX_UPVALUES_50))

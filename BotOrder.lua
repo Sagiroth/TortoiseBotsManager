@@ -1700,6 +1700,88 @@ local function commitOrderList(rows)
     end
 end
 
+-- Step-history lines (TBM:ORDER_STEPS_*). Kept out of TB.ParseOrderMessage
+-- so neither function needs more than the 1.12 client's 32 upvalues.
+-- Returns true when the line was a step-history line.
+local function parseOrderStepsMessage(msg)
+    -- Step history of one bot: BEGIN opens a buffer, the ORDER_STEP lines fill
+    -- it (only for the bot the buffer belongs to), END commits it and redraws
+    -- the tooltip of the row under the cursor. The buffer carries the order
+    -- identity seen when the request went out; a reply that lands after the
+    -- bot moved to a new order is dropped at BEGIN (never buffered) and at
+    -- END (never cached), freeing the throttle so the next hover asks again.
+    -- A line for another bot, or an END without its BEGIN, is ignored; a
+    -- BEGIN replaces an open buffer. Without a pending request there is
+    -- nothing to compare against, so the reply commits as before.
+    -- The BEGIN count is the entry count the reply promises: a count above
+    -- STEPS_PROTOCOL_MAX is refused at once, and an END whose valid entries
+    -- fall short of it is discarded (discardSteps), never committed.
+    local _, _, stepBot, stepCount, stepDropped = string.find(msg, "^TBM:ORDER_STEPS_BEGIN|([^|]+)|(%d+)|(%d+)$")
+    if stepBot then
+        local bot = norm(stepBot)
+        local expected = stepsPending[bot]
+        local count = tonumber(stepCount)
+        if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+            stepsReceiving = nil
+        elseif count > STEPS_PROTOCOL_MAX then
+            discardSteps(bot)
+        else
+            stepsReceiving = { bot = bot, entries = {}, count = count, dropped = tonumber(stepDropped), expected = expected }
+        end
+        return true
+    end
+    if string.sub(msg, 1, 15) == "TBM:ORDER_STEP|" then
+        local entry = TB.ParseOrderStepLine(msg)
+        if stepsReceiving and entry and entry.bot == stepsReceiving.bot then
+            table.insert(stepsReceiving.entries, entry)
+        end
+        return true
+    end
+    local _, _, stepEndBot = string.find(msg, "^TBM:ORDER_STEPS_END|([^|]+)$")
+    if stepEndBot then
+        local bot = norm(stepEndBot)
+        if stepsReceiving and stepsReceiving.bot == bot then
+            local expected = stepsReceiving.expected
+            if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
+            elseif table.getn(stepsReceiving.entries) ~= stepsReceiving.count then
+                -- Short of the BEGIN count: entries were lost, so nothing commits.
+                discardSteps(bot)
+            else
+                -- Stamp the commit with its order's identity; a missing row means
+                -- no identity, which never matches a live order.
+                local identity = orderIdentity(orders[bot])
+                orderSteps[bot] = { entries = stepsReceiving.entries, dropped = stepsReceiving.dropped,
+                    receivedAt = now(),
+                    type = identity and identity.type or nil,
+                    itemId = identity and identity.itemId or nil,
+                    parent = identity and identity.parent or nil }
+                stepsMissed[bot] = nil
+                stepsReceiving = nil
+                stepsPending[bot] = nil
+                if next(stepsPending) == nil then stepsFlightAt = nil end
+                if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
+            end
+        elseif stepsPending[bot] then
+            -- The BEGIN was refused above (or the buffer was replaced), so the
+            -- tail ends nothing: a stale tail still frees the throttle so the
+            -- next hover asks again, a fresh one just clears the pending mark.
+            if not sameOrderIdentity(stepsPending[bot], orderIdentity(orders[bot])) then
+                stepsPending[bot] = nil
+                stepsAskedAt[bot] = nil
+            else
+                stepsPending[bot] = nil
+            end
+            if next(stepsPending) == nil then stepsFlightAt = nil end
+        end
+        return true
+    end
+    return false
+end
+
 function TB.ParseOrderMessage(msg)
     if string.sub(msg or "", 1, 4) ~= "TBM:" then return false end
     local _, _, count = string.find(msg, "^TBM:ORDER_BEGIN|(%d+)$")
@@ -1884,6 +1966,9 @@ function TB.ParseOrderMessage(msg)
     -- the pending pick (bot, kind, item, amount). Anything else is ignored.
     -- The commit seeds the bring ticks: the server's list first, else
     -- auto-tick what the bags hold in full.
+    if string.sub(msg, 1, 15) == "TBM:ORDER_STEPS" or string.sub(msg, 1, 15) == "TBM:ORDER_STEP|" then
+        return parseOrderStepsMessage(msg)
+    end
     if string.sub(msg, 1, 18) == "TBM:ORDER_PREVIEW|" then
         local preview = TB.ParseOrderPreviewLine(msg)
         -- A reply for another bot leaves the pending pick alone; a reply
@@ -1903,81 +1988,6 @@ function TB.ParseOrderMessage(msg)
             previewPending = nil
         end
         if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
-        return true
-    end
-    -- Step history of one bot: BEGIN opens a buffer, the ORDER_STEP lines fill
-    -- it (only for the bot the buffer belongs to), END commits it and redraws
-    -- the tooltip of the row under the cursor. The buffer carries the order
-    -- identity seen when the request went out; a reply that lands after the
-    -- bot moved to a new order is dropped at BEGIN (never buffered) and at
-    -- END (never cached), freeing the throttle so the next hover asks again.
-    -- A line for another bot, or an END without its BEGIN, is ignored; a
-    -- BEGIN replaces an open buffer. Without a pending request there is
-    -- nothing to compare against, so the reply commits as before.
-    -- The BEGIN count is the entry count the reply promises: a count above
-    -- STEPS_PROTOCOL_MAX is refused at once, and an END whose valid entries
-    -- fall short of it is discarded (discardSteps), never committed.
-    local _, _, stepBot, stepCount, stepDropped = string.find(msg, "^TBM:ORDER_STEPS_BEGIN|([^|]+)|(%d+)|(%d+)$")
-    if stepBot then
-        local bot = norm(stepBot)
-        local expected = stepsPending[bot]
-        local count = tonumber(stepCount)
-        if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
-            stepsReceiving = nil
-        elseif count > STEPS_PROTOCOL_MAX then
-            discardSteps(bot)
-        else
-            stepsReceiving = { bot = bot, entries = {}, count = count, dropped = tonumber(stepDropped), expected = expected }
-        end
-        return true
-    end
-    if string.sub(msg, 1, 15) == "TBM:ORDER_STEP|" then
-        local entry = TB.ParseOrderStepLine(msg)
-        if stepsReceiving and entry and entry.bot == stepsReceiving.bot then
-            table.insert(stepsReceiving.entries, entry)
-        end
-        return true
-    end
-    local _, _, stepEndBot = string.find(msg, "^TBM:ORDER_STEPS_END|([^|]+)$")
-    if stepEndBot then
-        local bot = norm(stepEndBot)
-        if stepsReceiving and stepsReceiving.bot == bot then
-            local expected = stepsReceiving.expected
-            if expected and not sameOrderIdentity(expected, orderIdentity(orders[bot])) then
-                stepsReceiving = nil
-                stepsPending[bot] = nil
-                stepsAskedAt[bot] = nil
-                if next(stepsPending) == nil then stepsFlightAt = nil end
-            elseif table.getn(stepsReceiving.entries) ~= stepsReceiving.count then
-                -- Short of the BEGIN count: entries were lost, so nothing commits.
-                discardSteps(bot)
-            else
-                -- Stamp the commit with its order's identity; a missing row means
-                -- no identity, which never matches a live order.
-                local identity = orderIdentity(orders[bot])
-                orderSteps[bot] = { entries = stepsReceiving.entries, dropped = stepsReceiving.dropped,
-                    receivedAt = now(),
-                    type = identity and identity.type or nil,
-                    itemId = identity and identity.itemId or nil,
-                    parent = identity and identity.parent or nil }
-                stepsMissed[bot] = nil
-                stepsReceiving = nil
-                stepsPending[bot] = nil
-                if next(stepsPending) == nil then stepsFlightAt = nil end
-                if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(bot) end
-            end
-        elseif stepsPending[bot] then
-            -- The BEGIN was refused above (or the buffer was replaced), so the
-            -- tail ends nothing: a stale tail still frees the throttle so the
-            -- next hover asks again, a fresh one just clears the pending mark.
-            if not sameOrderIdentity(stepsPending[bot], orderIdentity(orders[bot])) then
-                stepsPending[bot] = nil
-                stepsAskedAt[bot] = nil
-            else
-                stepsPending[bot] = nil
-            end
-            if next(stepsPending) == nil then stepsFlightAt = nil end
-        end
         return true
     end
     return false
@@ -2935,6 +2945,184 @@ end
 -- on a UIDropDownMenuTemplate frame anchored to the cursor. Each menu row
 -- picks, asks one confirm, then sends; the builders below stay testable
 -- without the global DropDownList frames.
+-- The order window's timer: typing-pause searches, previews, and a redraw
+-- once uncached items arrive. Kept out of createWindow (32-upvalue limit).
+local function onOrderWindowUpdate()
+    firePendingSearch()
+    firePendingPreview()
+    -- Uncached items re-render once the client has them.
+    if uncachedAt and now() - uncachedAt > 1 then
+        uncachedAt = nil
+        TB.RefreshOrderWindow()
+    end
+end
+
+-- The amount, farm time, keep-in-stock and gold limit controls of the order
+-- window. Built apart from createWindow so neither function needs more than
+-- the 1.12 client's 32 upvalues. Returns the y base the Send row uses.
+local function createOrderLimits()
+    local base = 152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 76
+    local farmNote = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    farmNote:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 2))
+    farmNote:SetWidth(OW - 24); farmNote:SetJustifyH("LEFT")
+    farmNote:SetText("Bots farm like players: large amounts or rare drops can take very long or fail.")
+    TB.SetTextColor(farmNote, color("muted"))
+    win.farmNote = farmNote
+    base = 152 + RESULT_ROW_N * RESULT_ROW_H + 30 + 76
+    local amountLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    amountLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 4))
+    amountLabel:SetText("AMOUNT")
+    TB.SetTextColor(amountLabel, color("gold"))
+
+    local minus = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
+    minus:SetWidth(24); minus:SetHeight(22)
+    minus:SetPoint("TOPLEFT", win, "TOPLEFT", 70, -(base + 2))
+    minus:SetText("-")
+    minus:SetScript("OnClick", function()
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            TB.SetOrderAmount(orderAmount - 10)
+        else
+            TB.SetOrderAmount(orderAmount - 1)
+        end
+    end)
+    win.amountMinus = minus
+
+    local amountBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderAmount", win, "InputBoxTemplate")
+    amountBox:SetWidth(52); amountBox:SetHeight(20)
+    amountBox:SetPoint("TOPLEFT", win, "TOPLEFT", 98, -(base + 2))
+    amountBox:SetAutoFocus(false)
+    amountBox:SetScript("OnEscapePressed", function()
+        this:SetText(tostring(orderAmount))
+        this:ClearFocus()
+    end)
+    amountBox:SetScript("OnEnterPressed", function()
+        TB.SetOrderAmount(tonumber(this:GetText()) or orderAmount)
+        this:ClearFocus()
+    end)
+    -- Commit while typing and on focus loss, so Send always uses the
+    -- shown number and the estimates follow without pressing Enter.
+    -- Non-numeric text is left alone until Escape or a valid edit. The
+    -- SetText below re-fires OnTextChanged, hence the differs guard.
+    amountBox:SetScript("OnTextChanged", function()
+        local n = tonumber(this:GetText() or "")
+        if n and TB.ClampOrderAmount(n) ~= orderAmount then TB.SetOrderAmount(n) end
+    end)
+    amountBox:SetScript("OnEditFocusLost", function()
+        this:SetText(tostring(orderAmount))
+    end)
+    win.amountBox = amountBox
+
+    local plus = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
+    plus:SetWidth(24); plus:SetHeight(22)
+    plus:SetPoint("TOPLEFT", win, "TOPLEFT", 154, -(base + 2))
+    plus:SetText("+")
+    plus:SetScript("OnClick", function()
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            TB.SetOrderAmount(orderAmount + 10)
+        else
+            TB.SetOrderAmount(orderAmount + 1)
+        end
+    end)
+    win.amountPlus = plus
+
+    local hoursLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hoursLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 4))
+    hoursLabel:SetText("FARM TIME")
+    TB.SetTextColor(hoursLabel, color("gold"))
+
+    local hoursBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderHours", win, "InputBoxTemplate")
+    hoursBox:SetWidth(36); hoursBox:SetHeight(20)
+    hoursBox:SetPoint("TOPLEFT", win, "TOPLEFT", 268, -(base + 2))
+    hoursBox:SetAutoFocus(false)
+    hoursBox:SetScript("OnEscapePressed", function()
+        this:SetText(tostring(orderHours))
+        this:ClearFocus()
+    end)
+    hoursBox:SetScript("OnEnterPressed", function()
+        TB.SetOrderHours(tonumber(this:GetText()) or orderHours)
+        this:ClearFocus()
+    end)
+    hoursBox:SetScript("OnTextChanged", function()
+        local n = tonumber(this:GetText() or "")
+        if n and TB.ClampOrderHours(n) ~= orderHours then TB.SetOrderHours(n) end
+    end)
+    hoursBox:SetScript("OnEditFocusLost", function()
+        this:SetText(tostring(orderHours))
+    end)
+    win.hoursBox = hoursBox
+    setTooltip(hoursBox, "Farm time",
+        { "Whole hours this order may farm (1-24). The bot stops when the time runs out." })
+
+    local keepBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderKeep", win, "UICheckButtonTemplate")
+    keepBox:SetWidth(20); keepBox:SetHeight(20)
+    keepBox:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 22))
+    keepBox:SetScript("OnClick", function()
+        TB.SetOrderKeep(this:GetChecked() and true or false)
+    end)
+    win.keepBox = keepBox
+    setTooltip(keepBox, "Keep in stock",
+        { "Delivered, the order stays: the bot watches the bank and refills when it drops below the amount." })
+    local keepLabel = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    keepLabel:SetPoint("LEFT", keepBox, "RIGHT", 2, 0)
+    keepLabel:SetWidth(120); keepLabel:SetJustifyH("LEFT")
+    keepLabel:SetText("Keep in stock")
+    TB.SetTextColor(keepLabel, color("muted"))
+    win.keepLabel = keepLabel
+
+    local goldLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    goldLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 46))
+    goldLabel:SetText("MAX GUILD GOLD")
+    goldLabel:SetWidth(150); goldLabel:SetJustifyH("LEFT")
+    TB.SetTextColor(goldLabel, color("gold"))
+    win.goldLabel = goldLabel
+
+    local goldBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderGold", win, "InputBoxTemplate")
+    goldBox:SetWidth(100); goldBox:SetHeight(20)
+    goldBox:SetPoint("TOPLEFT", win, "TOPLEFT", 168, -(base + 44))
+    goldBox:SetAutoFocus(false)
+    goldBox:SetScript("OnEscapePressed", function()
+        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
+        this:ClearFocus()
+    end)
+    goldBox:SetScript("OnEnterPressed", function()
+        local text = trim(this:GetText() or "")
+        if text == "" then TB.SetOrderGold(nil)
+        else TB.SetOrderGold(tonumber(text)) end
+        this:ClearFocus()
+    end)
+    goldBox:SetScript("OnTextChanged", function()
+        local text = trim(this:GetText() or "")
+        if text == "" then
+            if orderGold ~= nil then TB.SetOrderGold(nil) end
+        else
+            local g = tonumber(text)
+            if g ~= nil and TB.ClampOrderGold(g) ~= orderGold then TB.SetOrderGold(g) end
+        end
+    end)
+    goldBox:SetScript("OnEditFocusLost", function()
+        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
+    end)
+    win.goldBox = goldBox
+    setTooltip(goldBox, "Max guild gold",
+        { "Most the order may spend from the guild bank, in copper. Empty means no cap." })
+    local noLimitBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderNoLimit", win, "UICheckButtonTemplate")
+    noLimitBox:SetWidth(20); noLimitBox:SetHeight(20)
+    noLimitBox:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 22))
+    noLimitBox:SetScript("OnClick", function()
+        TB.SetOrderNoLimit(this:GetChecked() and true or false)
+    end)
+    win.noLimitBox = noLimitBox
+    setTooltip(noLimitBox, "No time limit",
+        { "The bot farms until it has the amount, however long it takes. Only Cancel stops it." })
+    local noLimitLabel = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    noLimitLabel:SetPoint("LEFT", noLimitBox, "RIGHT", 2, 0)
+    noLimitLabel:SetWidth(110); noLimitLabel:SetJustifyH("LEFT")
+    noLimitLabel:SetText("No time limit")
+    TB.SetTextColor(noLimitLabel, color("muted"))
+    win.noLimitLabel = noLimitLabel
+    return base
+end
+
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
     win:SetWidth(OW); win:SetHeight(510 + 178)
@@ -3186,165 +3374,7 @@ end
         win.treeLines[i] = line
     end
 
-    local base = 152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 76
-    local farmNote = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    farmNote:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 2))
-    farmNote:SetWidth(OW - 24); farmNote:SetJustifyH("LEFT")
-    farmNote:SetText("Bots farm like players: large amounts or rare drops can take very long or fail.")
-    TB.SetTextColor(farmNote, color("muted"))
-    win.farmNote = farmNote
-    base = 152 + RESULT_ROW_N * RESULT_ROW_H + 30 + 76
-    local amountLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    amountLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 4))
-    amountLabel:SetText("AMOUNT")
-    TB.SetTextColor(amountLabel, color("gold"))
-
-    local minus = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
-    minus:SetWidth(24); minus:SetHeight(22)
-    minus:SetPoint("TOPLEFT", win, "TOPLEFT", 70, -(base + 2))
-    minus:SetText("-")
-    minus:SetScript("OnClick", function()
-        if IsShiftKeyDown and IsShiftKeyDown() then
-            TB.SetOrderAmount(orderAmount - 10)
-        else
-            TB.SetOrderAmount(orderAmount - 1)
-        end
-    end)
-    win.amountMinus = minus
-
-    local amountBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderAmount", win, "InputBoxTemplate")
-    amountBox:SetWidth(52); amountBox:SetHeight(20)
-    amountBox:SetPoint("TOPLEFT", win, "TOPLEFT", 98, -(base + 2))
-    amountBox:SetAutoFocus(false)
-    amountBox:SetScript("OnEscapePressed", function()
-        this:SetText(tostring(orderAmount))
-        this:ClearFocus()
-    end)
-    amountBox:SetScript("OnEnterPressed", function()
-        TB.SetOrderAmount(tonumber(this:GetText()) or orderAmount)
-        this:ClearFocus()
-    end)
-    -- Commit while typing and on focus loss, so Send always uses the
-    -- shown number and the estimates follow without pressing Enter.
-    -- Non-numeric text is left alone until Escape or a valid edit. The
-    -- SetText below re-fires OnTextChanged, hence the differs guard.
-    amountBox:SetScript("OnTextChanged", function()
-        local n = tonumber(this:GetText() or "")
-        if n and TB.ClampOrderAmount(n) ~= orderAmount then TB.SetOrderAmount(n) end
-    end)
-    amountBox:SetScript("OnEditFocusLost", function()
-        this:SetText(tostring(orderAmount))
-    end)
-    win.amountBox = amountBox
-
-    local plus = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
-    plus:SetWidth(24); plus:SetHeight(22)
-    plus:SetPoint("TOPLEFT", win, "TOPLEFT", 154, -(base + 2))
-    plus:SetText("+")
-    plus:SetScript("OnClick", function()
-        if IsShiftKeyDown and IsShiftKeyDown() then
-            TB.SetOrderAmount(orderAmount + 10)
-        else
-            TB.SetOrderAmount(orderAmount + 1)
-        end
-    end)
-    win.amountPlus = plus
-
-    local hoursLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hoursLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 4))
-    hoursLabel:SetText("FARM TIME")
-    TB.SetTextColor(hoursLabel, color("gold"))
-
-    local hoursBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderHours", win, "InputBoxTemplate")
-    hoursBox:SetWidth(36); hoursBox:SetHeight(20)
-    hoursBox:SetPoint("TOPLEFT", win, "TOPLEFT", 268, -(base + 2))
-    hoursBox:SetAutoFocus(false)
-    hoursBox:SetScript("OnEscapePressed", function()
-        this:SetText(tostring(orderHours))
-        this:ClearFocus()
-    end)
-    hoursBox:SetScript("OnEnterPressed", function()
-        TB.SetOrderHours(tonumber(this:GetText()) or orderHours)
-        this:ClearFocus()
-    end)
-    hoursBox:SetScript("OnTextChanged", function()
-        local n = tonumber(this:GetText() or "")
-        if n and TB.ClampOrderHours(n) ~= orderHours then TB.SetOrderHours(n) end
-    end)
-    hoursBox:SetScript("OnEditFocusLost", function()
-        this:SetText(tostring(orderHours))
-    end)
-    win.hoursBox = hoursBox
-    setTooltip(hoursBox, "Farm time",
-        { "Whole hours this order may farm (1-24). The bot stops when the time runs out." })
-
-    local keepBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderKeep", win, "UICheckButtonTemplate")
-    keepBox:SetWidth(20); keepBox:SetHeight(20)
-    keepBox:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 22))
-    keepBox:SetScript("OnClick", function()
-        TB.SetOrderKeep(this:GetChecked() and true or false)
-    end)
-    win.keepBox = keepBox
-    setTooltip(keepBox, "Keep in stock",
-        { "Delivered, the order stays: the bot watches the bank and refills when it drops below the amount." })
-    local keepLabel = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    keepLabel:SetPoint("LEFT", keepBox, "RIGHT", 2, 0)
-    keepLabel:SetWidth(120); keepLabel:SetJustifyH("LEFT")
-    keepLabel:SetText("Keep in stock")
-    TB.SetTextColor(keepLabel, color("muted"))
-    win.keepLabel = keepLabel
-
-    local goldLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    goldLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 46))
-    goldLabel:SetText("MAX GUILD GOLD")
-    goldLabel:SetWidth(150); goldLabel:SetJustifyH("LEFT")
-    TB.SetTextColor(goldLabel, color("gold"))
-    win.goldLabel = goldLabel
-
-    local goldBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderGold", win, "InputBoxTemplate")
-    goldBox:SetWidth(100); goldBox:SetHeight(20)
-    goldBox:SetPoint("TOPLEFT", win, "TOPLEFT", 168, -(base + 44))
-    goldBox:SetAutoFocus(false)
-    goldBox:SetScript("OnEscapePressed", function()
-        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
-        this:ClearFocus()
-    end)
-    goldBox:SetScript("OnEnterPressed", function()
-        local text = trim(this:GetText() or "")
-        if text == "" then TB.SetOrderGold(nil)
-        else TB.SetOrderGold(tonumber(text)) end
-        this:ClearFocus()
-    end)
-    goldBox:SetScript("OnTextChanged", function()
-        local text = trim(this:GetText() or "")
-        if text == "" then
-            if orderGold ~= nil then TB.SetOrderGold(nil) end
-        else
-            local g = tonumber(text)
-            if g ~= nil and TB.ClampOrderGold(g) ~= orderGold then TB.SetOrderGold(g) end
-        end
-    end)
-    goldBox:SetScript("OnEditFocusLost", function()
-        this:SetText(orderGold ~= nil and tostring(orderGold) or "")
-    end)
-    win.goldBox = goldBox
-    setTooltip(goldBox, "Max guild gold",
-        { "Most the order may spend from the guild bank, in copper. Empty means no cap." })
-    local noLimitBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderNoLimit", win, "UICheckButtonTemplate")
-    noLimitBox:SetWidth(20); noLimitBox:SetHeight(20)
-    noLimitBox:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 22))
-    noLimitBox:SetScript("OnClick", function()
-        TB.SetOrderNoLimit(this:GetChecked() and true or false)
-    end)
-    win.noLimitBox = noLimitBox
-    setTooltip(noLimitBox, "No time limit",
-        { "The bot farms until it has the amount, however long it takes. Only Cancel stops it." })
-    local noLimitLabel = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    noLimitLabel:SetPoint("LEFT", noLimitBox, "RIGHT", 2, 0)
-    noLimitLabel:SetWidth(110); noLimitLabel:SetJustifyH("LEFT")
-    noLimitLabel:SetText("No time limit")
-    TB.SetTextColor(noLimitLabel, color("muted"))
-    win.noLimitLabel = noLimitLabel
+    local base = createOrderLimits()
 
     -- What the bot would do for the current pick, asked on selection (never
     -- on a timer). Two lines above Send; hidden until a pick has a preview.
@@ -3449,15 +3479,7 @@ end
     win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 138))
     win.feedbackLine:SetWidth(OW - 24); win.feedbackLine:SetJustifyH("LEFT")
 
-    win:SetScript("OnUpdate", function()
-        firePendingSearch()
-        firePendingPreview()
-        -- Uncached items re-render once the client has them.
-        if uncachedAt and now() - uncachedAt > 1 then
-            uncachedAt = nil
-            TB.RefreshOrderWindow()
-        end
-    end)
+    win:SetScript("OnUpdate", onOrderWindowUpdate)
 
     win:Hide()
     TB.orderWindow = win
