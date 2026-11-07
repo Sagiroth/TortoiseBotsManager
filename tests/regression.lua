@@ -3179,8 +3179,12 @@ assert(string.find(TB.OrderAccessText().text, "No guild bank yet", 1, true) ~= n
 TB.OnSystemMessage("TBM:ORDER_ACCESS|2|Raider|1|2|0|1")
 local deniedText = TB.OrderAccessText()
 assert(deniedText.bad and string.find(deniedText.text, "tabs 2 denied", 1, true) ~= nil
-    and string.find(deniedText.text, "no gold access", 1, true) ~= nil,
-    "denied tabs and no gold show red with what is missing")
+    and string.find(deniedText.text, "gold no", 1, true) ~= nil,
+    "denied tabs show red with what is missing")
+TB.OnSystemMessage("TBM:ORDER_ACCESS|4|Initiate|1|-|0|1")
+assert(not TB.OrderAccessText().bad
+    and string.find(TB.OrderAccessText().text, "gold no", 1, true) ~= nil,
+    "no gold access alone stays plain")
 assert(TB.ParseOrderAccess("TBM:ORDER_ACCESS|2|Raider|1|x|1|1") == nil
     and TB.ParseOrderAccess("TBM:ORDER_ACCESS|2") == nil
     and TB.OrderTabList({ 1, 2 }) == "1,2" and TB.OrderTabList(nil) == "-",

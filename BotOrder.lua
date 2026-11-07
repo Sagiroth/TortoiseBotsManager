@@ -1284,8 +1284,9 @@ function TB.GetOrderAccess()
 end
 
 -- Header line for the order window: rank, bank tabs, gold. Numeric with a
--- real bank and a gap (a denied tab or gold 0) shows red; "-" rank (server
--- leaves ranks alone) and no-bank-yet stay grey; the rest stays plain.
+-- real bank and a denied tab shows red; gold 0 alone is normal below officer
+-- (bots buy with their own gold) and stays plain. "-" rank (server leaves
+-- ranks alone) and no-bank-yet stay grey.
 function TB.OrderAccessText()
     if not orderAccess then return nil end
     if not orderAccess.rankIndex then
@@ -1298,14 +1299,9 @@ function TB.OrderAccessText()
     end
     local tail = "bank tabs " .. TB.OrderTabList(orderAccess.tabsOk)
         .. ", gold " .. (orderAccess.gold and "yes" or "no")
-    local bad = (orderAccess.tabsDenied and true or false) or not orderAccess.gold
-    if bad then
-        local why = {}
-        if orderAccess.tabsDenied then
-            table.insert(why, "tabs " .. TB.OrderTabList(orderAccess.tabsDenied) .. " denied")
-        end
-        if not orderAccess.gold then table.insert(why, "no gold access") end
-        return { text = head .. " · " .. tail .. " (" .. table.concat(why, ", ") .. ")", bad = true }
+    if orderAccess.tabsDenied then
+        return { text = head .. " · " .. tail .. " (tabs "
+            .. TB.OrderTabList(orderAccess.tabsDenied) .. " denied)", bad = true }
     end
     return { text = head .. " · " .. tail, bad = false }
 end
