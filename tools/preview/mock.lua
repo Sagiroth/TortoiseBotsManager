@@ -38,12 +38,14 @@ local function new(kind, parent, extra)
 end
 Mock.new = new
 
+-- Only methods the 1.12 client has: a call to a newer one (SetSize,
+-- HookScript, SetFormattedText ...) fails here as it does in game.
+
 -- geometry ---------------------------------------------------------------
 function W:SetWidth(v) self.width = v end
 function W:SetHeight(v) self.height = v end
 function W:GetWidth() return self.width or 0 end
 function W:GetHeight() return self.height or 0 end
-function W:SetSize(w, h) self.width = w; self.height = h end
 function W:SetPoint(point, rel, relPoint, x, y)
     if type(rel) == "number" then rel, relPoint, x, y = nil, nil, rel, relPoint end
     if type(rel) == "string" then rel = Mock.frames[rel] end
@@ -109,7 +111,10 @@ function W:EnableMouse(v) self.mouse = v end
 function W:EnableMouseWheel() end
 function W:EnableKeyboard() end
 function W:RegisterForDrag() end
-function W:RegisterEvent() end
+function W:RegisterEvent(e)
+    self.events = self.events or {}
+    self.events[e] = true
+end
 function W:UnregisterEvent() end
 function W:RegisterAllEvents() end
 function W:RegisterForClicks() end
@@ -117,7 +122,6 @@ function W:StartMoving() end
 function W:StopMovingOrSizing() end
 function W:SetScript(name, fn) self.scripts[name] = fn end
 function W:GetScript(name) return self.scripts[name] end
-function W:HookScript(name, fn) self.scripts[name] = fn end
 function W:SetID(i) self.wid = i end
 function W:GetID() return self.wid or 0 end
 function W:IsMouseOver() return false end
@@ -193,7 +197,6 @@ function W:GetText()
     end
     return self.text
 end
-function W:SetFormattedText(fmt, ...) self:SetText(string.format(fmt, unpack(arg))) end
 function W:SetTextColor(r, g, b, a)
     if self.kind == "Button" then self:GetFontString().textColor = { r, g, b, a or 1 } return end
     self.textColor = { r, g, b, a or 1 }

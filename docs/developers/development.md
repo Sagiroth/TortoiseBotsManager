@@ -43,7 +43,22 @@ New buttons for party orders go into `TB.C.ACTION_DEFINITIONS` in `Constants.lua
 ```bash
 lua5.1 tests/regression.lua .
 lua5.1 tests/lua50_syntax.lua .
+lua5.1 tests/lint.lua .
+lua5.1 tests/lint_selftest.lua .
+sh tests/ui_smoke.sh .
 ```
+
+The **Tests** workflow runs all of them on every push and pull request; the release workflow runs them again before it packages. They target the errors that load fine in the tests (Lua 5.1) but break in the 1.12 client (Lua 5.0):
+
+| Check | Catches |
+| :--- | :--- |
+| `regression.lua` | Wrong `.bot` wire output, broken layout (overlaps, labels that do not fit) |
+| `lua50_syntax.lua` | 5.1-only syntax (`%`, `#`, `gmatch`, `select('#')`), functions over 32 upvalues |
+| `lint.lua` | Unknown globals (typos, a `local` declared below its first use, APIs the 1.12 client lacks), globals written without `local`, methods newer than 1.12 (`SetSize`, `SetShown`, `HookScript` ...), `s:sub()` on strings, 5.1-only library members (`string.match`, `math.fmod` ...), `...` used as a value |
+| `lint_selftest.lua` | That every lint rule still fires (on `tests/lint_fixture/`) |
+| `ui_smoke.sh` | Any Lua error while building every window and tab on the 1.12 widget mock of `tools/preview`, and in every registered event handler |
+
+A new global (a client API or FrameXML frame) must go on the lists in `tests/lint.lua` after checking that the 1.12 client has it. The preview mock only has 1.12 methods, so the smoke test fails on newer ones too.
 
 `lua50_syntax.lua` also runs `luac5.1 -l` on every file and fails on any function with more than 32 upvalues: Lua 5.0 (the 1.12 client) refuses those with `too many upvalues (limit=32)` while 5.1 loads them. When it fires, move a block of the function into its own local function.
 

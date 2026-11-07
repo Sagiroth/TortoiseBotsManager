@@ -23,6 +23,9 @@ local EQUIPPED_BAG = 255 -- INVENTORY_SLOT_BAG_0: equipment and backpack
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
 local function color(name) return COL[name] or { 1, 1, 1 } end
+
+-- Spell list page; the spellbook reply resets it, so declared above that.
+local spellPage = 1
 local function now() return (GetTime and GetTime()) or 0 end
 
 -- ── bot state model ─────────────────────────────────────────────────────────
@@ -705,7 +708,6 @@ local panel
 local currentBot
 local currentView = "gear"
 local bagPage = 1
-local spellPage = 1
 local profPage = 1
 local profSearch = ""
 local profCollapsed = {} -- [skillId] = true while its "Not learned yet" group stays shut

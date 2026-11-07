@@ -36,6 +36,9 @@ local function norm(name) return name and TB.NormalizeName(name) or nil end
 local function color(name) return COL[name] or { 1, 1, 1 } end
 local function now() return (GetTime and GetTime()) or 0 end
 
+-- Flight list page; reset by RequestFlights, so declared above it.
+local page = 1
+
 -- ── model ─────────────────────────────────────────────────────────────────
 -- [bot] = { at, pending, header, flights = { { n, name } } }
 local npcs = {}
@@ -180,7 +183,6 @@ end
 -- ── window ────────────────────────────────────────────────────────────────
 local npc
 local currentBot
-local page = 1
 
 function TB.GetNpcBot()
     return npc and npc:IsVisible() and currentBot or nil

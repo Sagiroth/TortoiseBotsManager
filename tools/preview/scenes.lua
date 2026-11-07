@@ -9,7 +9,12 @@
 -- from the render step, fonts and colours from the font objects below.
 
 local root = arg[1] or "."
+-- Out dir "-" is the smoke-test mode (tests/ui_smoke.sh): nothing is
+-- written, every registered event is fired once, and any Lua error in a
+-- scene, script or event handler makes the run exit 1.
 local out = arg[2] or "preview-out"
+local smoke = out == "-"
+local failures = {}
 dofile(root .. "/tools/preview/mock.lua")
 
 -- ── load the addon in .toc order ─────────────────────────────────────────
@@ -37,7 +42,8 @@ local function tick(n)
         for _, o in ipairs(Mock.objects) do
             if o.scripts and o.scripts.OnUpdate and o.kind ~= "Texture" then
                 this, arg1 = o, 1
-                pcall(o.scripts.OnUpdate, o)
+                local ok, err = pcall(o.scripts.OnUpdate, o)
+                if not ok then table.insert(failures, "OnUpdate: " .. tostring(err)) end
             end
         end
     end
@@ -167,6 +173,7 @@ local function dump(name, roots, note)
     end
     local rootIds = {}
     for _, r in ipairs(roots) do if r then table.insert(rootIds, tostring(r.id)) end end
+    if smoke then io.write("scene " .. name .. "\n") return end
     local f = io.open(out .. "/" .. name .. ".json", "w")
     f:write('{"name":"' .. name .. '","note":"' .. esc(note or "") .. '","uiparent":' .. UIParent.id
         .. ',"roots":[' .. table.concat(rootIds, ",") .. '],"objects":[' .. table.concat(parts, ",") .. "]}")
@@ -176,7 +183,10 @@ end
 
 local function scene(name, fn)
     local ok, err = pcall(fn)
-    if not ok then io.write("scene " .. name .. " FAILED: " .. tostring(err) .. "\n") end
+    if not ok then
+        io.write("scene " .. name .. " FAILED: " .. tostring(err) .. "\n")
+        table.insert(failures, name .. ": " .. tostring(err))
+    end
 end
 
 local function hideSatellites()
@@ -342,3 +352,33 @@ scene("mini", function()
     dump("mini", { TB.miniBar, TB.miniFlyout }, "Mini bar with the Engage flyout open")
     TB.SetMode("full")
 end)
+
+-- Smoke mode: every frame's registered events, once each, with string args
+-- as the client passes them; then report.
+if smoke then
+    local EVENT_ARGS = {
+        UNIT_HEALTH = { "party1" }, ADDON_LOADED = { "SomeOtherAddon" },
+        CHAT_MSG_ADDON = { "TBM", "TBM:VERSION|1.12.0", "PARTY", "Valguard" },
+        CHAT_MSG_SYSTEM = { "Unrelated system message" },
+        CHAT_MSG_WHISPER = { "hello", "Seraphine" },
+    }
+    TB.SetMode("full")
+    for _, o in ipairs(Mock.objects) do
+        if o.events and o.scripts.OnEvent then
+            for e in pairs(o.events) do
+                local a = EVENT_ARGS[e] or { "", "", "" }
+                this, event = o, e
+                arg1, arg2, arg3, arg4 = a[1], a[2], a[3], a[4]
+                local ok, err = pcall(o.scripts.OnEvent, o)
+                if not ok then table.insert(failures, "event " .. e .. ": " .. tostring(err)) end
+            end
+        end
+    end
+    tick(3)
+    if table.getn(failures) > 0 then
+        for _, f in ipairs(failures) do print("FAIL: " .. f) end
+        print("FAIL: UI smoke test, " .. table.getn(failures) .. " error(s)")
+        os.exit(1)
+    end
+    print("PASS: UI smoke test, every window and tab built, every event handler ran without a Lua error")
+end

@@ -133,6 +133,11 @@ local function trim(text) local s = TB.Trim(text or "") return s end
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
 local function color(name) return COL[name] or { 1, 1, 1 } end
+
+-- Order window picks. Declared up here: the order builders and parsers
+-- above the window code read them (they were globals by accident).
+local orderHours = 1
+local selectedItemId = nil
 local function now() return (GetTime and GetTime()) or 0 end
 
 -- ── capability gate + permission ─────────────────────────────────────────
@@ -1595,6 +1600,10 @@ function TB.ParseOrderPreviewLine(msg)
     if not bot or bot == "" or kind == "" then return nil end
     if not itemId or item == "" or not want or not missing then return nil end
     if itemId <= 0 or want <= 0 or want > 200 or missing < 0 then return nil end
+    local difficulty = trim(fields[7] or "")
+    if difficulty == "" or difficulty == "-" then difficulty = nil end
+    local zone = trim(fields[8] or "")
+    if zone == "" or zone == "-" then zone = nil end
     local reagents = TB.ParseOrderPreviewReagents(fields[9])
     if not reagents then return nil end
     local minutes = tonumber(trim(fields[10]))
@@ -2550,7 +2559,6 @@ local windowBot = nil
 local orderKind = "farm"
 local orderCat = nil
 local orderAmount = 10
-local orderHours = 1
 local orderNoLimit = true
 local orderKeep = false
 local orderGold = nil

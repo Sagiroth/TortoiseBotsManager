@@ -1937,6 +1937,7 @@ function TB.InitUI()
         -- leave) before asking the server for that bot's steps, and only
         -- when the bot has an order; the repaint passes noRequest so it
         -- never sends a second request.
+        local ensureStepsDwellFrame -- defined below, called from the tooltip
         function TB.ShowGuildRowTooltip(row, noRequest)
             local entry = row and row.entry
             if not entry then return end
