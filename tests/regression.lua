@@ -1499,6 +1499,8 @@ assert(TB.GetService("Magebot").water and table.getn(TB.GetService("Magebot").po
 assert(TB.botPanel.foodButton.visible and TB.botPanel.foodButton.enabled
     and TB.botPanel.portalButton.visible and TB.botPanel.portalButton.enabled
     and not TB.botPanel.healthstoneButton.visible, "a mage offers food and portals, no healthstone")
+assert(TB.botPanel.portalButton.point[1] == "BOTTOMRIGHT" and TB.botPanel.healthstoneButton.point[1] == "BOTTOMRIGHT",
+    "portal and healthstone sit at the right edge, clear of the weapon slots")
 now = now + 1
 this = TB.botPanel.foodButton
 TB.botPanel.foodButton.scripts.OnClick(TB.botPanel.foodButton)

@@ -1419,7 +1419,8 @@ local function createPanel()
 
     local stone = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     stone:SetWidth(80); stone:SetHeight(20)
-    stone:SetPoint("LEFT", food, "RIGHT", 3, 0)
+    -- Right edge: the weapon slots sit in the middle of this row.
+    stone:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 54)
     stone:SetText("Healthstone")
     setTooltip(stone, "Healthstone", {
         "The bot opens a trade with a healthstone in it.",
@@ -1430,7 +1431,7 @@ local function createPanel()
 
     local portal = TB.StyleButton(CreateFrame("Button", nil, panel, "UIPanelButtonTemplate"))
     portal:SetWidth(56); portal:SetHeight(20)
-    portal:SetPoint("LEFT", stone, "RIGHT", 3, 0)
+    portal:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 54)
     portal:SetText("Portal")
     setTooltip(portal, "Portal", {
         "The bot opens a portal. Pick where it goes.",
