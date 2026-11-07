@@ -2,6 +2,14 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.0.1 (2026-11-07)
+
+### UI & Controls
+- Portal and Healthstone buttons no longer hide beneath the weapon slots in the Gear view; both now anchor to the right edge of the bottom row, with Food & Water staying left [#69](https://github.com/Sagiroth/TortoiseBotsManager/pull/69)
+- Added a regression check verifying both buttons anchor to the right edge [#69](https://github.com/Sagiroth/TortoiseBotsManager/pull/69)
+
+---
+
 ## v2.0.0 (2026-11-07)
 
 ### Stability & Reliability
