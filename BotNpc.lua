@@ -227,15 +227,17 @@ local function createNpc()
         end
     end)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerBotNpc") end
-    TB.ApplyBackdrop(npc, 0.98, 1.0)
+    TB.ApplySurface(npc, "window")
+    TB.AddWindowHeader(npc, 30)
 
     local name = npc:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    name:SetPoint("TOPLEFT", npc, "TOPLEFT", 12, -10)
+    name:SetPoint("TOPLEFT", npc, "TOPLEFT", 12, -9)
+    TB.StyleTitle(name, 14)
     name:SetWidth(NW - 50); name:SetJustifyH("LEFT")
     npc.nameText = name
 
     local close = CreateFrame("Button", nil, npc, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", npc, "TOPRIGHT", -2, -2)
+    TB.StyleCloseButton(close, -7, -6)
     close:SetScript("OnClick", function() TB.CloseNpc() end)
 
     npc.talk = orderButton(npc, "Talk", 12, -38,
@@ -262,7 +264,7 @@ local function createNpc()
     local flights = npc:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     flights:SetPoint("TOPLEFT", npc, "TOPLEFT", 12, -92)
     flights:SetText("FLIGHTS")
-    TB.SetTextColor(flights, color("gold"))
+    TB.SetTextColor(flights, color("title"))
     local flightHint = npc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     flightHint:SetPoint("TOPLEFT", npc, "TOPLEFT", 140, -92)
     flightHint:SetWidth(NW - 152); flightHint:SetJustifyH("RIGHT")

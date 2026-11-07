@@ -177,15 +177,23 @@ function TB.ToggleMiniFavorite(intent)
 end
 
 -- ── icon buttons ─────────────────────────────────────────────────────────
+-- An action slot: the icon inset 1px in a dark frame, a soft white wash on
+-- hover. Same look as the item slots of the bot panel.
 local function iconButton(parent, size)
     local b = CreateFrame("Button", nil, parent)
     b:SetWidth(size); b:SetHeight(size)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local frame = b:CreateTexture(nil, "BACKGROUND")
+    frame:SetAllPoints(b)
+    frame:SetTexture(0, 0, 0, 0.9)
+    b.frame = frame
     b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints(b)
+    b.icon:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
+    b.icon:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints(b)
-    hl:SetTexture(1, 1, 1, 0.18)
+    hl:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
+    hl:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
+    hl:SetTexture(1, 1, 1, 0.16)
     b.lamp = b:CreateTexture(nil, "OVERLAY")
     b.lamp:SetWidth(8); b.lamp:SetHeight(8)
     b.lamp:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
@@ -201,17 +209,19 @@ local function createFlyout()
     flyout:SetFrameStrata("DIALOG")
     flyout:SetWidth(FLY_COLS * FLY_W + 16)
     flyout:EnableMouse(true)
-    TB.ApplyBackdrop(flyout, 0.95, 0.95)
+    if TB.ApplySurface then TB.ApplySurface(flyout, "window") else TB.ApplyBackdrop(flyout, 0.95, 0.95) end
+    if TB.AddWindowHeader then TB.AddWindowHeader(flyout, 24) end
     flyout.title = flyout:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    flyout.title:SetPoint("TOPLEFT", flyout, "TOPLEFT", 10, -8)
-    TB.SetTextColor(flyout.title, color("gold"))
+    flyout.title:SetPoint("TOPLEFT", flyout, "TOPLEFT", 10, -7)
+    TB.SetTextColor(flyout.title, color("title"))
     local close = CreateFrame("Button", nil, flyout, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", flyout, "TOPRIGHT", 0, 0)
+    if TB.StyleCloseButton then TB.StyleCloseButton(close, -4, -4, 16) end
     close:SetScript("OnClick", function() TB.OpenMiniCategory(nil) end)
     flyout.hint = flyout:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     flyout.hint:SetPoint("BOTTOMLEFT", flyout, "BOTTOMLEFT", 10, 7)
     flyout.hint:SetText("Right-click: add to or drop from the favourites.")
-    TB.SetTextColor(flyout.hint, color("muted"))
+    TB.SetTextColor(flyout.hint, color("faint"))
     flyout.entries = {}
     for i = 1, FLY_COLS * FLY_ROWS do
         local e = CreateFrame("Button", nil, flyout)
@@ -220,9 +230,13 @@ local function createFlyout()
         local row = math.floor((i - 1) / FLY_COLS)
         e:SetPoint("TOPLEFT", flyout, "TOPLEFT", 8 + col * FLY_W, -30 - row * 26)
         e:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        local slot = e:CreateTexture(nil, "BACKGROUND")
+        slot:SetWidth(22); slot:SetHeight(22)
+        slot:SetPoint("LEFT", e, "LEFT", 0, 0)
+        slot:SetTexture(0, 0, 0, 0.9)
         e.icon = e:CreateTexture(nil, "ARTWORK")
         e.icon:SetWidth(20); e.icon:SetHeight(20)
-        e.icon:SetPoint("LEFT", e, "LEFT", 0, 0)
+        e.icon:SetPoint("LEFT", e, "LEFT", 1, 0)
         e.lamp = e:CreateTexture(nil, "OVERLAY")
         e.lamp:SetWidth(7); e.lamp:SetHeight(7)
         e.lamp:SetPoint("BOTTOMRIGHT", e.icon, "BOTTOMRIGHT", 0, 0)
@@ -232,7 +246,7 @@ local function createFlyout()
         e.label:SetWidth(FLY_W - 32); e.label:SetJustifyH("LEFT")
         local hl = e:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints(e)
-        hl:SetTexture(1, 1, 1, 0.10)
+        hl:SetTexture(1, 1, 1, 0.06)
         e:SetScript("OnClick", function()
             local def = this.def
             if not def then return end
@@ -356,12 +370,18 @@ end
 
 local function createBar()
     bar = CreateFrame("Frame", "TortoiseBotsManagerMiniBar", UIParent)
-    bar:SetHeight(ICON + 10)
+    bar:SetHeight(ICON + 12)
     bar:SetFrameStrata("DIALOG")
     bar:SetMovable(true)
     bar:SetClampedToScreen(true)
     bar:EnableMouse(true)
-    TB.ApplyBackdrop(bar, 0.9, 0.9)
+    if TB.ApplySurface then TB.ApplySurface(bar, "window") else TB.ApplyBackdrop(bar, 0.9, 0.9) end
+    -- The same thin gold rule as the windows, so the bar reads as one of them.
+    local rule = bar:CreateTexture(nil, "BORDER")
+    rule:SetTexture(COL.accent[1], COL.accent[2], COL.accent[3], 0.85)
+    rule:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
+    rule:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -1, -1)
+    rule:SetHeight(1)
     local pos = TortoiseBotsDB and TortoiseBotsDB.miniBar
     if pos and pos.x and pos.y then
         bar:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos.x, pos.y)
@@ -402,9 +422,12 @@ local function createBar()
         b:SetPoint("LEFT", bar, "LEFT", 34 + (i - 1) * STEP, 0)
         b.icon:SetTexture(categoryIcon(cat))
         b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        b.arrow = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        b.arrow:SetPoint("TOP", b, "TOP", 0, 9)
-        b.arrow:SetText("^")
+        -- Open-category marker: a short bar under the icon, gold while its
+        -- flyout is open, faint otherwise (it says "this opens a menu").
+        b.arrow = b:CreateTexture(nil, "OVERLAY")
+        b.arrow:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 4, -2)
+        b.arrow:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", -4, -2)
+        b.arrow:SetHeight(2)
         b.category = cat
         b:SetScript("OnClick", function() TB.OpenMiniCategory(this.category.key) end)
         b:SetScript("OnEnter", function()
@@ -418,8 +441,8 @@ local function createBar()
     end
 
     bar.divider = bar:CreateTexture(nil, "ARTWORK")
-    bar.divider:SetWidth(1); bar.divider:SetHeight(ICON)
-    bar.divider:SetTexture(0.48, 0.36, 0.15, 0.8)
+    bar.divider:SetWidth(1); bar.divider:SetHeight(ICON - 4)
+    bar.divider:SetTexture(1, 1, 1, 0.12)
 
     bar.favButtons = {}
     for i = 1, MAX_FAVORITES do
@@ -445,7 +468,7 @@ local function createBar()
     bar.empty:SetText("No favourites yet: right-click an action to pin it here.")
     TB.SetTextColor(bar.empty, color("muted"))
 
-    local expand = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
+    local expand = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"), "mode")
     expand:SetWidth(22); expand:SetHeight(22)
     expand:SetPoint("RIGHT", bar, "RIGHT", -6, 0)
     -- A drawn plus: the font's "+" glyph sits off the button's centre.
@@ -453,7 +476,7 @@ local function createBar()
         local line = expand:CreateTexture(nil, "OVERLAY")
         line:SetWidth(size[1]); line:SetHeight(size[2])
         line:SetPoint("CENTER", expand, "CENTER", 0, 0)
-        line:SetTexture(1, 0.82, 0.2, 1)
+        line:SetTexture(0.95, 0.72, 0.28, 1)
     end
     expand:SetScript("OnClick", function() TB.SetMode("full") end)
     expand:SetScript("OnEnter", function()
@@ -478,8 +501,11 @@ function TB.RefreshMiniBar()
         end
     end
     for key, b in pairs(bar.categories) do
-        if openCategory and openCategory.key == key then TB.SetTextColor(b.arrow, color("gold"))
-        else b.arrow:SetTextColor(0.6, 0.6, 0.6) end
+        if openCategory and openCategory.key == key then
+            b.arrow:SetTexture(COL.accentHi[1], COL.accentHi[2], COL.accentHi[3], 1)
+        else
+            b.arrow:SetTexture(1, 1, 1, 0.18)
+        end
     end
     renderFlyout()
 end

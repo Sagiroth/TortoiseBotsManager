@@ -17,7 +17,7 @@ TB.C.SOURCE_URL = "https://github.com/Sagiroth/TortoiseBotsManager"
 TB.C.PANEL_W = 500
 TB.C.PANEL_H = 460
 TB.C.ROW_H   = 28
-TB.C.ROW_N   = 7
+TB.C.ROW_N   = 8
 TB.C.PAD     = 10  -- outer margin
 TB.C.GAP_S   = 8   -- section gap
 TB.C.GAP_BTN = 4   -- button gap
@@ -52,6 +52,20 @@ TB.C.CLASS_COLORS = {
     [8]  = { 0.41, 0.80, 0.94, hex = "ff69ccf0" }, -- Mage (Light Blue)
     [9]  = { 0.58, 0.51, 0.79, hex = "ff9482c9" }, -- Warlock (Purple)
     [11] = { 1.00, 0.49, 0.04, hex = "ffff7d0a" }, -- Druid (Orange)
+}
+
+-- Class icons from the character-creation art (4x4 grid), by class id.
+TB.C.CLASS_ICON_FILE = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+TB.C.CLASS_ICON_TCOORDS = {
+    [1]  = { 0, 0.25, 0, 0.25 },                -- Warrior
+    [2]  = { 0, 0.25, 0.5, 0.75 },              -- Paladin
+    [3]  = { 0, 0.25, 0.25, 0.5 },              -- Hunter
+    [4]  = { 0.49609375, 0.7421875, 0, 0.25 },  -- Rogue
+    [5]  = { 0.49609375, 0.7421875, 0.25, 0.5 },-- Priest
+    [7]  = { 0.25, 0.49609375, 0.25, 0.5 },     -- Shaman
+    [8]  = { 0.25, 0.49609375, 0, 0.25 },       -- Mage
+    [9]  = { 0.7421875, 0.98828125, 0.25, 0.5 },-- Warlock
+    [11] = { 0.7421875, 0.98828125, 0, 0.25 },  -- Druid
 }
 
 TB.C.CLASS_NAME_TO_ID = {
@@ -623,6 +637,28 @@ TB.C.COLOR = {
     bg     = { 0.025, 0.032, 0.045 },
     accent = { 0.78, 0.53, 0.14 },
     accentHi = { 0.95, 0.72, 0.28 },
+    faint  = { 0.42, 0.41, 0.39 },
+    title  = { 0.86, 0.69, 0.36 },  -- section titles: a quieter gold
+}
+
+-- Shipped glyph textures (white, tinted with SetVertexColor); see tools/make_media.py.
+TB.C.MEDIA = "Interface\\AddOns\\TortoiseBotsManager\\Media\\"
+
+-- Surfaces of the flat theme: one 1px frame on a solid fill, a lighter step
+-- per depth (window, header band, card, row). { r, g, b, a }.
+TB.C.THEME = {
+    window     = { 0.051, 0.055, 0.063, 0.97 },
+    windowEdge = { 0.22, 0.20, 0.17, 1 },
+    header     = { 0.082, 0.086, 0.098, 1 },
+    card       = { 0.078, 0.082, 0.094, 0.94 },
+    cardEdge   = { 0.155, 0.155, 0.165, 1 },
+    row        = { 0.082, 0.086, 0.098, 0.96 },
+    rowEdge    = { 0.13, 0.13, 0.14, 1 },
+    rowSel     = { 0.20, 0.155, 0.07, 0.96 },
+    rowSelEdge = { 0.70, 0.53, 0.20, 1 },
+    hairline   = { 1, 1, 1, 0.07 },
+    input      = { 0.035, 0.038, 0.045, 1 },
+    inputEdge  = { 0.22, 0.22, 0.24, 1 },
 }
 
 -- Status

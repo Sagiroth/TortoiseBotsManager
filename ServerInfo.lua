@@ -76,7 +76,7 @@ end
 local win
 
 local function tabButton(label, x, key)
-    local b = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
+    local b = TB.StyleTab(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     b:SetWidth(80); b:SetHeight(20)
     b:SetPoint("TOPLEFT", win, "TOPLEFT", x, -34)
     b:SetText(label)
@@ -90,17 +90,20 @@ local function createWindow()
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerInfoWindow") end
-    TB.ApplyBackdrop(win, 0.98, 1.0)
+    TB.ApplySurface(win, "window")
+    TB.AddWindowHeader(win, 30)
+    TB.AddHairline(win, -54, 1)
 
     local title = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -10)
+    title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -9)
+    TB.StyleTitle(title, 14)
     title:SetText("Server")
-    TB.SetTextColor(title, color("gold"))
+    TB.SetTextColor(title, color("title"))
     local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", win, "TOPRIGHT", -2, -2)
+    TB.StyleCloseButton(close, -7, -6)
     close:SetScript("OnClick", function() TB.CloseServerInfo() end)
     win.version = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.version:SetPoint("TOPLEFT", win, "TOPLEFT", 90, -16)
+    win.version:SetPoint("TOPLEFT", win, "TOPLEFT", 80, -13)
     win.version:SetWidth(IW - 130); win.version:SetJustifyH("LEFT")
     TB.SetTextColor(win.version, color("muted"))
 
@@ -110,6 +113,7 @@ local function createWindow()
 
     -- All: search box, Enter or Search asks the server.
     win.search = CreateFrame("EditBox", "TortoiseBotsManagerInfoSearch", win, "InputBoxTemplate")
+    TB.StyleEditBox(win.search, "Setting name")
     win.search:SetWidth(IW - 112); win.search:SetHeight(20)
     win.search:SetPoint("TOPLEFT", win, "TOPLEFT", 18, -62)
     win.search:SetAutoFocus(false)
@@ -189,7 +193,7 @@ local function renderMain()
                 TB.SetTextColor(row.value, color("muted"))
             else
                 row.lamp:SetTexture(0.95, 0.72, 0.28, 1)
-                TB.SetTextColor(row.value, color("gold"))
+                TB.SetTextColor(row.value, color("title"))
             end
             row.lamp:Show(); row.label:Show(); row.value:Show()
         else
@@ -214,7 +218,7 @@ local function renderAll()
         if entry then
             row.label:SetText(entry.key)
             row.value:SetText(entry.value)
-            TB.SetTextColor(row.value, color("gold"))
+            TB.SetTextColor(row.value, color("title"))
             row.lamp:Hide(); row.label:Show(); row.value:Show()
         else
             hideRow(row)
@@ -248,7 +252,9 @@ end
 
 function TB.RefreshServerInfo()
     if not win or not win:IsVisible() then return end
-    win.version:SetText("TortoiseBots " .. tostring(TB.serverVersion or "?"))
+    -- Semantic versions read vX.Y.Z; an older dated build id shows as sent.
+    win.version:SetText("TortoiseBots module " .. tostring((TB.FormatSemver and TB.FormatSemver(TB.serverVersion))
+        or TB.serverVersion or "not reported"))
     local main = tab == "main"
     TB.SetButtonActive(win.tabMain, main)
     TB.SetButtonActive(win.tabAll, not main)

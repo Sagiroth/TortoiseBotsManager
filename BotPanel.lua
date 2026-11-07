@@ -1087,7 +1087,7 @@ local function createMenu(parent)
 end
 
 local function makeTab(parent, label, x, width, view)
-    local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
+    local b = TB.StyleTab(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(width); b:SetHeight(20)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -46)
     b:SetText(label)
@@ -1104,26 +1104,30 @@ local function createPanel()
     panel:SetWidth(PW); panel:SetHeight(PH)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
-    TB.ApplyBackdrop(panel, 0.98, 1.0)
+    TB.ApplySurface(panel, "window")
+    TB.AddWindowHeader(panel, 42)
+    -- A hairline under the tab row separates navigation from the view.
+    TB.AddHairline(panel, -66, 1)
 
     local name = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    name:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -10)
+    name:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -9)
     name:SetWidth(170); name:SetJustifyH("LEFT")
+    TB.StyleTitle(name, 14)
     panel.nameText = name
 
     local sub = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    sub:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -28)
+    sub:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -26)
     sub:SetWidth(PW - 44); sub:SetJustifyH("LEFT")
     TB.SetTextColor(sub, color("muted"))
     panel.subText = sub
 
     local money = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    money:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -32, -14)
+    money:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -32, -11)
     money:SetWidth(110); money:SetJustifyH("RIGHT")
     panel.moneyText = money
 
     local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
+    TB.StyleCloseButton(close, -7, -7)
     close:SetScript("OnClick", function() TB.CloseBotPanel() end)
 
     panel.tabGear = makeTab(panel, "Gear", 10, 58, "gear")
@@ -1226,7 +1230,7 @@ local function createPanel()
     local bhTitle = behavior:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     bhTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -78)
     bhTitle:SetText("Combat habits of this bot (saved on the server)")
-    TB.SetTextColor(bhTitle, color("gold"))
+    TB.SetTextColor(bhTitle, color("title"))
     panel.behaviorChips = {}
     for i, def in ipairs(C.BEHAVIORS or {}) do
         local chip = TB.StyleButton(CreateFrame("Button", nil, behavior, "UIPanelButtonTemplate"))
@@ -1254,7 +1258,7 @@ local function createPanel()
     local spTitle = spellsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     spTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -78)
     spTitle:SetText("What this bot can cast (from the server)")
-    TB.SetTextColor(spTitle, color("gold"))
+    TB.SetTextColor(spTitle, color("title"))
     panel.spellRows = {}
     for i = 1, SPELL_ROWS do
         local row = TB.StyleButton(CreateFrame("Button", nil, spellsView, "UIPanelButtonTemplate"))
@@ -1312,8 +1316,9 @@ local function createPanel()
     local profTitle = profsView:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     profTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -78)
     profTitle:SetText("Trade skills and recipes (from the server)")
-    TB.SetTextColor(profTitle, color("gold"))
+    TB.SetTextColor(profTitle, color("title"))
     local search = CreateFrame("EditBox", "TortoiseBotsManagerProfessionsSearch", profsView, "InputBoxTemplate")
+    TB.StyleEditBox(search, "Search recipes")
     search:SetWidth(PW - 24); search:SetHeight(20)
     search:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -96)
     search:SetAutoFocus(false)
@@ -1376,6 +1381,7 @@ local function createPanel()
     local profAsk = TB.StyleButton(CreateFrame("Button", nil, profsView, "UIPanelButtonTemplate"))
     profAsk:SetWidth(150); profAsk:SetHeight(22)
     profAsk:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -366)
+    profAsk:SetText("Refresh professions")
     setTooltip(profAsk, "Refresh professions", { "Asks the bot for its skills and recipes again." })
     profAsk:SetScript("OnClick", function()
         if currentBot then TB.RequestProfessions(currentBot) end

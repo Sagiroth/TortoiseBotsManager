@@ -545,8 +545,13 @@ return function()
             local fr = frameRect(frame, cache)
             local chips = {}
             for _, chip in ipairs(TB.classChips or {}) do
-                table.insert(chips, { chip.text or "?", chip })
-                labelFits("Roster chip." .. (chip.text or "?"), chip, nil, 6)
+                local label = (chip.text and chip.text ~= "") and chip.text or ("class" .. tostring(chip.classId))
+                table.insert(chips, { label, chip })
+                if chip.text and chip.text ~= "" then
+                    labelFits("Roster chip." .. label, chip, nil, 6)
+                elseif chip.icon and (chip.icon.width or 0) > (chip.width or 0) - 4 then
+                    bad(string.format("Roster chip.%s: %dpx icon in a %dpx chip", label, chip.icon.width, chip.width or 0))
+                end
             end
             childrenInside("Roster chips", frame, fr, chips, cache, 0)
             noOverlaps("Roster chips", chips, cache)

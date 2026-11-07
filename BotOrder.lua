@@ -2972,7 +2972,7 @@ local function createOrderLimits()
     local amountLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     amountLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 4))
     amountLabel:SetText("AMOUNT")
-    TB.SetTextColor(amountLabel, color("gold"))
+    TB.SetTextColor(amountLabel, color("title"))
 
     local minus = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     minus:SetWidth(24); minus:SetHeight(22)
@@ -2988,6 +2988,7 @@ local function createOrderLimits()
     win.amountMinus = minus
 
     local amountBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderAmount", win, "InputBoxTemplate")
+    TB.StyleEditBox(amountBox, nil)
     amountBox:SetWidth(52); amountBox:SetHeight(20)
     amountBox:SetPoint("TOPLEFT", win, "TOPLEFT", 98, -(base + 2))
     amountBox:SetAutoFocus(false)
@@ -3028,9 +3029,10 @@ local function createOrderLimits()
     local hoursLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hoursLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 4))
     hoursLabel:SetText("FARM TIME")
-    TB.SetTextColor(hoursLabel, color("gold"))
+    TB.SetTextColor(hoursLabel, color("title"))
 
     local hoursBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderHours", win, "InputBoxTemplate")
+    TB.StyleEditBox(hoursBox, nil)
     hoursBox:SetWidth(36); hoursBox:SetHeight(20)
     hoursBox:SetPoint("TOPLEFT", win, "TOPLEFT", 268, -(base + 2))
     hoursBox:SetAutoFocus(false)
@@ -3054,6 +3056,7 @@ local function createOrderLimits()
         { "Whole hours this order may farm (1-24). The bot stops when the time runs out." })
 
     local keepBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderKeep", win, "UICheckButtonTemplate")
+    TB.StyleCheckButton(keepBox)
     keepBox:SetWidth(20); keepBox:SetHeight(20)
     keepBox:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 22))
     keepBox:SetScript("OnClick", function()
@@ -3073,10 +3076,11 @@ local function createOrderLimits()
     goldLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 46))
     goldLabel:SetText("MAX GUILD GOLD")
     goldLabel:SetWidth(150); goldLabel:SetJustifyH("LEFT")
-    TB.SetTextColor(goldLabel, color("gold"))
+    TB.SetTextColor(goldLabel, color("title"))
     win.goldLabel = goldLabel
 
     local goldBox = CreateFrame("EditBox", "TortoiseBotsManagerOrderGold", win, "InputBoxTemplate")
+    TB.StyleEditBox(goldBox, nil)
     goldBox:SetWidth(100); goldBox:SetHeight(20)
     goldBox:SetPoint("TOPLEFT", win, "TOPLEFT", 168, -(base + 44))
     goldBox:SetAutoFocus(false)
@@ -3106,6 +3110,7 @@ local function createOrderLimits()
     setTooltip(goldBox, "Max guild gold",
         { "Most the order may spend from the guild bank, in copper. Empty means no cap." })
     local noLimitBox = CreateFrame("CheckButton", "TortoiseBotsManagerOrderNoLimit", win, "UICheckButtonTemplate")
+    TB.StyleCheckButton(noLimitBox)
     noLimitBox:SetWidth(20); noLimitBox:SetHeight(20)
     noLimitBox:SetPoint("TOPLEFT", win, "TOPLEFT", 194, -(base + 22))
     noLimitBox:SetScript("OnClick", function()
@@ -3142,15 +3147,17 @@ local function createWindow()
         end
     end)
     if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerOrderWindow") end
-    TB.ApplyBackdrop(win, 0.98, 1.0)
+    TB.ApplySurface(win, "window")
+    TB.AddWindowHeader(win, 30)
 
     win.title = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    win.title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -10)
+    win.title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -9)
     win.title:SetWidth(OW - 50); win.title:SetJustifyH("LEFT")
-    TB.SetTextColor(win.title, color("gold"))
+    TB.StyleTitle(win.title, 14)
+    TB.SetTextColor(win.title, color("title"))
 
     local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", win, "TOPRIGHT", -2, -2)
+    TB.StyleCloseButton(close, -7, -6)
     close:SetScript("OnClick", function() TB.CloseOrderWindow() end)
 
     local head = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -3160,6 +3167,7 @@ local function createWindow()
     TB.SetTextColor(head, color("muted"))
 
     local search = CreateFrame("EditBox", "TortoiseBotsManagerOrderSearch", win, "InputBoxTemplate")
+    TB.StyleEditBox(search, "Search items")
     search:SetWidth(OW - 24); search:SetHeight(20)
     search:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -56)
     search:SetAutoFocus(false)
@@ -3266,7 +3274,7 @@ end
         row:SetWidth(OW - 24 - 18)
         row:SetHeight(RESULT_ROW_H - 2)
         row:SetPoint("TOPLEFT", results, "TOPLEFT", 0, -(i - 1) * RESULT_ROW_H)
-        TB.ApplyBackdrop(row, 0.62, 0.45)
+        TB.ApplySurface(row, "row")
         row:RegisterForClicks("LeftButtonUp")
         row.sel = row:CreateTexture(nil, "ARTWORK")
         row.sel:SetWidth(3)
@@ -3360,15 +3368,16 @@ end
     -- Live orders and sub-orders: every row names its bot and step, indented
     -- under its parent, updating as TBM:ORDER lines land.
     local treeLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    treeLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 20))
+    -- The heading gets its own line; the order lines start under it.
+    treeLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 18))
     treeLabel:SetText("ORDERS")
-    treeLabel:SetWidth(OW - 24); treeLabel:SetJustifyH("LEFT")
-    TB.SetTextColor(treeLabel, color("gold"))
+    treeLabel:SetWidth(200); treeLabel:SetJustifyH("LEFT")
+    TB.SetTextColor(treeLabel, color("title"))
 
     win.treeLines = {}
     for i = 1, 4 do
         local line = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        line:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 22 + (i - 1) * 12))
+        line:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 30 + (i - 1) * 11))
         line:SetWidth(OW - 24 - 68); line:SetJustifyH("LEFT")
         TB.SetTextColor(line, color("muted"))
         win.treeLines[i] = line
@@ -3390,6 +3399,7 @@ end
     win.bringRows = {}
     for i = 1, 4 do
         local box = CreateFrame("CheckButton", "TortoiseBotsManagerOrderBring" .. i, win, "UICheckButtonTemplate")
+        TB.StyleCheckButton(box)
         box:SetWidth(16); box:SetHeight(16)
         box:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 68 + (i - 1) * 15))
         box:SetScript("OnClick", function()
@@ -3807,7 +3817,7 @@ function TB.RefreshOrderChrome(order)
     end
     if win.goldLabel then
         if isEnchantKind then win.goldLabel:SetTextColor(0.5, 0.5, 0.5)
-        else TB.SetTextColor(win.goldLabel, color("gold")) end
+        else TB.SetTextColor(win.goldLabel, color("title")) end
     end
     if win.farmNote then
         if isEnchantKind then win.farmNote:SetText("Meet the bot in Stormwind or Orgrimmar to trade the enchant.")
