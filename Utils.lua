@@ -32,6 +32,7 @@ local FLAT_BACKDROP = {
     insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 TB.FLAT_BACKDROP = FLAT_BACKDROP
+local SHEEN_ALPHA = 0.07
 
 -- The shipped Media textures load only after a full client restart (not
 -- /reload). SetTexture returns nil when the file is missing, so each use has
@@ -160,7 +161,7 @@ function TB.PaintButton(button)
         button:SetBackdropColor(a[1], a[2], a[3], open and 0.10 or 0)
         button:SetBackdropBorderColor(0, 0, 0, 0)
         if button.underline then if open then button.underline:Show() else button.underline:Hide() end end
-        if button.sheen and button.sheen.SetAlpha then button.sheen:SetAlpha(0) end
+        if button.sheen then button.sheen:SetVertexColor(1, 1, 1, 0) end
         if button.SetTextColor and not button.flatDisabled then
             if button.isActive then button:SetTextColor(1, 0.94, 0.80) else button:SetTextColor(0.62, 0.60, 0.56) end
         end
@@ -172,8 +173,10 @@ function TB.PaintButton(button)
     elseif button.flatKind == "primary" then paint(button, PRIMARY_FILL, PRIMARY_EDGE)
     elseif button.flatKind == "danger" then paint(button, DANGER_FILL, DANGER_EDGE)
     else paint(button, BUTTON_FILL, BUTTON_EDGE) end
-    if button.sheen and button.sheen.SetAlpha then
-        button.sheen:SetAlpha((button.flatDisabled and not button.isActive) and 0.25 or 1)
+    -- On 1.12 a texture's SetAlpha replaces its vertex alpha, so the sheen
+    -- strength is set here only, never through SetAlpha.
+    if button.sheen then
+        button.sheen:SetVertexColor(1, 1, 1, (button.flatDisabled and not button.isActive) and 0.02 or SHEEN_ALPHA)
     end
 end
 
@@ -229,7 +232,7 @@ function TB.StyleButton(button, kind)
     if not button.sheen and button.CreateTexture then
         local sheen = button:CreateTexture(nil, "BACKGROUND")
         if not TB.SetMediaTexture(sheen, "gradient") then sheen:SetTexture(1, 1, 1, 0) end
-        sheen:SetVertexColor(1, 1, 1, 0.07)
+        sheen:SetVertexColor(1, 1, 1, SHEEN_ALPHA)
         sheen:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
         sheen:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
         button.sheen = sheen
