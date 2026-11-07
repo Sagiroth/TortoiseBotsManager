@@ -2,6 +2,13 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.0.2 (2026-11-07)
+
+### UI & Controls
+- Button shine is now faint as intended and stays faint across repaints—no more blinding white glare once addon textures load; disabled buttons get an even subtler shine. [#70](https://github.com/Sagiroth/TortoiseBotsManager/pull/70)
+
+---
+
 ## v2.0.1 (2026-11-07)
 
 ### UI & Controls
