@@ -2,6 +2,16 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.0.3 (2026-11-07)
+
+### UI & Controls
+- Order window header no longer flashes red just because bots lack guild bank gold access; only an actually closed bank tab triggers the red warning, keeping healthy setups visually calm [#71](https://github.com/Sagiroth/TortoiseBotsManager/pull/71)
+
+### Roster & Lifecycle
+- Bots now join at the guild's lowest rank by default, so expect the "gold no" indicator as normal—header styling reflects this without raising false alarms [#71](https://github.com/Sagiroth/TortoiseBotsManager/pull/71)
+
+---
+
 ## v2.0.2 (2026-11-07)
 
 ### UI & Controls
