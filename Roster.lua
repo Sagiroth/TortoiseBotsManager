@@ -481,7 +481,9 @@ function TB.ParseRosterMessage(msg)
     fields = protocolFields(msg, "TBM:CLAIMED|")
     if fields then
         local count = table.getn(fields)
-        if not claimedReceiving or (count ~= 8 and count ~= 9) then
+        -- Fields past the 9th come from newer servers and are ignored, so a
+        -- module update that appends a field does not break older addons.
+        if not claimedReceiving or count < 8 then
             claimedReceiving = nil
             return true, "error", { code = "malformed_claimed_row", message = "Malformed claimed bot row." }
         end
@@ -495,7 +497,7 @@ function TB.ParseRosterMessage(msg)
         -- Trailing professions from newer servers ("skillId:value;..." or "-");
         -- older servers send no field and keep no professions.
         local profs = nil
-        if count == 9 then
+        if count >= 9 then
             profs = TB.ParseClaimedProfs and TB.ParseClaimedProfs(fields[9]) or nil
             if fields[9] ~= "-" and fields[9] ~= "" and profs == nil then
                 claimedReceiving = nil
@@ -524,9 +526,9 @@ function TB.ParseRosterMessage(msg)
     end
 
     if msg == "TBM:CLAIMED_END" then
-        if not claimedReceiving then
-            return true, "error", { code = "unexpected_claimed_end", message = "Unexpected claimed bot snapshot end." }
-        end
+        -- A rejected row already dropped the batch and reported why; staying
+        -- quiet here keeps that reason on screen.
+        if not claimedReceiving then return true end
         local batch = claimedReceiving
         claimedReceiving = nil
         if table.getn(batch.rows) ~= batch.expected then

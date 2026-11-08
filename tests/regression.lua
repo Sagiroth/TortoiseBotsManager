@@ -2044,6 +2044,20 @@ assert(table.getn(TB.GetClaimedBots("mine")) == 0, "an unknown profession must l
 TB.OnSystemMessage("TBM:CLAIMED_BEGIN|1")
 TB.OnSystemMessage("TBM:CLAIMED|303|Bad|1|60|online|0|Ironforge|1|333")
 assert(table.getn(TB.GetClaimedBots()) == 2, "a malformed profs field drops the batch, keeping the last good list")
+do
+    local claimedStatus = nil
+    local realSetStatus = TB.SetStatus
+    TB.SetStatus = function(msg) claimedStatus = msg end
+    TB.OnSystemMessage("TBM:CLAIMED_END")
+    TB.SetStatus = realSetStatus
+    assert(claimedStatus == nil, "the END after a rejected row keeps the row's reason on screen")
+end
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|1")
+TB.OnSystemMessage("TBM:CLAIMED|304|Future|1|60|online|0|Ironforge|1|333:300|newfield|another")
+TB.OnSystemMessage("TBM:CLAIMED_END")
+assert(table.getn(TB.GetClaimedBots()) == 1 and TB.GetClaimedBots()[1].name == "Future"
+    and TB.ClaimedProfsLine(TB.GetClaimedBots()[1]) == "Enchanting 300",
+    "fields a newer server appends are ignored")
 -- Back to the original rows for the UI block below.
 TB.OnSystemMessage("TBM:CLAIMED_BEGIN|3")
 TB.OnSystemMessage("TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1")
@@ -4871,6 +4885,7 @@ TB.orderWindow.botBtns[1].scripts.OnClick(TB.orderWindow.botBtns[1])
 assert(not TB.IsOrderGuildMode() and TB.GetOrderWindowBot() == "Goldie"
     and TB.GetOrderSelection() == 3860 and TB.GetOrderKind() == "craft",
     "clicking a craft bot opens its normal craft flow")
+assert(TB.orderWindow.kindPills.farm:IsVisible(), "the Farm pill returns after pick-a-bot mode hid it")
 assert(lastAddon() == "order Goldie preview craft 3860 10", "the click asks the craft preview at once")
 TB.CloseOrderWindow()
 -- Enchant clicks open the per-bot enchant flow with the spell preselected.

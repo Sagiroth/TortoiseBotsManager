@@ -3519,9 +3519,7 @@ function TB.RefreshOrderWindow()
             if pill.SetActive then pill:SetActive(kind == orderKind) end
             -- No Buy option while the server refuses player Buy orders. Older
             -- servers without the cap keep today's pills.
-            if kind == "buy" then
-                if TB.PlayerBuyAllowed() then pill:Show() else pill:Hide() end
-            end
+            if kind == "buy" and not TB.PlayerBuyAllowed() then pill:Hide() else pill:Show() end
         end
     end
     for cat, pill in pairs(win.catPills or {}) do
