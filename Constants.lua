@@ -13,6 +13,13 @@ TB.C.VERSION = "2.0.3"
 TB.C.AUTHOR = "Sagiroth"
 TB.C.SOURCE_URL = "https://github.com/Sagiroth/TortoiseBotsManager"
 
+-- Addon/module protocol levels, separate from release numbers. PROTOCOL is
+-- the level this addon understands; MIN_MODULE_PROTOCOL is the oldest module
+-- level it works with (modules without TBM:PROTO count as 0). Raise them only
+-- when a change truly needs the other side updated.
+TB.C.PROTOCOL = 1
+TB.C.MIN_MODULE_PROTOCOL = 0
+
 -- Panel geometry — compact Vanilla-safe control plane.
 TB.C.PANEL_W = 500
 TB.C.PANEL_H = 460

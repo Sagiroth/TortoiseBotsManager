@@ -36,6 +36,12 @@ function TB.RefreshVersionLine()
     elseif TB.serverVersion then
         text = text .. "  ·  server module connected"
     end
+    local problem = TB.CompatProblem()
+    if problem == "addon" then
+        text = text .. "  ·  |cffff9933addon outdated|r"
+    elseif problem == "module" then
+        text = text .. "  ·  |cffff9933server module outdated|r"
+    end
     if TB.versionLine and TB.versionLine.SetText then
         TB.versionLine:SetText(text)
     end
@@ -43,6 +49,50 @@ function TB.RefreshVersionLine()
         TB.versionTitle:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cff8c8270v"
             .. tostring(addonVersion) .. "|r")
     end
+end
+
+-- "addon" when this addon is too old for the server module, "module" when
+-- the module is too old for this addon, nil when they fit or are unknown.
+function TB.CompatProblem()
+    if not TB.serverVersion then return nil end
+    if (TB.serverMinAddonProtocol or 0) > ((C and C.PROTOCOL) or 0) then return "addon" end
+    if (TB.serverProtocol or 0) < ((C and C.MIN_MODULE_PROTOCOL) or 0) then return "module" end
+    return nil
+end
+
+-- One popup per session for a mismatch. "Don't show again" lets a player
+-- keep an older addon or module on purpose: no popup until the versions
+-- change. OK only closes it. The header warning stays either way.
+function TB.CheckCompat()
+    local problem = TB.CompatProblem()
+    if not problem or TB._compatShown then return false end
+    local moduleText = TB.FormatSemver(TB.serverVersion) or tostring(TB.serverVersion)
+    local key = problem .. ":" .. tostring(TB.version) .. ":" .. tostring(TB.serverVersion)
+    if TortoiseBotsDB and TortoiseBotsDB.compatDismissed == key then return false end
+    TB._compatShown = true
+    local text
+    if problem == "addon" then
+        text = "TortoiseBotsManager v" .. tostring(TB.version) .. " is too old for the bots on this server (module "
+            .. moduleText .. ").\n\nPlease update the addon:\n" .. ((C and C.SOURCE_URL) or "")
+    else
+        text = "The bots on this server (module " .. moduleText .. ") are too old for TortoiseBotsManager v"
+            .. tostring(TB.version) .. ".\n\nPlease update TortoiseBots on the server."
+    end
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_COMPAT"] = {
+            text = text,
+            button1 = "Don't show again",
+            button2 = "OK",
+            OnAccept = function()
+                if TortoiseBotsDB then TortoiseBotsDB.compatDismissed = key end
+            end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_COMPAT")
+    end
+    return true
 end
 
 -- ── SavedVariables (UI preferences only) ─────────────────────────────────────

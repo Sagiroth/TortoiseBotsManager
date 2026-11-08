@@ -761,6 +761,16 @@ function TB.OnSystemMessage(msg)
     local handled = false
 
     do
+        local _, _, proto, minAddon = string.find(msg, "^TBM:PROTO|(%d+)|(%d+)")
+        if proto then
+            TB.serverProtocol = tonumber(proto)
+            TB.serverMinAddonProtocol = tonumber(minAddon)
+            TB.lastSystem = msg
+            return
+        end
+    end
+
+    do
         local _, _, serverVersion = string.find(msg, "^TBM:VERSION|([^|%s]+)")
         if serverVersion then
             TB.serverVersion = serverVersion
@@ -786,6 +796,10 @@ function TB.OnSystemMessage(msg)
             if TB.NoteLootCaps then TB.NoteLootCaps() end
             if TB.NoteOrderCaps then TB.NoteOrderCaps() end
             if TB.NoteProfessionsCaps then TB.NoteProfessionsCaps() end
+            -- CAPS closes the roster reply, after PROTO and VERSION: a module
+            -- that sent no PROTO by now is older than the protocol check.
+            if TB.CheckCompat then TB.CheckCompat() end
+            if TB.RefreshVersionLine then TB.RefreshVersionLine() end
             if TB.Refresh then TB.Refresh() end
             TB.lastSystem = msg
             return

@@ -5016,6 +5016,47 @@ do
     assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather") == nil, "short lines are still refused")
 end
 
+-- Addon/module protocol check: popup once per mismatch, header warning stays.
+do
+    TB._t = { popups = 0, dialogs = StaticPopupDialogs, show = StaticPopup_Show }
+    StaticPopupDialogs = {}
+    StaticPopup_Show = function(name) TB._t.popups = TB._t.popups + 1; TB._t.last = name end
+    TortoiseBotsDB.compatDismissed = nil
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:PROTO|1|1")
+    TB.OnSystemMessage("TBM:VERSION|1.21.0")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB.CompatProblem() == nil and TB._t.popups == 0, "matching levels show nothing")
+    TB.OnSystemMessage("TBM:PROTO|2|2")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB.CompatProblem() == "addon" and TB._t.popups == 1 and TB._t.last == "TORTOISEBOTSMANAGER_COMPAT",
+        "a module needing a newer addon opens the popup")
+    assert(string.find(StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.text, "too old for the bots", 1, true),
+        "the popup says the addon is too old")
+    assert(string.find(TB.versionLine.text, "addon outdated", 1, true), "the header warns about the addon")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 1, "the popup shows once per session")
+    StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.OnAccept()
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 1, "Don't show again keeps the popup away after a relog")
+    assert(string.find(TB.versionLine.text, "addon outdated", 1, true), "the header warning stays after dismissing")
+    TB._compatShown = nil
+    TB.C.MIN_MODULE_PROTOCOL = 2
+    TB.OnSystemMessage("TBM:PROTO|1|1")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB.CompatProblem() == "module" and TB._t.popups == 2
+        and string.find(StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.text, "update TortoiseBots on the server", 1, true),
+        "a module older than the addon needs asks for a server update")
+    assert(string.find(TB.versionLine.text, "server module outdated", 1, true), "the header warns about the module")
+    TB.serverProtocol, TB.serverMinAddonProtocol = nil, nil
+    assert(TB.CompatProblem() == "module", "a module without the PROTO line counts as level 0")
+    TB.C.MIN_MODULE_PROTOCOL = 0
+    assert(TB.CompatProblem() == nil, "level 0 modules fit while the addon asks for nothing newer")
+    StaticPopupDialogs, StaticPopup_Show = TB._t.dialogs, TB._t.show
+    TB._t, TB._compatShown, TortoiseBotsDB.compatDismissed = nil, nil, nil
+end
+
 dofile(root .. "/tests/phase0_tests.lua")()
 
 print("PASS: TortoiseBotsManager regression checks")
