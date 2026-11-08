@@ -424,7 +424,9 @@ local function rosterBatchTimeout()
         if TB.OnRosterBatchResult then
             TB.OnRosterBatchResult(name, batch.verb, false, message)
         end
-    elseif (batch.attempts or 0) < 2 then
+    -- A repeated summon pulls the bot back even when only the reply was
+    -- lost, so summon never retries on its own.
+    elseif batch.verb ~= "summon" and (batch.attempts or 0) < 2 then
         batch.sentAt = nil
         if TB.AcknowledgeOperation then TB.AcknowledgeOperation(name, batch.verb) end
         if TB.BeginOperation then TB.BeginOperation(name, batch.verb, true) end
@@ -491,6 +493,11 @@ function TB.QueueRosterBatch(verb, names)
         end
     end
     if table.getn(clean) == 0 then return false end
+    -- Clicking Summon Party again while one runs would summon everyone twice.
+    if verb == "summon" and TB.IsRosterBatchActive("summon") then
+        if TB.SetStatus then TB.SetStatus("Summon already running.", "muted") end
+        return false
+    end
 
     rosterBatchId = rosterBatchId + 1
     local batch = { id = rosterBatchId, verb = verb, names = clean }
