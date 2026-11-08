@@ -2,6 +2,18 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.1.0 (2026-11-08)
+
+### UI & Controls
+- The Farm button in the order window no longer disappears after using "order for the guild" and then ordering for a single bot — no more relogging to get it back [#74](https://github.com/Sagiroth/TortoiseBotsManager/pull/74)
+
+### Comms & Protocol
+- Guild bot list parsing now tolerates unknown trailing fields on a line, so addons stay compatible when the server module adds new data (like professions) — no more silently dropped rows [#74](https://github.com/Sagiroth/TortoiseBotsManager/pull/74)
+- Guild list failures now report the actual cause instead of the vague "Unexpected claimed bot snapshot end" message [#74](https://github.com/Sagiroth/TortoiseBotsManager/pull/74)
+- Added version warnings so players are told when their addon (or the other side of the connection) is out of date instead of guessing why things break [#74](https://github.com/Sagiroth/TortoiseBotsManager/pull/74)
+
+---
+
 ## v2.0.3 (2026-11-07)
 
 ### UI & Controls
