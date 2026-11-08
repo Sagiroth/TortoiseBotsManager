@@ -2044,6 +2044,20 @@ assert(table.getn(TB.GetClaimedBots("mine")) == 0, "an unknown profession must l
 TB.OnSystemMessage("TBM:CLAIMED_BEGIN|1")
 TB.OnSystemMessage("TBM:CLAIMED|303|Bad|1|60|online|0|Ironforge|1|333")
 assert(table.getn(TB.GetClaimedBots()) == 2, "a malformed profs field drops the batch, keeping the last good list")
+do
+    local claimedStatus = nil
+    local realSetStatus = TB.SetStatus
+    TB.SetStatus = function(msg) claimedStatus = msg end
+    TB.OnSystemMessage("TBM:CLAIMED_END")
+    TB.SetStatus = realSetStatus
+    assert(claimedStatus == nil, "the END after a rejected row keeps the row's reason on screen")
+end
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|1")
+TB.OnSystemMessage("TBM:CLAIMED|304|Future|1|60|online|0|Ironforge|1|333:300|newfield|another")
+TB.OnSystemMessage("TBM:CLAIMED_END")
+assert(table.getn(TB.GetClaimedBots()) == 1 and TB.GetClaimedBots()[1].name == "Future"
+    and TB.ClaimedProfsLine(TB.GetClaimedBots()[1]) == "Enchanting 300",
+    "fields a newer server appends are ignored")
 -- Back to the original rows for the UI block below.
 TB.OnSystemMessage("TBM:CLAIMED_BEGIN|3")
 TB.OnSystemMessage("TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1")
@@ -4871,6 +4885,7 @@ TB.orderWindow.botBtns[1].scripts.OnClick(TB.orderWindow.botBtns[1])
 assert(not TB.IsOrderGuildMode() and TB.GetOrderWindowBot() == "Goldie"
     and TB.GetOrderSelection() == 3860 and TB.GetOrderKind() == "craft",
     "clicking a craft bot opens its normal craft flow")
+assert(TB.orderWindow.kindPills.farm:IsVisible(), "the Farm pill returns after pick-a-bot mode hid it")
 assert(lastAddon() == "order Goldie preview craft 3860 10", "the click asks the craft preview at once")
 TB.CloseOrderWindow()
 -- Enchant clicks open the per-bot enchant flow with the spell preselected.
@@ -4984,6 +4999,83 @@ dofile(root .. "/tests/altsum_tests.lua")({
 })
 
 dofile(root .. "/tests/geometry_tests.lua")()
+
+-- A newer server may append fields to any line: older addons ignore them.
+do
+    assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|4|leather|extra"),
+        "order item rows accept extra fields")
+    assert(TB.ParseProfessionRecipeLine("TBM:RECIPE|186|2651|3860|1|25|50|100|ok|extra").order == "ok",
+        "recipe rows keep the order field with extras after it")
+    assert(TB.ParseServiceLine("TBM:SERVICE|Hexxy|0|0|1|-|extra").healthstone, "service lines accept extra fields")
+    assert(TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|90|working|nobanker|bank|2319|extra"),
+        "order step lines accept extra fields")
+    assert(TB.ParseOrderWhoLine("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|Goldie:165:3:3:0|extra"),
+        "order who lines accept extra fields")
+    assert(TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:01|Alpha|StoreLootAction|2586|Gamemaster's Robe|corpse|Defias Thug|4|extra"),
+        "loot lines accept extra fields")
+    assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather") == nil, "short lines are still refused")
+end
+
+-- Addon/module protocol check: popup once per mismatch, header warning stays.
+do
+    TB._t = { popups = 0, dialogs = StaticPopupDialogs, show = StaticPopup_Show }
+    StaticPopupDialogs = {}
+    StaticPopup_Show = function(name) TB._t.popups = TB._t.popups + 1; TB._t.last = name end
+    TortoiseBotsDB.compatDismissed = nil
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:PROTO|1|1")
+    TB.OnSystemMessage("TBM:VERSION|1.21.0")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB.CompatProblem() == nil and TB._t.popups == 0, "matching levels show nothing")
+    TB.OnSystemMessage("TBM:PROTO|2|2")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB.CompatProblem() == "addon" and TB._t.popups == 1 and TB._t.last == "TORTOISEBOTSMANAGER_COMPAT",
+        "a module needing a newer addon opens the popup")
+    assert(string.find(StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.text, "too old for the bots", 1, true),
+        "the popup says the addon is too old")
+    assert(string.find(TB.versionLine.text, "addon outdated", 1, true), "the header warns about the addon")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 1, "the popup shows once per session")
+    StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.OnAccept()
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 1, "Don't show again keeps the popup away after a relog")
+    assert(string.find(TB.versionLine.text, "addon outdated", 1, true), "the header warning stays after dismissing")
+    TB._compatShown = nil
+    TB.C.MIN_MODULE_PROTOCOL = 2
+    TB.OnSystemMessage("TBM:PROTO|1|1")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB.CompatProblem() == "module" and TB._t.popups == 2
+        and string.find(StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.text, "update TortoiseBots on the server", 1, true),
+        "a module older than the addon needs asks for a server update")
+    assert(string.find(TB.versionLine.text, "server module outdated", 1, true), "the header warns about the module")
+    TB.serverProtocol, TB.serverMinAddonProtocol = nil, nil
+    assert(TB.CompatProblem() == "module", "a module without the PROTO line counts as level 0")
+    TB.C.MIN_MODULE_PROTOCOL = 0
+    assert(TB.CompatProblem() == nil, "level 0 modules fit while the addon asks for nothing newer")
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:PROTO|1|1")
+    TB.OnSystemMessage("TBM:LATEST|1.22.0|99.0.0")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 3 and string.find(StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.text, "newer TortoiseBotsManager", 1, true),
+        "a newer addon release opens the popup")
+    assert(string.find(TB.versionLine.text, "addon update v99.0.0", 1, true)
+        and string.find(TB.versionLine.text, "bots update v1.22.0", 1, true), "the header names both updates")
+    StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.OnAccept()
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 3 and string.find(TB.versionLine.text, "addon update", 1, true),
+        "Don't show again hides the update popup but keeps the header note")
+    TB.OnSystemMessage("TBM:LATEST|-|-")
+    TB.RefreshVersionLine()
+    assert(TB.latestAddon == nil and not string.find(TB.versionLine.text, "update", 1, true),
+        "unknown releases add nothing")
+    assert(TB.IsNewerVersion("1.10.0", "1.9.9") and not TB.IsNewerVersion("1.2.0", "1.2.0")
+        and not TB.IsNewerVersion("1.3.0", "dev") and not TB.IsNewerVersion(nil, "1.0.0"), "version compare")
+    TB.latestModule, TB.latestAddon = nil, nil
+    StaticPopupDialogs, StaticPopup_Show = TB._t.dialogs, TB._t.show
+    TB._t, TB._compatShown, TortoiseBotsDB.compatDismissed = nil, nil, nil
+end
 
 dofile(root .. "/tests/phase0_tests.lua")()
 

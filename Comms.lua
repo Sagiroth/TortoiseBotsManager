@@ -170,7 +170,7 @@ local function actionLabel(intent)
 end
 
 local function setActionAck(fields)
-    if table.getn(fields) ~= 4 then return nil end
+    if table.getn(fields) < 4 then return nil end
     local intent, scope, count, executor = fields[1], fields[2], fields[3], fields[4]
     if TB.Trim(intent) == "" or TB.Trim(scope) == ""
         or not string.find(count, "^%d+$") or TB.Trim(executor) == "" then
@@ -186,7 +186,7 @@ local function setActionAck(fields)
 end
 
 local function setActionError(fields)
-    if table.getn(fields) ~= 3 or TB.Trim(fields[1]) == "" or TB.Trim(fields[2]) == "" then
+    if table.getn(fields) < 3 or TB.Trim(fields[1]) == "" or TB.Trim(fields[2]) == "" then
         return nil
     end
     return { intent = fields[1], code = fields[2], message = fields[3] }
@@ -333,7 +333,7 @@ end
 function TB.ParseBotPanelMessage(msg)
     if string.sub(msg or "", 1, 4) ~= "TBM:" then return false end
 
-    local _, _, count = string.find(msg, "^TBM:BOTSTATE_BEGIN|(%d+)$")
+    local _, _, count = string.find(msg, "^TBM:BOTSTATE_BEGIN|(%d+)")
     if count then
         botStateReceiving = { expected = tonumber(count), rows = {} }
         return true
@@ -349,7 +349,7 @@ function TB.ParseBotPanelMessage(msg)
     if string.sub(msg, 1, 13) == "TBM:BOTSTATE|" then
         local fields = splitProtocol(string.sub(msg, 14))
         local name = fields[1] and TB.NormalizeName(fields[1]) or nil
-        if table.getn(fields) == 2 and name and name ~= "" then
+        if table.getn(fields) >= 2 and name and name ~= "" then
             local state = parseStateFields(fields[2])
             if botStateReceiving then
                 table.insert(botStateReceiving.rows, { name = name, state = state })
@@ -367,7 +367,7 @@ function TB.ParseBotPanelMessage(msg)
     if string.sub(msg, 1, 14) == "TBM:INV_BEGIN|" then
         local fields = splitProtocol(string.sub(msg, 15))
         local name = fields[1] and TB.NormalizeName(fields[1]) or nil
-        if table.getn(fields) == 2 and name and name ~= "" and numberFields(fields, 2, 2) then
+        if table.getn(fields) >= 2 and name and name ~= "" and numberFields(fields, 2, 2) then
             inventoryReceiving = { name = name, money = tonumber(fields[2]), equipped = {}, items = {} }
         else
             inventoryReceiving = nil
@@ -376,7 +376,7 @@ function TB.ParseBotPanelMessage(msg)
     end
     if string.sub(msg, 1, 11) == "TBM:INV_EQ|" then
         local fields = splitProtocol(string.sub(msg, 12))
-        if inventoryReceiving and table.getn(fields) == 4 and numberFields(fields, 1, 4) then
+        if inventoryReceiving and table.getn(fields) >= 4 and numberFields(fields, 1, 4) then
             inventoryReceiving.equipped[tonumber(fields[1])] = {
                 id = tonumber(fields[2]), durability = tonumber(fields[3]), maxDurability = tonumber(fields[4]),
             }
@@ -385,7 +385,7 @@ function TB.ParseBotPanelMessage(msg)
     end
     if string.sub(msg, 1, 13) == "TBM:INV_ITEM|" then
         local fields = splitProtocol(string.sub(msg, 14))
-        if inventoryReceiving and table.getn(fields) == 5 and numberFields(fields, 1, 4) then
+        if inventoryReceiving and table.getn(fields) >= 5 and numberFields(fields, 1, 4) then
             local flags = fields[5] or "-"
             table.insert(inventoryReceiving.items, {
                 bag = tonumber(fields[1]), slot = tonumber(fields[2]),
@@ -408,7 +408,7 @@ function TB.ParseBotPanelMessage(msg)
     end
     if string.sub(msg, 1, 9) == "TBM:PROF|" then
         local fields = splitProtocol(string.sub(msg, 10))
-        if professionsReceiving and table.getn(fields) == 3 and numberFields(fields, 1, 3) then
+        if professionsReceiving and table.getn(fields) >= 3 and numberFields(fields, 1, 3) then
             table.insert(professionsReceiving.skills, {
                 skill = tonumber(fields[1]), value = tonumber(fields[2]),
                 max = tonumber(fields[3]),
@@ -423,7 +423,7 @@ function TB.ParseBotPanelMessage(msg)
     end
     if string.sub(msg, 1, 19) == "TBM:RECIPE_MISSING|" then
         local fields = splitProtocol(string.sub(msg, 20))
-        if professionsReceiving and table.getn(fields) == 5 and numberFields(fields, 1, 5) then
+        if professionsReceiving and table.getn(fields) >= 5 and numberFields(fields, 1, 5) then
             table.insert(professionsReceiving.missing, {
                 skill = tonumber(fields[1]), spell = tonumber(fields[2]),
                 item = tonumber(fields[3]), reqSkill = tonumber(fields[4]),
@@ -433,7 +433,7 @@ function TB.ParseBotPanelMessage(msg)
         return true
     end
     -- Old 3-field END (no missing count) commits with zero missing lines.
-    local _, _, profEndBot, profRecipes, profMissing = string.find(msg or "", "^TBM:PROF_END|([^|]*)|(%d+)|?(%d*)$")
+    local _, _, profEndBot, profRecipes, profMissing = string.find(msg or "", "^TBM:PROF_END|([^|]*)|(%d+)|?(%d*)")
     if profEndBot then
         local batch = professionsReceiving
         professionsReceiving = nil
@@ -453,7 +453,7 @@ function TB.ParseBotPanelMessage(msg)
         local inv = inventoryReceiving
         inventoryReceiving = nil
         local name = fields[1] and TB.NormalizeName(fields[1]) or nil
-        if inv and name == inv.name and table.getn(fields) == 3 and numberFields(fields, 2, 3) then
+        if inv and name == inv.name and table.getn(fields) >= 3 and numberFields(fields, 2, 3) then
             inv.free = tonumber(fields[2])
             inv.total = tonumber(fields[3])
             if TB.SetInventory then TB.SetInventory(name, inv) end
@@ -761,7 +761,27 @@ function TB.OnSystemMessage(msg)
     local handled = false
 
     do
-        local _, _, serverVersion = string.find(msg, "^TBM:VERSION|(%S+)")
+        local _, _, latestModule, latestAddon = string.find(msg, "^TBM:LATEST|([^|]*)|([^|]*)")
+        if latestModule then
+            TB.latestModule = (latestModule ~= "-" and latestModule ~= "") and latestModule or nil
+            TB.latestAddon = (latestAddon ~= "-" and latestAddon ~= "") and latestAddon or nil
+            TB.lastSystem = msg
+            return
+        end
+    end
+
+    do
+        local _, _, proto, minAddon = string.find(msg, "^TBM:PROTO|(%d+)|(%d+)")
+        if proto then
+            TB.serverProtocol = tonumber(proto)
+            TB.serverMinAddonProtocol = tonumber(minAddon)
+            TB.lastSystem = msg
+            return
+        end
+    end
+
+    do
+        local _, _, serverVersion = string.find(msg, "^TBM:VERSION|([^|%s]+)")
         if serverVersion then
             TB.serverVersion = serverVersion
             if TB.RefreshVersionLine then TB.RefreshVersionLine() end
@@ -786,6 +806,10 @@ function TB.OnSystemMessage(msg)
             if TB.NoteLootCaps then TB.NoteLootCaps() end
             if TB.NoteOrderCaps then TB.NoteOrderCaps() end
             if TB.NoteProfessionsCaps then TB.NoteProfessionsCaps() end
+            -- CAPS closes the roster reply, after PROTO and VERSION: a module
+            -- that sent no PROTO by now is older than the protocol check.
+            if TB.CheckCompat then TB.CheckCompat() end
+            if TB.RefreshVersionLine then TB.RefreshVersionLine() end
             if TB.Refresh then TB.Refresh() end
             TB.lastSystem = msg
             return

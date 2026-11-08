@@ -36,6 +36,17 @@ function TB.RefreshVersionLine()
     elseif TB.serverVersion then
         text = text .. "  ·  server module connected"
     end
+    local problem = TB.CompatProblem()
+    if problem == "addon" then
+        text = text .. "  ·  |cffff9933addon outdated|r"
+    elseif problem == "module" then
+        text = text .. "  ·  |cffff9933server module outdated|r"
+    elseif TB.IsNewerVersion(TB.latestAddon, TB.version) then
+        text = text .. "  ·  |cffff9933addon update v" .. TB.latestAddon .. "|r"
+    end
+    if TB.IsNewerVersion(TB.latestModule, TB.serverVersion) then
+        text = text .. "  ·  |cffff9933bots update v" .. TB.latestModule .. "|r"
+    end
     if TB.versionLine and TB.versionLine.SetText then
         TB.versionLine:SetText(text)
     end
@@ -43,6 +54,68 @@ function TB.RefreshVersionLine()
         TB.versionTitle:SetText("|cffd8a657Tortoise|r|cff4ecb5aBots|r |cfffff2ccManager|r  |cff8c8270v"
             .. tostring(addonVersion) .. "|r")
     end
+end
+
+-- True when both are "1.2.3"-style versions and latest is newer.
+function TB.IsNewerVersion(latest, running)
+    local _, _, a1, a2, a3 = string.find(tostring(latest or ""), "^[vV]?(%d+)%.(%d+)%.(%d+)$")
+    local _, _, b1, b2, b3 = string.find(tostring(running or ""), "^[vV]?(%d+)%.(%d+)%.(%d+)$")
+    if not a1 or not b1 then return false end
+    a1, a2, a3 = tonumber(a1), tonumber(a2), tonumber(a3)
+    b1, b2, b3 = tonumber(b1), tonumber(b2), tonumber(b3)
+    if a1 ~= b1 then return a1 > b1 end
+    if a2 ~= b2 then return a2 > b2 end
+    return a3 > b3
+end
+
+-- "addon" when this addon is too old for the server module, "module" when
+-- the module is too old for this addon, nil when they fit or are unknown.
+function TB.CompatProblem()
+    if not TB.serverVersion then return nil end
+    if (TB.serverMinAddonProtocol or 0) > ((C and C.PROTOCOL) or 0) then return "addon" end
+    if (TB.serverProtocol or 0) < ((C and C.MIN_MODULE_PROTOCOL) or 0) then return "module" end
+    return nil
+end
+
+-- One popup per session for a mismatch or a newer addon release. "Don't
+-- show again" lets a player keep an older addon or module on purpose: no
+-- popup until the versions change. OK only closes it. The header note stays
+-- either way.
+function TB.CheckCompat()
+    local problem = TB.CompatProblem()
+    if not problem and TB.IsNewerVersion(TB.latestAddon, TB.version) then problem = "update" end
+    if not problem or TB._compatShown then return false end
+    local moduleText = TB.FormatSemver(TB.serverVersion) or tostring(TB.serverVersion)
+    local key = problem .. ":" .. tostring(TB.version) .. ":" .. tostring(TB.serverVersion)
+        .. ":" .. tostring(TB.latestAddon)
+    if TortoiseBotsDB and TortoiseBotsDB.compatDismissed == key then return false end
+    TB._compatShown = true
+    local text
+    if problem == "addon" then
+        text = "TortoiseBotsManager v" .. tostring(TB.version) .. " is too old for the bots on this server (module "
+            .. moduleText .. ").\n\nPlease update the addon:\n" .. ((C and C.SOURCE_URL) or "")
+    elseif problem == "update" then
+        text = "A newer TortoiseBotsManager is available: v" .. TB.latestAddon .. " (you have v"
+            .. tostring(TB.version) .. ").\n\n" .. ((C and C.SOURCE_URL) or "")
+    else
+        text = "The bots on this server (module " .. moduleText .. ") are too old for TortoiseBotsManager v"
+            .. tostring(TB.version) .. ".\n\nPlease update TortoiseBots on the server."
+    end
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs["TORTOISEBOTSMANAGER_COMPAT"] = {
+            text = text,
+            button1 = "Don't show again",
+            button2 = "OK",
+            OnAccept = function()
+                if TortoiseBotsDB then TortoiseBotsDB.compatDismissed = key end
+            end,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+        StaticPopup_Show("TORTOISEBOTSMANAGER_COMPAT")
+    end
+    return true
 end
 
 -- ── SavedVariables (UI preferences only) ─────────────────────────────────────
