@@ -2,6 +2,14 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.1.1 (2026-11-08)
+
+### Roster & Lifecycle
+- Summon Party and Summon Raid now summon each bot exactly once — no more 8-second re-summon loop dragging the same bot back to you [#75](https://github.com/Sagiroth/TortoiseBotsManager/pull/75)
+- Clicking Summon Party or Summon Raid while a summon run is already in progress is ignored, so you can't accidentally queue a second full round [#75](https://github.com/Sagiroth/TortoiseBotsManager/pull/75)
+
+---
+
 ## v2.1.0 (2026-11-08)
 
 ### UI & Controls
