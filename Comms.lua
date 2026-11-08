@@ -761,6 +761,16 @@ function TB.OnSystemMessage(msg)
     local handled = false
 
     do
+        local _, _, latestModule, latestAddon = string.find(msg, "^TBM:LATEST|([^|]*)|([^|]*)")
+        if latestModule then
+            TB.latestModule = (latestModule ~= "-" and latestModule ~= "") and latestModule or nil
+            TB.latestAddon = (latestAddon ~= "-" and latestAddon ~= "") and latestAddon or nil
+            TB.lastSystem = msg
+            return
+        end
+    end
+
+    do
         local _, _, proto, minAddon = string.find(msg, "^TBM:PROTO|(%d+)|(%d+)")
         if proto then
             TB.serverProtocol = tonumber(proto)

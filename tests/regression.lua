@@ -5053,6 +5053,26 @@ do
     assert(TB.CompatProblem() == "module", "a module without the PROTO line counts as level 0")
     TB.C.MIN_MODULE_PROTOCOL = 0
     assert(TB.CompatProblem() == nil, "level 0 modules fit while the addon asks for nothing newer")
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:PROTO|1|1")
+    TB.OnSystemMessage("TBM:LATEST|1.22.0|99.0.0")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 3 and string.find(StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.text, "newer TortoiseBotsManager", 1, true),
+        "a newer addon release opens the popup")
+    assert(string.find(TB.versionLine.text, "addon update v99.0.0", 1, true)
+        and string.find(TB.versionLine.text, "bots update v1.22.0", 1, true), "the header names both updates")
+    StaticPopupDialogs.TORTOISEBOTSMANAGER_COMPAT.OnAccept()
+    TB._compatShown = nil
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds")
+    assert(TB._t.popups == 3 and string.find(TB.versionLine.text, "addon update", 1, true),
+        "Don't show again hides the update popup but keeps the header note")
+    TB.OnSystemMessage("TBM:LATEST|-|-")
+    TB.RefreshVersionLine()
+    assert(TB.latestAddon == nil and not string.find(TB.versionLine.text, "update", 1, true),
+        "unknown releases add nothing")
+    assert(TB.IsNewerVersion("1.10.0", "1.9.9") and not TB.IsNewerVersion("1.2.0", "1.2.0")
+        and not TB.IsNewerVersion("1.3.0", "dev") and not TB.IsNewerVersion(nil, "1.0.0"), "version compare")
+    TB.latestModule, TB.latestAddon = nil, nil
     StaticPopupDialogs, StaticPopup_Show = TB._t.dialogs, TB._t.show
     TB._t, TB._compatShown, TortoiseBotsDB.compatDismissed = nil, nil, nil
 end
