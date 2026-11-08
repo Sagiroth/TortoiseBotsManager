@@ -389,7 +389,7 @@ function TB.ParseServiceLine(msg)
             break
         end
     end
-    if table.getn(fields) ~= 5 then return nil end
+    if table.getn(fields) < 5 then return nil end
     local name = norm(fields[1])
     if not name or name == "" then return nil end
     for i = 2, 4 do
@@ -501,12 +501,12 @@ function TB.ParseProfessionRecipeLine(msg)
         end
     end
     local count = table.getn(fields)
-    if count ~= 7 and count ~= 8 then return nil end
+    if count < 7 then return nil end
     for i = 1, 7 do
         if not fields[i] or not string.find(fields[i], "^%d+$") then return nil end
     end
     local order = nil
-    if count == 8 then
+    if count >= 8 then
         order = TB.Trim(fields[8] or "")
         if order == "" then return nil end
         order = string.lower(order)

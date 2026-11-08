@@ -320,7 +320,7 @@ function TB.ParseRosterMessage(msg)
 
     local fields = protocolFields(msg, "TBM:CC_ASSIGN_BEGIN|")
     if fields then
-        if table.getn(fields) ~= 1 or not string.find(fields[1], "^%d+$") then
+        if table.getn(fields) < 1 or not string.find(fields[1], "^%d+$") then
             ccReceiving = nil
             return true, "error", { code = "malformed_cc_begin", message = "Malformed CC assignment snapshot." }
         end
@@ -330,7 +330,7 @@ function TB.ParseRosterMessage(msg)
 
     fields = protocolFields(msg, "TBM:CC_ASSIGN|")
     if fields then
-        if not ccReceiving or table.getn(fields) ~= 2 then
+        if not ccReceiving or table.getn(fields) < 2 then
             ccReceiving = nil
             return true, "error", { code = "malformed_cc_row", message = "Malformed CC assignment snapshot." }
         end
@@ -379,7 +379,7 @@ function TB.ParseRosterMessage(msg)
             snapshotError("malformed_row", "Malformed roster snapshot.")
             return true, "error"
         end
-        if table.getn(fields) ~= 6 and table.getn(fields) ~= 7 then
+        if table.getn(fields) < 6 then
             skipSnapshotRow()
             return true, "row"
         end
@@ -470,7 +470,7 @@ function TB.ParseRosterMessage(msg)
 
     fields = protocolFields(msg, "TBM:CLAIMED_BEGIN|")
     if fields then
-        if table.getn(fields) ~= 1 or not string.find(fields[1], "^%d+$") then
+        if table.getn(fields) < 1 or not string.find(fields[1], "^%d+$") then
             claimedReceiving = nil
             return true, "error", { code = "malformed_claimed_begin", message = "Malformed claimed bots snapshot." }
         end
@@ -540,7 +540,7 @@ function TB.ParseRosterMessage(msg)
 
     fields = protocolFields(msg, "TBM:ROSTER_ERROR|")
     if fields then
-        if table.getn(fields) ~= 2 then
+        if table.getn(fields) < 2 then
             snapshotError("malformed_error", "Roster request failed.")
         else
             snapshotError(fields[1], fields[2])

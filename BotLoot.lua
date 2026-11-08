@@ -239,7 +239,7 @@ end
 local function parseLootLine(msg)
     if string.sub(msg or "", 1, 9) ~= "TBM:LOOT|" then return nil end
     local fields = splitProtocol(string.sub(msg, 10))
-    if table.getn(fields) ~= 8 then return nil end
+    if table.getn(fields) < 8 then return nil end
     local event = trim(fields[3])
     if not KNOWN_EVENTS[event] then return nil end
     local bot = norm(fields[2])
@@ -292,7 +292,7 @@ local receiving = nil
 
 function TB.ParseLootMessage(msg)
     if string.sub(msg or "", 1, 4) ~= "TBM:" then return false end
-    local _, _, count, nextCursor = string.find(msg, "^TBM:LOOT_BEGIN|(%d+)|(.*)$")
+    local _, _, count, nextCursor = string.find(msg, "^TBM:LOOT_BEGIN|(%d+)|([^|]*)")
     if count then
         receiving = { expected = tonumber(count), rows = {}, nextCursor = nextCursor or "" }
         return true
@@ -308,7 +308,7 @@ function TB.ParseLootMessage(msg)
         end
         return true
     end
-    local _, _, endCursor = string.find(msg, "^TBM:LOOT_END|(.*)$")
+    local _, _, endCursor = string.find(msg, "^TBM:LOOT_END|([^|]*)")
     if endCursor ~= nil then
         local batch = receiving
         receiving = nil

@@ -997,7 +997,7 @@ end
 function TB.ParseOrderStepLine(msg)
     if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_STEP|" then return nil end
     local fields = splitProtocol(string.sub(msg, 16))
-    if table.getn(fields) ~= 6 then return nil end
+    if table.getn(fields) < 6 then return nil end
     local bot = norm(trim(fields[1]))
     if not bot or bot == "" then return nil end
     local age = tonumber(trim(fields[2]))
@@ -1243,7 +1243,7 @@ end
 function TB.ParseOrderAccess(msg)
     if string.sub(msg or "", 1, 17) ~= "TBM:ORDER_ACCESS|" then return nil end
     local fields = splitProtocol(string.sub(msg, 18))
-    if table.getn(fields) ~= 6 then return nil end
+    if table.getn(fields) < 6 then return nil end
     local rankIndex = trim(fields[1])
     if rankIndex == "" then return nil end
     local rankNum = tonumber(rankIndex)
@@ -1390,7 +1390,7 @@ end
 function TB.ParseOrderWhoLine(msg)
     if string.sub(msg or "", 1, 14) ~= "TBM:ORDER_WHO|" then return nil end
     local fields = splitProtocol(string.sub(msg, 15))
-    if table.getn(fields) ~= 7 then return nil end
+    if table.getn(fields) < 7 then return nil end
     local kind = string.lower(trim(fields[1]))
     if kind ~= "craft" and kind ~= "enchant" then return nil end
     local id = tonumber(trim(fields[2]))
@@ -1431,7 +1431,7 @@ end
 function TB.ParseOrderEnchantLine(msg)
     if string.sub(msg or "", 1, 18) ~= "TBM:ORDER_ENCHANT|" then return nil end
     local fields = splitProtocol(string.sub(msg, 19))
-    if table.getn(fields) ~= 6 then return nil end
+    if table.getn(fields) < 6 then return nil end
     local spellId = tonumber(trim(fields[1]))
     local name = trim(fields[2])
     local verdict = trim(fields[5])
@@ -1480,7 +1480,7 @@ function TB.ParseOrderItemLine(msg)
     if string.sub(msg or "", 1, 15) ~= "TBM:ORDER_ITEM|" then return nil end
     local fields = splitProtocol(string.sub(msg, 16))
     local count = table.getn(fields)
-    if count ~= 9 and count ~= 10 and count ~= 11 then return nil end
+    if count < 9 then return nil end
     local itemId = tonumber(trim(fields[1]))
     local item = trim(fields[2])
     local quality = tonumber(trim(fields[3]))
@@ -1497,7 +1497,7 @@ function TB.ParseOrderItemLine(msg)
         skill = noneDash(fields[6]), verdict = verdict,
         zone = noneDash(fields[8]), chance = math.floor(chance),
         difficulty = count >= 10 and noneDash(fields[10]) or nil,
-        category = count == 11 and noneDash(fields[11]) or nil,
+        category = count >= 11 and noneDash(fields[11]) or nil,
     }
 end
 
@@ -1528,7 +1528,7 @@ function TB.ParseOrderPreviewReagent(text)
             break
         end
     end
-    if table.getn(fields) ~= 11 then return nil end
+    if table.getn(fields) < 11 then return nil end
     local itemId = tonumber(trim(fields[1]))
     local need = tonumber(trim(fields[2]))
     local bags = tonumber(trim(fields[3]))
@@ -1586,7 +1586,7 @@ function TB.ParseOrderPreviewLine(msg)
     if string.sub(msg or "", 1, 18) ~= "TBM:ORDER_PREVIEW|" then return nil end
     local fields = splitProtocol(string.sub(msg, 19))
     local count = table.getn(fields)
-    if count ~= 11 and count ~= 12 then return nil end
+    if count < 11 then return nil end
     local bot = norm(trim(fields[1]))
     local kind = trim(fields[2])
     local itemId = tonumber(trim(fields[3]))
@@ -1611,7 +1611,7 @@ function TB.ParseOrderPreviewLine(msg)
         goldCap = math.floor(goldCap)
     end
     local bring = {}
-    if count == 12 then
+    if count >= 12 then
         bring = TB.ParseOrderBring(fields[12])
         if not bring then return nil end
     end

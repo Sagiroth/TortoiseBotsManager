@@ -5000,6 +5000,22 @@ dofile(root .. "/tests/altsum_tests.lua")({
 
 dofile(root .. "/tests/geometry_tests.lua")()
 
+-- A newer server may append fields to any line: older addons ignore them.
+do
+    assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|4|leather|extra"),
+        "order item rows accept extra fields")
+    assert(TB.ParseProfessionRecipeLine("TBM:RECIPE|186|2651|3860|1|25|50|100|ok|extra").order == "ok",
+        "recipe rows keep the order field with extras after it")
+    assert(TB.ParseServiceLine("TBM:SERVICE|Hexxy|0|0|1|-|extra").healthstone, "service lines accept extra fields")
+    assert(TB.ParseOrderStepLine("TBM:ORDER_STEP|Goldie|90|working|nobanker|bank|2319|extra"),
+        "order step lines accept extra fields")
+    assert(TB.ParseOrderWhoLine("TBM:ORDER_WHO|craft|3860|Iron Buckle|2|-|165|Goldie:165:3:3:0|extra"),
+        "order who lines accept extra fields")
+    assert(TB.ParseLootLine("TBM:LOOT|2026-10-27 12:00:01|Alpha|StoreLootAction|2586|Gamemaster's Robe|corpse|Defias Thug|4|extra"),
+        "loot lines accept extra fields")
+    assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather") == nil, "short lines are still refused")
+end
+
 dofile(root .. "/tests/phase0_tests.lua")()
 
 print("PASS: TortoiseBotsManager regression checks")
