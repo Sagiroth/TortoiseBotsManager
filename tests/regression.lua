@@ -546,6 +546,18 @@ do
     TB.OnSystemMessage("Summoning Gamma to a safe position near you (3s); it will follow on arrival.")
     assert(not TB.IsRosterBatchActive("summon"), "Summon Party finishes once every bot is summoned")
     assert(table.getn(sent) == TB._s + 2, "each bot is summoned exactly once")
+    now = now + 1
+    TB._s = table.getn(sent)
+    TB.QueueRosterBatch("summon", { "Alpha", "Gamma" })
+    now = now + 30
+    this = frames["TortoiseBotsManagerRosterBatchFrame"]
+    this.scripts.OnUpdate(this)
+    assert(table.getn(sent) == TB._s + 2 and sent[table.getn(sent)] == ".bot summon Gamma",
+        "a summon with no reply is not retried; the batch moves on")
+    now = now + 30
+    this.scripts.OnUpdate(this)
+    assert(not TB.IsRosterBatchActive("summon") and table.getn(sent) == TB._s + 2,
+        "an unanswered Summon Party ends without re-summoning anyone")
     TB._s = nil
 end
 partyMembers = { "Gamma" }
