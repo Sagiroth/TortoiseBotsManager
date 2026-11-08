@@ -534,6 +534,20 @@ partyMembers = { "Alpha", "Gamma" }
 event, this = "GROUP_ROSTER_UPDATE", groupWatcher
 groupWatcher.scripts.OnEvent(groupWatcher)
 assert(not TB.IsRosterBatchActive("invite"), "multi-invite must finish after every bot joins")
+do
+    now = now + 1
+    TB._s = table.getn(sent)
+    TB.QueueRosterBatch("summon", { "Alpha", "Gamma" })
+    assert(sent[table.getn(sent)] == ".bot summon Alpha", "Summon Party starts with the first bot")
+    assert(TB.QueueRosterBatch("summon", { "Alpha", "Gamma" }) == false, "a second Summon Party click is ignored")
+    now = now + 1
+    TB.OnSystemMessage("Summoning Alpha to a safe position near you (3s); it will follow on arrival.")
+    assert(sent[table.getn(sent)] == ".bot summon Gamma", "a summoned bot moves the batch to the next bot")
+    TB.OnSystemMessage("Summoning Gamma to a safe position near you (3s); it will follow on arrival.")
+    assert(not TB.IsRosterBatchActive("summon"), "Summon Party finishes once every bot is summoned")
+    assert(table.getn(sent) == TB._s + 2, "each bot is summoned exactly once")
+    TB._s = nil
+end
 partyMembers = { "Gamma" }
 event, this = "GROUP_ROSTER_UPDATE", groupWatcher
 groupWatcher.scripts.OnEvent(groupWatcher)

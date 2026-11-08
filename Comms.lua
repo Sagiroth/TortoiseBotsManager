@@ -961,6 +961,9 @@ function TB.OnSystemMessage(msg)
         local _, _, botName = string.find(msg, "Summoning (%S+)")
         if botName then
             if TB.AcknowledgeOperation then TB.AcknowledgeOperation(botName, "summon") end
+            -- Without this a Summon Party batch never hears the success,
+            -- times out and summons the same bot again.
+            if TB.OnRosterBatchResult then TB.OnRosterBatchResult(botName, "summon", true) end
             local st = TB.GetState and TB.GetState(botName) or nil
             if st then
                 st.status = C.STATUS.SUMMONING

@@ -491,6 +491,11 @@ function TB.QueueRosterBatch(verb, names)
         end
     end
     if table.getn(clean) == 0 then return false end
+    -- Clicking Summon Party again while one runs would summon everyone twice.
+    if verb == "summon" and TB.IsRosterBatchActive("summon") then
+        if TB.SetStatus then TB.SetStatus("Summon already running.", "muted") end
+        return false
+    end
 
     rosterBatchId = rosterBatchId + 1
     local batch = { id = rosterBatchId, verb = verb, names = clean }
