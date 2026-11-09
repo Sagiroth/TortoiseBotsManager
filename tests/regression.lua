@@ -64,6 +64,7 @@ local function object(kind, parent)
         end
         self.scripts[name] = callback
     end
+    function methods:GetScript(name) return self.scripts[name] end
     function methods:SetBackdrop(...) end
     function methods:SetBackdropColor(...) self.backdropColor = {...} end
     function methods:SetBackdropBorderColor(...) self.backdropBorder = {...} end
