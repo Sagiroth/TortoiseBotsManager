@@ -2484,7 +2484,11 @@ end
         activeBtn:SetText("Orders")
         setButtonTooltip(activeBtn, "See every order the guild bots are working on, and what each one is doing now.", "Active orders")
         activeBtn:SetScript("OnClick", function()
-            if TB.ToggleActiveOrders then TB.ToggleActiveOrders() end
+            if TB.ToggleActiveOrders then
+                TB.ToggleActiveOrders()
+            elseif TB.Print then
+                TB.Print("The Orders window is new: quit the game fully and start it again (/reload does not load new files).")
+            end
         end)
         guildFrame.activeBtn = activeBtn
 

@@ -212,8 +212,18 @@ local function createWindow()
 end
 
 function TB.OpenActiveOrders()
-    if not (TB.HasOrderCapability and TB.HasOrderCapability()) then return false end
-    if not win then createWindow() end
+    if not (TB.HasOrderCapability and TB.HasOrderCapability()) then
+        if TB.Print then TB.Print("Orders are not available: the server has not announced order support yet. Try /tbm sync or /reload.") end
+        return false
+    end
+    if not win then
+        local ok, err = pcall(createWindow)
+        if not ok then
+            win = nil
+            if TB.Print then TB.Print("Active orders window failed: " .. tostring(err)) end
+            return false
+        end
+    end
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.CloseVault then TB.CloseVault() end
