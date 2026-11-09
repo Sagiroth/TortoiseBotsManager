@@ -1514,12 +1514,12 @@ return function()
                 local wr = frameRect(win, cache)
                 -- Each step has its own window height, so a control is
                 -- checked at the step that shows it.
-                local stepOneKeys = { searchBox = true, accessLabel = true, rankBtn = true }
+                local stepOneKeys = { searchBox = true, accessLabel = true }
                 local stepThreeKeys = { sendBtn = true, cancelBtn = true, previewLine = true }
                 local items, items1, items2 = {}, {}, {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
                     "hoursBox", "noLimitBox", "noLimitLabel", "keepBox", "sendBtn", "cancelBtn", "farmNote",
-                    "goldLabel", "goldBox", "accessLabel", "rankBtn", "previewLine" }) do
+                    "goldLabel", "goldBox", "accessLabel", "previewLine" }) do
                     if win[key] then
                         table.insert(stepOneKeys[key] and items1 or (stepThreeKeys[key] and items or items2), { key, win[key] })
                         if win[key].kind == "Button" then
@@ -1532,6 +1532,7 @@ return function()
                 -- The header texts share the window's top with step 2.
                 table.insert(items2, { "head", win.head })
                 table.insert(items2, { "stepLabel", win.stepLabel })
+                table.insert(items2, { "wipNote", win.wipNote })
                 for i, line in ipairs(win.treeLines or {}) do
                     table.insert(items, { "tree" .. i, line })
                 end

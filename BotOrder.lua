@@ -3578,14 +3578,20 @@ local function createWindow()
     local head = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     head:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
     head:SetWidth(OW - 24); head:SetJustifyH("LEFT")
-    head:SetText("Pick an item, how to get it, and how many.  |cffffd200Work in progress: expect rough edges.|r")
+    head:SetText("Pick an item, how to get it, and how many.")
     TB.SetTextColor(head, color("muted"))
     win.head = head
 
     win.stepLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     win.stepLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -50)
-    win.stepLabel:SetWidth(OW - 24); win.stepLabel:SetJustifyH("LEFT")
+    win.stepLabel:SetWidth(90); win.stepLabel:SetJustifyH("LEFT")
     TB.SetTextColor(win.stepLabel, color("title"))
+
+    win.wipNote = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    win.wipNote:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -50)
+    win.wipNote:SetJustifyH("RIGHT")
+    win.wipNote:SetText("Work in progress: expect rough edges")
+    TB.SetTextColor(win.wipNote, { 1, 0.82, 0, 1 })
 
     win.stepOne = CreateFrame("Frame", nil, win)
     win.stepOne:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
@@ -3600,13 +3606,8 @@ local function createWindow()
     -- the search answers mean nothing without them.
     win.accessLabel = win.stepOne:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     win.accessLabel:SetPoint("TOPLEFT", win.stepOne, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 4))
-    win.accessLabel:SetWidth(OW - 24 - 68); win.accessLabel:SetJustifyH("LEFT")
+    win.accessLabel:SetWidth(OW - 24); win.accessLabel:SetJustifyH("LEFT")
 
-    win.rankBtn = smallButton(win.stepOne, "Rank", 56, 260, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 2),
-        "Change bots' rank", "Pick the guild rank bots get (needs rank rights).",
-        function()
-            TB.OpenOrderRankMenu(this)
-        end)
     -- Live orders and sub-orders: every row names its bot and step, indented
     -- under its parent, updating as TBM:ORDER lines land. Step 3: context
     -- for the Send button, not a step-1 search control.
@@ -3944,15 +3945,6 @@ function TB.RefreshOrderChrome(order)
             win.accessLabel:SetTextColor(0.62, 0.60, 0.56)
         end
         if orderStep <= 1 then win.accessLabel:Show() else win.accessLabel:Hide() end
-    end
-    if win.rankBtn then
-        if access and access.canSetRank and access.rankIndex and TB.CanGiveOrders()
-            and orderStep <= 1 then
-            win.rankBtn:Enable()
-            win.rankBtn:Show()
-        else
-            win.rankBtn:Hide()
-        end
     end
     if win.treeLines then
         local tree = TB.GetOrderTree()

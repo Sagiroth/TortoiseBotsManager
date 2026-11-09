@@ -5405,7 +5405,7 @@ TB.CloseOrderWindow()
                 and win.stepTwo.visible == (step == 2)
                 and win.stepThree.visible == (step == 3), where .. ": only the step pane shows")
             local chrome = {}
-            for _, w in ipairs({ win.title, win.head, win.stepLabel, win.backBtn, win.nextBtn,
+            for _, w in ipairs({ win.title, win.head, win.wipNote, win.stepLabel, win.backBtn, win.nextBtn,
                 win.statusLine, win.feedbackLine, win.closeBtn,
                 win.headerBand, win.headerRule, win.headerLine,
                 win.stepOne, win.stepTwo, win.stepThree }) do
