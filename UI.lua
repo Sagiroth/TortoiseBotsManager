@@ -174,22 +174,24 @@ local function openRowMenu(menuName, build)
         build(UIDropDownMenu_AddButton)
     end, "MENU")
     ToggleDropDownMenu(1, nil, menu, "cursor")
-    if not TB._menuWatch then
-        local watch = CreateFrame("Frame")
-        watch:Hide()
-        -- The 1.12 menu only closes on its own timer; a click anywhere
-        -- else must close it at once.
-        watch:SetScript("OnUpdate", function()
-            if not DropDownList1:IsVisible() then this:Hide() return end
-            if (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton"))
-                and not MouseIsOver(DropDownList1) then
-                CloseDropDownMenus()
-                this:Hide()
-            end
+    if not TB._menuCatcher then
+        -- The 1.12 menu only closes on its own timer; this invisible layer
+        -- under the menu takes the next click anywhere else and closes it.
+        local catcher = CreateFrame("Frame", nil, UIParent)
+        catcher:SetAllPoints(UIParent)
+        catcher:SetFrameStrata("FULLSCREEN")
+        catcher:EnableMouse(true)
+        catcher:Hide()
+        catcher:SetScript("OnMouseDown", function()
+            CloseDropDownMenus()
+            this:Hide()
         end)
-        TB._menuWatch = watch
+        catcher:SetScript("OnUpdate", function()
+            if not DropDownList1:IsVisible() then this:Hide() end
+        end)
+        TB._menuCatcher = catcher
     end
-    TB._menuWatch:Show()
+    TB._menuCatcher:Show()
     return true
 end
 
