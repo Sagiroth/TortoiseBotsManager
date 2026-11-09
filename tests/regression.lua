@@ -2610,7 +2610,9 @@ now = now + 1
 this = TB.tabDungeon
 TB.tabDungeon.scripts.OnClick(TB.tabDungeon)
 assert(TB.dungeonFrame:IsVisible(), "the Dungeon tab shows its page")
-assert(TB.runWindow and TB.runWindow:IsVisible(), "the Dungeon tab opens the run window")
+assert(not (TB.runWindow and TB.runWindow:IsVisible()), "the Dungeon tab leaves the run window shut")
+TB.OpenRunWindow()
+assert(TB.runWindow and TB.runWindow:IsVisible(), "Open run window opens it")
 local runQueue = frames["TortoiseBotsManagerQueueFrame"]
 for _ = 1, 30 do
     if lastAddon() == "run status" then break end

@@ -3101,7 +3101,6 @@ end
             if TB.RefreshRaidView then TB.RefreshRaidView() end
         elseif name == "dungeon" then
             if TB.RefreshRunTab then TB.RefreshRunTab() end
-            if TB.OpenRunWindow then TB.OpenRunWindow() end
         else
             TB.Refresh()
         end
