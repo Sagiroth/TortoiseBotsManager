@@ -505,6 +505,16 @@ return function()
                 local btnItems = {}
                 for _, entry in ipairs(btns) do table.insert(btnItems, entry) end
                 noOverlaps("Party row " .. i .. " buttons", btnItems, cache)
+                -- Vitals bars sit along the row bottom under the role
+                -- picker: inside the row and clear of its buttons.
+                local bars = {}
+                if row.hpBar then table.insert(bars, { "hp", row.hpBar }) end
+                if row.manaBar and row.manaBar:IsVisible() then
+                    table.insert(bars, { "mana", row.manaBar })
+                end
+                childrenInside("Party row " .. i, row, r, bars, cache, 3)
+                for _, entry in ipairs(bars) do table.insert(btnItems, entry) end
+                noOverlaps("Party row " .. i .. " controls", btnItems, cache)
             end
             noOverlaps("Party rows", rowItems, cache)
             -- Dungeon tab (P11): with every tab shown (dungeon-run + a raid

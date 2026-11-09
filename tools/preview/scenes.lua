@@ -357,7 +357,8 @@ end)
 -- as the client passes them; then report.
 if smoke then
     local EVENT_ARGS = {
-        UNIT_HEALTH = { "party1" }, ADDON_LOADED = { "SomeOtherAddon" },
+        UNIT_HEALTH = { "party1" }, UNIT_MANA = { "party1" }, UNIT_AURA = { "party1" },
+        ADDON_LOADED = { "SomeOtherAddon" },
         CHAT_MSG_ADDON = { "TBM", "TBM:VERSION|1.12.0", "PARTY", "Valguard" },
         CHAT_MSG_SYSTEM = { "Unrelated system message" },
         CHAT_MSG_WHISPER = { "hello", "Seraphine" },

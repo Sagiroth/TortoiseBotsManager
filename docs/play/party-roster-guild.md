@@ -14,7 +14,7 @@ relates_to:
 
 ## Party tab
 
-One row per party member: class icon and colour, level and movement, the role picker in the middle, and on the right the current CC mark, a summon button and a bag icon that opens the [bot panel](bot-panel.md). Your own row is marked **You**. Click a bot's row to target it.
+One row per party member: class icon and colour, level, HP and mana bars with state (Dead, Ghost, Drinking, out of range), the role picker in the middle, and on the right the current CC mark, a summon button and a bag icon that opens the [bot panel](bot-panel.md). Your own row is marked **You**. Click a bot's row to target it; the targeted row highlights gold.
 
 **Bot roles** use the same spec names as the inn recruiter. The lit button is the bot's real spec as the server reports it.
 

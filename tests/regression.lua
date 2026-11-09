@@ -65,8 +65,12 @@ local function object(kind, parent)
         self.scripts[name] = callback
     end
     function methods:SetBackdrop(...) end
-    function methods:SetBackdropColor(...) end
-    function methods:SetBackdropBorderColor(...) end
+    function methods:SetBackdropColor(...) self.backdropColor = {...} end
+    function methods:SetBackdropBorderColor(...) self.backdropBorder = {...} end
+    function methods:SetStatusBarTexture(...) self.barTexture = {...} end
+    function methods:SetStatusBarColor(...) self.barColor = {...} end
+    function methods:SetMinMaxValues(minV, maxV) self.barMin, self.barMax = minV, maxV end
+    function methods:SetValue(v) self.value = v end
     function methods:CreateTexture() return object("Texture", self) end
     function methods:CreateFontString() return object("FontString", self) end
     function methods:SetTexture(...) self.texture = {...} end
@@ -168,6 +172,21 @@ end
 local deadUnits, ghostUnits = {}, {}
 function UnitIsDead(unit) return deadUnits[unit] or false end
 function UnitIsGhost(unit) return ghostUnits[unit] or false end
+-- Chunk globals: main already sits at the 200-local limit, so new mock
+-- state must not add locals here.
+partyVitals, partyBuffs, nearUnits = {}, {}, nil
+function UnitHealth(unit) return (partyVitals[unit] and partyVitals[unit].hp) or 100 end
+function UnitHealthMax(unit) return (partyVitals[unit] and partyVitals[unit].hpMax) or 100 end
+function UnitMana(unit) return (partyVitals[unit] and partyVitals[unit].mp) or 100 end
+function UnitManaMax(unit) return (partyVitals[unit] and partyVitals[unit].mpMax) or 100 end
+function UnitBuff(unit, index)
+    local buffs = partyBuffs[unit]
+    return buffs and buffs[index] or nil
+end
+function CheckInteractDistance(unit, slot)
+    if nearUnits == nil then return true end
+    return nearUnits[unit] ~= false
+end
 local itemCache = {}
 function GetItemInfo(id)
     local item = itemCache[id]
@@ -947,6 +966,75 @@ assert(druidRow.roleButtons[4]:IsVisible()
 assert(druidRow.ccIcon.point[1] == "RIGHT"
     and druidRow.ccIcon.point[4] == -64,
     "CC indicator must keep its own slot left of Summon")
+
+function partyRowVitalsChecks()
+-- Party rows show vitals and state from the client alone: the server never
+-- sends HP, mana, drinking or range in any TBM: line.
+local savedMembers, savedClass = partyMembers, partyClassName
+local savedExists, savedTarget = targetExists, targetNameValue
+local savedPriest = TB.GetBotState("Priestbot")
+partyClassName = "Priest"
+partyMembers = { "Priestbot" }
+TB.SetBotState("Priestbot", { move = "follow" })
+partyVitals.party1 = nil
+partyBuffs.party1 = nil
+nearUnits = nil
+targetExists, targetNameValue = false, nil
+TB.RefreshPartyView()
+local vitalsRow = TB.partyFrame.rows[2]
+assert(vitalsRow.partyName == "Priestbot" and vitalsRow.hpBar and vitalsRow.manaBar,
+    "party rows build HP and mana bars")
+assert(vitalsRow.partyState == nil and vitalsRow.manaBar.visible
+    and string.find(vitalsRow.descText.text, "Following", 1, true),
+    "a healthy bot nearby shows movement, not state")
+targetExists, targetNameValue = true, "Priestbot"
+TB.RefreshPartyView()
+local rowSel = (TB.C.THEME and TB.C.THEME.rowSel) or { 0.20, 0.155, 0.07, 0.96 }
+assert(vitalsRow.backdropColor[1] == rowSel[1] and vitalsRow.backdropColor[2] == rowSel[2],
+    "the targeted bot row highlights gold")
+targetExists, targetNameValue = false, nil
+TB.RefreshPartyView()
+assert(vitalsRow.backdropColor[1] ~= rowSel[1], "clearing the target clears the highlight")
+partyVitals.party1 = { hp = 20, hpMax = 100, mp = 50, mpMax = 100 }
+TB.RefreshPartyView()
+assert(vitalsRow.hpBar.value == 20 and vitalsRow.hpBar.barMax == 100
+    and vitalsRow.hpBar.barColor[1] == TB.C.COLOR.red[1],
+    "low HP paints the HP bar red at the reported value")
+assert(vitalsRow.partyState == nil
+    and string.find(vitalsRow.descText.text, "Following", 1, true),
+    "low HP alone keeps the movement line")
+deadUnits.party1 = true
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "Dead"
+    and string.find(vitalsRow.descText.text, "Dead", 1, true),
+    "a dead bot shows Dead instead of movement")
+assert(vitalsRow.hpBar.barColor[1] == TB.C.COLOR.muted[1],
+    "a dead bot greys the HP bar")
+deadUnits.party1 = false
+ghostUnits.party1 = true
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "Ghost", "a released bot shows Ghost")
+ghostUnits.party1 = false
+partyVitals.party1 = { hp = 100, hpMax = 100, mp = 100, mpMax = 100 }
+partyBuffs.party1 = { "Drink" }
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "Drinking"
+    and string.find(vitalsRow.descText.text, "Drinking", 1, true),
+    "a drinking bot shows Drinking instead of movement")
+partyBuffs.party1 = nil
+nearUnits = { party1 = false }
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "OOR"
+    and string.find(vitalsRow.descText.text, "OOR", 1, true),
+    "an out-of-range bot shows OOR instead of movement")
+nearUnits = nil
+partyVitals.party1 = nil
+partyMembers, partyClassName = savedMembers, savedClass
+targetExists, targetNameValue = savedExists, savedTarget
+TB.SetBotState("Priestbot", savedPriest or {})
+TB.RefreshPartyView()
+end
+partyRowVitalsChecks()
 
 -- ── addon command transport ────────────────────────────────────────────────
 -- UI commands travel as addon messages only while the server says the core
@@ -5098,6 +5186,11 @@ dofile(root .. "/tests/wire_cases.lua")({
     setDead = function(unit, dead) deadUnits[unit] = dead end,
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
     seedItem = function(id, item) itemCache[id] = item end,
+    setVitals = function(unit, hp, hpMax, mp, mpMax)
+        partyVitals[unit] = { hp = hp, hpMax = hpMax, mp = mp, mpMax = mpMax }
+    end,
+    setBuffs = function(unit, buffs) partyBuffs[unit] = buffs end,
+    setNear = function(units) nearUnits = units end,
 })
 dofile(root .. "/tests/altsum_tests.lua")({
     sent = sent,
