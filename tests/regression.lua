@@ -5006,6 +5006,64 @@ if TB.GetOrderKind() ~= "farm" then TB.SetOrderKind("farm") end
 TB.CloseOrderWindow()
 end
 guildOrderUiChecks()
+
+-- ── Order window steps: search, amount, preview, Back/Next ─────────────────
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+TB.SetOrderNoLimit(true)
+TB.SetOrderKeep(false)
+assert(TB.OpenOrderWindow("Goldie"), "steps reopen the window")
+assert(TB.GetOrderStep() == 1, "a fresh window starts on step 1")
+assert(TB.orderWindow.searchBox:IsVisible()
+    and not TB.orderWindow.amountBox:IsVisible()
+    and not TB.orderWindow.sendBtn:IsVisible(), "step 1 shows search only")
+assert(TB.orderWindow.backBtn.enabled == false, "step 1 greys Back")
+TB.SetOrderStep(0)
+assert(TB.GetOrderStep() == 1, "step 0 clamps to step 1")
+TB.SetOrderStep(9)
+assert(TB.GetOrderStep() == 3, "step 9 clamps to step 3")
+TB.SetOrderStep(1)
+TB.OrderStepNext()
+assert(TB.GetOrderStep() == 1 and string.find(TB.GetOrderFeedback().text, "Pick an item", 1, true),
+    "Next without a pick stays and explains")
+now = now + 1
+TB.orderWindow.searchBox.text = "leather"
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+this = TB.orderWindow.resultRows[1]
+TB.orderWindow.resultRows[1].scripts.OnClick(TB.orderWindow.resultRows[1])
+assert(TB.GetOrderSelection() == 2318, "steps pick the item")
+assert(TB.GetOrderStep() == 1, "picking stays on step 1 until Next")
+TB.OrderStepNext()
+assert(TB.GetOrderStep() == 2, "Next moves to the amount step")
+assert(TB.orderWindow.amountBox:IsVisible() and not TB.orderWindow.searchBox:IsVisible(),
+    "step 2 swaps search for the amount row")
+assert(TB.orderWindow.backBtn.enabled ~= false, "step 2 enables Back")
+this = TB.orderWindow.backBtn
+TB.orderWindow.backBtn.scripts.OnClick(TB.orderWindow.backBtn)
+assert(TB.GetOrderStep() == 1 and TB.GetOrderSelection() == 2318, "Back returns keeping the pick")
+this = TB.orderWindow.nextBtn
+TB.orderWindow.nextBtn.scripts.OnClick(TB.orderWindow.nextBtn)
+assert(TB.GetOrderStep() == 2, "the Next button advances")
+TB.SetOrderStep(3)
+assert(TB.orderWindow.previewLine:IsVisible() and TB.orderWindow.sendBtn:IsVisible()
+    and TB.orderWindow.stepLabel:GetText() == "Step 3 of 3", "step 3 shows preview and Send")
+TB.SetOrderFeedback(nil)
+now = now + 1
+TB.SetOrderAmount(10)
+this = TB.orderWindow.sendBtn
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 inf",
+    "step 3 Send gives the same wire message, got " .. tostring(lastAddon()))
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|farm")
+assert(not TB.orderWindow:IsVisible(), "a give ACK still closes the stepped window")
+assert(TB.OpenGuildOrderWindow(), "pick-a-bot mode reopens")
+TB.RefreshOrderWindow()
+assert(TB.GetOrderStep() == 1 and TB.orderWindow.stepLabel:GetText() == "",
+    "pick-a-bot mode pins step 1 with no indicator")
+assert(TB.orderWindow.searchBox:IsVisible() and TB.orderWindow.results:IsVisible(),
+    "pick-a-bot mode keeps search visible")
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,
