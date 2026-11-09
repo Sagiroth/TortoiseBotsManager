@@ -3542,7 +3542,8 @@ local function createWindow()
     -- under its parent, updating as TBM:ORDER lines land. Step 3: context
     -- for the Send button, not a step-1 search control.
     win.stepThree = CreateFrame("Frame", nil, win)
-    win.stepThree:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 0)
+    -- Same lift as step 2: its content starts below the step-1 results area.
+    win.stepThree:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 304)
     win.stepThree:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", 0, 0)
     win.treeLabel = win.stepThree:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     win.treeLabel:SetPoint("TOPLEFT", win.stepThree, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 18))
@@ -3595,7 +3596,7 @@ end
 -- next refresh.
 -- Each step is only as tall as its own widgets; Back/Next and the status
 -- lines hang from the bottom edge.
-local ORDER_STEP_H = { 462, 270, 626 }
+local ORDER_STEP_H = { 462, 270, 330 }
 
 local function updateOrderStepPane()
     if not win.stepOne then return end

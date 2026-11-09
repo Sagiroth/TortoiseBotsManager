@@ -5493,7 +5493,8 @@ assert(TB.orderWindow.backBtn.enabled == false, "step 1 greys Back")
 do
     TB._t.h1 = TB.orderWindow.height
     TB.SetOrderStep(3)
-    assert(TB.orderWindow.height > TB._t.h1, "step 3 needs a taller window than step 1")
+    assert(TB.orderWindow.height ~= TB._t.h1 and TB.orderWindow.height < TB._t.h1,
+        "step 3 gets its own, shorter window than step 1")
     TB.SetOrderStep(1)
     assert(TB.orderWindow.height == TB._t.h1, "back on step 1 the window shrinks again")
     -- Skills decide what a bot can be asked: no Enchanting greys Enchant,

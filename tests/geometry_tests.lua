@@ -1564,10 +1564,10 @@ return function()
                 TB.SetOrderStep(3)
                 wr = frameRect(win, {})
                 childrenInside("OrderWindow step 3", win, wr, items, {}, 2)
+                noOverlaps("OrderWindow step 3 controls", items, {})
                 TB.SetOrderStep(1)
                 wr = frameRect(win, cache)
-                for _, entry in ipairs(items1) do table.insert(items, entry) end
-                noOverlaps("OrderWindow controls", items, cache)
+                noOverlaps("OrderWindow controls", items1, cache)
                 -- Filled results: rows fit inside, clear each other and the
                 -- amount row below the scroll frame.
                 TB.SendOrderSearch("Goldie", "farm", "leather")
