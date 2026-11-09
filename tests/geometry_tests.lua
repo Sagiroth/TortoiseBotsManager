@@ -1529,6 +1529,9 @@ return function()
                         bad("OrderWindow: control " .. key .. " missing")
                     end
                 end
+                -- The header texts share the window's top with step 2.
+                table.insert(items2, { "head", win.head })
+                table.insert(items2, { "stepLabel", win.stepLabel })
                 for i, line in ipairs(win.treeLines or {}) do
                     table.insert(items, { "tree" .. i, line })
                 end
@@ -1547,6 +1550,17 @@ return function()
                 wr = frameRect(win, {})
                 childrenInside("OrderWindow step 2", win, wr, items2, {}, 2)
                 noOverlaps("OrderWindow step 2 controls", items2, {})
+                -- Texts have no height in the mock, so check the top edges: the
+                -- first step-2 text must start below the step label's line.
+                do
+                    local c2 = {}
+                    local labelTop = frameRect(win.stepLabel, c2).top
+                    local noteTop = frameRect(win.farmNote, c2).top
+                    if not (noteTop >= labelTop + 14) then
+                        bad(string.format("OrderWindow: step 2 text starts at %s, too close under the step label at %s",
+                            tostring(noteTop), tostring(labelTop)))
+                    end
+                end
                 TB.SetOrderStep(3)
                 wr = frameRect(win, {})
                 childrenInside("OrderWindow step 3", win, wr, items, {}, 2)

@@ -3525,7 +3525,7 @@ local function createWindow()
     win.stepTwo = CreateFrame("Frame", nil, win)
     -- The limits are laid out below the step-1 results area; lift the pane
     -- so they sit right under the step label and the window can stay short.
-    win.stepTwo:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 392)
+    win.stepTwo:SetPoint("TOPLEFT", win, "TOPLEFT", 0, 368)
     win.stepTwo:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", 0, 0)
     -- Guild bank access the bots can reach: rank, bank tabs, gold. Step 1:
     -- the search answers mean nothing without them.
@@ -3595,7 +3595,7 @@ end
 -- next refresh.
 -- Each step is only as tall as its own widgets; Back/Next and the status
 -- lines hang from the bottom edge.
-local ORDER_STEP_H = { 462, 250, 626 }
+local ORDER_STEP_H = { 462, 270, 626 }
 
 local function updateOrderStepPane()
     if not win.stepOne then return end
