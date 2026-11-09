@@ -331,6 +331,7 @@ function TB.SetProfessions(name, snapshot)
     professions[name] = snapshot
     if TB.RepaintGuildRowTooltip then TB.RepaintGuildRowTooltip(name) end
     if TB.RefreshBotPanel then TB.RefreshBotPanel() end
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
 end
 
 function TB.GetProfessions(name)

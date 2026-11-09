@@ -1512,12 +1512,15 @@ return function()
                 bad("OrderWindow: did not open")
             else
                 local wr = frameRect(win, cache)
-                local items = {}
+                -- Each step has its own window height, so a control is
+                -- checked at the step that shows it.
+                local stepOneKeys = { searchBox = true, accessLabel = true, rankBtn = true }
+                local items, items1 = {}, {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
                     "hoursBox", "noLimitBox", "noLimitLabel", "keepBox", "sendBtn", "cancelBtn", "farmNote",
                     "goldLabel", "goldBox", "accessLabel", "rankBtn", "previewLine" }) do
                     if win[key] then
-                        table.insert(items, { key, win[key] })
+                        table.insert(stepOneKeys[key] and items1 or items, { key, win[key] })
                         if win[key].kind == "Button" then
                             labelFits("OrderWindow " .. key, win[key], nil, 6)
                         end
@@ -1529,14 +1532,22 @@ return function()
                     table.insert(items, { "tree" .. i, line })
                 end
                 for kind, pill in pairs(win.kindPills or {}) do
-                    table.insert(items, { "kind." .. kind, pill })
+                    table.insert(items1, { "kind." .. kind, pill })
                     labelFits("OrderWindow kind." .. kind, pill, nil, 6)
                 end
                 for cat, pill in pairs(win.catPills or {}) do
-                    table.insert(items, { "cat." .. cat, pill })
+                    table.insert(items1, { "cat." .. cat, pill })
                     labelFits("OrderWindow cat." .. cat, pill, nil, 6)
                 end
-                childrenInside("OrderWindow", win, wr, items, cache, 2)
+                TB.SetOrderStep(1)
+                wr = frameRect(win, {})
+                childrenInside("OrderWindow step 1", win, wr, items1, {}, 2)
+                TB.SetOrderStep(3)
+                wr = frameRect(win, {})
+                childrenInside("OrderWindow step 3", win, wr, items, {}, 2)
+                TB.SetOrderStep(1)
+                wr = frameRect(win, cache)
+                for _, entry in ipairs(items1) do table.insert(items, entry) end
                 noOverlaps("OrderWindow controls", items, cache)
                 -- Filled results: rows fit inside, clear each other and the
                 -- amount row below the scroll frame.

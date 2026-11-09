@@ -3414,12 +3414,12 @@ local function createOrderStepThree(pane, base)
     -- step, like the title and Back/Next. A step-1 search hint ("type 3
     -- letters") must read on step 1, not only beside Send.
     win.statusLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.statusLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 122))
+    win.statusLine:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 12, 52)
     win.statusLine:SetWidth(OW - 24); win.statusLine:SetJustifyH("LEFT")
     TB.SetTextColor(win.statusLine, color("muted"))
 
     win.feedbackLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 138))
+    win.feedbackLine:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 12, 38)
     win.feedbackLine:SetWidth(OW - 24); win.feedbackLine:SetJustifyH("LEFT")
 end
 
@@ -3560,17 +3560,22 @@ local function createWindow()
     local base = createOrderLimits(win.stepTwo)
     createOrderStepThree(win.stepThree, base)
 
-    win.backBtn = smallButton(win, "Back", 76, 12, -(base + 164),
+    win.backBtn = smallButton(win, "Back", 76, 12, 0,
         "Go back", "Go back one step. Your pick is kept.",
         function()
             TB.SetOrderStep(orderStep - 1)
         end)
 
-    win.nextBtn = smallButton(win, "Next", 76, 194, -(base + 164),
+    win.nextBtn = smallButton(win, "Next", 76, 194, 0,
         "Next step", "Continue to the next step.",
         function()
             TB.OrderStepNext()
         end)
+
+    win.backBtn:ClearAllPoints()
+    win.backBtn:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 12, 10)
+    win.nextBtn:ClearAllPoints()
+    win.nextBtn:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 194, 10)
 
     win:SetScript("OnUpdate", onOrderWindowUpdate)
 
@@ -3586,8 +3591,13 @@ end
 -- preview line) only appears inside the shown pane, so a repaint cannot
 -- bring back a hidden step. Hidden widgets return with their paint on the
 -- next refresh.
+-- Each step is only as tall as its own widgets; Back/Next and the status
+-- lines hang from the bottom edge.
+local ORDER_STEP_H = { 462, 576, 626 }
+
 local function updateOrderStepPane()
     if not win.stepOne then return end
+    win:SetHeight(ORDER_STEP_H[orderStep <= 1 and 1 or (orderStep >= 3 and 3 or 2)])
     if orderStep <= 1 then
         win.stepOne:Show()
         win.stepTwo:Hide()
@@ -3607,6 +3617,32 @@ local function updateOrderStepPane()
     if win.nextBtn then
         if orderStep >= 3 then win.nextBtn:Disable() else win.nextBtn:Enable() end
         win.nextBtn:SetText("Next")
+    end
+end
+
+-- Trade skills the order kinds and item filters depend on. A bot's skills
+-- are only known once its professions reply is in; until then nothing is
+-- greyed out.
+local ENCHANT_SKILL = 333
+local CAT_SKILL = { herb = 182, ore = 186, leather = 393 }
+
+local function botHasSkill(bot, skillId)
+    local snap = TB.GetProfessions and bot and TB.GetProfessions(bot) or nil
+    if not snap then return true end
+    for _, entry in ipairs(snap.skills or {}) do
+        if tonumber(entry.skill) == skillId then return true end
+    end
+    return false
+end
+
+local function setPillUsable(pill, usable, why)
+    if not pill then return end
+    if usable then
+        pill:Enable()
+        pill.tooltipExtra = nil
+    else
+        pill:Disable()
+        pill.tooltipExtra = function() return why end
     end
 end
 
@@ -3636,6 +3672,11 @@ function TB.RefreshOrderWindow()
             -- No Buy option while the server refuses player Buy orders. Older
             -- servers without the cap keep today's pills.
             if kind == "buy" and not TB.PlayerBuyAllowed() then pill:Hide() else pill:Show() end
+            if kind == "enchant" then
+                local hasEnchanting = botHasSkill(windowBot, ENCHANT_SKILL)
+                setPillUsable(pill, hasEnchanting, "This bot has no Enchanting.")
+                if orderKind == "enchant" and not hasEnchanting then TB.SetOrderKind("farm") end
+            end
         end
     end
     for cat, pill in pairs(win.catPills or {}) do
@@ -3644,6 +3685,10 @@ function TB.RefreshOrderWindow()
         else
             if pill.SetActive then pill:SetActive(cat == (orderCat or "all")) end
             pill:Show()
+            local need = CAT_SKILL[cat]
+            local gated = need and orderKind == "farm" and not botHasSkill(windowBot, need)
+            setPillUsable(pill, not gated, "This bot has no " .. TB.ProfessionSkillName(need) .. ", so it cannot farm this.")
+            if gated and orderCat == cat then TB.SetOrderCat("all") end
         end
     end
     if orderGuild then
@@ -4047,6 +4092,10 @@ function TB.OpenOrderWindow(bot)
     -- Bank access arrives with the list; ask for it now when the list
     -- did not carry it yet.
     if not TB.GetOrderAccess() then TB.RequestOrderAccess() end
+    -- The bot's trade skills decide which kinds and filters make sense.
+    if TB.RequestProfessions and not (TB.GetProfessions and TB.GetProfessions(bot)) then
+        TB.RequestProfessions(bot)
+    end
     -- Anchor beside the main window, like the run window.
     win:ClearAllPoints()
     if TB.frame then

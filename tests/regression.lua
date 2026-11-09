@@ -5490,6 +5490,25 @@ assert(TB.orderWindow.stepOne:IsVisible()
     and not TB.orderWindow.stepTwo:IsVisible()
     and not TB.orderWindow.stepThree:IsVisible(), "step 1 shows its pane only")
 assert(TB.orderWindow.backBtn.enabled == false, "step 1 greys Back")
+do
+    TB._t.h1 = TB.orderWindow.height
+    TB.SetOrderStep(3)
+    assert(TB.orderWindow.height > TB._t.h1, "step 3 needs a taller window than step 1")
+    TB.SetOrderStep(1)
+    assert(TB.orderWindow.height == TB._t.h1, "back on step 1 the window shrinks again")
+    -- Skills decide what a bot can be asked: no Enchanting greys Enchant,
+    -- no Mining/Herbalism/Skinning greys that farm filter.
+    TB.SetProfessions("Goldie", { skills = { { skill = 393, value = 20, max = 75 } }, recipes = {}, missing = {} })
+    assert(TB.orderWindow.kindPills.enchant.enabled == false, "no Enchanting greys the Enchant kind")
+    assert(TB.orderWindow.catPills.herb.enabled == false and TB.orderWindow.catPills.ore.enabled == false,
+        "no Herbalism / Mining greys those farm filters")
+    assert(TB.orderWindow.catPills.leather.enabled ~= false, "Skinning keeps the leather filter")
+    TB.SetProfessions("Goldie", { skills = { { skill = 333, value = 1, max = 75 }, { skill = 182, value = 1, max = 75 } },
+        recipes = {}, missing = {} })
+    assert(TB.orderWindow.kindPills.enchant.enabled ~= false, "Enchanting enables the Enchant kind")
+    assert(TB.orderWindow.catPills.herb.enabled ~= false and TB.orderWindow.catPills.leather.enabled == false,
+        "the filters follow the bot's skills")
+end
 TB.SetOrderStep(0)
 assert(TB.GetOrderStep() == 1, "step 0 clamps to step 1")
 TB.SetOrderStep(9)
