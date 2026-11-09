@@ -641,8 +641,10 @@ return function()
                 if row.relBtn then table.insert(cols, { "relBtn", row.relBtn }) end
                 if row.orderLine then table.insert(cols, { "orderLine", row.orderLine }) end
                 if row.ordBtn then table.insert(cols, { "ordBtn", row.ordBtn }) end
-                if row.cancelBtn then table.insert(cols, { "cancelBtn", row.cancelBtn }) end
-                if row.moveBtn then table.insert(cols, { "moveBtn", row.moveBtn }) end
+                if row.moreBtn then
+                    table.insert(cols, { "moreBtn", row.moreBtn })
+                    labelFits("Guild moreBtn", row.moreBtn, nil, 6)
+                end
                 noOverlaps("Guild row " .. i .. " columns", cols, cache)
                 if row.roleBtn and i == 1 then
                     local saved = row.roleBtn.text
