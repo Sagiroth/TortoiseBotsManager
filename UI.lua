@@ -663,6 +663,30 @@ CreateFilterRow = function(parent)
     createRosterClassChips(parent)
 end
 
+-- Clickable roster header: each button sorts by its column, clicking again
+-- reverses. The marker shows the active column and direction.
+local function paintRosterHeaders(parent)
+    local sort = TB.rosterSort or { key = "status", dir = 1 }
+    -- Buttons own their text through the client FontString; the created
+    -- label keeps the column width while the button frames the click area.
+    for _, btn in ipairs(parent.headerBtns or {}) do
+        local fs = btn.headerLabel
+        if fs then
+            if sort.key == btn.sortKey then
+                fs:SetText(string.upper(btn.headerText) .. (sort.dir == 1 and " ^" or " v"))
+                TB.SetTextColor(fs, color("gold"))
+            else
+                fs:SetText(string.upper(btn.headerText))
+                TB.SetTextColor(fs, color("faint"))
+            end
+        end
+    end
+end
+
+function TB.PaintRosterHeaders()
+    if TB.rosterFrame then paintRosterHeaders(TB.rosterFrame) end
+end
+
 local function createRosterColumnHeaders(parent)
     local checkAll = CreateFrame("CheckButton", "TortoiseBotsManagerCheckAll", parent, "UICheckButtonTemplate")
     checkAll:SetWidth(20); checkAll:SetHeight(20)
@@ -677,21 +701,39 @@ local function createRosterColumnHeaders(parent)
 
     local left = 46
     local headers = {
-        { text = "Name", width = (C.ROSTER_NAME_W or 112) - 17 },
-        { text = "Class", width = C.ROSTER_CLASS_W or 70 },
-        { text = "Status", width = C.ROSTER_STATUS_W or 138 },
-        { text = "Last location", width = 88 },
+        { text = "Name", width = (C.ROSTER_NAME_W or 112) - 17, sortKey = "name" },
+        { text = "Class", width = C.ROSTER_CLASS_W or 70, sortKey = "class" },
+        { text = "Status", width = C.ROSTER_STATUS_W or 138, sortKey = "status" },
+        { text = "Last location", width = 88, sortKey = nil },
     }
+    parent.headerBtns = {}
     local x = left
     for _, header in ipairs(headers) do
-        local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -53)
+        local btn = CreateFrame("Button", nil, parent)
+        btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -48)
+        btn:SetWidth(header.width)
+        btn:SetHeight(16)
+        btn:RegisterForClicks("LeftButtonUp")
+        btn:EnableMouse(true)
+        local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
         fs:SetWidth(header.width)
         fs:SetJustifyH("LEFT")
-        fs:SetText(string.upper(header.text))
-        TB.SetTextColor(fs, color("faint"))
+        if header.sortKey then
+            btn.sortKey = header.sortKey
+            setButtonTooltip(btn, "Sort by " .. string.lower(header.text))
+            btn:SetScript("OnClick", function()
+                if TB.SetRosterSort then TB.SetRosterSort(this.sortKey) end
+            end)
+        else
+            btn:EnableMouse(false)
+        end
+        table.insert(parent.headerBtns, btn)
+        btn.headerText = header.text
+        btn.headerLabel = fs
         x = x + header.width + (C.GAP_BTN or 4)
     end
+    paintRosterHeaders(parent)
 end
 
 CreateScroll = function(parent)
@@ -1557,6 +1599,7 @@ function TB.InitUI()
     CreateFilterRow(rosterFrame)
     CreateScroll(rosterFrame)
     CreateRosterBar(rosterFrame)
+    TB.rosterFrame = rosterFrame
 
     local function CreatePartyView(parent)
         local partyFrame = CreateFrame("Frame", nil, parent)
@@ -1848,6 +1891,28 @@ function TB.InitUI()
 
     local raidFrame = CreateRaidView(content)
 
+-- Clickable guild headers mirror the roster ones: the marker shows the
+-- active column and direction.
+local function paintGuildHeaders(parent)
+    local sort = TB.guildSort or { key = "level", dir = -1 }
+    for _, btn in ipairs(parent.headerBtns or {}) do
+        local fs = btn.headerLabel
+        if fs then
+            if sort.key == btn.sortKey then
+                fs:SetText(string.upper(btn.headerText) .. (sort.dir == 1 and " ^" or " v"))
+                TB.SetTextColor(fs, color("gold"))
+            else
+                fs:SetText(string.upper(btn.headerText))
+                TB.SetTextColor(fs, color("faint"))
+            end
+        end
+    end
+end
+
+function TB.PaintGuildHeaders()
+    if TB.guildFrame and TB.guildFrame.headerBtns then paintGuildHeaders(TB.guildFrame) end
+end
+
     local function CreateGuildView(parent)
         local guildFrame = CreateFrame("Frame", nil, parent)
         guildFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
@@ -1899,20 +1964,37 @@ function TB.InitUI()
         guildFrame.checkAll = checkAll
 
         local headers = {
-            { text = "Name", width = 80, x = 46 },
-            { text = "Level", width = 64, x = 128 },
-            { text = "Gear", width = 52, x = 194 },
-            { text = "Status", width = 70, x = 248 },
-            { text = "Role · Order", width = 134, x = 324 },
+            { text = "Name", width = 80, x = 46, sortKey = "name" },
+            { text = "Level", width = 64, x = 128, sortKey = "level" },
+            { text = "Gear", width = 52, x = 194, sortKey = nil },
+            { text = "Status", width = 70, x = 248, sortKey = "status" },
+            { text = "Role · Order", width = 134, x = 324, sortKey = nil },
         }
+        guildFrame.headerBtns = {}
         for _, h in ipairs(headers) do
-            local fs = guildFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            fs:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", h.x, -49)
+            local btn = CreateFrame("Button", nil, guildFrame)
+            btn:SetPoint("TOPLEFT", guildFrame, "TOPLEFT", h.x, -44)
+            btn:SetWidth(h.width)
+            btn:SetHeight(16)
+            btn:RegisterForClicks("LeftButtonUp")
+            local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            fs:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, -5)
             fs:SetWidth(h.width)
             fs:SetJustifyH("LEFT")
-            fs:SetText(string.upper(h.text))
-            TB.SetTextColor(fs, color("faint"))
+            btn.headerText = h.text
+            btn.headerLabel = fs
+            if h.sortKey then
+                btn.sortKey = h.sortKey
+                setButtonTooltip(btn, "Sort by " .. string.lower(h.text))
+                btn:SetScript("OnClick", function()
+                    if TB.SetGuildSort then TB.SetGuildSort(this.sortKey) end
+                end)
+            else
+                btn:EnableMouse(false)
+            end
+            table.insert(guildFrame.headerBtns, btn)
         end
+        paintGuildHeaders(guildFrame)
 
         -- Guild bank access bots can reach: rank, bank tabs, gold. Red when
         -- a bank tab is denied or gold is off; grey when the server leaves
@@ -2552,6 +2634,7 @@ function TB.InitUI()
     function TB.RefreshGuildView()
         if not TB.guildFrame or not TB.guildFrame.rows then return end
         local frame = TB.guildFrame
+        if frame.headerBtns then paintGuildHeaders(frame) end
         local allBots = TB.GetClaimedBots and TB.GetClaimedBots(TB.guildFilterText) or {}
         local total = table.getn(allBots)
         local onlineCount = 0
@@ -3007,6 +3090,7 @@ RefreshRows = function(rows)
             row.entry = nil
         end
     end
+    if TB.rosterFrame then paintRosterHeaders(TB.rosterFrame) end
 end
 
 RefreshRosterSelection = function()
