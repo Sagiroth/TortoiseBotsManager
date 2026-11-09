@@ -405,8 +405,12 @@ local function createBar()
         bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 160)
     end
     -- The turtle is the drag handle; the bar background drags too.
+    -- Locked (Settings): the bar stays where it is.
     bar:RegisterForDrag("LeftButton")
-    bar:SetScript("OnDragStart", function() bar:StartMoving() end)
+    bar:SetScript("OnDragStart", function()
+        if TortoiseBotsDB and TortoiseBotsDB.miniLocked then return end
+        bar:StartMoving()
+    end)
     bar:SetScript("OnDragStop", function()
         bar:StopMovingOrSizing()
         savePosition()
@@ -419,7 +423,10 @@ local function createBar()
     turtle:SetAllPoints(handle)
     turtle:SetTexture("Interface\\Icons\\Ability_Hunter_Pet_Turtle")
     turtle:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    handle:SetScript("OnDragStart", function() bar:StartMoving() end)
+    handle:SetScript("OnDragStart", function()
+        if TortoiseBotsDB and TortoiseBotsDB.miniLocked then return end
+        bar:StartMoving()
+    end)
     handle:SetScript("OnDragStop", function()
         bar:StopMovingOrSizing()
         savePosition()

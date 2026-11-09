@@ -190,7 +190,7 @@ local function scene(name, fn)
 end
 
 local function hideSatellites()
-    for _, n in ipairs({ "CloseBotPanel", "CloseRunWindow", "CloseOrderWindow", "CloseServerInfo", "CloseNpc", "CloseVault" }) do
+    for _, n in ipairs({ "CloseBotPanel", "CloseRunWindow", "CloseOrderWindow", "CloseServerInfo", "CloseSettings", "CloseNpc", "CloseVault" }) do
         if TB[n] then pcall(TB[n]) end
     end
     if TB.ccMenu then TB.ccMenu:Hide() end
@@ -339,6 +339,11 @@ scene("info", function()
         "TBM:FEATURE|world-buffs|off|World buffs", "TBM:FEATURE|loot-log|on|Loot history" })
     TB.OpenServerInfo()
     dump("info", { main, TB.serverInfo or TB.infoFrame or TB.serverInfoFrame }, "Server info")
+end)
+scene("settings", function()
+    tab("actions", nil)
+    TB.OpenSettings()
+    dump("settings", { main, TB.settingsWindow }, "Settings window")
 end)
 scene("mini", function()
     hideSatellites()

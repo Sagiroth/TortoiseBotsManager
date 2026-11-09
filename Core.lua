@@ -138,8 +138,11 @@ local function initDB()
     if not db.frame.rpoint then db.frame.rpoint = "CENTER" end
     if db.frame.x == nil then db.frame.x = 0 end
     if db.frame.y == nil then db.frame.y = 15 end
-    if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
-    if db.autoPoll == nil then db.autoPoll = true end
+    if db.minimapShown == nil then db.minimapShown = true end
+    if db.miniLocked == nil then db.miniLocked = false end
+    if type(db.windowScale) == "number" then db.windowScale = TB.ClampWindowScale and TB.ClampWindowScale(db.windowScale) or db.windowScale end
+    if type(db.pollInterval) ~= "number" then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
+    if db.pollInterval and TB.ClampPollInterval then db.pollInterval = TB.ClampPollInterval(db.pollInterval) end
     -- Adjustable pull timers (seconds, 0-60): DPS delay before pull, join
     -- delay before pullback. Sent as "pull <n>" / "pullback <n>" only when
     -- the server advertises the pull-seconds capability; older servers get
@@ -774,7 +777,7 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
         return
     end
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm settings — window options, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
         return
     elseif msg == "mini" or msg == "full" then
@@ -787,6 +790,9 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     elseif msg == "log" then
         if TB.SetMode then TB.SetMode("full") end
         if TB.ShowTab then TB.ShowTab("log") end
+        return
+    elseif msg == "settings" or msg == "options" or msg == "config" then
+        if TB.ToggleSettings then TB.ToggleSettings() else TB.Print("UI not loaded yet.") end
         return
     elseif msg == "list" then
         TB.PollList(true); TB.Print("Polling server roster…"); return

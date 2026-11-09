@@ -116,6 +116,14 @@ local function object(kind, parent)
     function methods:GetEffectiveScale() return 1 end
     function methods:Enable() self.enabled = true end
     function methods:Disable() self.enabled = false end
+    function methods:GetScale() return self.scale or 1 end
+    function methods:SetScale(scale) self.scale = scale end
+    function methods:SetOrientation(...) end
+    function methods:SetMinMaxValues(min, max) self.min, self.max = min, max end
+    function methods:SetValueStep(...) end
+    function methods:SetValue(value) self.value = value end
+    function methods:GetValue() return self.value or 0 end
+    function methods:SetThumbTexture(...) end
 
     methods.__index = methods
     return setmetatable(value, methods)
@@ -163,6 +171,7 @@ function SendAddonMessage(prefix, message, channel)
 end
 function GetCursorPosition() return 0, 0 end
 function GetScreenWidth() return 1024 end
+function GetScreenHeight() return 900 end
 function UnitExists(unit)
     if unit == "player" then return true end
     if unit == "target" then return targetExists end
@@ -225,6 +234,7 @@ for _, file in ipairs({
     "BotLoot.lua",
     "BotOrder.lua",
     "ServerInfo.lua",
+    "Settings.lua",
     "MiniBar.lua",
     "Minimap.lua",
     "Bindings.lua",
@@ -2622,6 +2632,47 @@ assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, ni
     "the search summary stays out of the chat")
 TB.SetServerInfoTab("main")
 TB.CloseServerInfo()
+-- ── Settings window: persisted options wired to the frames ──────────────────
+assert(TortoiseBotsDB.minimapShown == true and TortoiseBotsDB.miniLocked == false,
+    "settings must default to a visible minimap button and an unlocked mini bar")
+assert(TB.ClampWindowScale(2) == 1.1 and TB.ClampWindowScale(0.5) == 0.7
+    and TB.ClampWindowScale("abc") == nil and TB.GetWindowScale() == 1,
+    "the window scale must clamp to 70-110% with automatic 100% at 900 px height")
+assert(TB.ClampPollInterval(1) == 4 and TB.ClampPollInterval(99) == 60
+    and TB.ClampPollInterval(7.6) == 7 and TortoiseBotsDB.pollInterval == 8,
+    "the roster refresh must clamp to whole seconds in 4-60")
+assert(TB.OpenSettings() and TB.settingsWindow:IsVisible(), "the settings window must open")
+assert(TB.settingsWindow.slider:GetValue() == 1, "the slider must show the automatic scale")
+assert(TB.settingsWindow.scaleValue.text == "Auto (100%)", "automatic scale must read as Auto")
+TB.SetWindowScale(0.82)
+assert(TortoiseBotsDB.windowScale == 0.82 and TB.frame.scale == 0.82
+    and TB.settingsWindow.scaleValue.text == "82%", "a slider move must scale the window and persist")
+TB.SetWindowScale(nil)
+assert(TortoiseBotsDB.windowScale == nil and TB.frame.scale == 1
+    and TB.settingsWindow.scaleValue.text == "Auto (100%)", "Auto must clear the override")
+TB.SetMinimapShown(false)
+assert(TortoiseBotsDB.minimapShown == false and not TB.minimapButton:IsVisible()
+    and TB.settingsWindow.minimapCheck:GetChecked() == false, "hiding must drop the minimap button")
+TB.SetMinimapShown(true)
+assert(TortoiseBotsDB.minimapShown == true and TB.minimapButton:IsVisible(), "showing must bring it back")
+TB.SetMiniLocked(true)
+assert(TortoiseBotsDB.miniLocked == true, "locking must persist the mini bar lock")
+TB.SetMiniLocked(false)
+TB.SetAutoPoll(false)
+assert(TortoiseBotsDB.autoPoll == false
+    and TB.settingsWindow.pollStepper.minus.enabled == false, "pausing refresh must grey the interval")
+TB.SetAutoPoll(true)
+TB.SetPollInterval(12)
+assert(TortoiseBotsDB.pollInterval == 12 and TB.settingsWindow.pollStepper.label.text == "12 s",
+    "the interval stepper must persist and repaint")
+TB.SetPollInterval(8)
+TB.settingsWindow.pollStepper.repaint()
+assert(TB.settingsWindow.pollStepper.label.text == "8 s", "the interval must reset for later tests")
+SlashCmdList["TORTOISEBOTSMANAGER"]("settings")
+assert(not TB.settingsWindow:IsVisible(), "/tbm settings must toggle the window")
+SlashCmdList["TORTOISEBOTSMANAGER"]("settings")
+assert(TB.settingsWindow:IsVisible(), "/tbm settings must reopen it")
+TB.CloseSettings()
 TB.OpenRunWindow()
 -- Mutual exclusion with the vault/NPC satellites.
 TB.OpenBotPanel("Alpha")
