@@ -3445,6 +3445,30 @@ end
 
 -- The old Send click, shared by the step-3 Send button: reads the boxes,
 -- finds the pick in the search and sends it unchanged.
+-- A bot holds one order and a new one replaces it: ask first when the old one
+-- is still running, so an accidental second order is not a silent loss.
+local ORDER_ENDED = { done = true, cant = true, noskill = true, mailed = true }
+local function confirmReplace(bot, go)
+    local old = TB.GetBotOrder(bot)
+    local state = old and string.lower(trim(old.state or "")) or ""
+    if not old or ORDER_ENDED[state] then
+        go()
+        return
+    end
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_REPLACE_ORDER"] = {
+        text = bot .. " is already working on " .. TB.OrderTypeLabel(old.type) .. " " .. (old.item or "?")
+            .. " (" .. tostring(old.have or 0) .. "/" .. tostring(old.want or 0)
+            .. "). Replace it with this order?",
+        button1 = "Replace",
+        button2 = "Keep",
+        OnAccept = go,
+        timeout = 0,
+        whileDead = 1,
+        hideOnEscape = 1,
+    }
+    StaticPopup_Show("TORTOISEBOTSMANAGER_REPLACE_ORDER")
+end
+
 function TB.SendOrderFromStepThree()
     -- The boxes commit on change, but read them anyway: a valid
     -- number must always win over a stale value.
@@ -3478,19 +3502,23 @@ function TB.SendOrderFromStepThree()
     end
     if orderKind == "enchant" then
         if selectedItemId and windowBot then
-            TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
-                .. " sent, waiting for the server...", "pending")
-            TB.SendOrderGive(windowBot, "enchant", selectedItemId)
+            confirmReplace(windowBot, function()
+                TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
+                    .. " sent, waiting for the server...", "pending")
+                TB.SendOrderGive(windowBot, "enchant", selectedItemId)
+            end)
         end
         return
     end
     local timeText = orderNoLimit and "no limit" or (orderHours .. "h")
     local goldText = orderGold and (" " .. TB.OrderGoldText(orderGold)) or ""
-    TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
-        .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "")
-        .. goldText .. ") sent, waiting for the server...", "pending")
-    TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount,
-        orderNoLimit and "inf" or orderHours, orderKeep, orderGold, orderBring)
+    confirmReplace(windowBot, function()
+        TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
+            .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "")
+            .. goldText .. ") sent, waiting for the server...", "pending")
+        TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount,
+            orderNoLimit and "inf" or orderHours, orderKeep, orderGold, orderBring)
+    end)
 end
 
 local function createWindow()
@@ -4106,6 +4134,9 @@ function TB.OpenOrderWindow(bot)
     orderGuild = false
     orderStep = 1
     windowBot = bot
+    -- An old "sent, waiting..." line from an earlier give means nothing now.
+    feedback = nil
+    giveWaitUntil = nil
     if switched then
         orderKind = "farm"
         orderAmount = 10

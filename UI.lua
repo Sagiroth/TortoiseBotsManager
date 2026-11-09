@@ -2173,34 +2173,16 @@ end
         end)
         guildFrame.scroll = scroll
 
-        -- The row tooltip body lives in one function so a late step history
-        -- (TBM:ORDER_STEPS_END) can redraw the tooltip of the row under the
-        -- cursor. A resting hover arms a 0.4 s dwell timer (cancelled on
-        -- leave) before asking the server for that bot's steps, and only
-        -- when the bot has an order; the repaint passes noRequest so it
-        -- never sends a second request.
-        local ensureStepsDwellFrame -- defined below, called from the tooltip
-        function TB.ShowGuildRowTooltip(row, noRequest)
+        -- The row tooltip body lives in one function so a late professions
+        -- snapshot can redraw the tooltip of the row under the cursor.
+        function TB.ShowGuildRowTooltip(row)
             local entry = row and row.entry
             if not entry then return end
             TB._guildTipRow = row
             TB._guildTipOwner = row
-            if not noRequest and TB.GetBotOrder and TB.GetBotOrder(entry.name)
-                and TB.RequestOrderSteps then
-                TB._stepsDwell = { name = entry.name, at = (GetTime and GetTime()) or 0 }
-                ensureStepsDwellFrame()
-            end
             GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
             GameTooltip:SetText(entry.name)
             GameTooltip:AddLine("Level " .. entry.level .. " " .. (entry.className or "") .. " · " .. (entry.status or "Unknown"), 1, 1, 1)
-            if entry.location then
-                GameTooltip:AddLine("Location: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3])
-            end
-            if entry.gearLocked then
-                GameTooltip:AddLine("|cffffd200Gear Hard-Locked (Lvl 60)|r\nBot will never self-equip or auto-vendor gear. 100% player managed.", 1, 0.82, 0)
-            else
-                GameTooltip:AddLine("|cff4ecb5aLeveling Freedom (1-59)|r\nBot equips world upgrades. Preserves all blues and epics in bags.", 0.3, 0.9, 0.3)
-            end
             -- Row professions from the CLAIMED snapshot ride the row itself;
             -- the cached Professions snapshot stays the fallback (it carries
             -- skill max). A hover never sends a request.
@@ -2211,12 +2193,11 @@ end
             if profText then
                 GameTooltip:AddLine(profText, 1, 1, 1)
             end
-            if TB.GetBotOrder and TB.OrderTooltipText then
-                local order = TB.GetBotOrder(entry.name)
-                local orderText = order and TB.OrderTooltipText(order) or nil
-                if orderText then
-                    GameTooltip:AddLine(orderText, 1, 1, 1)
-                end
+            -- The order is one line here; state, steps and difficulty live in
+            -- the Orders window.
+            local order = TB.GetBotOrder and TB.GetBotOrder(entry.name) or nil
+            if order and TB.OrderRowText then
+                GameTooltip:AddLine("Order: " .. TB.OrderRowText(order), 1, 1, 1)
             end
             if TB.BuildGuildRowMenu and TB.BuildGuildRowMenu(entry.name, function() end) > 0 then
                 GameTooltip:AddLine("Right-click for more actions.", COL.muted[1], COL.muted[2], COL.muted[3])
@@ -2224,25 +2205,8 @@ end
             GameTooltip:Show()
         end
 
-        -- Hover requests wait for a 0.4 s rest before going out; leaving the
-        -- row cancels the wait. The timer frame sends at most the bot it was
-        -- armed for, and RequestOrderSteps still applies its own gates.
-        local STEPS_DWELL = 0.4
-        local stepsDwellFrame
-        function ensureStepsDwellFrame()
-            if stepsDwellFrame then return end
-            stepsDwellFrame = CreateFrame("Frame", "TortoiseBotsManagerStepsDwell")
-            stepsDwellFrame:SetScript("OnUpdate", function()
-                local dwell = TB._stepsDwell
-                if not dwell then return end
-                if ((GetTime and GetTime()) or 0) - (dwell.at or 0) < STEPS_DWELL then return end
-                TB._stepsDwell = nil
-                if TB.RequestOrderSteps then TB.RequestOrderSteps(dwell.name) end
-            end)
-        end
-
-        -- A committed step list redraws the tooltip only while it still shows
-        -- that bot's row; every other case is left alone.
+        -- A late snapshot redraws the tooltip only while it still shows that
+        -- bot's row; every other case is left alone.
         function TB.RepaintGuildRowTooltip(bot)
             local row = TB._guildTipRow
             if not row or not row.entry then return end
@@ -2253,7 +2217,7 @@ end
             elseif TB._guildTipOwner ~= row then
                 return
             end
-            TB.ShowGuildRowTooltip(row, true)
+            TB.ShowGuildRowTooltip(row)
         end
 
         local rows = {}
@@ -2418,7 +2382,6 @@ end
             row:SetScript("OnLeave", function()
                 TB._guildTipRow = nil
                 TB._guildTipOwner = nil
-                TB._stepsDwell = nil
                 GameTooltip:Hide()
             end)
 
@@ -2447,14 +2410,14 @@ end
 
         local selection = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         selection:SetPoint("LEFT", bar, "LEFT", 2, 0)
-        selection:SetWidth(85)
+        selection:SetWidth(62)
         selection:SetJustifyH("LEFT")
         TB.SetTextColor(selection, color("muted"))
         guildFrame.selectionLabel = selection
 
         local inviteBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
-        inviteBtn:SetWidth(70); inviteBtn:SetHeight(24)
-        inviteBtn:SetPoint("LEFT", bar, "LEFT", 104, 0)
+        inviteBtn:SetWidth(62); inviteBtn:SetHeight(24)
+        inviteBtn:SetPoint("LEFT", bar, "LEFT", 66, 0)
         inviteBtn:SetText("Invite")
         setButtonTooltip(inviteBtn, "Invite selected online claimed bots to your party. A full party becomes a raid.")
         inviteBtn:SetScript("OnClick", function()
@@ -2472,7 +2435,7 @@ end
         guildFrame.inviteBtn = inviteBtn
 
         local summonBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
-        summonBtn:SetWidth(70); summonBtn:SetHeight(24)
+        summonBtn:SetWidth(66); summonBtn:SetHeight(24)
         summonBtn:SetPoint("LEFT", inviteBtn, "RIGHT", 5, 0)
         summonBtn:SetText("Summon")
         setButtonTooltip(summonBtn, "Summon selected online claimed bots to your position")
@@ -2487,7 +2450,7 @@ end
         guildFrame.summonBtn = summonBtn
 
         local syncBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
-        syncBtn:SetWidth(56); syncBtn:SetHeight(24)
+        syncBtn:SetWidth(52); syncBtn:SetHeight(24)
         syncBtn:SetPoint("LEFT", summonBtn, "RIGHT", 5, 0)
         syncBtn:SetText("Sync")
         setButtonTooltip(syncBtn, "Sync claimed guild bots and roster from server")
@@ -2497,7 +2460,7 @@ end
         guildFrame.syncBtn = syncBtn
 
         local fillBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
-        fillBtn:SetWidth(68); fillBtn:SetHeight(24)
+        fillBtn:SetWidth(66); fillBtn:SetHeight(24)
         fillBtn:SetPoint("LEFT", syncBtn, "RIGHT", 5, 0)
         fillBtn:SetText("Fill raid")
         setButtonTooltip(fillBtn, "Invite online claimed bots until the raid is full (40). Needs no selection.")
@@ -2515,10 +2478,20 @@ end
         end)
         guildFrame.fillBtn = fillBtn
 
+        local activeBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
+        activeBtn:SetWidth(56); activeBtn:SetHeight(24)
+        activeBtn:SetPoint("LEFT", fillBtn, "RIGHT", 5, 0)
+        activeBtn:SetText("Orders")
+        setButtonTooltip(activeBtn, "See every order the guild bots are working on, and what each one is doing now.", "Active orders")
+        activeBtn:SetScript("OnClick", function()
+            if TB.ToggleActiveOrders then TB.ToggleActiveOrders() end
+        end)
+        guildFrame.activeBtn = activeBtn
+
         local orderBtn = TB.StyleButton(CreateFrame("Button", nil, bar, "UIPanelButtonTemplate"))
         orderBtn.flatKind = "primary"
         orderBtn:SetWidth(86); orderBtn:SetHeight(24)
-        orderBtn:SetPoint("LEFT", fillBtn, "RIGHT", 5, 0)
+        orderBtn:SetPoint("LEFT", activeBtn, "RIGHT", 5, 0)
         orderBtn:SetText("Guild order")
         setButtonTooltip(orderBtn, "Pick a recipe, see which guild bots know it, then order.", "Guild order")
         orderBtn:SetScript("OnClick", function()

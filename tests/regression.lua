@@ -168,7 +168,14 @@ GameTooltip = {
 function GetTime() return now end
 StaticPopupDialogs = StaticPopupDialogs or {}
 local lastPopupShown = nil
-function StaticPopup_Show(which) lastPopupShown = which end
+-- The replace-order question accepts itself unless a case asks to see it.
+ReplacePopupTest = { hold = false }
+function StaticPopup_Show(which)
+    lastPopupShown = which
+    if which == "TORTOISEBOTSMANAGER_REPLACE_ORDER" and not ReplacePopupTest.hold then
+        StaticPopupDialogs[which].OnAccept()
+    end
+end
 function time() return 123 end
 function SendChatMessage(message) table.insert(sent, message) end
 function SendAddonMessage(prefix, message, channel)
@@ -238,6 +245,7 @@ for _, file in ipairs({
     "BotRun.lua",
     "BotLoot.lua",
     "BotOrder.lua",
+    "ActiveOrders.lua",
     "ServerInfo.lua",
     "Settings.lua",
     "MiniBar.lua",
@@ -3976,32 +3984,9 @@ local function orderStepHistoryChecks()
     assert(TB.OrderStepAgeText(7260) == "2h 1m ago" and TB.OrderStepAgeText(7200) == "2h ago"
         and TB.OrderStepAgeText(90000) == "1d ago", "ages read in minutes, hours and days")
 
-    -- Repaint: a committed list redraws the hovered row without a new request.
-    -- The changed live line below clears the throttle, so a repaint that asked
-    -- again would really send. The time step keeps the tab's own "order list"
-    -- out of the send queue (a queued command would leak into the wire cases).
-    now = now + 1
-    TB.ShowTab("guild")
-    local tipRow = TB.guildFrame.rows[1]
-    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the guild row holds Goldie")
-    local tipLines = {}
-    local realAddLine = GameTooltip.AddLine
-    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
     now = now + 16
-    TB.ShowGuildRowTooltip(tipRow)
-    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|deliver|-")
+    TB.ShowTab("guild")
     now = now + 1
-    before = table.getn(addonSent)
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    GameTooltip.AddLine = realAddLine
-    local sawStepBlock = false
-    for _, text in ipairs(tipLines) do
-        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
-    end
-    assert(sawStepBlock, "the committed list redraws the hovered tooltip")
-    assert(table.getn(addonSent) == before, "the repaint sends no second request")
     -- Stale reply: asked for A, the bot moved to B, the reply lands late.
     -- Nothing is cached and B tooltips no steps; the next hover may ask again.
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
@@ -4031,78 +4016,27 @@ local function orderStepHistoryChecks()
         "the block restores the capability set")
 end
 orderStepHistoryChecks()
--- ── Step hover dwell + single outstanding (Opus cold review) ───────────────
--- A hover asks only after the cursor rests 0.4 s; one steps reply in flight
--- blocks the next bot until END or 5 s. Own function: chunk local limit.
-local function stepHoverDwellChecks()
-    TB._stepsDwell = nil
-    TB._guildTipRow = nil
-    TB._guildTipOwner = nil
+-- ── Steps requests: single outstanding, late replies, token loss ───────────
+-- One steps reply in flight blocks the next bot until END or 5 s. Own
+-- function: chunk local limit.
+local function stepRequestChecks()
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
     TB.OnSystemMessage("TBM:ORDER|Goldie|Farm|2318|Light Leather|0|10|working|-|Ashenvale")
     TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
-    for i = 1, 20 do
-        TB.OnSystemMessage("TBM:ORDER|Sweep" .. i .. "|farm|2318|Light Leather|0|10|working|-|Ashenvale")
-    end
     now = now + 16
-    TB.ShowTab("guild")
-    TB.RefreshGuildView()
-    local dwellFrame = frames["TortoiseBotsManagerStepsDwell"]
-    assert(dwellFrame and dwellFrame.scripts.OnUpdate, "the steps dwell timer must exist")
-    local hoverRow = TB.guildFrame.rows[1]
-    assert(hoverRow and hoverRow.scripts.OnEnter and hoverRow.scripts.OnLeave, "guild rows must hover")
-    local row1 = TB.guildFrame.rows[1]
-    assert(row1.entry and row1.entry.name == "Goldie", "the first guild row holds Goldie")
-
-    -- Sweep: 20 quick hovers (0.2 s each) send nothing.
-    local beforeSweep = table.getn(addonSent)
-    for i = 1, 20 do
-        local fake = { entry = { name = "Sweep" .. i, level = 60, className = "Warrior", status = "Online" } }
-        this = fake
-        hoverRow.scripts.OnEnter(hoverRow)
-        now = now + 0.2
-        dwellFrame.scripts.OnUpdate(dwellFrame)
-        this = fake
-        hoverRow.scripts.OnLeave(hoverRow)
-    end
-    now = now + 1
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSweep, "sweeping 20 rows sends no step request")
-
-    -- Rest: 0.5 s on Goldie sends one request.
-    now = now + 1
-    local stay = { entry = { name = "Goldie", level = 60, className = "Warrior", status = "Online" } }
-    this = stay
-    hoverRow.scripts.OnEnter(hoverRow)
-    now = now + 0.5
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSweep + 1 and lastAddon() == "order Goldie steps",
-        "resting 0.5 s sends one step request")
-    this = stay
-    hoverRow.scripts.OnLeave(hoverRow)
+    local before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Goldie") == true and lastAddon() == "order Goldie steps",
+        "a steps request names the bot")
 
     -- Outstanding: Silver waits while Goldie's reply is in flight.
     now = now + 1
-    local beforeSecond = table.getn(addonSent)
-    local silver = { entry = { name = "Silver", level = 45, className = "Priest", status = "Online" } }
-    this = silver
-    hoverRow.scripts.OnEnter(hoverRow)
-    now = now + 0.5
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSecond, "a second row waits while one steps request is outstanding")
-    this = silver
-    hoverRow.scripts.OnLeave(hoverRow)
+    assert(TB.RequestOrderSteps("Silver") == false and table.getn(addonSent) == before + 1,
+        "a second bot waits while one steps request is outstanding")
 
-    -- After 5 s without an END the next hover may ask again.
+    -- After 5 s without an END the next request may go out.
     now = now + 6
-    this = silver
-    hoverRow.scripts.OnEnter(hoverRow)
-    now = now + 0.5
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSecond + 1 and lastAddon() == "order Silver steps",
+    assert(TB.RequestOrderSteps("Silver") == true and lastAddon() == "order Silver steps",
         "the single outstanding request times out after 5 s")
-    this = silver
-    hoverRow.scripts.OnLeave(hoverRow)
 
     -- Both late replies still commit each bot's own list.
     TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
@@ -4115,44 +4049,7 @@ local function stepHoverDwellChecks()
     assert(TB.GetOrderSteps("Silver") ~= nil, "Silver's reply still commits")
 
     -- Identity is case-insensitive: the "Farm" row keeps its steps.
-    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2, "the Farm row tooltips its steps")
-
-    -- Repaint only while the row still shows and still owns the tooltip.
-    local tipRow = TB.guildFrame.rows[1]
-    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the first guild row still holds Goldie")
-    local tipLines = {}
-    local realAddLine = GameTooltip.AddLine
-    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
-    this = tipRow
-    tipRow.scripts.OnEnter(tipRow)
-    TB._stepsDwell = nil
-    tipLines = {}
-    tipRow:Hide()
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    assert(table.getn(tipLines) == 0, "a hidden row gets no repaint")
-    tipRow:Show()
-    GameTooltip.owner = TB.guildFrame.rows[2]
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    assert(table.getn(tipLines) == 0, "a moved tooltip gets no repaint")
-    this = tipRow
-    tipRow.scripts.OnEnter(tipRow)
-    TB._stepsDwell = nil
-    tipLines = {}
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    local sawStepBlock = false
-    for _, text in ipairs(tipLines) do
-        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
-    end
-    assert(sawStepBlock, "the visible owned row still repaints")
-    GameTooltip.AddLine = realAddLine
-    this = tipRow
-    tipRow.scripts.OnLeave(tipRow)
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2, "the Farm row lists its steps")
 
     -- Token loss clears the per-bot request times: asking again works at once.
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
@@ -4168,16 +4065,61 @@ local function stepHoverDwellChecks()
     TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
 
     -- Leave no step state behind for the tests below.
-    TB._stepsDwell = nil
-    TB._guildTipRow = nil
-    TB._guildTipOwner = nil
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
     TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
     TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
     TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
     TB.OnSystemMessage("TBM:ORDER_END")
 end
-stepHoverDwellChecks()
+stepRequestChecks()
+
+-- ── Active orders window ───────────────────────────────────────────────────
+do
+    -- The guild row tooltip stays short: the order is one line, the detail
+    -- (state, steps, difficulty) lives in the orders window.
+    TB.ShowTab("guild")
+    local tipLines2 = {}
+    local realAddLine2 = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, text) table.insert(tipLines2, text) end
+    TB.ShowGuildRowTooltip(TB.guildFrame.rows[1])
+    GameTooltip.AddLine = realAddLine2
+    local sawOrder, sawDetail = false, false
+    for _, text in ipairs(tipLines2) do
+        if string.find(text, "Order: ", 1, true) then sawOrder = true end
+        if string.find(text, "State:", 1, true) or string.find(text, "Steps (newest first)", 1, true)
+            or string.find(text, "Difficulty:", 1, true) then sawDetail = true end
+    end
+    assert(sawOrder and not sawDetail, "the row tooltip shows the order in one line, no detail")
+    assert(table.getn(tipLines2) <= 5, "the row tooltip stays short")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.OpenActiveOrders() and TB.activeOrdersWindow:IsVisible(), "the orders window opens")
+    local aw = TB.activeOrdersWindow
+    assert(aw.rows[1]:IsVisible() and aw.rows[2]:IsVisible() and not aw.rows[3]:IsVisible(),
+        "one row per bot with an order")
+    assert(aw.rows[1].bot == "Goldie" and aw.rows[2].bot == "Silver", "rows are sorted by bot")
+    assert(string.find(aw.detail:GetText(), "Order:", 1, true) ~= nil, "the first order is picked by default")
+    assert(aw.cancelBtn.enabled ~= false and aw.newBtn.enabled ~= false, "an order enables the buttons")
+    this = aw.rows[2]
+    aw.rows[2].scripts.OnClick(aw.rows[2])
+    assert(string.find(aw.detail:GetText(), "Highland Spring Water", 1, true) ~= nil,
+        "clicking a row shows that bot's order")
+    TB.activeOrdersWindow.cancelBtn.scripts.OnClick(TB.activeOrdersWindow.cancelBtn)
+    assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER", "Cancel order asks first")
+    TB.activeOrdersWindow.newBtn.scripts.OnClick(TB.activeOrdersWindow.newBtn)
+    assert(TB.GetOrderWindowBot() == "Silver", "New order opens the order window for the picked bot")
+    TB.OpenActiveOrders()
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|0")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    TB.RefreshActiveOrders()
+    assert(aw.empty:IsVisible() and not aw.rows[1]:IsVisible() and aw.cancelBtn.enabled == false,
+        "no orders: the empty text shows and the buttons are off")
+    TB.CloseActiveOrders()
+    assert(not aw:IsVisible(), "the orders window closes")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    TB.OnSystemMessage("TBM:ORDER_END")
+end
 
 -- Estimates: amount ÷ chance, nodes for herb and ore, none for buy/craft.
 assert(TB.OrderEstimate("farm", { "skin" }, 50, 10) == "about 20 kills", "a 50% chance doubles the kills")
@@ -4643,6 +4585,32 @@ now = now + 1
 TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
 assert(TB.GetOrderAmount() == 25, "Send commits the box number")
 assert(lastAddon() == "order Goldie farm 2318 25 inf", "Send sends the box number with no time limit")
+do
+    -- Goldie already holds an order: Send asks before replacing it.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|3|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    ReplacePopupTest.hold = true
+    lastPopupShown = nil
+    local sentBefore = table.getn(addonSent)
+    now = now + 1
+    TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+    assert(lastPopupShown == "TORTOISEBOTSMANAGER_REPLACE_ORDER", "Send asks before replacing a running order")
+    assert(table.getn(addonSent) == sentBefore, "nothing is sent until the player accepts")
+    assert(string.find(StaticPopupDialogs["TORTOISEBOTSMANAGER_REPLACE_ORDER"].text, "3/10", 1, true) ~= nil,
+        "the question names the running order and its progress")
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_REPLACE_ORDER"].OnAccept()
+    assert(table.getn(addonSent) == sentBefore + 1, "accepting sends the replacing order")
+    -- A finished order is replaced without a question.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|done|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    lastPopupShown = nil
+    now = now + 1
+    TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+    assert(lastPopupShown ~= "TORTOISEBOTSMANAGER_REPLACE_ORDER", "a finished order is replaced without asking")
+    ReplacePopupTest.hold = false
+end
 local hoursBox = TB.orderWindow.hoursBox
 hoursBox.text = "4"
 this = hoursBox

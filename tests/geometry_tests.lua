@@ -660,7 +660,7 @@ return function()
                 local br = frameRect(bar, cache)
                 local sr = frameRect(scroll, cache)
                 local items = {}
-                for _, key in ipairs({ "inviteBtn", "summonBtn", "syncBtn", "fillBtn" }) do
+                for _, key in ipairs({ "inviteBtn", "summonBtn", "syncBtn", "fillBtn", "activeBtn", "orderBtn" }) do
                     if frame[key] then table.insert(items, { key, frame[key] }) end
                 end
                 childrenInside("Guild bar", bar, br, items, cache, 4)
@@ -1767,6 +1767,37 @@ return function()
             if bar.expand then table.insert(items, { "expand", bar.expand }) end
             childrenInside("MiniBar", bar, br, items, cache, 2)
             noOverlaps("MiniBar icons", items, cache)
+        end
+    end
+
+    -- ── Active orders window ───────────────────────────────────────────
+    do
+        local cache = {}
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+        TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+        TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Armor Kit|0|1|working|-|Ironforge")
+        TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+        TB.OnSystemMessage("TBM:ORDER_END")
+        if not TB.OpenActiveOrders then
+            bad("ActiveOrders: OpenActiveOrders missing")
+        elseif not TB.OpenActiveOrders() then
+            bad("ActiveOrders: did not open")
+        else
+            local win = TB.activeOrdersWindow
+            local wr = frameRect(win, cache)
+            local items = {}
+            for i, row in ipairs(win.rows or {}) do
+                if row:IsVisible() then table.insert(items, { "row" .. i, row }) end
+            end
+            for _, key in ipairs({ "detail", "cancelBtn", "newBtn" }) do
+                if win[key] then table.insert(items, { key, win[key] }) end
+            end
+            if table.getn(items) < 4 then bad("ActiveOrders: expected two rows plus detail and buttons") end
+            childrenInside("ActiveOrders", win, wr, items, cache, 2)
+            noOverlaps("ActiveOrders controls", items, cache)
+            labelFits("ActiveOrders cancel", win.cancelBtn, nil, 6)
+            labelFits("ActiveOrders new", win.newBtn, nil, 6)
+            TB.CloseActiveOrders()
         end
     end
 
