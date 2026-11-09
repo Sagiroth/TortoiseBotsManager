@@ -2115,7 +2115,7 @@ end
             { text = "Gear", width = 50, x = 186, sortKey = nil },
             { text = "Status", width = 64, x = 238, sortKey = "status" },
             { text = "Role", width = 74, x = 304, sortKey = nil, center = true },
-            { text = "Order", width = 76, x = 380, sortKey = nil, center = true },
+            { text = "Order", width = 42, x = 380, sortKey = nil, center = true },
         }
         guildFrame.headerBtns = {}
         for _, h in ipairs(headers) do
