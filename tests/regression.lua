@@ -592,6 +592,70 @@ TB.lifecycleButtons.kick.scripts.OnClick(TB.lifecycleButtons.kick)
 assert(table.getn(sent) == beforeKick + 1 and sent[table.getn(sent)] == ".bot uninvite Gamma",
     "Kick must use only selected group members")
 
+-- Row right-click menus: builders list eligible per-bot actions, entries send
+-- the same wires as the bar buttons, and right-click opens the dropdown.
+TB._t = TB._t or {}
+TB._t.menuItems = {}
+assert(TB.BuildRosterRowMenu("Alpha", function(info) table.insert(TB._t.menuItems, info) end) > 0,
+    "an online ungrouped bot must offer row menu actions")
+TB._t.summonItem = nil
+table.foreach(TB._t.menuItems, function(k, info) if info.text == "Summon" then TB._t.summonItem = info end end)
+assert(TB._t.summonItem and TB._t.summonItem.func, "the roster menu must offer Summon for a live bot")
+assert(TB.BuildRosterRowMenu("NoSuchBotXYZ", function() end) == 0,
+    "an unknown name offers no roster menu")
+assert(TB.OpenRosterRowMenu("NoSuchBotXYZ") == false,
+    "an unknown name opens no roster menu")
+TB._t.addonBeforeInvite = table.getn(addonSent)
+TB._t.inviteItem = nil
+TB._t.inviteItems = {}
+assert(TB.BuildRosterRowMenu("Alpha", function(info) table.insert(TB._t.inviteItems, info) end) > 0,
+    "an online ungrouped bot must offer row menu actions")
+table.foreach(TB._t.inviteItems, function(k, info) if info.text == "Invite to group" then TB._t.inviteItem = info end end)
+assert(TB._t.inviteItem and TB._t.inviteItem.func, "the roster menu must offer Invite for an ungrouped bot")
+now = now + 1
+TB._t.inviteItem.func()
+assert(TB.IsRosterBatchActive("invite"), "the roster menu Invite must use the batch queue")
+TB.OnSystemMessage("Invitation sent to bot Alpha; it may accept it asynchronously.")
+partyMembers = { "Alpha", "Gamma" }
+event, this = "RAID_ROSTER_UPDATE", groupWatcher
+groupWatcher.scripts.OnEvent(groupWatcher)
+assert(not TB.IsRosterBatchActive("invite"), "the menu invite batch must finish once bots join")
+TB._t.menuRow = TB.rows[1]
+TB._t.menuRow.entry = { name = "Alpha", st = TB.GetState("Alpha"), inGroup = false }
+TB._t.menuFired = false
+TB._t.savedDropdownInit = UIDropDownMenu_Initialize
+TB._t.savedDropdownToggle = ToggleDropDownMenu
+UIDropDownMenu_Initialize = function(menu, fn) TB._t.menuInit = fn end
+ToggleDropDownMenu = function() TB._t.menuFired = true end
+this, arg1 = TB._t.menuRow, "RightButton"
+TB._t.menuRow.scripts.OnMouseUp(TB._t.menuRow)
+arg1 = nil
+assert(TB._t.menuFired, "right-click on a roster row must open the menu")
+UIDropDownMenu_Initialize = TB._t.savedDropdownInit
+ToggleDropDownMenu = TB._t.savedDropdownToggle
+assert(TB.OpenRosterRowMenu("") == false and TB.OpenGuildRowMenu("") == false,
+    "empty names open no row menu")
+assert(TB.BuildGuildRowMenu("Goldie", function() end) > 0,
+    "a claimed bot always offers at least Release")
+TB._t.guildItems = {}
+TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.guildItems, info) end)
+TB._t.releaseItem = nil
+table.foreach(TB._t.guildItems, function(k, info) if info.text == "Release" then TB._t.releaseItem = info end end)
+assert(TB._t.releaseItem and TB._t.releaseItem.func, "the guild menu must always offer Release")
+TB._t.releaseItem.func()
+assert(lastPopupShown == "TORTOISE_RELEASE_CLAIMED_BOT", "the guild menu Release must ask first")
+TB._t.moreRow = TB.guildFrame.rows[1]
+TB._t.moreRow.entry = { name = "Goldie" }
+this = TB._t.moreRow.moreBtn
+TB._t.moreRow.moreBtn.scripts.OnClick(TB._t.moreRow.moreBtn)
+assert(TB._t.menuInit ~= nil, "the More button must arm the dropdown")
+TB._t.subHere = TB.GetBotOrder and TB.GetBotOrder("Silver") or nil
+if TB.HasOrderCapability() and TB._t.subHere and TB._t.subHere.parent then
+    TB._t.subMenu = {}
+    assert(TB.BuildGuildRowMenu("Silver", function(info) table.insert(TB._t.subMenu, info) end) == 3,
+        "a sub-order row offers Cancel, Move and Release")
+end
+
 -- Gameplay actions never inspect roster selection and issue exactly one intent.
 local selectedBeforeAction = table.getn(TB.GetSelectedRosterNames())
 now = now + 1
@@ -2153,10 +2217,16 @@ assert(TB.botPanel:IsVisible(), "Bot panel must open when bag button is clicked"
 assert(string.find(TB.botPanel.subText:GetText(), "Gear Locked", 1, true) ~= nil,
     "Bot panel header must show Gear Locked badge for claimed 60 bot")
 
--- Release button with confirmation popup
+-- Release menu entry with confirmation popup
 now = now + 1
-this = row1.relBtn
-row1.relBtn.scripts.OnClick(row1.relBtn)
+TB._t = TB._t or {}
+TB._t.relItems = {}
+assert(TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.relItems, info) end) > 0,
+    "the guild row menu must list actions for Goldie")
+TB._t.relEntry = nil
+table.foreach(TB._t.relItems, function(k, info) if info.text == "Release" then TB._t.relEntry = info end end)
+assert(TB._t.relEntry and TB._t.relEntry.func, "the guild row menu must offer Release")
+TB._t.relEntry.func()
 assert(lastPopupShown == "TORTOISE_RELEASE_CLAIMED_BOT", "Release must prompt confirmation dialog")
 assert(StaticPopupDialogs["TORTOISE_RELEASE_CLAIMED_BOT"] ~= nil, "Release dialog specification must exist")
 StaticPopupDialogs["TORTOISE_RELEASE_CLAIMED_BOT"].OnAccept()
@@ -2637,7 +2707,7 @@ assert(TB.OpenOrderWindow("Goldie") == false, "the order window stays closed wit
 TB.ShowTab("guild")
 TB.RefreshGuildView()
 assert(not TB.guildFrame.rows[1].ordBtn:IsVisible(), "no capability hides the Order button")
-assert(not TB.guildFrame.rows[1].cancelBtn:IsVisible(), "no capability hides the Cancel button")
+assert(TB.guildFrame.rows[1].moreBtn:IsVisible(), "no capability keeps the More menu for Release")
 
 -- Permission gating: CanEditOfficerNote decides, re-checked every refresh.
 canEditOfficerNote = false
@@ -4141,12 +4211,17 @@ assert(TB.lastActionAck and TB.lastActionAck.intent == "order"
 TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|25|working|-|Ashenvale")
 assert(guildOrderRow.orderLine:GetText() == "Light Leather 0/25 (Ashenvale)",
     "the live line repaints the guild row")
-assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
-    "an order shows an enabled Cancel")
+assert(guildOrderRow.moreBtn:IsVisible() and guildOrderRow.moreBtn.enabled,
+    "an order shows an enabled More menu")
+TB._t.rowMenu = {}
+assert(TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.rowMenu, info) end) > 0,
+    "the row menu must list Cancel while the order runs")
+TB._t.rowCancel = nil
+table.foreach(TB._t.rowMenu, function(k, info) if info.text == "Cancel order" then TB._t.rowCancel = info end end)
+assert(TB._t.rowCancel and TB._t.rowCancel.func, "the row menu must offer Cancel order")
 now = now + 1
-this = guildOrderRow.cancelBtn
 local beforeCancel = table.getn(addonSent)
-guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
+TB._t.rowCancel.func()
 assert(table.getn(addonSent) == beforeCancel, "row Cancel sends nothing before the confirm")
 assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER", "row Cancel asks first")
 assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"] ~= nil, "cancel dialog must exist")
@@ -4159,7 +4234,12 @@ TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
 assert(TB.GetBotOrder("Goldie") == nil, "a cancel ACK drops the row at once")
 assert(string.find(guildOrderRow.orderLine:GetText(), "No order", 1, true),
     "a cancelled row falls back to No order")
-assert(not guildOrderRow.cancelBtn:IsVisible(), "no order hides Cancel")
+TB.RefreshGuildView()
+TB._t.noOrderMenu = {}
+TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.noOrderMenu, info) end)
+TB._t.noOrderCancel = nil
+table.foreach(TB._t.noOrderMenu, function(k, info) if info.text == "Cancel order" then TB._t.noOrderCancel = info end end)
+assert(TB._t.noOrderCancel == nil, "no order drops Cancel from the row menu")
 
 -- Errors ride the window feedback plus the generic status line.
 assert(TB.OpenOrderWindow("Goldie"), "the window reopens")
@@ -4376,7 +4456,11 @@ for _, state in ipairs(states) do
     TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|" .. state .. "|-|Ashenvale|easy|3")
     TB.RefreshGuildView()
     TB.RefreshOrderWindow()
-    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+    TB._t.stMenu = {}
+    TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.stMenu, info) end)
+    TB._t.stCancel = nil
+    table.foreach(TB._t.stMenu, function(k, info) if info.text == "Cancel order" then TB._t.stCancel = info end end)
+    assert(TB._t.stCancel and TB._t.stCancel.func and guildOrderRow.moreBtn:IsVisible() and guildOrderRow.moreBtn.enabled,
         "row Cancel stays enabled while " .. state)
     assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
         "window Cancel stays enabled while " .. state)
@@ -4391,7 +4475,11 @@ for _, line in ipairs(longLived) do
     TB.RefreshOrderWindow()
     local order = TB.GetBotOrder("Goldie")
     assert(order ~= nil, "the long-lived order lands")
-    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+    TB._t.liveMenu = {}
+    TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.liveMenu, info) end)
+    TB._t.liveCancel = nil
+    table.foreach(TB._t.liveMenu, function(k, info) if info.text == "Cancel order" then TB._t.liveCancel = info end end)
+    assert(TB._t.liveCancel and TB._t.liveCancel.func and guildOrderRow.moreBtn:IsVisible() and guildOrderRow.moreBtn.enabled,
         "row Cancel stays enabled for a long-lived order")
     assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
         "window Cancel stays enabled for a long-lived order")
@@ -4405,9 +4493,12 @@ for _, line in ipairs(longLived) do
     now = now + 1
     StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
     assert(lastAddon() == "order Goldie cancel", "confirming the window Cancel sends")
-    this = guildOrderRow.cancelBtn
+    TB._t.rowMenu2 = {}
+    TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.rowMenu2, info) end)
+    TB._t.rowCancel2 = nil
+    table.foreach(TB._t.rowMenu2, function(k, info) if info.text == "Cancel order" then TB._t.rowCancel2 = info end end)
     local beforeRowCancel = table.getn(addonSent)
-    guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
+    TB._t.rowCancel2.func()
     assert(table.getn(addonSent) == beforeRowCancel,
         "row Cancel sends nothing before the confirm")
     now = now + 1
@@ -4675,7 +4766,7 @@ local function enchantOrderChecks()
     assert(meetRow and meetRow.meetBtn and meetRow.meetBtn:IsVisible(),
         "an unfinished enchant shows Meet")
     assert(meetRow.meetBtn.enabled, "officer rights enable Meet")
-    assert(not meetRow.relBtn:IsVisible(), "Meet takes the Release slot while shown")
+    assert(meetRow.relBtn ~= nil, "the Release control still exists for the menu")
     canEditOfficerNote = false
     TB.RefreshGuildView()
     assert(not meetRow.meetBtn.enabled, "losing the right greys Meet out")
@@ -4688,8 +4779,8 @@ local function enchantOrderChecks()
         "Meet clicks send like the other order commands")
     TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|done|-|-")
     TB.RefreshGuildView()
-    assert(not meetRow.meetBtn:IsVisible() and meetRow.relBtn:IsVisible(),
-        "done restores Release")
+    assert(not meetRow.meetBtn:IsVisible() and meetRow.relBtn ~= nil,
+        "done hides Meet")
 
     -- Enchant search: the window lists name, slot, skill and have/need.
     assert(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|27747") == nil,

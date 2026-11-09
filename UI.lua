@@ -157,6 +157,97 @@ local function setButtonTooltip(button, text, title)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+-- Row right-click menus: rare and destructive actions live here; the row
+-- keeps only the everyday buttons. Builders stay testable without the
+-- DropDownList frames; the openers need the 1.12 dropdown API. Picking
+-- keeps the confirmations the buttons use today (Cancel, Move, Release)
+-- and sends the same wires.
+local function openRowMenu(menuName, build)
+    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return false end
+    if not TB[menuName] then
+        TB[menuName] = CreateFrame("Frame", "TortoiseBotsManager" .. menuName, UIParent, "UIDropDownMenuTemplate")
+    end
+    local menu = TB[menuName]
+    UIDropDownMenu_Initialize(menu, function()
+        build(UIDropDownMenu_AddButton)
+    end, "MENU")
+    ToggleDropDownMenu(1, nil, menu, "cursor")
+    return true
+end
+
+function TB.BuildGuildRowMenu(name, addButton)
+    name = TB.NormalizeName and TB.NormalizeName(name) or name
+    if not name or name == "" then return 0 end
+    local count = 0
+    local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
+    local order = orderCap and TB.GetBotOrder and TB.GetBotOrder(name) or nil
+    local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+    if order and TB.ConfirmOrderCancel then
+        addButton({ text = "Cancel order", notCheckable = 1, disabled = not mayOrder,
+            func = function() TB.ConfirmOrderCancel(name) end })
+        count = count + 1
+    end
+    if order and order.parent and TB.OpenOrderReassignMenu then
+        addButton({ text = "Move sub-order", notCheckable = 1, disabled = not mayOrder,
+            func = function() TB.OpenOrderReassignMenu(name, nil) end })
+        count = count + 1
+    end
+    if TB.ConfirmReleaseClaimedBot then
+        addButton({ text = "Release", notCheckable = 1,
+            func = function() TB.ConfirmReleaseClaimedBot(name) end })
+        count = count + 1
+    end
+    return count
+end
+
+function TB.OpenGuildRowMenu(name)
+    name = TB.NormalizeName and TB.NormalizeName(name) or name
+    if not name or name == "" then return false end
+    if TB.BuildGuildRowMenu(name, function() end) == 0 then return false end
+    local bot = name
+    return openRowMenu("_guildRowMenu", function(addButton)
+        TB.BuildGuildRowMenu(bot, addButton)
+    end)
+end
+
+function TB.BuildRosterRowMenu(name, addButton)
+    name = TB.NormalizeName and TB.NormalizeName(name) or name
+    if not name or name == "" then return 0 end
+    local count = 0
+    local pairs = {
+        { action = "login", label = "Login", verb = "add" },
+        { action = "logout", label = "Logout", verb = "logout" },
+        { action = "invite", label = "Invite to group", verb = "invite" },
+        { action = "kick", label = "Kick from group", verb = "uninvite" },
+        { action = "summon", label = "Summon", verb = "summon" },
+    }
+    for _, pair in ipairs(pairs) do
+        if TB.IsRosterActionEligible and TB.IsRosterActionEligible(name, pair.action) then
+            local verb, bot = pair.verb, name
+            addButton({ text = pair.label, notCheckable = 1,
+                func = function()
+                    if TB.QueueRosterBatch and pair.action == "invite" then
+                        TB.QueueRosterBatch(verb, { bot })
+                    elseif TB.SendBotCommand then
+                        TB.SendBotCommand(TB.BuildCommand(verb, bot))
+                    end
+                end })
+            count = count + 1
+        end
+    end
+    return count
+end
+
+function TB.OpenRosterRowMenu(name)
+    name = TB.NormalizeName and TB.NormalizeName(name) or name
+    if not name or name == "" then return false end
+    if TB.BuildRosterRowMenu(name, function() end) == 0 then return false end
+    local bot = name
+    return openRowMenu("_rosterRowMenu", function(addButton)
+        TB.BuildRosterRowMenu(bot, addButton)
+    end)
+end
+
 local function addRaidIcon(button, iconIndex)
     if button and not button.raidIcon then
         local icon = button:CreateTexture(nil, "ARTWORK")
@@ -771,10 +862,18 @@ CreateRow = function(parent, scroll, index)
         if entry.st and entry.st.altBot then
             GameTooltip:AddLine("Login takes it back as your companion, Logout logs it out.", COL.muted[1], COL.muted[2], COL.muted[3], true)
         end
+        if TB.BuildRosterRowMenu and TB.BuildRosterRowMenu(entry.name, function() end) > 0 then
+            GameTooltip:AddLine("Right-click for more actions.", COL.muted[1], COL.muted[2], COL.muted[3])
+        end
         if entry.location then GameTooltip:AddLine("Last: " .. entry.location, COL.muted[1], COL.muted[2], COL.muted[3]) end
         GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnMouseUp", function()
+        if arg1 ~= "RightButton" then return end
+        local entry = this.entry
+        if entry and TB.OpenRosterRowMenu then TB.OpenRosterRowMenu(entry.name) end
+    end)
     return row
 end
 
@@ -1976,6 +2075,9 @@ function TB.InitUI()
                     GameTooltip:AddLine(orderText, 1, 1, 1)
                 end
             end
+            if TB.BuildGuildRowMenu and TB.BuildGuildRowMenu(entry.name, function() end) > 0 then
+                GameTooltip:AddLine("Right-click for more actions.", COL.muted[1], COL.muted[2], COL.muted[3])
+            end
             GameTooltip:Show()
         end
 
@@ -2122,30 +2224,18 @@ function TB.InitUI()
             setButtonTooltip(ordBtn, "Open the order window for this bot.", "Order")
             row.ordBtn = ordBtn
 
-            local cancelBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            cancelBtn.flatKind = "danger"
-            cancelBtn:SetWidth(50); cancelBtn:SetHeight(16)
-            cancelBtn:SetPoint("LEFT", row, "LEFT", 368, -8)
-            cancelBtn:SetText("Cancel")
-            cancelBtn:SetScript("OnClick", function()
+            -- The "..." button opens the row's right-click menu for mouse
+            -- users; the same actions stay one right-click away on the row.
+            local moreBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+            moreBtn:SetWidth(36); moreBtn:SetHeight(16)
+            moreBtn:SetPoint("LEFT", row, "LEFT", 368, -8)
+            moreBtn:SetText("...")
+            moreBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
-                if entry and TB.ConfirmOrderCancel then TB.ConfirmOrderCancel(entry.name) end
+                if entry and TB.OpenGuildRowMenu then TB.OpenGuildRowMenu(entry.name) end
             end)
-            setButtonTooltip(cancelBtn, "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.", "Cancel order")
-            row.cancelBtn = cancelBtn
-
-            local moveBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            moveBtn:SetWidth(36); moveBtn:SetHeight(16)
-            moveBtn:SetPoint("LEFT", row, "LEFT", 420, -8)
-            moveBtn:SetText("Move")
-            moveBtn:SetScript("OnClick", function()
-                local entry = this:GetParent().entry
-                if entry and TB.OpenOrderReassignMenu then
-                    TB.OpenOrderReassignMenu(entry.name, this)
-                end
-            end)
-            setButtonTooltip(moveBtn, "Hand this sub-order to another guild bot.", "Reassign")
-            row.moveBtn = moveBtn
+            setButtonTooltip(moreBtn, "More actions (Cancel, Move, Release). Right-click the row works too.", "More")
+            row.moreBtn = moreBtn
 
             local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             relBtn.flatKind = "danger"
@@ -2201,6 +2291,11 @@ function TB.InitUI()
                 GameTooltip:Hide()
             end)
 
+            row:SetScript("OnMouseUp", function()
+                if arg1 ~= "RightButton" then return end
+                local entry = this.entry
+                if entry and TB.OpenGuildRowMenu then TB.OpenGuildRowMenu(entry.name) end
+            end)
             table.insert(rows, row)
         end
         guildFrame.rows = rows
@@ -2658,12 +2753,12 @@ function TB.InitUI()
                         row.ordBtn:Hide()
                     end
                 end
-                if row.cancelBtn then
-                    if orderCap and order then
-                        row.cancelBtn:Show()
-                        if mayOrder then row.cancelBtn:Enable() else row.cancelBtn:Disable() end
+                if row.moreBtn then
+                    if TB.BuildGuildRowMenu and TB.BuildGuildRowMenu(entry.name, function() end) > 0 then
+                        row.moreBtn:Show()
+                        if orderCap and order and not mayOrder then row.moreBtn:Disable() else row.moreBtn:Enable() end
                     else
-                        row.cancelBtn:Hide()
+                        row.moreBtn:Hide()
                     end
                 end
                 local showMeet = orderCap and order and TB.OrderNeedsMeet
@@ -2685,14 +2780,6 @@ function TB.InitUI()
                     -- Meet borrows this slot on unfinished enchant rows; the
                     -- other rows always show Release for claimed bots.
                     if showMeet then row.relBtn:Hide() else row.relBtn:Show() end
-                end
-                if row.moveBtn then
-                    if orderCap and order and order.parent and mayOrder then
-                        row.moveBtn:Show()
-                        row.moveBtn:Enable()
-                    else
-                        row.moveBtn:Hide()
-                    end
                 end
 
                 -- Role button label
