@@ -1565,6 +1565,16 @@ return function()
                 wr = frameRect(win, {})
                 childrenInside("OrderWindow step 3", win, wr, items, {}, 2)
                 noOverlaps("OrderWindow step 3 controls", items, {})
+                do
+                    -- The status line sits above Back; Send and Cancel must end above it.
+                    local c3 = {}
+                    local sendBottom = frameRect(win.sendBtn, c3).bottom
+                    local statusTop = frameRect(win.statusLine, c3).top
+                    if statusTop < sendBottom + 4 then
+                        bad(string.format("OrderWindow: step 3 Send ends at %s, status line starts at %s",
+                            tostring(sendBottom), tostring(statusTop)))
+                    end
+                end
                 TB.SetOrderStep(1)
                 wr = frameRect(win, cache)
                 noOverlaps("OrderWindow controls", items1, cache)

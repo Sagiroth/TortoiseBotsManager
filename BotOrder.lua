@@ -3561,7 +3561,7 @@ local function createWindow()
     end
 
     local base = createOrderLimits(win.stepTwo)
-    createOrderStepThree(win.stepThree, base)
+    createOrderStepThree(win.stepThree, base - 84)
 
     win.backBtn = smallButton(win, "Back", 76, 12, 0,
         "Go back", "Go back one step. Your pick is kept.",
@@ -3596,7 +3596,7 @@ end
 -- next refresh.
 -- Each step is only as tall as its own widgets; Back/Next and the status
 -- lines hang from the bottom edge.
-local ORDER_STEP_H = { 462, 270, 330 }
+local ORDER_STEP_H = { 462, 270, 272 }
 
 local function updateOrderStepPane()
     if not win.stepOne then return end
