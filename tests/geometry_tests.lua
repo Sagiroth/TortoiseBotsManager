@@ -1617,6 +1617,7 @@ return function()
                         TB.SetOrderSelection(3860)
                         if TB.C then TB.C.SEND_DELAY = savedDelay end
                         TB.OnSystemMessage("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:3:1:2:2:Ashenvale:1:0:1:1|40|-|-")
+                        TB.SetOrderStep(3)
                         TB.RefreshOrderWindow()
                         local shown = {}
                         for i, box in ipairs(win.bringRows or {}) do

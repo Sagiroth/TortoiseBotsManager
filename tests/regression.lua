@@ -126,9 +126,14 @@ local function object(kind, parent)
     function methods:SetThumbTexture(...) end
 
     methods.__index = methods
+    -- Child list for pane walks: every widget records itself on its parent,
+    -- like the preview mock does for rendering.
+    if parent then
+        parent.children = parent.children or {}
+        table.insert(parent.children, value)
+    end
     return setmetatable(value, methods)
 end
-
 function CreateFrame(kind, name, parent, template)
     local frame = object(kind, parent)
     frame.name = name
@@ -5363,8 +5368,9 @@ now = now + 1
 TB.OnSystemMessage("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:8:0:0:0:-:0:0:0:0|40|-|-")
 assert(table.getn(TB.GetOrderBring()) == 1 and TB.GetOrderBring()[1] == 2319,
     "a full-bag preview auto-ticks its reagent")
+TB.SetOrderStep(3)
 assert(TB.orderWindow.bringRows and TB.orderWindow.bringRows[1]:IsVisible()
-    and TB.orderWindow.bringRows[1]:GetChecked(), "the reagent row shows ticked")
+    and TB.orderWindow.bringRows[1]:GetChecked(), "the reagent row shows ticked on step 3")
 this = TB.orderWindow.bringRows[1]
 TB.orderWindow.bringRows[1].scripts.OnClick(TB.orderWindow.bringRows[1])
 assert(table.getn(TB.GetOrderBring()) == 0, "the player can untick the row")
@@ -5378,6 +5384,99 @@ GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = nil, nil, nil
 TB.SetOrderBring({})
 if TB.GetOrderKind() ~= "farm" then TB.SetOrderKind("farm") end
 TB.CloseOrderWindow()
+    -- Step panes: every widget of the order window lives in exactly one step
+    -- pane (or is shared chrome); only the current step's pane shows, so a
+    -- widget the pane misses fails here. The mock reports a flat IsVisible, so
+    -- the walk folds the pane flags in, the way the client hides subtrees.
+    local function orderStepPaneChecks()
+        assert(TB.OpenOrderWindow("Goldie"), "pane walk opens the window")
+        local function paneOf(widget)
+            local o = widget.parent
+            while o do
+                if o == TB.orderWindow.stepOne then return 1 end
+                if o == TB.orderWindow.stepTwo then return 2 end
+                if o == TB.orderWindow.stepThree then return 3 end
+                if o == TB.orderWindow then return 0 end
+                o = o.parent
+            end
+            return nil
+        end
+        local function checkWalk(where)
+            local win = TB.orderWindow
+            local step = TB.GetOrderStep()
+            assert(win.stepOne.visible == (step == 1)
+                and win.stepTwo.visible == (step == 2)
+                and win.stepThree.visible == (step == 3), where .. ": only the step pane shows")
+            local chrome = {}
+            for _, w in ipairs({ win.title, win.head, win.stepLabel, win.backBtn, win.nextBtn,
+                win.statusLine, win.feedbackLine, win.closeBtn,
+                win.headerBand, win.headerRule, win.headerLine,
+                win.stepOne, win.stepTwo, win.stepThree }) do
+                chrome[w] = true
+            end
+            local allowed, again = {}, true
+            while again do
+                again = false
+                local function mark(f)
+                    for _, c in ipairs(f.children or {}) do
+                        if not allowed[c] and (chrome[c] or allowed[c.parent]) then
+                            allowed[c] = true
+                            again = true
+                        end
+                        mark(c)
+                    end
+                end
+                mark(win)
+            end
+            local leaks, unnamed = {}, 0
+            local function walk(f)
+                for _, c in ipairs(f.children or {}) do
+                    local pane = paneOf(c)
+                    assert(pane ~= nil, where .. ": every widget sits in a step pane or the window")
+                    -- Unnamed textures straight on the window are header art
+                    -- (band, rule, hairlines): no label a step could leak.
+                    local isArt = c.kind == "Texture" and c.parent == win
+                        and (c.text == nil or c.text == "") and c.name == nil
+                    if pane == 0 and not allowed[c] and not isArt then
+                        local label = c.name or c.text
+                        if label == nil or label == "" then label = c.kind end
+                        table.insert(leaks, "not in a step pane: " .. label)
+                    end
+                    local shown = c.visible
+                    local o = c.parent
+                    while shown and o do
+                        if not o.visible then shown = false end
+                        o = o.parent
+                    end
+                    if shown and not allowed[c] and pane ~= step and not isArt then
+                        local label = c.text or c.name
+                        if label == nil or label == "" then
+                            unnamed = unnamed + 1
+                            label = c.kind .. " #" .. unnamed
+                        end
+                        table.insert(leaks, label)
+                    end
+                    walk(c)
+                end
+            end
+            walk(win)
+            assert(table.getn(leaks) == 0, where .. " leaks onto step " .. step .. ": " .. table.concat(leaks, ", "))
+        end
+        TB.SetOrderStep(1)
+        TB.RefreshOrderWindow()
+        checkWalk("per-bot step 1")
+        TB.SetOrderStep(2)
+        TB.RefreshOrderWindow()
+        checkWalk("per-bot step 2")
+        TB.SetOrderStep(3)
+        TB.RefreshOrderWindow()
+        checkWalk("per-bot step 3")
+        assert(TB.OpenGuildOrderWindow(), "pane walk covers pick-a-bot mode")
+        TB.RefreshOrderWindow()
+        checkWalk("pick-a-bot mode")
+        TB.CloseOrderWindow()
+    end
+    orderStepPaneChecks()
 end
 guildOrderUiChecks()
 
@@ -5387,9 +5486,9 @@ TB.SetOrderNoLimit(true)
 TB.SetOrderKeep(false)
 assert(TB.OpenOrderWindow("Goldie"), "steps reopen the window")
 assert(TB.GetOrderStep() == 1, "a fresh window starts on step 1")
-assert(TB.orderWindow.searchBox:IsVisible()
-    and not TB.orderWindow.amountBox:IsVisible()
-    and not TB.orderWindow.sendBtn:IsVisible(), "step 1 shows search only")
+assert(TB.orderWindow.stepOne:IsVisible()
+    and not TB.orderWindow.stepTwo:IsVisible()
+    and not TB.orderWindow.stepThree:IsVisible(), "step 1 shows its pane only")
 assert(TB.orderWindow.backBtn.enabled == false, "step 1 greys Back")
 TB.SetOrderStep(0)
 assert(TB.GetOrderStep() == 1, "step 0 clamps to step 1")
@@ -5411,7 +5510,7 @@ assert(TB.GetOrderSelection() == 2318, "steps pick the item")
 assert(TB.GetOrderStep() == 1, "picking stays on step 1 until Next")
 TB.OrderStepNext()
 assert(TB.GetOrderStep() == 2, "Next moves to the amount step")
-assert(TB.orderWindow.amountBox:IsVisible() and not TB.orderWindow.searchBox:IsVisible(),
+assert(TB.orderWindow.stepTwo:IsVisible() and not TB.orderWindow.stepOne:IsVisible(),
     "step 2 swaps search for the amount row")
 assert(TB.orderWindow.backBtn.enabled ~= false, "step 2 enables Back")
 this = TB.orderWindow.backBtn
@@ -5421,7 +5520,7 @@ this = TB.orderWindow.nextBtn
 TB.orderWindow.nextBtn.scripts.OnClick(TB.orderWindow.nextBtn)
 assert(TB.GetOrderStep() == 2, "the Next button advances")
 TB.SetOrderStep(3)
-assert(TB.orderWindow.previewLine:IsVisible() and TB.orderWindow.sendBtn:IsVisible()
+assert(TB.orderWindow.stepThree:IsVisible() and not TB.orderWindow.stepOne:IsVisible()
     and TB.orderWindow.stepLabel:GetText() == "Step 3 of 3", "step 3 shows preview and Send")
 TB.SetOrderFeedback(nil)
 now = now + 1
