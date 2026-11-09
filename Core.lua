@@ -347,6 +347,10 @@ local function ensureQueueFrame()
         end
     end)
 end
+function TB.TracePrint(text)
+    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cff9aa0a6TBM " .. text .. "|r") end
+end
+
 function TB.SendBotCommand(cmd, opts)
     opts = opts or {}
     cmd = TB.Trim(cmd or "")
@@ -354,6 +358,7 @@ function TB.SendBotCommand(cmd, opts)
 
     local full = ".bot " .. cmd
     local channel = TB.AddonCommandChannel and TB.AddonCommandChannel()
+    if TB.trace then TB.TracePrint("> " .. cmd .. "   [" .. (channel or "chat") .. (TB.CanSend() and "" or ", queued") .. "]") end
     if TB.CanSend() then
         lastSend = (GetTime and GetTime()) or 0
         if channel then
@@ -810,8 +815,12 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
         return
     end
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm minilayout [horizontal|vertical] — mini bar direction, /tbm settings — window options, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm minilayout [horizontal|vertical] — mini bar direction, /tbm settings — window options, /tbm trace — show what is sent and received, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
+        return
+    elseif msg == "trace" then
+        TB.trace = not TB.trace
+        TB.Print("Trace " .. (TB.trace and "on: every command sent (>) and server line received (<) shows in chat" or "off"))
         return
     elseif msg == "mini" or msg == "full" then
         TB.RequestMode(msg)

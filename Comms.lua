@@ -762,6 +762,7 @@ end
 
 function TB.OnSystemMessage(msg)
     if not msg or msg == "" then return end
+    if TB.trace and string.sub(msg, 1, 4) == "TBM:" then TB.TracePrint("< " .. msg) end
     -- Some clients double the "|" of a "|A"/"|T" pair on server-delivered
     -- chat lines before Lua sees them. Protocol fields never contain "||",
     -- so restore those two pairs on TBM lines. Stock clients never send
