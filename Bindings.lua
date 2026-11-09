@@ -28,3 +28,37 @@ function TB.SendKeyIntent(intent)
     end
     return TB.SendActionIntent(intent)
 end
+
+-- One binding name per gameplay intent the bindings above cover. The action
+-- tooltips (Fight tab, mini bar) name the bound key in the title.
+TB.BINDING_BY_INTENT = {
+    attack = "TBM_ATTACK",
+    stop = "TBM_STOP",
+    interrupt = "TBM_INTERRUPT",
+    flee = "TBM_FLEE",
+    pull = "TBM_PULL",
+    pullback = "TBM_PULLBACK",
+    ["focus skull"] = "TBM_FOCUS_SKULL",
+    follow = "TBM_FOLLOW",
+    stay = "TBM_STAY",
+    come = "TBM_COME",
+    hold = "TBM_COME",
+}
+
+-- The player's bound key for an intent ("SHIFT-1"), or nil when unbound.
+-- GetBindingText is FrameXML; without it the raw key still reads fine.
+function TB.BindingText(intent)
+    if not intent then return nil end
+    local binding = TB.BINDING_BY_INTENT and TB.BINDING_BY_INTENT[intent] or nil
+    if not binding or type(GetBindingKey) ~= "function" then return nil end
+    local key1, key2 = GetBindingKey(binding)
+    if not key1 then return nil end
+    local function keyText(key)
+        if type(GetBindingText) == "function" then
+            return GetBindingText(key, "KEY_")
+        end
+        return key
+    end
+    if key2 then return keyText(key1) .. ", " .. keyText(key2) end
+    return keyText(key1)
+end

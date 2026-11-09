@@ -142,11 +142,13 @@ end
 local function setButtonTooltip(button, text, title)
     button:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        local binding = this.bindingIntent and TB.BindingText and TB.BindingText(this.bindingIntent) or nil
         if title then
-            GameTooltip:SetText(title)
+            GameTooltip:SetText(binding and (title .. " (" .. binding .. ")") or title)
             GameTooltip:AddLine(text, 0.9, 0.9, 0.9, 1)
         else
-            GameTooltip:SetText(text)
+            local shown = binding and (text .. " (" .. binding .. ")") or text
+            GameTooltip:SetText(shown)
         end
         if this.tooltipExtra then
             local extra = this.tooltipExtra()
@@ -231,6 +233,7 @@ function TB.UI.CreateButton(parent, label, width, height, opts)
     if label then
         button:SetText(label)
     end
+    if opts.intent then button.bindingIntent = opts.intent end
 
     if opts.icon then
         local icon = button:CreateTexture(nil, "OVERLAY")
@@ -1580,6 +1583,16 @@ function TB.InitUI()
         emptyMsg:SetText("|cff888888No other party members.\nInvite your bots from the Roster tab to manage party roles.|r")
         partyFrame.emptyMsg = emptyMsg
 
+        local inviteBtn = TB.UI.CreateButton(partyFrame, "Invite from Roster", 140, 22, {
+            tip = "Open the Roster tab to invite your bots into the party.",
+            tipTitle = "Invite from Roster",
+            onClick = function()
+                if TB.ShowTab then TB.ShowTab("roster") end
+            end,
+        })
+        inviteBtn:SetPoint("CENTER", partyFrame, "CENTER", 0, -62)
+        partyFrame.inviteButton = inviteBtn
+
         -- Row: class icon, name and level on the left; the role picker as
         -- one segmented control; on the right the CC mark, Summon and the
         -- gear & bags button, all on the row's centre line.
@@ -2529,8 +2542,10 @@ function TB.InitUI()
 
         if partyCount == 0 then
             TB.partyFrame.emptyMsg:Show()
+            if TB.partyFrame.inviteButton then TB.partyFrame.inviteButton:Show() end
         else
             TB.partyFrame.emptyMsg:Hide()
+            if TB.partyFrame.inviteButton then TB.partyFrame.inviteButton:Hide() end
         end
     end
 

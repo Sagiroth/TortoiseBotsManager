@@ -64,6 +64,8 @@ local WOW_GLOBALS = set({
     "GetTime", "GetCursorPosition", "GetScreenHeight", "GetScreenWidth", "GetRealZoneText",
     "GetZoneText", "IsInInstance", "IsShiftKeyDown", "PlaySound", "SendAddonMessage",
     "SendChatMessage",
+    -- key bindings (C API plus FrameXML UIParent.lua)
+    "GetBindingKey", "GetBindingText",
     -- `os and os.date(...)`: a probe that is nil in the client, never called there
     "os",
 })
