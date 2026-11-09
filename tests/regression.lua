@@ -65,8 +65,12 @@ local function object(kind, parent)
         self.scripts[name] = callback
     end
     function methods:SetBackdrop(...) end
-    function methods:SetBackdropColor(...) end
-    function methods:SetBackdropBorderColor(...) end
+    function methods:SetBackdropColor(...) self.backdropColor = {...} end
+    function methods:SetBackdropBorderColor(...) self.backdropBorder = {...} end
+    function methods:SetStatusBarTexture(...) self.barTexture = {...} end
+    function methods:SetStatusBarColor(...) self.barColor = {...} end
+    function methods:SetMinMaxValues(minV, maxV) self.barMin, self.barMax = minV, maxV end
+    function methods:SetValue(v) self.value = v end
     function methods:CreateTexture() return object("Texture", self) end
     function methods:CreateFontString() return object("FontString", self) end
     function methods:SetTexture(...) self.texture = {...} end
@@ -112,11 +116,24 @@ local function object(kind, parent)
     function methods:GetEffectiveScale() return 1 end
     function methods:Enable() self.enabled = true end
     function methods:Disable() self.enabled = false end
+    function methods:GetScale() return self.scale or 1 end
+    function methods:SetScale(scale) self.scale = scale end
+    function methods:SetOrientation(...) end
+    function methods:SetMinMaxValues(min, max) self.min, self.max = min, max; self.barMin, self.barMax = min, max end
+    function methods:SetValueStep(...) end
+    function methods:SetValue(value) self.value = value end
+    function methods:GetValue() return self.value or 0 end
+    function methods:SetThumbTexture(...) end
 
     methods.__index = methods
+    -- Child list for pane walks: every widget records itself on its parent,
+    -- like the preview mock does for rendering.
+    if parent then
+        parent.children = parent.children or {}
+        table.insert(parent.children, value)
+    end
     return setmetatable(value, methods)
 end
-
 function CreateFrame(kind, name, parent, template)
     local frame = object(kind, parent)
     frame.name = name
@@ -151,7 +168,14 @@ GameTooltip = {
 function GetTime() return now end
 StaticPopupDialogs = StaticPopupDialogs or {}
 local lastPopupShown = nil
-function StaticPopup_Show(which) lastPopupShown = which end
+-- The replace-order question accepts itself unless a case asks to see it.
+ReplacePopupTest = { hold = false }
+function StaticPopup_Show(which)
+    lastPopupShown = which
+    if which == "TORTOISEBOTSMANAGER_REPLACE_ORDER" and not ReplacePopupTest.hold then
+        StaticPopupDialogs[which].OnAccept()
+    end
+end
 function time() return 123 end
 function SendChatMessage(message) table.insert(sent, message) end
 function SendAddonMessage(prefix, message, channel)
@@ -159,6 +183,7 @@ function SendAddonMessage(prefix, message, channel)
 end
 function GetCursorPosition() return 0, 0 end
 function GetScreenWidth() return 1024 end
+function GetScreenHeight() return 900 end
 function UnitExists(unit)
     if unit == "player" then return true end
     if unit == "target" then return targetExists end
@@ -168,6 +193,21 @@ end
 local deadUnits, ghostUnits = {}, {}
 function UnitIsDead(unit) return deadUnits[unit] or false end
 function UnitIsGhost(unit) return ghostUnits[unit] or false end
+-- Chunk globals: main already sits at the 200-local limit, so new mock
+-- state must not add locals here.
+partyVitals, partyBuffs, nearUnits = {}, {}, nil
+function UnitHealth(unit) return (partyVitals[unit] and partyVitals[unit].hp) or 100 end
+function UnitHealthMax(unit) return (partyVitals[unit] and partyVitals[unit].hpMax) or 100 end
+function UnitMana(unit) return (partyVitals[unit] and partyVitals[unit].mp) or 100 end
+function UnitManaMax(unit) return (partyVitals[unit] and partyVitals[unit].mpMax) or 100 end
+function UnitBuff(unit, index)
+    local buffs = partyBuffs[unit]
+    return buffs and buffs[index] or nil
+end
+function CheckInteractDistance(unit, slot)
+    if nearUnits == nil then return true end
+    return nearUnits[unit] ~= false
+end
 local itemCache = {}
 function GetItemInfo(id)
     local item = itemCache[id]
@@ -205,7 +245,9 @@ for _, file in ipairs({
     "BotRun.lua",
     "BotLoot.lua",
     "BotOrder.lua",
+    "ActiveOrders.lua",
     "ServerInfo.lua",
+    "Settings.lua",
     "MiniBar.lua",
     "Minimap.lua",
     "Bindings.lua",
@@ -322,9 +364,27 @@ assert(TB.GetRosterEntry("Alpha").ccMark == "circle",
     "CC assignment snapshot must expose the server-owned CC mark")
 assert(TB.GetRosterCount() == 3, "roster count must come from snapshot")
 
--- Display rows constantly show all bots with their state
+-- Sortable columns (session-only): click a header to sort, again to reverse.
 assert(table.getn(TB.GetDisplayRows("")) == 3, "roster must constantly show all bots")
 assert(table.getn(TB.GetDisplayRows("alpha")) == 1, "text search must filter by bot name")
+assert(TB.GetDisplayRows("")[1].name == "Alpha", "status sort must keep online rows first")
+TB.SetRosterSort("name")
+assert(TB.GetDisplayRows("")[1].name == "Alpha" and TB.GetDisplayRows("")[2].name == "Bravo"
+    and TB.GetDisplayRows("")[3].name == "Gamma", "name sort must order rows alphabetically")
+assert(TB.rosterFrame.headerBtns and table.getn(TB.rosterFrame.headerBtns) == 4,
+    "roster header buttons must exist for each column")
+assert(TB.rosterFrame.headerBtns[1].headerLabel:GetText() == "NAME ^",
+    "the active roster header must carry the direction marker")
+TB.SetRosterSort("name")
+assert(TB.GetDisplayRows("")[1].name == "Gamma", "clicking the same header again must reverse the rows")
+TB.SetRosterSort("class")
+assert(TB.GetDisplayRows("")[1].className == "Druid" and TB.GetDisplayRows("")[3].className == "Warrior",
+    "class sort must order rows by class name")
+TB.SetRosterSort("status")
+assert(TB.GetDisplayRows("")[1].name == "Alpha", "status sort must restore online rows first")
+TB.rosterSort = { key = "bogus", dir = 7 }
+assert(TB.GetDisplayRows("")[1].name == "Alpha", "a stray sort key must fall back to the default order")
+TB.rosterSort = { key = "status", dir = 1 }
 
 -- Alt-bots (TortoiseBots #872): the line after the snapshot marks owned
 -- characters playing on their own; Login on one takes it back.
@@ -592,6 +652,70 @@ TB.lifecycleButtons.kick.scripts.OnClick(TB.lifecycleButtons.kick)
 assert(table.getn(sent) == beforeKick + 1 and sent[table.getn(sent)] == ".bot uninvite Gamma",
     "Kick must use only selected group members")
 
+-- Row right-click menus: builders list eligible per-bot actions, entries send
+-- the same wires as the bar buttons, and right-click opens the dropdown.
+TB._t = TB._t or {}
+TB._t.menuItems = {}
+assert(TB.BuildRosterRowMenu("Alpha", function(info) table.insert(TB._t.menuItems, info) end) > 0,
+    "an online ungrouped bot must offer row menu actions")
+TB._t.summonItem = nil
+table.foreach(TB._t.menuItems, function(k, info) if info.text == "Summon" then TB._t.summonItem = info end end)
+assert(TB._t.summonItem and TB._t.summonItem.func, "the roster menu must offer Summon for a live bot")
+assert(TB.BuildRosterRowMenu("NoSuchBotXYZ", function() end) == 0,
+    "an unknown name offers no roster menu")
+assert(TB.OpenRosterRowMenu("NoSuchBotXYZ") == false,
+    "an unknown name opens no roster menu")
+TB._t.addonBeforeInvite = table.getn(addonSent)
+TB._t.inviteItem = nil
+TB._t.inviteItems = {}
+assert(TB.BuildRosterRowMenu("Alpha", function(info) table.insert(TB._t.inviteItems, info) end) > 0,
+    "an online ungrouped bot must offer row menu actions")
+table.foreach(TB._t.inviteItems, function(k, info) if info.text == "Invite to group" then TB._t.inviteItem = info end end)
+assert(TB._t.inviteItem and TB._t.inviteItem.func, "the roster menu must offer Invite for an ungrouped bot")
+now = now + 1
+TB._t.inviteItem.func()
+assert(TB.IsRosterBatchActive("invite"), "the roster menu Invite must use the batch queue")
+TB.OnSystemMessage("Invitation sent to bot Alpha; it may accept it asynchronously.")
+partyMembers = { "Alpha", "Gamma" }
+event, this = "RAID_ROSTER_UPDATE", groupWatcher
+groupWatcher.scripts.OnEvent(groupWatcher)
+assert(not TB.IsRosterBatchActive("invite"), "the menu invite batch must finish once bots join")
+TB._t.menuRow = TB.rows[1]
+TB._t.menuRow.entry = { name = "Alpha", st = TB.GetState("Alpha"), inGroup = false }
+TB._t.menuFired = false
+TB._t.savedDropdownInit = UIDropDownMenu_Initialize
+TB._t.savedDropdownToggle = ToggleDropDownMenu
+UIDropDownMenu_Initialize = function(menu, fn) TB._t.menuInit = fn end
+ToggleDropDownMenu = function() TB._t.menuFired = true end
+this, arg1 = TB._t.menuRow, "RightButton"
+TB._t.menuRow.scripts.OnMouseUp(TB._t.menuRow)
+arg1 = nil
+assert(TB._t.menuFired, "right-click on a roster row must open the menu")
+UIDropDownMenu_Initialize = TB._t.savedDropdownInit
+ToggleDropDownMenu = TB._t.savedDropdownToggle
+assert(TB.OpenRosterRowMenu("") == false and TB.OpenGuildRowMenu("") == false,
+    "empty names open no row menu")
+assert(TB.BuildGuildRowMenu("Goldie", function() end) > 0,
+    "a claimed bot always offers at least Release")
+TB._t.guildItems = {}
+TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.guildItems, info) end)
+TB._t.releaseItem = nil
+table.foreach(TB._t.guildItems, function(k, info) if info.text == "Release" then TB._t.releaseItem = info end end)
+assert(TB._t.releaseItem and TB._t.releaseItem.func, "the guild menu must always offer Release")
+TB._t.releaseItem.func()
+assert(lastPopupShown == "TORTOISE_RELEASE_CLAIMED_BOT", "the guild menu Release must ask first")
+TB._t.moreRow = TB.guildFrame.rows[1]
+TB._t.moreRow.entry = { name = "Goldie" }
+this = TB._t.moreRow.moreBtn
+TB._t.moreRow.moreBtn.scripts.OnClick(TB._t.moreRow.moreBtn)
+assert(TB._t.menuInit ~= nil, "the More button must arm the dropdown")
+TB._t.subHere = TB.GetBotOrder and TB.GetBotOrder("Silver") or nil
+if TB.HasOrderCapability() and TB._t.subHere and TB._t.subHere.parent then
+    TB._t.subMenu = {}
+    assert(TB.BuildGuildRowMenu("Silver", function(info) table.insert(TB._t.subMenu, info) end) == 3,
+        "a sub-order row offers Cancel, Move and Release")
+end
+
 -- Gameplay actions never inspect roster selection and issue exactly one intent.
 local selectedBeforeAction = table.getn(TB.GetSelectedRosterNames())
 now = now + 1
@@ -600,6 +724,8 @@ this = TB.actionButtons.attack
 TB.actionButtons.attack.scripts.OnClick(TB.actionButtons.attack)
 assert(table.getn(sent) == beforeAttack + 1 and sent[table.getn(sent)] == ".bot action attack",
     "Attack must send exactly one action intent")
+assert(TB.ActionFeedbackState("attack") == "waiting",
+    "Attack click must show a waiting state until the server answers")
 assert(table.getn(TB.GetSelectedRosterNames()) == selectedBeforeAction,
     "gameplay actions must not couple to roster checkbox selection")
 now = now + 1
@@ -774,6 +900,8 @@ TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
 assert(sent[table.getn(sent)] == ".bot action stance tank", "Tank stance pill must send stance tank")
 assert(TB.currentStance == "tank" and TB.stancePills.tank.isActive and not TB.stancePills.near.isActive,
     "Active stance pill must become disabled")
+assert(TB.ActionFeedbackState("stance tank") == "waiting",
+    "stance clicks must keep their waiting state through the pill repaint")
 TB.OnSystemMessage("TBM:ACTION_ACK|stance|party|2|tank")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "stance" and TB.lastActionAck.executor == "tank",
     "structured stance ACK must be parsed")
@@ -800,9 +928,13 @@ TB.OnSystemMessage("TBM:ACTION_ACK|attack|party|2|-")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "attack"
     and TB.lastActionAck.scope == "party" and TB.lastActionAck.count == 2,
     "structured action ACK must be parsed")
+assert(TB.ActionFeedbackState("attack") == "ok",
+    "an ACK must flash the clicked button green")
 TB.OnSystemMessage("TBM:ACTION_ERR|pullback|NO_TARGET|Select a living target")
 assert(TB.lastActionError and TB.lastActionError.code == "NO_TARGET",
     "structured action ERR must be parsed")
+assert(TB.ActionFeedbackState("pullback") == "error",
+    "an ACTION_ERR must flash the clicked button red")
 TB.OnSystemMessage("TBM:ACTION_ACK|interrupt|party|1|Arcana")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "interrupt"
     and TB.lastActionAck.executor == "Arcana",
@@ -811,6 +943,20 @@ TB.OnSystemMessage("TBM:ACTION_ERR|interrupt|not-casting|The target is not casti
 assert(TB.lastActionError and TB.lastActionError.intent == "interrupt"
     and TB.lastActionError.code == "not-casting",
     "structured interrupt ERR must be parsed")
+-- A missing answer clears the waiting look after the action timeout.
+TB.NoteActionFeedback("stay", "waiting")
+assert(TB.ActionFeedbackState("stay") == "waiting", "fresh clicks must read waiting")
+now = now + (TB.C.ACTION_TIMEOUT or 8) + 1
+assert(TB.ActionFeedbackState("stay") == nil, "a missing answer must clear the waiting state")
+now = now + 1
+TB.NoteActionFeedback("stay", "waiting")
+assert(TB.ActionFeedbackState("stay") == "waiting", "state must be re-armable after a timeout")
+TB.OnSystemMessage("TBM:ACTION_ACK|stay|party|2|-")
+assert(TB.ActionFeedbackState("stay") == "ok", "a late ACK must still flash green")
+-- Timed pulls ("pull 10") and toggle switches ("aoe on") map back to
+-- the button intent that sent them.
+assert(TB.ActionFeedbackKey("action pull 10") == "pull", "timed pull must map to its button")
+assert(TB.ActionFeedbackKey("action aoe on") == "aoe", "toggle switches must map to their key")
 
 -- Polling now requests the authoritative roster command and deduplicates
 -- queued refreshes; BuildCommand remains available for legacy callers.
@@ -929,6 +1075,75 @@ assert(druidRow.roleButtons[4]:IsVisible()
 assert(druidRow.ccIcon.point[1] == "RIGHT"
     and druidRow.ccIcon.point[4] == -64,
     "CC indicator must keep its own slot left of Summon")
+
+function partyRowVitalsChecks()
+-- Party rows show vitals and state from the client alone: the server never
+-- sends HP, mana, drinking or range in any TBM: line.
+local savedMembers, savedClass = partyMembers, partyClassName
+local savedExists, savedTarget = targetExists, targetNameValue
+local savedPriest = TB.GetBotState("Priestbot")
+partyClassName = "Priest"
+partyMembers = { "Priestbot" }
+TB.SetBotState("Priestbot", { move = "follow" })
+partyVitals.party1 = nil
+partyBuffs.party1 = nil
+nearUnits = nil
+targetExists, targetNameValue = false, nil
+TB.RefreshPartyView()
+local vitalsRow = TB.partyFrame.rows[2]
+assert(vitalsRow.partyName == "Priestbot" and vitalsRow.hpBar and vitalsRow.manaBar,
+    "party rows build HP and mana bars")
+assert(vitalsRow.partyState == nil and vitalsRow.manaBar.visible
+    and string.find(vitalsRow.descText.text, "Following", 1, true),
+    "a healthy bot nearby shows movement, not state")
+targetExists, targetNameValue = true, "Priestbot"
+TB.RefreshPartyView()
+local rowSel = (TB.C.THEME and TB.C.THEME.rowSel) or { 0.20, 0.155, 0.07, 0.96 }
+assert(vitalsRow.backdropColor[1] == rowSel[1] and vitalsRow.backdropColor[2] == rowSel[2],
+    "the targeted bot row highlights gold")
+targetExists, targetNameValue = false, nil
+TB.RefreshPartyView()
+assert(vitalsRow.backdropColor[1] ~= rowSel[1], "clearing the target clears the highlight")
+partyVitals.party1 = { hp = 20, hpMax = 100, mp = 50, mpMax = 100 }
+TB.RefreshPartyView()
+assert(vitalsRow.hpBar.value == 20 and vitalsRow.hpBar.barMax == 100
+    and vitalsRow.hpBar.barColor[1] == TB.C.COLOR.red[1],
+    "low HP paints the HP bar red at the reported value")
+assert(vitalsRow.partyState == nil
+    and string.find(vitalsRow.descText.text, "Following", 1, true),
+    "low HP alone keeps the movement line")
+deadUnits.party1 = true
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "Dead"
+    and string.find(vitalsRow.descText.text, "Dead", 1, true),
+    "a dead bot shows Dead instead of movement")
+assert(vitalsRow.hpBar.barColor[1] == TB.C.COLOR.muted[1],
+    "a dead bot greys the HP bar")
+deadUnits.party1 = false
+ghostUnits.party1 = true
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "Ghost", "a released bot shows Ghost")
+ghostUnits.party1 = false
+partyVitals.party1 = { hp = 100, hpMax = 100, mp = 100, mpMax = 100 }
+partyBuffs.party1 = { "Drink" }
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "Drinking"
+    and string.find(vitalsRow.descText.text, "Drinking", 1, true),
+    "a drinking bot shows Drinking instead of movement")
+partyBuffs.party1 = nil
+nearUnits = { party1 = false }
+TB.RefreshPartyView()
+assert(vitalsRow.partyState == "OOR"
+    and string.find(vitalsRow.descText.text, "OOR", 1, true),
+    "an out-of-range bot shows OOR instead of movement")
+nearUnits = nil
+partyVitals.party1 = nil
+partyMembers, partyClassName = savedMembers, savedClass
+targetExists, targetNameValue = savedExists, savedTarget
+TB.SetBotState("Priestbot", savedPriest or {})
+TB.RefreshPartyView()
+end
+partyRowVitalsChecks()
 
 -- ── addon command transport ────────────────────────────────────────────────
 -- UI commands travel as addon messages only while the server says the core
@@ -1951,6 +2166,16 @@ now = now + 1
 this, arg1 = restEntry, "LeftButton"
 restEntry.scripts.OnClick(restEntry)
 assert(lastAddon() == "action rest", "a flyout click runs the action")
+TB.OpenMiniCategory("switch")
+do
+    local found = nil
+    for _, e in ipairs(fly.entries) do
+        if e.def and e.def.toggle == "loot" then found = e end
+    end
+    assert(found and string.find(found.label.text or "", "%(On%)", 1) ~= nil,
+        "the flyout must spell the switch word beside the colour lamp")
+end
+TB.OpenMiniCategory("camp")
 this, arg1 = restEntry, "RightButton"
 restEntry.scripts.OnClick(restEntry)
 assert(bar.icons.rest and bar.icons.rest.visible, "right-click pins the action to the bar")
@@ -1990,8 +2215,55 @@ TortoiseBotsDB.miniBar = { x = 9999, y = 9999 }
 SlashCmdList["TORTOISEBOTSMANAGER"]("resetpos")
 assert(TortoiseBotsDB.miniBar == nil, "resetpos must clear the mini bar position")
 assert(TB.miniBar.point[1] == "BOTTOM", "resetpos must re-anchor the mini bar")
+-- Horizontal/vertical layout: stored, toggled from the bar and the slash
+-- command, and stacked without touching the chrome.
+assert(TB.GetMiniLayout() == "horizontal", "the mini bar starts horizontal")
+TortoiseBotsDB.miniLayout = "sideways"
+assert(TB.GetMiniLayout() == "horizontal", "a stray layout value reads back horizontal")
+TB.SetMiniLayout("vertical")
+assert(TortoiseBotsDB.miniLayout == "vertical" and TB.GetMiniLayout() == "vertical",
+    "setting the layout stores it")
+assert(bar.height > bar.width, "a vertical bar is taller than wide")
+assert(bar.categories.engage.point and bar.categories.engage.point[1] == "TOP", "vertical categories stack downward")
+assert(bar.favButtons[1].point and bar.favButtons[1].point[1] == "TOP", "vertical favourites stack downward")
+assert(bar.expand.point[1] == "BOTTOM", "the + button sits at the foot of a vertical bar")
+arg1 = "RightButton"
+bar.handle.scripts.OnClick(bar.handle)
+arg1 = nil
+assert(TB.GetMiniLayout() == "horizontal", "right-click on the turtle flips the layout back")
+assert(bar.favButtons[1].point[1] == "LEFT", "horizontal favourites run left to right")
+SlashCmdList["TORTOISEBOTSMANAGER"]("minilayout vertical")
+assert(TB.GetMiniLayout() == "vertical", "/tbm minilayout vertical stacks the bar")
+SlashCmdList["TORTOISEBOTSMANAGER"]("minilayout")
+assert(TB.GetMiniLayout() == "horizontal", "/tbm minilayout with no word flips the bar")
+TB.SetMiniLayout("horizontal")
+-- Favourite slots: a bound key runs that slot, shows on the button and in
+-- the tooltip; empty or unusable slots stay silent.
+TortoiseBotsDB.miniFavorites = { "stop", "attack", "rest" }
+TB.LayoutMiniBar()
+bar:Show()
+TB.RefreshMiniBar()
+GetBindingKey = function(name) if name == "TBM_FAV1" then return "SHIFT-1" end end
+TB.RefreshMiniBar()
+assert(bar.favButtons[1].key.text == "SHIFT-1", "the bound key shows on its favourite button")
+assert(bar.favButtons[2].key.visible == false, "an unbound slot shows no key")
+this = bar.favButtons[1]
+now = now + 1
+assert(TB.RunMiniFavorite(1) == true, "a bound favourite slot runs")
+assert(lastAddon() == "action stop", "slot 1 runs the first favourite")
+assert(TB.RunMiniFavorite(9) == false, "an empty slot runs nothing")
+assert(TB.RunMiniFavorite(0) == false and TB.RunMiniFavorite(13) == false, "slots outside 1-12 run nothing")
+targetExists, targetNameValue = false, nil
+assert(TB.RunMiniFavorite(2) == false, "a slot needing an enemy target stays silent without one")
+targetExists, targetNameValue = true, "Enemy"
+assert(TB.RunMiniFavorite("bad") == false, "a non-number slot runs nothing")
+GetBindingKey = nil
+TB.RefreshMiniBar()
+assert(bar.favButtons[1].key.visible == false, "no binding API means no key text")
+TortoiseBotsDB.miniFavorites = { "attack", "stop", "interrupt", "flee", "pull", "pullback", "focus skull",
+    "follow", "stay", "come", "aoe" }
+TB.LayoutMiniBar()
 bar.expand.scripts.OnClick(bar.expand)
-assert(TB.GetMode() == "full" and TB.frame.visible and not bar.visible, "+ restores the full window")
 targetExists, targetNameValue = true, "Enemy"
 TB.Refresh()
 
@@ -2033,6 +2305,23 @@ assert(table.getn(allClaimed) == 3, "snapshot must retain all 3 claimed bots")
 assert(allClaimed[1].name == "Goldie" and allClaimed[1].level == 60, "highest level bot must sort first")
 assert(allClaimed[2].name == "Silver" and allClaimed[2].level == 45, "mid level bot must sort second")
 assert(allClaimed[3].name == "Bronze" and allClaimed[3].level == 20, "lower level bot must sort third")
+
+-- Sortable guild columns (session-only): click a header to sort, again to reverse.
+TB.SetGuildSort("name")
+assert(TB.GetClaimedBots()[1].name == "Bronze" and TB.GetClaimedBots()[2].name == "Goldie"
+    and TB.GetClaimedBots()[3].name == "Silver", "name sort must order guild rows alphabetically")
+assert(TB.guildFrame.headerBtns and table.getn(TB.guildFrame.headerBtns) == 6,
+    "guild header buttons must exist for each column")
+assert(TB.guildFrame.headerBtns[1].headerLabel:GetText() == "NAME ^",
+    "the active guild header must carry the direction marker")
+TB.SetGuildSort("name")
+assert(TB.GetClaimedBots()[1].name == "Silver", "clicking the same guild header again must reverse the rows")
+TB.SetGuildSort("level")
+assert(TB.GetClaimedBots()[1].name == "Goldie", "level sort must restore highest level first")
+TB.SetGuildSort("status")
+assert(TB.GetClaimedBots()[1].online and TB.GetClaimedBots()[table.getn(TB.GetClaimedBots())].online == false,
+    "status sort must keep online guild bots before offline")
+TB.guildSort = { key = "level", dir = -1 }
 
 -- Gear locking policy state
 assert(allClaimed[1].gearLocked == true, "Level 60 bot must have gearLocked = true")
@@ -2153,10 +2442,16 @@ assert(TB.botPanel:IsVisible(), "Bot panel must open when bag button is clicked"
 assert(string.find(TB.botPanel.subText:GetText(), "Gear Locked", 1, true) ~= nil,
     "Bot panel header must show Gear Locked badge for claimed 60 bot")
 
--- Release button with confirmation popup
+-- Release menu entry with confirmation popup
 now = now + 1
-this = row1.relBtn
-row1.relBtn.scripts.OnClick(row1.relBtn)
+TB._t = TB._t or {}
+TB._t.relItems = {}
+assert(TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.relItems, info) end) > 0,
+    "the guild row menu must list actions for Goldie")
+TB._t.relEntry = nil
+table.foreach(TB._t.relItems, function(k, info) if info.text == "Release" then TB._t.relEntry = info end end)
+assert(TB._t.relEntry and TB._t.relEntry.func, "the guild row menu must offer Release")
+TB._t.relEntry.func()
 assert(lastPopupShown == "TORTOISE_RELEASE_CLAIMED_BOT", "Release must prompt confirmation dialog")
 assert(StaticPopupDialogs["TORTOISE_RELEASE_CLAIMED_BOT"] ~= nil, "Release dialog specification must exist")
 StaticPopupDialogs["TORTOISE_RELEASE_CLAIMED_BOT"].OnAccept()
@@ -2285,8 +2580,38 @@ assert(TB.SendKeyIntent("flee") == true, "keybinding Flee must send while the ca
 now = now + 1
 TB.OnSystemMessage("TBM:CAPS|inventory,behavior,claimed-roster")
 assert(TB.SendKeyIntent("flee") == false, "keybinding Flee must stay silent without the server cap")
-assert(table.getn(sent) == beforeKeys + 4, "keybindings must send exactly one intent per press")
+-- ── Tooltips show bound keys, empty Party offers Roster ───────────────────
+assert(TB.BindingText("attack") == nil, "unbound actions report no key")
+GetBindingKey = function(binding)
+    if binding == "TBM_ATTACK" then return "1" end
+    if binding == "TBM_FOLLOW" then return "SHIFT-1", "CTRL-F" end
+    return nil
+end
+assert(TB.BindingText("attack") == "1", "a bound key is reported raw")
+assert(TB.BindingText("stop") == nil, "an unbound action still reports nothing")
+GetBindingText = function(key) return "<" .. key .. ">" end
+assert(TB.BindingText("follow") == "<SHIFT-1>, <CTRL-F>", "both keys are named")
+assert(TB.BindingText("bogus") == nil, "an unknown intent reports nothing")
+assert(TB.actionButtons.attack.bindingIntent == "attack", "action buttons carry their intent for tooltips")
+this = TB.actionButtons.attack
+TB.actionButtons.attack.scripts.OnEnter(TB.actionButtons.attack)
+this = TB.actionButtons.stop
+TB.actionButtons.stop.scripts.OnEnter(TB.actionButtons.stop)
+GetBindingKey, GetBindingText = nil, nil
 
+partyMembers = {}
+TB.ShowTab("party")
+TB.RefreshPartyView()
+assert(TB.partyFrame.emptyMsg:IsVisible(), "an empty party shows its message")
+assert(TB.partyFrame.inviteButton and TB.partyFrame.inviteButton:IsVisible(), "an empty party offers Invite from Roster")
+TB.ShowTab("roster")
+this = TB.partyFrame.inviteButton
+TB.partyFrame.inviteButton.scripts.OnClick(TB.partyFrame.inviteButton)
+assert(TortoiseBotsDB.activeTab == "roster", "Invite from Roster opens the Roster tab")
+partyMembers = { "Alpha" }
+TB.RefreshPartyView()
+assert(not TB.partyFrame.inviteButton:IsVisible(), "a filled party hides the invite button")
+partyMembers = {}
 -- ── Dungeon run window (P11): capability-gated satellite ─────────────────
 TB.OnSystemMessage("TBM:TRANSPORT|party")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
@@ -2298,7 +2623,9 @@ now = now + 1
 this = TB.tabDungeon
 TB.tabDungeon.scripts.OnClick(TB.tabDungeon)
 assert(TB.dungeonFrame:IsVisible(), "the Dungeon tab shows its page")
-assert(TB.runWindow and TB.runWindow:IsVisible(), "the Dungeon tab opens the run window")
+assert(not (TB.runWindow and TB.runWindow:IsVisible()), "the Dungeon tab leaves the run window shut")
+TB.OpenRunWindow()
+assert(TB.runWindow and TB.runWindow:IsVisible(), "Open run window opens it")
 local runQueue = frames["TortoiseBotsManagerQueueFrame"]
 for _ = 1, 30 do
     if lastAddon() == "run status" then break end
@@ -2430,6 +2757,7 @@ TB.OnSystemMessage("TBM:FEATURE|hire-max|4|Hires per player")
 assert(table.getn(TB.GetServerFeatures()) == 2, "the switches parse")
 assert(TB.infoWindow.rows[1].label.text == "Dungeon runs" and TB.infoWindow.rows[2].value.text == "4",
     "the switches render")
+assert(TB.infoWindow.rows[1].value.text == "On", "a switch value must spell On, not colour alone")
 assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Server features: dungeon-run on") == true,
     "the summary stays out of the chat")
 -- All settings: a search asks the server, the answer lists key and value.
@@ -2454,6 +2782,47 @@ assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, ni
     "the search summary stays out of the chat")
 TB.SetServerInfoTab("main")
 TB.CloseServerInfo()
+-- ── Settings window: persisted options wired to the frames ──────────────────
+assert(TortoiseBotsDB.minimapShown == true and TortoiseBotsDB.miniLocked == false,
+    "settings must default to a visible minimap button and an unlocked mini bar")
+assert(TB.ClampWindowScale(2) == 1.1 and TB.ClampWindowScale(0.5) == 0.7
+    and TB.ClampWindowScale("abc") == nil and TB.GetWindowScale() == 1,
+    "the window scale must clamp to 70-110% with automatic 100% at 900 px height")
+assert(TB.ClampPollInterval(1) == 4 and TB.ClampPollInterval(99) == 60
+    and TB.ClampPollInterval(7.6) == 7 and TortoiseBotsDB.pollInterval == 8,
+    "the roster refresh must clamp to whole seconds in 4-60")
+assert(TB.OpenSettings() and TB.settingsWindow:IsVisible(), "the settings window must open")
+assert(TB.settingsWindow.slider:GetValue() == 1, "the slider must show the automatic scale")
+assert(TB.settingsWindow.scaleValue.text == "Auto (100%)", "automatic scale must read as Auto")
+TB.SetWindowScale(0.82)
+assert(TortoiseBotsDB.windowScale == 0.82 and TB.frame.scale == 0.82
+    and TB.settingsWindow.scaleValue.text == "82%", "a slider move must scale the window and persist")
+TB.SetWindowScale(nil)
+assert(TortoiseBotsDB.windowScale == nil and TB.frame.scale == 1
+    and TB.settingsWindow.scaleValue.text == "Auto (100%)", "Auto must clear the override")
+TB.SetMinimapShown(false)
+assert(TortoiseBotsDB.minimapShown == false and not TB.minimapButton:IsVisible()
+    and TB.settingsWindow.minimapCheck:GetChecked() == false, "hiding must drop the minimap button")
+TB.SetMinimapShown(true)
+assert(TortoiseBotsDB.minimapShown == true and TB.minimapButton:IsVisible(), "showing must bring it back")
+TB.SetMiniLocked(true)
+assert(TortoiseBotsDB.miniLocked == true, "locking must persist the mini bar lock")
+TB.SetMiniLocked(false)
+TB.SetAutoPoll(false)
+assert(TortoiseBotsDB.autoPoll == false
+    and TB.settingsWindow.pollStepper.minus.enabled == false, "pausing refresh must grey the interval")
+TB.SetAutoPoll(true)
+TB.SetPollInterval(12)
+assert(TortoiseBotsDB.pollInterval == 12 and TB.settingsWindow.pollStepper.label.text == "12 s",
+    "the interval stepper must persist and repaint")
+TB.SetPollInterval(8)
+TB.settingsWindow.pollStepper.repaint()
+assert(TB.settingsWindow.pollStepper.label.text == "8 s", "the interval must reset for later tests")
+SlashCmdList["TORTOISEBOTSMANAGER"]("settings")
+assert(not TB.settingsWindow:IsVisible(), "/tbm settings must toggle the window")
+SlashCmdList["TORTOISEBOTSMANAGER"]("settings")
+assert(TB.settingsWindow:IsVisible(), "/tbm settings must reopen it")
+TB.CloseSettings()
 TB.OpenRunWindow()
 -- Mutual exclusion with the vault/NPC satellites.
 TB.OpenBotPanel("Alpha")
@@ -2637,7 +3006,7 @@ assert(TB.OpenOrderWindow("Goldie") == false, "the order window stays closed wit
 TB.ShowTab("guild")
 TB.RefreshGuildView()
 assert(not TB.guildFrame.rows[1].ordBtn:IsVisible(), "no capability hides the Order button")
-assert(not TB.guildFrame.rows[1].cancelBtn:IsVisible(), "no capability hides the Cancel button")
+assert(not TB.guildFrame.rows[1].moreBtn:IsVisible(), "a row with only Release has no More button; right-click still opens it")
 
 -- Permission gating: CanEditOfficerNote decides, re-checked every refresh.
 canEditOfficerNote = false
@@ -3615,32 +3984,9 @@ local function orderStepHistoryChecks()
     assert(TB.OrderStepAgeText(7260) == "2h 1m ago" and TB.OrderStepAgeText(7200) == "2h ago"
         and TB.OrderStepAgeText(90000) == "1d ago", "ages read in minutes, hours and days")
 
-    -- Repaint: a committed list redraws the hovered row without a new request.
-    -- The changed live line below clears the throttle, so a repaint that asked
-    -- again would really send. The time step keeps the tab's own "order list"
-    -- out of the send queue (a queued command would leak into the wire cases).
-    now = now + 1
-    TB.ShowTab("guild")
-    local tipRow = TB.guildFrame.rows[1]
-    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the guild row holds Goldie")
-    local tipLines = {}
-    local realAddLine = GameTooltip.AddLine
-    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
     now = now + 16
-    TB.ShowGuildRowTooltip(tipRow)
-    TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|deliver|-")
+    TB.ShowTab("guild")
     now = now + 1
-    before = table.getn(addonSent)
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    GameTooltip.AddLine = realAddLine
-    local sawStepBlock = false
-    for _, text in ipairs(tipLines) do
-        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
-    end
-    assert(sawStepBlock, "the committed list redraws the hovered tooltip")
-    assert(table.getn(addonSent) == before, "the repaint sends no second request")
     -- Stale reply: asked for A, the bot moved to B, the reply lands late.
     -- Nothing is cached and B tooltips no steps; the next hover may ask again.
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
@@ -3670,78 +4016,27 @@ local function orderStepHistoryChecks()
         "the block restores the capability set")
 end
 orderStepHistoryChecks()
--- ── Step hover dwell + single outstanding (Opus cold review) ───────────────
--- A hover asks only after the cursor rests 0.4 s; one steps reply in flight
--- blocks the next bot until END or 5 s. Own function: chunk local limit.
-local function stepHoverDwellChecks()
-    TB._stepsDwell = nil
-    TB._guildTipRow = nil
-    TB._guildTipOwner = nil
+-- ── Steps requests: single outstanding, late replies, token loss ───────────
+-- One steps reply in flight blocks the next bot until END or 5 s. Own
+-- function: chunk local limit.
+local function stepRequestChecks()
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders,guild-order-steps")
     TB.OnSystemMessage("TBM:ORDER|Goldie|Farm|2318|Light Leather|0|10|working|-|Ashenvale")
     TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
-    for i = 1, 20 do
-        TB.OnSystemMessage("TBM:ORDER|Sweep" .. i .. "|farm|2318|Light Leather|0|10|working|-|Ashenvale")
-    end
     now = now + 16
-    TB.ShowTab("guild")
-    TB.RefreshGuildView()
-    local dwellFrame = frames["TortoiseBotsManagerStepsDwell"]
-    assert(dwellFrame and dwellFrame.scripts.OnUpdate, "the steps dwell timer must exist")
-    local hoverRow = TB.guildFrame.rows[1]
-    assert(hoverRow and hoverRow.scripts.OnEnter and hoverRow.scripts.OnLeave, "guild rows must hover")
-    local row1 = TB.guildFrame.rows[1]
-    assert(row1.entry and row1.entry.name == "Goldie", "the first guild row holds Goldie")
-
-    -- Sweep: 20 quick hovers (0.2 s each) send nothing.
-    local beforeSweep = table.getn(addonSent)
-    for i = 1, 20 do
-        local fake = { entry = { name = "Sweep" .. i, level = 60, className = "Warrior", status = "Online" } }
-        this = fake
-        hoverRow.scripts.OnEnter(hoverRow)
-        now = now + 0.2
-        dwellFrame.scripts.OnUpdate(dwellFrame)
-        this = fake
-        hoverRow.scripts.OnLeave(hoverRow)
-    end
-    now = now + 1
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSweep, "sweeping 20 rows sends no step request")
-
-    -- Rest: 0.5 s on Goldie sends one request.
-    now = now + 1
-    local stay = { entry = { name = "Goldie", level = 60, className = "Warrior", status = "Online" } }
-    this = stay
-    hoverRow.scripts.OnEnter(hoverRow)
-    now = now + 0.5
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSweep + 1 and lastAddon() == "order Goldie steps",
-        "resting 0.5 s sends one step request")
-    this = stay
-    hoverRow.scripts.OnLeave(hoverRow)
+    local before = table.getn(addonSent)
+    assert(TB.RequestOrderSteps("Goldie") == true and lastAddon() == "order Goldie steps",
+        "a steps request names the bot")
 
     -- Outstanding: Silver waits while Goldie's reply is in flight.
     now = now + 1
-    local beforeSecond = table.getn(addonSent)
-    local silver = { entry = { name = "Silver", level = 45, className = "Priest", status = "Online" } }
-    this = silver
-    hoverRow.scripts.OnEnter(hoverRow)
-    now = now + 0.5
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSecond, "a second row waits while one steps request is outstanding")
-    this = silver
-    hoverRow.scripts.OnLeave(hoverRow)
+    assert(TB.RequestOrderSteps("Silver") == false and table.getn(addonSent) == before + 1,
+        "a second bot waits while one steps request is outstanding")
 
-    -- After 5 s without an END the next hover may ask again.
+    -- After 5 s without an END the next request may go out.
     now = now + 6
-    this = silver
-    hoverRow.scripts.OnEnter(hoverRow)
-    now = now + 0.5
-    dwellFrame.scripts.OnUpdate(dwellFrame)
-    assert(table.getn(addonSent) == beforeSecond + 1 and lastAddon() == "order Silver steps",
+    assert(TB.RequestOrderSteps("Silver") == true and lastAddon() == "order Silver steps",
         "the single outstanding request times out after 5 s")
-    this = silver
-    hoverRow.scripts.OnLeave(hoverRow)
 
     -- Both late replies still commit each bot's own list.
     TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
@@ -3754,44 +4049,7 @@ local function stepHoverDwellChecks()
     assert(TB.GetOrderSteps("Silver") ~= nil, "Silver's reply still commits")
 
     -- Identity is case-insensitive: the "Farm" row keeps its steps.
-    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2, "the Farm row tooltips its steps")
-
-    -- Repaint only while the row still shows and still owns the tooltip.
-    local tipRow = TB.guildFrame.rows[1]
-    assert(tipRow.entry and tipRow.entry.name == "Goldie", "the first guild row still holds Goldie")
-    local tipLines = {}
-    local realAddLine = GameTooltip.AddLine
-    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
-    this = tipRow
-    tipRow.scripts.OnEnter(tipRow)
-    TB._stepsDwell = nil
-    tipLines = {}
-    tipRow:Hide()
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    assert(table.getn(tipLines) == 0, "a hidden row gets no repaint")
-    tipRow:Show()
-    GameTooltip.owner = TB.guildFrame.rows[2]
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    assert(table.getn(tipLines) == 0, "a moved tooltip gets no repaint")
-    this = tipRow
-    tipRow.scripts.OnEnter(tipRow)
-    TB._stepsDwell = nil
-    tipLines = {}
-    TB.OnSystemMessage("TBM:ORDER_STEPS_BEGIN|Goldie|1|0")
-    TB.OnSystemMessage("TBM:ORDER_STEP|Goldie|5|working|-|bank|2319")
-    TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
-    local sawStepBlock = false
-    for _, text in ipairs(tipLines) do
-        if string.find(text, "Steps (newest first):", 1, true) then sawStepBlock = true end
-    end
-    assert(sawStepBlock, "the visible owned row still repaints")
-    GameTooltip.AddLine = realAddLine
-    this = tipRow
-    tipRow.scripts.OnLeave(tipRow)
+    assert(table.getn(TB.OrderStepsTooltipLines("Goldie")) == 2, "the Farm row lists its steps")
 
     -- Token loss clears the per-bot request times: asking again works at once.
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
@@ -3807,16 +4065,61 @@ local function stepHoverDwellChecks()
     TB.OnSystemMessage("TBM:ORDER_STEPS_END|Goldie")
 
     -- Leave no step state behind for the tests below.
-    TB._stepsDwell = nil
-    TB._guildTipRow = nil
-    TB._guildTipOwner = nil
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
     TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
     TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
     TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
     TB.OnSystemMessage("TBM:ORDER_END")
 end
-stepHoverDwellChecks()
+stepRequestChecks()
+
+-- ── Active orders window ───────────────────────────────────────────────────
+do
+    -- The guild row tooltip stays short: the order is one line, the detail
+    -- (state, steps, difficulty) lives in the orders window.
+    TB.ShowTab("guild")
+    local tipLines2 = {}
+    local realAddLine2 = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, text) table.insert(tipLines2, text) end
+    TB.ShowGuildRowTooltip(TB.guildFrame.rows[1])
+    GameTooltip.AddLine = realAddLine2
+    local sawOrder, sawDetail = false, false
+    for _, text in ipairs(tipLines2) do
+        if string.find(text, "Order: ", 1, true) then sawOrder = true end
+        if string.find(text, "State:", 1, true) or string.find(text, "Steps (newest first)", 1, true)
+            or string.find(text, "Difficulty:", 1, true) then sawDetail = true end
+    end
+    assert(sawOrder and not sawDetail, "the row tooltip shows the order in one line, no detail")
+    assert(table.getn(tipLines2) <= 5, "the row tooltip stays short")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+    assert(TB.OpenActiveOrders() and TB.activeOrdersWindow:IsVisible(), "the orders window opens")
+    local aw = TB.activeOrdersWindow
+    assert(aw.rows[1]:IsVisible() and aw.rows[2]:IsVisible() and not aw.rows[3]:IsVisible(),
+        "one row per bot with an order")
+    assert(aw.rows[1].bot == "Goldie" and aw.rows[2].bot == "Silver", "rows are sorted by bot")
+    assert(string.find(aw.title:GetText(), "Light Leather", 1, true) ~= nil, "the first order is picked by default")
+    assert(aw.cancelBtn.enabled ~= false, "an order enables the buttons")
+    this = aw.rows[2]
+    aw.rows[2].scripts.OnClick(aw.rows[2])
+    assert(string.find(aw.title:GetText(), "Highland Spring Water", 1, true) ~= nil,
+        "clicking a row shows that bot's order")
+    TB.activeOrdersWindow.cancelBtn.scripts.OnClick(TB.activeOrdersWindow.cancelBtn)
+    assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER", "Cancel order asks first")
+    TB.OpenOrderWindow("Silver")
+    assert(not aw:IsVisible(), "opening an order window closes the orders window")
+    TB.OpenActiveOrders()
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|0")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    TB.RefreshActiveOrders()
+    assert(aw.empty:IsVisible() and not aw.rows[1]:IsVisible() and aw.cancelBtn.enabled == false,
+        "no orders: the empty text shows and the buttons are off")
+    TB.CloseActiveOrders()
+    assert(not aw:IsVisible(), "the orders window closes")
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+    TB.OnSystemMessage("TBM:ORDER_END")
+end
 
 -- Estimates: amount ÷ chance, nodes for herb and ore, none for buy/craft.
 assert(TB.OrderEstimate("farm", { "skin" }, 50, 10) == "about 20 kills", "a 50% chance doubles the kills")
@@ -3954,6 +4257,15 @@ assert(table.getn(addonSent) == beforeSearch, "typing waits for the pause")
 now = now + 1
 TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
 assert(lastAddon() == "order search Goldie farm leather", "the pause sends one search")
+-- One typing pause is one search, not one per frame.
+do
+    local sentAfterPause = table.getn(addonSent)
+    for _ = 1, 5 do
+        now = now + 1
+        TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+    end
+    assert(table.getn(addonSent) == sentAfterPause, "a search is not repeated every frame")
+end
 TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
 TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
 TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")
@@ -4033,6 +4345,17 @@ assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=0", "gold=0 rides t
 now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
 assert(lastAddon() == "order Goldie farm 2318 10 2 keep", "an invalid-arg reply drops gold=0 first")
+-- A give nobody answers stops saying "waiting" after the wait.
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10)
+TB.SetOrderFeedback("Farm x sent, waiting for the server...", "pending")
+now = now + 5
+TB.GiveWaitTick()
+assert(string.find(TB.GetOrderFeedback().text, "waiting", 1, true), "still waiting inside the wait")
+now = now + 6
+TB.GiveWaitTick()
+assert(string.find(TB.GetOrderFeedback().text, "No answer from the server", 1, true),
+    "an unanswered give says so")
 assert(TB.SetOrderGold(0) == 0 and TB.orderWindow.goldBox:GetText() == "0", "zero shows as 0, not empty")
 TB.SetOrderGold(nil)
 now = now + 1
@@ -4141,12 +4464,17 @@ assert(TB.lastActionAck and TB.lastActionAck.intent == "order"
 TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|25|working|-|Ashenvale")
 assert(guildOrderRow.orderLine:GetText() == "Light Leather 0/25 (Ashenvale)",
     "the live line repaints the guild row")
-assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
-    "an order shows an enabled Cancel")
+assert(guildOrderRow.moreBtn:IsVisible() and guildOrderRow.moreBtn.enabled,
+    "an order shows an enabled More menu")
+TB._t.rowMenu = {}
+assert(TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.rowMenu, info) end) > 0,
+    "the row menu must list Cancel while the order runs")
+TB._t.rowCancel = nil
+table.foreach(TB._t.rowMenu, function(k, info) if info.text == "Cancel order" then TB._t.rowCancel = info end end)
+assert(TB._t.rowCancel and TB._t.rowCancel.func, "the row menu must offer Cancel order")
 now = now + 1
-this = guildOrderRow.cancelBtn
 local beforeCancel = table.getn(addonSent)
-guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
+TB._t.rowCancel.func()
 assert(table.getn(addonSent) == beforeCancel, "row Cancel sends nothing before the confirm")
 assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER", "row Cancel asks first")
 assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"] ~= nil, "cancel dialog must exist")
@@ -4157,9 +4485,13 @@ StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
 assert(lastAddon() == "order Goldie cancel", "confirming asks for the removal")
 TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
 assert(TB.GetBotOrder("Goldie") == nil, "a cancel ACK drops the row at once")
-assert(string.find(guildOrderRow.orderLine:GetText(), "No order", 1, true),
-    "a cancelled row falls back to No order")
-assert(not guildOrderRow.cancelBtn:IsVisible(), "no order hides Cancel")
+TB.RefreshGuildView()
+assert(not guildOrderRow.orderLine:IsVisible(), "a cancelled row shows no order line")
+TB._t.noOrderMenu = {}
+TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.noOrderMenu, info) end)
+TB._t.noOrderCancel = nil
+table.foreach(TB._t.noOrderMenu, function(k, info) if info.text == "Cancel order" then TB._t.noOrderCancel = info end end)
+assert(TB._t.noOrderCancel == nil, "no order drops Cancel from the row menu")
 
 -- Errors ride the window feedback plus the generic status line.
 assert(TB.OpenOrderWindow("Goldie"), "the window reopens")
@@ -4253,6 +4585,32 @@ now = now + 1
 TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
 assert(TB.GetOrderAmount() == 25, "Send commits the box number")
 assert(lastAddon() == "order Goldie farm 2318 25 inf", "Send sends the box number with no time limit")
+do
+    -- Goldie already holds an order: Send asks before replacing it.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|3|10|working|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    ReplacePopupTest.hold = true
+    lastPopupShown = nil
+    local sentBefore = table.getn(addonSent)
+    now = now + 1
+    TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+    assert(lastPopupShown == "TORTOISEBOTSMANAGER_REPLACE_ORDER", "Send asks before replacing a running order")
+    assert(table.getn(addonSent) == sentBefore, "nothing is sent until the player accepts")
+    assert(string.find(StaticPopupDialogs["TORTOISEBOTSMANAGER_REPLACE_ORDER"].text, "3/10", 1, true) ~= nil,
+        "the question names the running order and its progress")
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_REPLACE_ORDER"].OnAccept()
+    assert(table.getn(addonSent) == sentBefore + 1, "accepting sends the replacing order")
+    -- A finished order is replaced without a question.
+    TB.OnSystemMessage("TBM:ORDER_BEGIN|1")
+    TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|done|-|Ashenvale")
+    TB.OnSystemMessage("TBM:ORDER_END")
+    lastPopupShown = nil
+    now = now + 1
+    TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+    assert(lastPopupShown ~= "TORTOISEBOTSMANAGER_REPLACE_ORDER", "a finished order is replaced without asking")
+    ReplacePopupTest.hold = false
+end
 local hoursBox = TB.orderWindow.hoursBox
 hoursBox.text = "4"
 this = hoursBox
@@ -4376,7 +4734,11 @@ for _, state in ipairs(states) do
     TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|" .. state .. "|-|Ashenvale|easy|3")
     TB.RefreshGuildView()
     TB.RefreshOrderWindow()
-    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+    TB._t.stMenu = {}
+    TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.stMenu, info) end)
+    TB._t.stCancel = nil
+    table.foreach(TB._t.stMenu, function(k, info) if info.text == "Cancel order" then TB._t.stCancel = info end end)
+    assert(TB._t.stCancel and TB._t.stCancel.func and guildOrderRow.moreBtn:IsVisible() and guildOrderRow.moreBtn.enabled,
         "row Cancel stays enabled while " .. state)
     assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
         "window Cancel stays enabled while " .. state)
@@ -4391,7 +4753,11 @@ for _, line in ipairs(longLived) do
     TB.RefreshOrderWindow()
     local order = TB.GetBotOrder("Goldie")
     assert(order ~= nil, "the long-lived order lands")
-    assert(guildOrderRow.cancelBtn:IsVisible() and guildOrderRow.cancelBtn.enabled,
+    TB._t.liveMenu = {}
+    TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.liveMenu, info) end)
+    TB._t.liveCancel = nil
+    table.foreach(TB._t.liveMenu, function(k, info) if info.text == "Cancel order" then TB._t.liveCancel = info end end)
+    assert(TB._t.liveCancel and TB._t.liveCancel.func and guildOrderRow.moreBtn:IsVisible() and guildOrderRow.moreBtn.enabled,
         "row Cancel stays enabled for a long-lived order")
     assert(TB.orderWindow:IsVisible() and TB.orderWindow.cancelBtn.enabled,
         "window Cancel stays enabled for a long-lived order")
@@ -4405,9 +4771,12 @@ for _, line in ipairs(longLived) do
     now = now + 1
     StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
     assert(lastAddon() == "order Goldie cancel", "confirming the window Cancel sends")
-    this = guildOrderRow.cancelBtn
+    TB._t.rowMenu2 = {}
+    TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.rowMenu2, info) end)
+    TB._t.rowCancel2 = nil
+    table.foreach(TB._t.rowMenu2, function(k, info) if info.text == "Cancel order" then TB._t.rowCancel2 = info end end)
     local beforeRowCancel = table.getn(addonSent)
-    guildOrderRow.cancelBtn.scripts.OnClick(guildOrderRow.cancelBtn)
+    TB._t.rowCancel2.func()
     assert(table.getn(addonSent) == beforeRowCancel,
         "row Cancel sends nothing before the confirm")
     now = now + 1
@@ -4675,7 +5044,6 @@ local function enchantOrderChecks()
     assert(meetRow and meetRow.meetBtn and meetRow.meetBtn:IsVisible(),
         "an unfinished enchant shows Meet")
     assert(meetRow.meetBtn.enabled, "officer rights enable Meet")
-    assert(not meetRow.relBtn:IsVisible(), "Meet takes the Release slot while shown")
     canEditOfficerNote = false
     TB.RefreshGuildView()
     assert(not meetRow.meetBtn.enabled, "losing the right greys Meet out")
@@ -4688,8 +5056,7 @@ local function enchantOrderChecks()
         "Meet clicks send like the other order commands")
     TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|done|-|-")
     TB.RefreshGuildView()
-    assert(not meetRow.meetBtn:IsVisible() and meetRow.relBtn:IsVisible(),
-        "done restores Release")
+    assert(not meetRow.meetBtn:IsVisible(), "done hides Meet")
 
     -- Enchant search: the window lists name, slot, skill and have/need.
     assert(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|27747") == nil,
@@ -4989,8 +5356,18 @@ now = now + 1
 TB.OnSystemMessage("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:8:0:0:0:-:0:0:0:0|40|-|-")
 assert(table.getn(TB.GetOrderBring()) == 1 and TB.GetOrderBring()[1] == 2319,
     "a full-bag preview auto-ticks its reagent")
+TB.SetOrderStep(3)
 assert(TB.orderWindow.bringRows and TB.orderWindow.bringRows[1]:IsVisible()
-    and TB.orderWindow.bringRows[1]:GetChecked(), "the reagent row shows ticked")
+    and TB.orderWindow.bringRows[1]:GetChecked(), "the reagent row shows ticked on step 3")
+do
+    -- Preview, ticks and Send stack: Send sits a full row below the tick, and
+    -- the tick below the preview's three lines.
+    local tickY = TB.orderWindow.bringRows[1].point[5]
+    local sendY = TB.orderWindow.sendBtn.point[5]
+    local previewY = TB.orderWindow.previewLine.point[5]
+    assert(tickY <= previewY - 36, "the ticks start below the preview text")
+    assert(sendY <= tickY - 16 - 4, "Send sits below the last tick")
+end
 this = TB.orderWindow.bringRows[1]
 TB.orderWindow.bringRows[1].scripts.OnClick(TB.orderWindow.bringRows[1])
 assert(table.getn(TB.GetOrderBring()) == 0, "the player can untick the row")
@@ -5004,8 +5381,179 @@ GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = nil, nil, nil
 TB.SetOrderBring({})
 if TB.GetOrderKind() ~= "farm" then TB.SetOrderKind("farm") end
 TB.CloseOrderWindow()
+    -- Step panes: every widget of the order window lives in exactly one step
+    -- pane (or is shared chrome); only the current step's pane shows, so a
+    -- widget the pane misses fails here. The mock reports a flat IsVisible, so
+    -- the walk folds the pane flags in, the way the client hides subtrees.
+    local function orderStepPaneChecks()
+        assert(TB.OpenOrderWindow("Goldie"), "pane walk opens the window")
+        local function paneOf(widget)
+            local o = widget.parent
+            while o do
+                if o == TB.orderWindow.stepOne then return 1 end
+                if o == TB.orderWindow.stepTwo then return 2 end
+                if o == TB.orderWindow.stepThree then return 3 end
+                if o == TB.orderWindow then return 0 end
+                o = o.parent
+            end
+            return nil
+        end
+        local function checkWalk(where)
+            local win = TB.orderWindow
+            local step = TB.GetOrderStep()
+            assert(win.stepOne.visible == (step == 1)
+                and win.stepTwo.visible == (step == 2)
+                and win.stepThree.visible == (step == 3), where .. ": only the step pane shows")
+            local chrome = {}
+            for _, w in ipairs({ win.title, win.head, win.wipNote, win.stepLabel, win.backBtn, win.nextBtn,
+                win.statusLine, win.feedbackLine, win.closeBtn,
+                win.headerBand, win.headerRule, win.headerLine,
+                win.stepOne, win.stepTwo, win.stepThree }) do
+                chrome[w] = true
+            end
+            local allowed, again = {}, true
+            while again do
+                again = false
+                local function mark(f)
+                    for _, c in ipairs(f.children or {}) do
+                        if not allowed[c] and (chrome[c] or allowed[c.parent]) then
+                            allowed[c] = true
+                            again = true
+                        end
+                        mark(c)
+                    end
+                end
+                mark(win)
+            end
+            local leaks, unnamed = {}, 0
+            local function walk(f)
+                for _, c in ipairs(f.children or {}) do
+                    local pane = paneOf(c)
+                    assert(pane ~= nil, where .. ": every widget sits in a step pane or the window")
+                    -- Unnamed textures straight on the window are header art
+                    -- (band, rule, hairlines): no label a step could leak.
+                    local isArt = c.kind == "Texture" and c.parent == win
+                        and (c.text == nil or c.text == "") and c.name == nil
+                    if pane == 0 and not allowed[c] and not isArt then
+                        local label = c.name or c.text
+                        if label == nil or label == "" then label = c.kind end
+                        table.insert(leaks, "not in a step pane: " .. label)
+                    end
+                    local shown = c.visible
+                    local o = c.parent
+                    while shown and o do
+                        if not o.visible then shown = false end
+                        o = o.parent
+                    end
+                    if shown and not allowed[c] and pane ~= step and not isArt then
+                        local label = c.text or c.name
+                        if label == nil or label == "" then
+                            unnamed = unnamed + 1
+                            label = c.kind .. " #" .. unnamed
+                        end
+                        table.insert(leaks, label)
+                    end
+                    walk(c)
+                end
+            end
+            walk(win)
+            assert(table.getn(leaks) == 0, where .. " leaks onto step " .. step .. ": " .. table.concat(leaks, ", "))
+        end
+        TB.SetOrderStep(1)
+        TB.RefreshOrderWindow()
+        checkWalk("per-bot step 1")
+        TB.SetOrderStep(2)
+        TB.RefreshOrderWindow()
+        checkWalk("per-bot step 2")
+        TB.SetOrderStep(3)
+        TB.RefreshOrderWindow()
+        checkWalk("per-bot step 3")
+        assert(TB.OpenGuildOrderWindow(), "pane walk covers pick-a-bot mode")
+        TB.RefreshOrderWindow()
+        checkWalk("pick-a-bot mode")
+        TB.CloseOrderWindow()
+    end
+    orderStepPaneChecks()
 end
 guildOrderUiChecks()
+
+-- ── Order window steps: search, amount, preview, Back/Next ─────────────────
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+TB.SetOrderNoLimit(true)
+TB.SetOrderKeep(false)
+assert(TB.OpenOrderWindow("Goldie"), "steps reopen the window")
+assert(TB.GetOrderStep() == 1, "a fresh window starts on step 1")
+assert(TB.orderWindow.stepOne:IsVisible()
+    and not TB.orderWindow.stepTwo:IsVisible()
+    and not TB.orderWindow.stepThree:IsVisible(), "step 1 shows its pane only")
+assert(TB.orderWindow.backBtn.enabled == false, "step 1 greys Back")
+do
+    TB._t.h1 = TB.orderWindow.height
+    TB.SetOrderStep(3)
+    assert(TB.orderWindow.height ~= TB._t.h1 and TB.orderWindow.height < TB._t.h1,
+        "step 3 gets its own, shorter window than step 1")
+    TB.SetOrderStep(1)
+    assert(TB.orderWindow.height == TB._t.h1, "back on step 1 the window shrinks again")
+    -- Skills decide what a bot can be asked: no Enchanting greys Enchant,
+    -- no Mining/Herbalism/Skinning greys that farm filter.
+    TB.SetProfessions("Goldie", { skills = { { skill = 393, value = 20, max = 75 } }, recipes = {}, missing = {} })
+    assert(TB.orderWindow.kindPills.enchant.enabled == false, "no Enchanting greys the Enchant kind")
+    assert(TB.orderWindow.catPills.herb:IsVisible() == false and TB.orderWindow.catPills.ore:IsVisible() == false,
+        "no Herbalism / Mining hides those filters")
+    assert(TB.orderWindow.catPills.leather:IsVisible(), "Skinning keeps the leather filter")
+    TB.SetProfessions("Goldie", { skills = { { skill = 333, value = 1, max = 75 }, { skill = 182, value = 1, max = 75 } },
+        recipes = {}, missing = {} })
+    assert(TB.orderWindow.kindPills.enchant.enabled ~= false, "Enchanting enables the Enchant kind")
+    assert(TB.orderWindow.catPills.herb:IsVisible() and TB.orderWindow.catPills.leather:IsVisible() == false,
+        "the filters follow the bot's skills")
+end
+TB.SetOrderStep(0)
+assert(TB.GetOrderStep() == 1, "step 0 clamps to step 1")
+TB.SetOrderStep(9)
+assert(TB.GetOrderStep() == 3, "step 9 clamps to step 3")
+TB.SetOrderStep(1)
+TB.OrderStepNext()
+assert(TB.GetOrderStep() == 1 and string.find(TB.GetOrderFeedback().text, "Pick an item", 1, true),
+    "Next without a pick stays and explains")
+now = now + 1
+TB.orderWindow.searchBox.text = "leather"
+TB.SendOrderSearch("Goldie", "farm", "leather")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|1")
+TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
+TB.OnSystemMessage("TBM:ORDER_ITEMS_END")
+this = TB.orderWindow.resultRows[1]
+TB.orderWindow.resultRows[1].scripts.OnClick(TB.orderWindow.resultRows[1])
+assert(TB.GetOrderSelection() == 2318, "steps pick the item")
+assert(TB.GetOrderStep() == 1, "picking stays on step 1 until Next")
+TB.OrderStepNext()
+assert(TB.GetOrderStep() == 2, "Next moves to the amount step")
+assert(TB.orderWindow.stepTwo:IsVisible() and not TB.orderWindow.stepOne:IsVisible(),
+    "step 2 swaps search for the amount row")
+assert(TB.orderWindow.backBtn.enabled ~= false, "step 2 enables Back")
+this = TB.orderWindow.backBtn
+TB.orderWindow.backBtn.scripts.OnClick(TB.orderWindow.backBtn)
+assert(TB.GetOrderStep() == 1 and TB.GetOrderSelection() == 2318, "Back returns keeping the pick")
+this = TB.orderWindow.nextBtn
+TB.orderWindow.nextBtn.scripts.OnClick(TB.orderWindow.nextBtn)
+assert(TB.GetOrderStep() == 2, "the Next button advances")
+TB.SetOrderStep(3)
+assert(TB.orderWindow.stepThree:IsVisible() and not TB.orderWindow.stepOne:IsVisible()
+    and TB.orderWindow.stepLabel:GetText() == "Step 3 of 3", "step 3 shows preview and Send")
+TB.SetOrderFeedback(nil)
+now = now + 1
+TB.SetOrderAmount(10)
+this = TB.orderWindow.sendBtn
+TB.orderWindow.sendBtn.scripts.OnClick(TB.orderWindow.sendBtn)
+assert(lastAddon() == "order Goldie farm 2318 10 inf",
+    "step 3 Send gives the same wire message, got " .. tostring(lastAddon()))
+TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|farm")
+assert(not TB.orderWindow:IsVisible(), "a give ACK still closes the stepped window")
+assert(TB.OpenGuildOrderWindow(), "pick-a-bot mode reopens")
+TB.RefreshOrderWindow()
+assert(TB.GetOrderStep() == 1 and TB.orderWindow.stepLabel:GetText() == "",
+    "pick-a-bot mode pins step 1 with no indicator")
+assert(TB.orderWindow.searchBox:IsVisible() and TB.orderWindow.results:IsVisible(),
+    "pick-a-bot mode keeps search visible")
 dofile(root .. "/tests/wire_cases.lua")({
     sent = sent,
     addonSent = addonSent,
@@ -5018,6 +5566,11 @@ dofile(root .. "/tests/wire_cases.lua")({
     setDead = function(unit, dead) deadUnits[unit] = dead end,
     setGhost = function(unit, ghost) ghostUnits[unit] = ghost end,
     seedItem = function(id, item) itemCache[id] = item end,
+    setVitals = function(unit, hp, hpMax, mp, mpMax)
+        partyVitals[unit] = { hp = hp, hpMax = hpMax, mp = mp, mpMax = mpMax }
+    end,
+    setBuffs = function(unit, buffs) partyBuffs[unit] = buffs end,
+    setNear = function(units) nearUnits = units end,
 })
 dofile(root .. "/tests/altsum_tests.lua")({
     sent = sent,

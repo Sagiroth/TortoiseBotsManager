@@ -206,6 +206,10 @@ function TB.ParseActionMessage(msg)
         end
         TB.lastActionAck = packet
         TB.lastActionError = nil
+        if TB.NoteActionFeedback then
+            local key = TB.ActionFeedbackKey and TB.ActionFeedbackKey(packet.intent)
+            TB.NoteActionFeedback(key or packet.intent, "ok")
+        end
         local _, _, ccMark = string.find(packet.intent or "", "^cc%s+(%a+)")
         if ccMark and C.CC_MARK_LABELS and C.CC_MARK_LABELS[ccMark]
             and packet.executor ~= "-" and TB.SetCcAssignment then
@@ -270,6 +274,10 @@ function TB.ParseActionMessage(msg)
         TB.lastActionError = packet
         TB.lastActionAck = nil
         local toggleKey = TB.PartyToggleKey and TB.PartyToggleKey(packet.intent)
+        if TB.NoteActionFeedback then
+            local key = TB.ActionFeedbackKey and TB.ActionFeedbackKey(packet.intent)
+            TB.NoteActionFeedback(key or packet.intent, "error")
+        end
         if toggleKey and TB.OnPartyToggleResult then
             TB.OnPartyToggleResult(toggleKey, nil, nil)
         end
@@ -643,6 +651,9 @@ function TB.OnCommandSent(cmd)
         TB.BeginOperation(name, verb, false)
     end
 
+    if verb == "action" and TB.ActionFeedbackKey and TB.NoteActionFeedback then
+        TB.NoteActionFeedback(TB.ActionFeedbackKey(cmd), "waiting")
+    end
     if verb == "command" and name then
         local st = TB.GetState and TB.GetState(name) or nil
         if st then
@@ -751,6 +762,7 @@ end
 
 function TB.OnSystemMessage(msg)
     if not msg or msg == "" then return end
+    if TB.trace and string.sub(msg, 1, 4) == "TBM:" then TB.TracePrint("< " .. msg) end
     -- Some clients double the "|" of a "|A"/"|T" pair on server-delivered
     -- chat lines before Lua sees them. Protocol fields never contain "||",
     -- so restore those two pairs on TBM lines. Stock clients never send

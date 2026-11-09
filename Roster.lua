@@ -46,6 +46,12 @@ local pollNoReplyCount = 0
 
 TB.rosterSelection = TB.rosterSelection or {}
 TB.claimedSelection = TB.claimedSelection or {}
+
+-- Session-only column sorts (like the class filter): the picked column and
+-- direction, remembered while the tab stays open. Defaults match the old
+-- lists (roster: online first; guild: highest level first).
+TB.rosterSort = TB.rosterSort or { key = "status", dir = 1 }
+TB.guildSort = TB.guildSort or { key = "level", dir = -1 }
 TB._debugState = state
 TB._debugGroup = groupMembers
 TB._debugCcAssignments = ccAssignments
@@ -866,6 +872,46 @@ function TB.ConfirmSeen(name, info)
     TB.MarkPollSeen(name)
 end
 
+-- Sort keys per row. Roster rows carry no level from the server, so the
+-- status key ranks the row's lifecycle state (online first by default).
+local function rosterStatusRank(st)
+    if not st then return 3 end
+    if st.online then
+        if st.enteredWorld == false then return 1 end
+        return 0
+    end
+    return 2
+end
+
+local function rosterSortValue(row, key)
+    if key == "name" then return string.lower(row.name or "") end
+    if key == "class" then return string.lower(row.className or "") end
+    return rosterStatusRank(row.st)
+end
+
+function TB.SetRosterSort(key)
+    local sort = TB.rosterSort or { key = "status", dir = 1 }
+    if sort.key == key then
+        sort.dir = (sort.dir == 1) and -1 or 1
+    else
+        sort = { key = key, dir = 1 }
+    end
+    TB.rosterSort = sort
+    if TB.Refresh then TB.Refresh() end
+end
+
+function TB.SetGuildSort(key)
+    local sort = TB.guildSort or { key = "level", dir = -1 }
+    if sort.key == key then
+        sort.dir = (sort.dir == 1) and -1 or 1
+    else
+        if key == "level" then sort = { key = key, dir = -1 }
+        else sort = { key = key, dir = 1 } end
+    end
+    TB.guildSort = sort
+    if TB.RefreshGuildView then TB.RefreshGuildView() end
+end
+
 -- ── server-backed roster rows ───────────────────────────────────────────────
 -- Class filter is session-only (like the name search): nil shows every class,
 -- otherwise only rows with that class ID.
@@ -890,8 +936,16 @@ function TB.GetDisplayRows(filter, classFilter)
             })
         end
     end
+    local sort = TB.rosterSort or { key = "status", dir = 1 }
+    -- The sort table is shared UI state: never read it raw, so a stray
+    -- key or direction from another worker's edit cannot break the rows.
+    local key = (sort.key == "name" or sort.key == "class") and sort.key or "status"
+    local dir = (sort.dir == -1) and -1 or 1
     table.sort(rows, function(a, b)
-        if a.st.online ~= b.st.online then return a.st.online end
+        local va, vb = rosterSortValue(a, key), rosterSortValue(b, key)
+        if va ~= vb then
+            if dir == 1 then return va < vb else return va > vb end
+        end
         return a.name < b.name
     end)
     return rows
@@ -1203,6 +1257,22 @@ function TB.ClaimedProfsLine(bot)
     return table.concat(parts, ", ")
 end
 
+local function guildStatusRank(bot)
+    if not bot then return 2 end
+    if bot.online then
+        if bot.group then return 0 end
+        return 1
+    end
+    return 2
+end
+
+local function guildSortValue(bot, key)
+    if key == "name" then return string.lower(bot.name or "") end
+    if key == "level" then return bot.level or 1 end
+    if key == "class" then return string.lower(bot.className or "") end
+    return guildStatusRank(bot)
+end
+
 function TB.GetClaimedBots(filter)
     local out = {}
     filter = filter and string.lower(TB.Trim(filter)) or ""
@@ -1213,6 +1283,17 @@ function TB.GetClaimedBots(filter)
             table.insert(out, bot)
         end
     end
+    local sort = TB.guildSort or { key = "level", dir = -1 }
+    local key = sort.key
+    if key ~= "name" and key ~= "level" and key ~= "class" then key = "status" end
+    local dir = (sort.dir == -1) and -1 or 1
+    table.sort(out, function(a, b)
+        local va, vb = guildSortValue(a, key), guildSortValue(b, key)
+        if va ~= vb then
+            if dir == 1 then return va < vb else return va > vb end
+        end
+        return (a.name or "") < (b.name or "")
+    end)
     return out
 end
 

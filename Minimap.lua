@@ -7,7 +7,7 @@ function TB.InitMinimap()
     local btn = CreateFrame("Button", "TortoiseBotsManagerMinimapButton", Minimap)
     btn:SetWidth(30); btn:SetHeight(30); btn:SetFrameStrata("MEDIUM")
     btn:SetMovable(true); btn:EnableMouse(true)
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     btn:RegisterForDrag("LeftButton")
 
     -- Exact pattern from TortoiseGMManager (proven in your client):
@@ -34,6 +34,7 @@ function TB.InitMinimap()
 
     btn:SetScript("OnClick", function()
         if arg1 == "RightButton" then TB.PollList(true); TB.Print("Polling…")
+        elseif arg1 == "MiddleButton" then if TB.ToggleSettings then TB.ToggleSettings() end
         else TB.Toggle() end
     end)
     btn:SetScript("OnEnter", function()
@@ -41,6 +42,7 @@ function TB.InitMinimap()
         GameTooltip:SetText("TortoiseBots Manager")
         GameTooltip:AddLine("Left-click: toggle (/tbm)", 1,1,1)
         GameTooltip:AddLine("Right-click: refresh list", 1,1,1)
+        GameTooltip:AddLine("Middle-click: options (/tbm settings)", 1,1,1)
         GameTooltip:AddLine("Drag: move button", C.COLOR.muted[1], C.COLOR.muted[2], C.COLOR.muted[3])
         local online = 0; for _, s in pairs(TB.GetAllState()) do if s.online then online = online + 1 end end
         GameTooltip:AddLine(online .. " online", C.COLOR.blue[1], C.COLOR.blue[2], C.COLOR.blue[3])
@@ -62,4 +64,14 @@ function TB.InitMinimap()
 
     TB.minimapButton   = btn
     TB.UpdateMinimapPos = updatePos
+    if db.minimapShown == false then btn:Hide() end
+end
+
+function TB.SetMinimapShown(shown)
+    TortoiseBotsDB = TortoiseBotsDB or {}
+    TortoiseBotsDB.minimapShown = shown and true or false
+    if TB.minimapButton then
+        if TortoiseBotsDB.minimapShown then TB.minimapButton:Show() else TB.minimapButton:Hide() end
+    end
+    if TB.RefreshSettings then TB.RefreshSettings() end
 end

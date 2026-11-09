@@ -138,8 +138,11 @@ local function initDB()
     if not db.frame.rpoint then db.frame.rpoint = "CENTER" end
     if db.frame.x == nil then db.frame.x = 0 end
     if db.frame.y == nil then db.frame.y = 15 end
-    if not db.pollInterval then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
-    if db.autoPoll == nil then db.autoPoll = true end
+    if db.minimapShown == nil then db.minimapShown = true end
+    if db.miniLocked == nil then db.miniLocked = false end
+    if type(db.windowScale) == "number" then db.windowScale = TB.ClampWindowScale and TB.ClampWindowScale(db.windowScale) or db.windowScale end
+    if type(db.pollInterval) ~= "number" then db.pollInterval = (C and C.POLL_PANEL_IV) or 8 end
+    if db.pollInterval and TB.ClampPollInterval then db.pollInterval = TB.ClampPollInterval(db.pollInterval) end
     -- Adjustable pull timers (seconds, 0-60): DPS delay before pull, join
     -- delay before pullback. Sent as "pull <n>" / "pullback <n>" only when
     -- the server advertises the pull-seconds capability; older servers get
@@ -344,6 +347,10 @@ local function ensureQueueFrame()
         end
     end)
 end
+function TB.TracePrint(text)
+    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cff9aa0a6TBM " .. text .. "|r") end
+end
+
 function TB.SendBotCommand(cmd, opts)
     opts = opts or {}
     cmd = TB.Trim(cmd or "")
@@ -351,6 +358,7 @@ function TB.SendBotCommand(cmd, opts)
 
     local full = ".bot " .. cmd
     local channel = TB.AddonCommandChannel and TB.AddonCommandChannel()
+    if TB.trace then TB.TracePrint("> " .. cmd .. "   [" .. (channel or "chat") .. (TB.CanSend() and "" or ", queued") .. "]") end
     if TB.CanSend() then
         lastSend = (GetTime and GetTime()) or 0
         if channel then
@@ -759,6 +767,39 @@ function TB.RequestPollSoon(delay)
     pollFrame.elapsed = 0
     if pollFrame.Show then pollFrame:Show() end
 end
+
+-- ── Action feedback timeout ─────────────────────────────────────────────
+-- A missing ACK/ERR must not stick a button in its waiting look: once a
+-- second, drop expired entries and repaint whatever they touched.
+local feedbackFrame
+local function ensureFeedbackFrame()
+    if feedbackFrame then return end
+    feedbackFrame = CreateFrame("Frame", "TortoiseBotsManagerFeedbackFrame")
+    feedbackFrame.elapsed = 0
+    feedbackFrame:SetScript("OnUpdate", function()
+        this.elapsed = (this.elapsed or 0) + (arg1 or 0)
+        if this.elapsed < 1 then return end
+        this.elapsed = 0
+        if not TB.actionFeedback then return end
+        local now = (GetTime and GetTime()) or 0
+        local expired = nil
+        for intent, entry in pairs(TB.actionFeedback) do
+            if (entry.untilAt or 0) <= now then
+                TB.actionFeedback[intent] = nil
+                expired = expired or {}
+                table.insert(expired, intent)
+            end
+        end
+        if expired then
+            if TB.PaintActionFeedback then
+                for _, intent in ipairs(expired) do TB.PaintActionFeedback(intent) end
+            end
+            if TB.RefreshMiniBar then TB.RefreshMiniBar() end
+        end
+    end)
+    if feedbackFrame.Show then feedbackFrame:Show() end
+end
+ensureFeedbackFrame()
 -- ── Slash ───────────────────────────────────────────────────────────────────
 SLASH_TORTOISEBOTSMANAGER1 = "/tbm"
 SLASH_TORTOISEBOTSMANAGER2 = "/tb"
@@ -774,11 +815,24 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
         return
     end
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm minilayout [horizontal|vertical] — mini bar direction, /tbm settings — window options, /tbm trace — show what is sent and received, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
+        return
+    elseif msg == "trace" then
+        TB.trace = not TB.trace
+        TB.Print("Trace " .. (TB.trace and "on: every command sent (>) and server line received (<) shows in chat" or "off"))
         return
     elseif msg == "mini" or msg == "full" then
         TB.RequestMode(msg)
+        return
+    elseif msg == "minilayout" or msg == "minilayout horizontal" or msg == "minilayout vertical" then
+        local _, _, want = string.find(msg, "^minilayout%s*(%S*)$")
+        if TB.SetMiniLayout then
+            if want == "horizontal" or want == "vertical" then TB.SetMiniLayout(want)
+            else TB.ToggleMiniLayout() end
+        else
+            TB.Print("Mini bar layout is not loaded yet. Exit and restart the game client: WoW only loads new addon files on a full restart, not on /reload.")
+        end
         return
     elseif msg == "party" then
         if TB.SetMode then TB.SetMode("full") end
@@ -787,6 +841,9 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
     elseif msg == "log" then
         if TB.SetMode then TB.SetMode("full") end
         if TB.ShowTab then TB.ShowTab("log") end
+        return
+    elseif msg == "settings" or msg == "options" or msg == "config" then
+        if TB.ToggleSettings then TB.ToggleSettings() else TB.Print("UI not loaded yet.") end
         return
     elseif msg == "list" then
         TB.PollList(true); TB.Print("Polling server roster…"); return

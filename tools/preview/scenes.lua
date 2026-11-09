@@ -190,7 +190,7 @@ local function scene(name, fn)
 end
 
 local function hideSatellites()
-    for _, n in ipairs({ "CloseBotPanel", "CloseRunWindow", "CloseOrderWindow", "CloseServerInfo", "CloseNpc", "CloseVault" }) do
+    for _, n in ipairs({ "CloseBotPanel", "CloseRunWindow", "CloseOrderWindow", "CloseServerInfo", "CloseSettings", "CloseNpc", "CloseVault" }) do
         if TB[n] then pcall(TB[n]) end
     end
     if TB.ccMenu then TB.ccMenu:Hide() end
@@ -340,6 +340,11 @@ scene("info", function()
     TB.OpenServerInfo()
     dump("info", { main, TB.serverInfo or TB.infoFrame or TB.serverInfoFrame }, "Server info")
 end)
+scene("settings", function()
+    tab("actions", nil)
+    TB.OpenSettings()
+    dump("settings", { main, TB.settingsWindow }, "Settings window")
+end)
 scene("mini", function()
     hideSatellites()
     TortoiseBotsDB.miniFavorites = { "attack", "stop", "pull", "focus skull", "follow", "aoe" }
@@ -357,7 +362,8 @@ end)
 -- as the client passes them; then report.
 if smoke then
     local EVENT_ARGS = {
-        UNIT_HEALTH = { "party1" }, ADDON_LOADED = { "SomeOtherAddon" },
+        UNIT_HEALTH = { "party1" }, UNIT_MANA = { "party1" }, UNIT_AURA = { "party1" },
+        ADDON_LOADED = { "SomeOtherAddon" },
         CHAT_MSG_ADDON = { "TBM", "TBM:VERSION|1.12.0", "PARTY", "Valguard" },
         CHAT_MSG_SYSTEM = { "Unrelated system message" },
         CHAT_MSG_WHISPER = { "hello", "Seraphine" },

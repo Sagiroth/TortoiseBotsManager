@@ -302,6 +302,7 @@ function W:SetStatusBarTexture(f) self.barFile = f end
 function W:SetStatusBarColor(r, g, b, a) self.barColor = { r, g, b, a or 1 } end
 function W:SetOrientation() end
 function W:SetValueStep() end
+function W:SetThumbTexture(f) self.thumbFile = f end
 function W:SetOwner(o) self.owner = o end
 function W:IsOwned(o) return self.owner == o end
 function W:AddLine() end

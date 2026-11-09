@@ -82,6 +82,19 @@ python3 tools/verify_okf.py
 
 It checks frontmatter, the `relates_to` graph, the manifest and every relative link. Run it after changing anything under `docs/`.
 
+### In-game checklist
+
+The checks above never see the real client, so before each release walk through this list in game (a `/reload` is not enough: new or changed files only load after a full client restart):
+
+- [ ] Fonts: every window and tab shows the client fonts (no green blocks or missing labels).
+- [ ] Media textures: after a full client restart, the close/check/search glyphs and button sheens draw (not flat or missing).
+- [ ] Tabs: open every tab of the main window, with and without the server capability that gates it.
+- [ ] Check boxes: roster and guild selection ticks show and clear.
+- [ ] Minimap button: shows, drags, left-click toggles the window, right-click polls.
+- [ ] Key bindings: every bound action fires from the Bindings window.
+- [ ] Mini bar: categories open, favourites pin and drop, lamps show On/Off words in the flyout and tooltips.
+- [ ] Status colours: switches, lamps and the status line read without colour too (shape or word, not colour alone).
+
 ## Release
 
 The **Generate Changelog & Release** workflow (manual, owner only) runs the tests, writes `CHANGELOG.md`, bumps the version in `Constants.lua` and the `.toc`, packages the zip with `tools/package_addon.py` (only `.lua`, `.toc`, `.xml`, textures, `README.md` and `LICENSE`; no docs, tests or tools) and posts the changelog to Discord.

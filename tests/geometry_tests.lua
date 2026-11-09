@@ -505,6 +505,16 @@ return function()
                 local btnItems = {}
                 for _, entry in ipairs(btns) do table.insert(btnItems, entry) end
                 noOverlaps("Party row " .. i .. " buttons", btnItems, cache)
+                -- Vitals bars sit along the row bottom under the role
+                -- picker: inside the row and clear of its buttons.
+                local bars = {}
+                if row.hpBar then table.insert(bars, { "hp", row.hpBar }) end
+                if row.manaBar and row.manaBar:IsVisible() then
+                    table.insert(bars, { "mana", row.manaBar })
+                end
+                childrenInside("Party row " .. i, row, r, bars, cache, 3)
+                for _, entry in ipairs(bars) do table.insert(btnItems, entry) end
+                noOverlaps("Party row " .. i .. " controls", btnItems, cache)
             end
             noOverlaps("Party rows", rowItems, cache)
             -- Dungeon tab (P11): with every tab shown (dungeon-run + a raid
@@ -628,11 +638,12 @@ return function()
                     if row[key] then table.insert(cols, { key, row[key] }) end
                 end
                 if row.roleBtn then table.insert(cols, { "roleBtn", row.roleBtn }) end
-                if row.relBtn then table.insert(cols, { "relBtn", row.relBtn }) end
                 if row.orderLine then table.insert(cols, { "orderLine", row.orderLine }) end
                 if row.ordBtn then table.insert(cols, { "ordBtn", row.ordBtn }) end
-                if row.cancelBtn then table.insert(cols, { "cancelBtn", row.cancelBtn }) end
-                if row.moveBtn then table.insert(cols, { "moveBtn", row.moveBtn }) end
+                if row.moreBtn then
+                    table.insert(cols, { "moreBtn", row.moreBtn })
+                    labelFits("Guild moreBtn", row.moreBtn, nil, 6)
+                end
                 noOverlaps("Guild row " .. i .. " columns", cols, cache)
                 if row.roleBtn and i == 1 then
                     local saved = row.roleBtn.text
@@ -649,7 +660,7 @@ return function()
                 local br = frameRect(bar, cache)
                 local sr = frameRect(scroll, cache)
                 local items = {}
-                for _, key in ipairs({ "inviteBtn", "summonBtn", "syncBtn", "fillBtn" }) do
+                for _, key in ipairs({ "inviteBtn", "summonBtn", "syncBtn", "fillBtn", "activeBtn", "orderBtn" }) do
                     if frame[key] then table.insert(items, { key, frame[key] }) end
                 end
                 childrenInside("Guild bar", bar, br, items, cache, 4)
@@ -1501,12 +1512,16 @@ return function()
                 bad("OrderWindow: did not open")
             else
                 local wr = frameRect(win, cache)
-                local items = {}
+                -- Each step has its own window height, so a control is
+                -- checked at the step that shows it.
+                local stepOneKeys = { searchBox = true, accessLabel = true }
+                local stepThreeKeys = { sendBtn = true, cancelBtn = true, previewLine = true }
+                local items, items1, items2 = {}, {}, {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
                     "hoursBox", "noLimitBox", "noLimitLabel", "keepBox", "sendBtn", "cancelBtn", "farmNote",
-                    "goldLabel", "goldBox", "accessLabel", "rankBtn", "previewLine" }) do
+                    "goldLabel", "goldBox", "accessLabel", "previewLine" }) do
                     if win[key] then
-                        table.insert(items, { key, win[key] })
+                        table.insert(stepOneKeys[key] and items1 or (stepThreeKeys[key] and items or items2), { key, win[key] })
                         if win[key].kind == "Button" then
                             labelFits("OrderWindow " .. key, win[key], nil, 6)
                         end
@@ -1514,19 +1529,56 @@ return function()
                         bad("OrderWindow: control " .. key .. " missing")
                     end
                 end
+                -- The header texts share the window's top with step 2.
+                table.insert(items2, { "head", win.head })
+                table.insert(items2, { "stepLabel", win.stepLabel })
+                table.insert(items2, { "wipNote", win.wipNote })
                 for i, line in ipairs(win.treeLines or {}) do
                     table.insert(items, { "tree" .. i, line })
                 end
                 for kind, pill in pairs(win.kindPills or {}) do
-                    table.insert(items, { "kind." .. kind, pill })
+                    table.insert(items1, { "kind." .. kind, pill })
                     labelFits("OrderWindow kind." .. kind, pill, nil, 6)
                 end
                 for cat, pill in pairs(win.catPills or {}) do
-                    table.insert(items, { "cat." .. cat, pill })
+                    table.insert(items1, { "cat." .. cat, pill })
                     labelFits("OrderWindow cat." .. cat, pill, nil, 6)
                 end
-                childrenInside("OrderWindow", win, wr, items, cache, 2)
-                noOverlaps("OrderWindow controls", items, cache)
+                TB.SetOrderStep(1)
+                wr = frameRect(win, {})
+                childrenInside("OrderWindow step 1", win, wr, items1, {}, 2)
+                TB.SetOrderStep(2)
+                wr = frameRect(win, {})
+                childrenInside("OrderWindow step 2", win, wr, items2, {}, 2)
+                noOverlaps("OrderWindow step 2 controls", items2, {})
+                -- Texts have no height in the mock, so check the top edges: the
+                -- first step-2 text must start below the step label's line.
+                do
+                    local c2 = {}
+                    local labelTop = frameRect(win.stepLabel, c2).top
+                    local noteTop = frameRect(win.farmNote, c2).top
+                    if not (noteTop >= labelTop + 14) then
+                        bad(string.format("OrderWindow: step 2 text starts at %s, too close under the step label at %s",
+                            tostring(noteTop), tostring(labelTop)))
+                    end
+                end
+                TB.SetOrderStep(3)
+                wr = frameRect(win, {})
+                childrenInside("OrderWindow step 3", win, wr, items, {}, 2)
+                noOverlaps("OrderWindow step 3 controls", items, {})
+                do
+                    -- The status line sits above Back; Send and Cancel must end above it.
+                    local c3 = {}
+                    local sendBottom = frameRect(win.sendBtn, c3).bottom
+                    local statusTop = frameRect(win.statusLine, c3).top
+                    if statusTop < sendBottom + 4 then
+                        bad(string.format("OrderWindow: step 3 Send ends at %s, status line starts at %s",
+                            tostring(sendBottom), tostring(statusTop)))
+                    end
+                end
+                TB.SetOrderStep(1)
+                wr = frameRect(win, cache)
+                noOverlaps("OrderWindow controls", items1, cache)
                 -- Filled results: rows fit inside, clear each other and the
                 -- amount row below the scroll frame.
                 TB.SendOrderSearch("Goldie", "farm", "leather")
@@ -1606,6 +1658,7 @@ return function()
                         TB.SetOrderSelection(3860)
                         if TB.C then TB.C.SEND_DELAY = savedDelay end
                         TB.OnSystemMessage("TBM:ORDER_PREVIEW|Goldie|craft|3860|Iron Buckle|5|5|-|-|2319:8:3:1:2:2:Ashenvale:1:0:1:1|40|-|-")
+                        TB.SetOrderStep(3)
                         TB.RefreshOrderWindow()
                         local shown = {}
                         for i, box in ipairs(win.bringRows or {}) do
@@ -1718,7 +1771,70 @@ return function()
         end
     end
 
-    -- ── main window chrome ───────────────────────────────────────────
+    -- ── Active orders window ───────────────────────────────────────────
+    do
+        local cache = {}
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+        TB.OnSystemMessage("TBM:ORDER_BEGIN|2")
+        TB.OnSystemMessage("TBM:ORDER|Goldie|craft|2318|Light Armor Kit|0|1|working|-|Ironforge")
+        TB.OnSystemMessage("TBM:ORDER|Silver|buy|18231|Highland Spring Water|0|20|waiting|grouped|Ironforge")
+        TB.OnSystemMessage("TBM:ORDER_END")
+        if not TB.OpenActiveOrders then
+            bad("ActiveOrders: OpenActiveOrders missing")
+        elseif not TB.OpenActiveOrders() then
+            bad("ActiveOrders: did not open")
+        else
+            local win = TB.activeOrdersWindow
+            local wr = frameRect(win, cache)
+            local items = {}
+            for i, row in ipairs(win.rows or {}) do
+                if row:IsVisible() then table.insert(items, { "row" .. i, row }) end
+            end
+            for _, key in ipairs({ "title", "state", "info", "stepScroll", "cancelBtn" }) do
+                if win[key] then table.insert(items, { key, win[key] }) end
+            end
+            if table.getn(items) < 4 then bad("ActiveOrders: expected two rows plus detail and buttons") end
+            childrenInside("ActiveOrders", win, wr, items, cache, 2)
+            noOverlaps("ActiveOrders controls", items, cache)
+            labelFits("ActiveOrders cancel", win.cancelBtn, nil, 6)
+            TB.CloseActiveOrders()
+        end
+    end
+
+    -- ── Settings window ────────────────────────────────────────────────
+    do
+        local cache = {}
+        if not TB.OpenSettings then
+            bad("Settings: OpenSettings missing")
+        else
+            TB.OpenSettings()
+            local win = TB.settingsWindow
+            if not win then
+                bad("Settings: did not open")
+            else
+                local wr = frameRect(win, cache)
+                local items = {}
+                for _, key in ipairs({ "slider", "minimapCheck", "lockCheck",
+                    "pollCheck", "pollStepper", "scaleValue" }) do
+                    if win[key] then table.insert(items, { key, win[key] }) end
+                end
+                childrenInside("Settings", win, wr, items, cache, 2)
+                noOverlaps("Settings rows", items, cache)
+                if win.pollStepper and win.pollStepper.label then
+                    local st = win.pollStepper
+                    local span = (st.minus.width or 0) + 2 + (st.label.width or 0)
+                        + 2 + (st.plus.width or 0)
+                    local frame = st.width or 108
+                    if frame - span > 6 then
+                        bad(string.format("Settings poll stepper: children span %dpx in a %dpx stepper (%dpx dead gap)",
+                            span, frame, frame - span))
+                    end
+                end
+            end
+            if TB.CloseSettings then TB.CloseSettings() end
+        end
+    end
+
     do
         local cache = {}
         if TB.frame then
