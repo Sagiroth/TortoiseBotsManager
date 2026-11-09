@@ -2297,7 +2297,7 @@ assert(allClaimed[3].name == "Bronze" and allClaimed[3].level == 20, "lower leve
 TB.SetGuildSort("name")
 assert(TB.GetClaimedBots()[1].name == "Bronze" and TB.GetClaimedBots()[2].name == "Goldie"
     and TB.GetClaimedBots()[3].name == "Silver", "name sort must order guild rows alphabetically")
-assert(TB.guildFrame.headerBtns and table.getn(TB.guildFrame.headerBtns) == 5,
+assert(TB.guildFrame.headerBtns and table.getn(TB.guildFrame.headerBtns) == 6,
     "guild header buttons must exist for each column")
 assert(TB.guildFrame.headerBtns[1].headerLabel:GetText() == "NAME ^",
     "the active guild header must carry the direction marker")
