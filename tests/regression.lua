@@ -322,9 +322,27 @@ assert(TB.GetRosterEntry("Alpha").ccMark == "circle",
     "CC assignment snapshot must expose the server-owned CC mark")
 assert(TB.GetRosterCount() == 3, "roster count must come from snapshot")
 
--- Display rows constantly show all bots with their state
+-- Sortable columns (session-only): click a header to sort, again to reverse.
 assert(table.getn(TB.GetDisplayRows("")) == 3, "roster must constantly show all bots")
 assert(table.getn(TB.GetDisplayRows("alpha")) == 1, "text search must filter by bot name")
+assert(TB.GetDisplayRows("")[1].name == "Alpha", "status sort must keep online rows first")
+TB.SetRosterSort("name")
+assert(TB.GetDisplayRows("")[1].name == "Alpha" and TB.GetDisplayRows("")[2].name == "Bravo"
+    and TB.GetDisplayRows("")[3].name == "Gamma", "name sort must order rows alphabetically")
+assert(TB.rosterFrame.headerBtns and table.getn(TB.rosterFrame.headerBtns) == 4,
+    "roster header buttons must exist for each column")
+assert(TB.rosterFrame.headerBtns[1].headerLabel:GetText() == "NAME ^",
+    "the active roster header must carry the direction marker")
+TB.SetRosterSort("name")
+assert(TB.GetDisplayRows("")[1].name == "Gamma", "clicking the same header again must reverse the rows")
+TB.SetRosterSort("class")
+assert(TB.GetDisplayRows("")[1].className == "Druid" and TB.GetDisplayRows("")[3].className == "Warrior",
+    "class sort must order rows by class name")
+TB.SetRosterSort("status")
+assert(TB.GetDisplayRows("")[1].name == "Alpha", "status sort must restore online rows first")
+TB.rosterSort = { key = "bogus", dir = 7 }
+assert(TB.GetDisplayRows("")[1].name == "Alpha", "a stray sort key must fall back to the default order")
+TB.rosterSort = { key = "status", dir = 1 }
 
 -- Alt-bots (TortoiseBots #872): the line after the snapshot marks owned
 -- characters playing on their own; Login on one takes it back.
@@ -2033,6 +2051,23 @@ assert(table.getn(allClaimed) == 3, "snapshot must retain all 3 claimed bots")
 assert(allClaimed[1].name == "Goldie" and allClaimed[1].level == 60, "highest level bot must sort first")
 assert(allClaimed[2].name == "Silver" and allClaimed[2].level == 45, "mid level bot must sort second")
 assert(allClaimed[3].name == "Bronze" and allClaimed[3].level == 20, "lower level bot must sort third")
+
+-- Sortable guild columns (session-only): click a header to sort, again to reverse.
+TB.SetGuildSort("name")
+assert(TB.GetClaimedBots()[1].name == "Bronze" and TB.GetClaimedBots()[2].name == "Goldie"
+    and TB.GetClaimedBots()[3].name == "Silver", "name sort must order guild rows alphabetically")
+assert(TB.guildFrame.headerBtns and table.getn(TB.guildFrame.headerBtns) == 5,
+    "guild header buttons must exist for each column")
+assert(TB.guildFrame.headerBtns[1].headerLabel:GetText() == "NAME ^",
+    "the active guild header must carry the direction marker")
+TB.SetGuildSort("name")
+assert(TB.GetClaimedBots()[1].name == "Silver", "clicking the same guild header again must reverse the rows")
+TB.SetGuildSort("level")
+assert(TB.GetClaimedBots()[1].name == "Goldie", "level sort must restore highest level first")
+TB.SetGuildSort("status")
+assert(TB.GetClaimedBots()[1].online and TB.GetClaimedBots()[table.getn(TB.GetClaimedBots())].online == false,
+    "status sort must keep online guild bots before offline")
+TB.guildSort = { key = "level", dir = -1 }
 
 -- Gear locking policy state
 assert(allClaimed[1].gearLocked == true, "Level 60 bot must have gearLocked = true")
