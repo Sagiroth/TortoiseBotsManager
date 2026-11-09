@@ -1142,6 +1142,8 @@ assert(not TB.toggleButtons.loot.enabled, "a switch waits for the server while p
 TB.OnSystemMessage("TBM:ACTION_ACK|loot|party|2|on")
 assert(TB.GetPartyToggleState("loot") == "on" and TB.toggleButtons.loot.enabled
     and TB.toggleButtons.loot.isActive, "the ACK must settle the switch")
+assert(string.find(TB.toggleButtons.loot.text, "Loot On", 1, true),
+    "a settled switch must spell its On word, not colour alone")
 now = now + 1
 this = TB.toggleButtons.autocc
 TB.toggleButtons.autocc.scripts.OnClick(TB.toggleButtons.autocc)
@@ -1149,6 +1151,8 @@ assert(lastAddon() == "action auto cc on", "Auto CC must send the auto cc intent
 TB.OnSystemMessage("TBM:ACTION_ERR|auto cc|failed|No scoped bot accepted")
 assert(TB.GetPartyToggleState("autocc") == "off" and TB.toggleButtons.autocc.enabled,
     "a refused switch must not drift")
+assert(string.find(TB.toggleButtons.autocc.text, "Auto CC Off", 1, true),
+    "an off switch must spell its Off word, not colour alone")
 -- A single-bot ACK only changes that bot.
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
 assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
@@ -1951,6 +1955,16 @@ now = now + 1
 this, arg1 = restEntry, "LeftButton"
 restEntry.scripts.OnClick(restEntry)
 assert(lastAddon() == "action rest", "a flyout click runs the action")
+TB.OpenMiniCategory("switch")
+do
+    local found = nil
+    for _, e in ipairs(fly.entries) do
+        if e.def and e.def.toggle == "loot" then found = e end
+    end
+    assert(found and string.find(found.label.text or "", "%(On%)", 1) ~= nil,
+        "the flyout must spell the switch word beside the colour lamp")
+end
+TB.OpenMiniCategory("camp")
 this, arg1 = restEntry, "RightButton"
 restEntry.scripts.OnClick(restEntry)
 assert(bar.icons.rest and bar.icons.rest.visible, "right-click pins the action to the bar")
@@ -2430,6 +2444,7 @@ TB.OnSystemMessage("TBM:FEATURE|hire-max|4|Hires per player")
 assert(table.getn(TB.GetServerFeatures()) == 2, "the switches parse")
 assert(TB.infoWindow.rows[1].label.text == "Dungeon runs" and TB.infoWindow.rows[2].value.text == "4",
     "the switches render")
+assert(TB.infoWindow.rows[1].value.text == "On", "a switch value must spell On, not colour alone")
 assert(chatFilters.CHAT_MSG_SYSTEM == nil or chatFilters.CHAT_MSG_SYSTEM(nil, nil, "Server features: dungeon-run on") == true,
     "the summary stays out of the chat")
 -- All settings: a search asks the server, the answer lists key and value.

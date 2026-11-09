@@ -184,7 +184,10 @@ local function renderMain()
         local f = features[i]
         if f then
             row.label:SetText(f.label)
-            row.value:SetText(f.value)
+            local word = f.value
+            if f.value == "on" then word = "On"
+            elseif f.value == "off" then word = "Off" end
+            row.value:SetText(word)
             if f.value == "on" then
                 row.lamp:SetTexture(0.30, 0.90, 0.45, 1)
                 TB.SetTextColor(row.value, color("green"))

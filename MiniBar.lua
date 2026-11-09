@@ -115,6 +115,11 @@ local function tooltipFor(def)
         local seconds = def.intent == "pullback" and db.pullbackDelay or db.pullDelay
         text = text .. " Timer: " .. TB.ClampPullSeconds(seconds) .. " s (set it in the full window)."
     end
+    if def.toggle then
+        local state = TB.GetPartyToggleState and TB.GetPartyToggleState(def.toggle)
+        local word = state == "on" and "On" or (state == "mixed" and "Mixed" or (state == "off" and "Off" or "?"))
+        text = text .. (text ~= "" and " " or "") .. "State: " .. word .. "."
+    end
     return title, text
 end
 
@@ -133,6 +138,15 @@ local function usable(def)
     if def.cap and not (TB.HasServerCapability and TB.HasServerCapability(def.cap)) then return false end
     if def.toggle and TB.togglePending and TB.togglePending[def.toggle] then return false end
     return true
+end
+
+local function toggleWord(def)
+    if not def or not def.toggle then return nil end
+    local state = TB.GetPartyToggleState and TB.GetPartyToggleState(def.toggle)
+    if state == "on" then return "On"
+    elseif state == "mixed" then return "Mixed"
+    elseif state == "off" then return "Off" end
+    return "?"
 end
 
 local function paintLamp(lamp, def)
@@ -280,7 +294,8 @@ local function renderFlyout()
         e.def = def
         if def then
             setIcon(e.icon, def)
-            e.label:SetText(def.label or def.intent)
+            local word = toggleWord(def)
+            e.label:SetText((def.label or def.intent) .. (word and (" (" .. word .. ")") or ""))
             if isFavorite(def.intent) then TB.SetTextColor(e.label, color("gold"))
             else e.label:SetTextColor(0.92, 0.92, 0.92) end
             paintLamp(e.lamp, def)

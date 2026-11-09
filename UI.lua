@@ -1454,7 +1454,7 @@ CreateStatusBar = function(parent)
     line:SetHeight(1)
     local dot = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     dot:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", C.PAD or 10, 7)
-    dot:SetText("|cff4ecb5a●|r")
+    dot:SetText("|cff757575○|r")
     TB.statusDot = dot
 
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2902,16 +2902,16 @@ function TB.SetStatus(msg, kind)
     msg = msg or ""
     if string.len(msg) > 120 then msg = string.sub(msg, 1, 120) .. "…" end
     local c = color("muted")
-    local dot = "|cff757575●|r"
+    local dot = "|cff757575○|r"
     if kind == "ok" then
         c = color("green")
         dot = "|cff4ecb5a●|r"
     elseif kind == "warn" then
         c = color("red")
-        dot = "|cffff5555●|r"
+        dot = "|cffff5555!|r"
     elseif kind == "pending" then
         c = color("yellow")
-        dot = "|cffffb300●|r"
+        dot = "|cffffb300...|r"
     end
     if TB.statusDot then TB.statusDot:SetText(dot) end
     TB.statusText:SetText(msg)
@@ -3092,15 +3092,16 @@ function TB.RefreshActionControls()
 end
 
 -- An on/off button's look: lit gold and white text when on, dimmed grey
--- text when off, gold text with "~" when the bots disagree. Colour codes in
--- the text hold through hover and press.
+-- text when off, gold text with "~" when the bots disagree. The word stays
+-- in the label (colour alone is not enough: red/green is unreadable for
+-- colour-blind players). Colour codes in the text hold through hover/press.
 local function paintSwitch(btn, label, state)
     if state == "on" then
-        btn:SetText("|cffffffff" .. label .. "|r")
+        btn:SetText("|cffffffff" .. label .. " On|r")
     elseif state == "mixed" then
         btn:SetText("|cffffd200" .. label .. " ~|r")
     else
-        btn:SetText("|cff8a8a8a" .. label .. "|r")
+        btn:SetText("|cff8a8a8a" .. label .. " Off|r")
     end
     TB.SetButtonActive(btn, state == "on")
 end
