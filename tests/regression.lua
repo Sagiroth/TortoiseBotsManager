@@ -4518,9 +4518,8 @@ StaticPopupDialogs["TORTOISEBOTSMANAGER_CANCEL_ORDER"].OnAccept()
 assert(lastAddon() == "order Goldie cancel", "confirming asks for the removal")
 TB.OnSystemMessage("TBM:ACTION_ACK|order|bot:Goldie|1|cancel")
 assert(TB.GetBotOrder("Goldie") == nil, "a cancel ACK drops the row at once")
-assert(string.find(guildOrderRow.orderLine:GetText(), "No order", 1, true),
-    "a cancelled row falls back to No order")
 TB.RefreshGuildView()
+assert(not guildOrderRow.orderLine:IsVisible(), "a cancelled row shows no order line")
 TB._t.noOrderMenu = {}
 TB.BuildGuildRowMenu("Goldie", function(info) table.insert(TB._t.noOrderMenu, info) end)
 TB._t.noOrderCancel = nil

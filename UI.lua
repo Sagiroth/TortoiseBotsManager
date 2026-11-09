@@ -2110,12 +2110,12 @@ end
         guildFrame.checkAll = checkAll
 
         local headers = {
-            { text = "Name", width = 80, x = 46, sortKey = "name" },
-            { text = "Level", width = 64, x = 128, sortKey = "level" },
-            { text = "Gear", width = 52, x = 194, sortKey = nil },
-            { text = "Status", width = 70, x = 248, sortKey = "status" },
-            { text = "Role", width = 74, x = 324, sortKey = nil, center = true },
-            { text = "Order", width = 76, x = 400, sortKey = nil, center = true },
+            { text = "Name", width = 76, x = 46, sortKey = "name" },
+            { text = "Level", width = 60, x = 124, sortKey = "level" },
+            { text = "Gear", width = 50, x = 186, sortKey = nil },
+            { text = "Status", width = 64, x = 238, sortKey = "status" },
+            { text = "Role", width = 74, x = 304, sortKey = nil, center = true },
+            { text = "Order", width = 76, x = 380, sortKey = nil, center = true },
         }
         guildFrame.headerBtns = {}
         for _, h in ipairs(headers) do
@@ -2265,7 +2265,7 @@ end
             TB.ApplySurface(row, "row")
             row:EnableMouse(true)
 
-            -- Two lines per bot: who it is on top, its order below; the
+            -- One line per bot, two while it has an order: who it is on top, its order below; the
             -- buttons sit in a right-hand column, two per line.
             row.accent = row:CreateTexture(nil, "ARTWORK")
             row.accent:SetWidth(2)
@@ -2284,29 +2284,29 @@ end
 
             row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             row.name:SetPoint("LEFT", row, "LEFT", 46, 8)
-            row.name:SetWidth(80)
+            row.name:SetWidth(76)
             row.name:SetJustifyH("LEFT")
 
             row.lvlClass = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            row.lvlClass:SetPoint("LEFT", row, "LEFT", 128, 8)
-            row.lvlClass:SetWidth(64)
+            row.lvlClass:SetPoint("LEFT", row, "LEFT", 124, 8)
+            row.lvlClass:SetWidth(60)
             row.lvlClass:SetJustifyH("LEFT")
 
             row.gearBadge = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            row.gearBadge:SetPoint("LEFT", row, "LEFT", 194, 8)
-            row.gearBadge:SetWidth(52)
+            row.gearBadge:SetPoint("LEFT", row, "LEFT", 186, 8)
+            row.gearBadge:SetWidth(50)
             row.gearBadge:SetJustifyH("LEFT")
 
             row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            row.status:SetPoint("LEFT", row, "LEFT", 248, 8)
-            row.status:SetWidth(70)
+            row.status:SetPoint("LEFT", row, "LEFT", 238, 8)
+            row.status:SetWidth(64)
             row.status:SetJustifyH("LEFT")
 
             -- Guild order line: the bot's current order and its progress
             -- (TB.OrderRowText); the Order/Cancel buttons sit at its right.
             row.orderLine = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             row.orderLine:SetPoint("LEFT", row, "LEFT", 46, -8)
-            row.orderLine:SetWidth(272)
+            row.orderLine:SetWidth(330)
             row.orderLine:SetJustifyH("LEFT")
 
             local bagBtn = TB.UI.CreateIconButton(row, 18, {
@@ -2334,7 +2334,7 @@ end
             local roleBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             roleBtn.flatKind = "mode"
             roleBtn:SetWidth(74); roleBtn:SetHeight(16)
-            roleBtn:SetPoint("LEFT", row, "LEFT", 324, 8)
+            roleBtn:SetPoint("LEFT", row, "LEFT", 304, 8)
             roleBtn:SetText("Role")
             roleBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -2358,7 +2358,7 @@ end
 
             local ordBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             ordBtn:SetWidth(42); ordBtn:SetHeight(16)
-            ordBtn:SetPoint("LEFT", row, "LEFT", 400, 8)
+            ordBtn:SetPoint("LEFT", row, "LEFT", 380, 8)
             ordBtn:SetText("Order")
             ordBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -2371,7 +2371,7 @@ end
             -- users; the same actions stay one right-click away on the row.
             local moreBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             moreBtn:SetWidth(32); moreBtn:SetHeight(16)
-            moreBtn:SetPoint("LEFT", row, "LEFT", 444, 8)
+            moreBtn:SetPoint("LEFT", row, "LEFT", 424, 8)
             moreBtn:SetText("...")
             moreBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -2386,7 +2386,7 @@ end
             local meetBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             meetBtn.flatKind = "primary"
             meetBtn:SetWidth(76); meetBtn:SetHeight(16)
-            meetBtn:SetPoint("LEFT", row, "LEFT", 400, -8)
+            meetBtn:SetPoint("LEFT", row, "LEFT", 380, -8)
             meetBtn:SetText("Meet")
             meetBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -2407,6 +2407,8 @@ end
                 return nil
             end
             row.meetBtn = meetBtn
+            row.lineItems = { { row.name, 46 }, { row.lvlClass, 124 }, { row.gearBadge, 186 }, { row.status, 238 },
+                { roleBtn, 304 }, { ordBtn, 380 }, { moreBtn, 424 } }
 
             local hl = row:CreateTexture(nil, "HIGHLIGHT")
             hl:SetAllPoints(row)
@@ -2923,10 +2925,20 @@ end
                 local orderCap = TB.HasOrderCapability and TB.HasOrderCapability() or false
                 local order = orderCap and TB.GetBotOrder and TB.GetBotOrder(entry.name) or nil
                 local mayOrder = orderCap and TB.CanGiveOrders and TB.CanGiveOrders() or false
+                -- No order: one centred line. An order adds its progress line
+                -- below and lifts the rest of the row to make room.
+                local hasOrderLine = orderCap and order and TB.OrderRowText and true or false
+                local lineY = hasOrderLine and 8 or 0
+                if row.lineItems and row.lineY ~= lineY then
+                    row.lineY = lineY
+                    for _, item in ipairs(row.lineItems) do
+                        item[1]:ClearAllPoints()
+                        item[1]:SetPoint("LEFT", row, "LEFT", item[2], lineY)
+                    end
+                end
                 if row.orderLine then
-                    if orderCap then
-                        row.orderLine:SetText((order and TB.OrderRowText)
-                            and TB.OrderRowText(order) or "|cff666666No order|r")
+                    if hasOrderLine then
+                        row.orderLine:SetText(TB.OrderRowText(order))
                         row.orderLine:Show()
                     else
                         row.orderLine:Hide()
