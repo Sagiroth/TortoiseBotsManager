@@ -119,7 +119,7 @@ local function object(kind, parent)
     function methods:GetScale() return self.scale or 1 end
     function methods:SetScale(scale) self.scale = scale end
     function methods:SetOrientation(...) end
-    function methods:SetMinMaxValues(min, max) self.min, self.max = min, max end
+    function methods:SetMinMaxValues(min, max) self.min, self.max = min, max; self.barMin, self.barMax = min, max end
     function methods:SetValueStep(...) end
     function methods:SetValue(value) self.value = value end
     function methods:GetValue() return self.value or 0 end
