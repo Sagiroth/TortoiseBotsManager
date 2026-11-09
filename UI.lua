@@ -2299,7 +2299,7 @@ end
 
             row.status = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             row.status:SetPoint("LEFT", row, "LEFT", 238, 8)
-            row.status:SetWidth(64)
+            row.status:SetWidth(64); row.status:SetHeight(12)
             row.status:SetJustifyH("LEFT")
 
             -- Guild order line: the bot's current order and its progress
