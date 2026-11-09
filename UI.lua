@@ -3395,16 +3395,15 @@ function TB.PaintActionFeedback(onlyIntent)
 end
 
 -- An on/off button's look: lit gold and white text when on, dimmed grey
--- text when off, gold text with "~" when the bots disagree. The word stays
--- in the label (colour alone is not enough: red/green is unreadable for
--- colour-blind players). Colour codes in the text hold through hover/press.
+-- text when off, gold text with "~" when the bots disagree. Colour codes in
+-- the text hold through hover and press.
 local function paintSwitch(btn, label, state)
     if state == "on" then
-        btn:SetText("|cffffffff" .. label .. " On|r")
+        btn:SetText("|cffffffff" .. label .. "|r")
     elseif state == "mixed" then
         btn:SetText("|cffffd200" .. label .. " ~|r")
     else
-        btn:SetText("|cff8a8a8a" .. label .. " Off|r")
+        btn:SetText("|cff8a8a8a" .. label .. "|r")
     end
     TB.SetButtonActive(btn, state == "on")
 end

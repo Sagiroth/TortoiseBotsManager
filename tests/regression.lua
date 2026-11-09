@@ -1344,8 +1344,6 @@ assert(not TB.toggleButtons.loot.enabled, "a switch waits for the server while p
 TB.OnSystemMessage("TBM:ACTION_ACK|loot|party|2|on")
 assert(TB.GetPartyToggleState("loot") == "on" and TB.toggleButtons.loot.enabled
     and TB.toggleButtons.loot.isActive, "the ACK must settle the switch")
-assert(string.find(TB.toggleButtons.loot.text, "Loot On", 1, true),
-    "a settled switch must spell its On word, not colour alone")
 now = now + 1
 this = TB.toggleButtons.autocc
 TB.toggleButtons.autocc.scripts.OnClick(TB.toggleButtons.autocc)
@@ -1353,8 +1351,6 @@ assert(lastAddon() == "action auto cc on", "Auto CC must send the auto cc intent
 TB.OnSystemMessage("TBM:ACTION_ERR|auto cc|failed|No scoped bot accepted")
 assert(TB.GetPartyToggleState("autocc") == "off" and TB.toggleButtons.autocc.enabled,
     "a refused switch must not drift")
-assert(string.find(TB.toggleButtons.autocc.text, "Auto CC Off", 1, true),
-    "an off switch must spell its Off word, not colour alone")
 -- A single-bot ACK only changes that bot.
 TB.OnSystemMessage("TBM:ACTION_ACK|aoe|bot:Alpha|1|on")
 assert(TB.GetBotState("Alpha").aoe == "on" and TB.GetBotState("Gamma").aoe == "off"
