@@ -1718,7 +1718,40 @@ return function()
         end
     end
 
-    -- ── main window chrome ───────────────────────────────────────────
+    -- ── Settings window ────────────────────────────────────────────────
+    do
+        local cache = {}
+        if not TB.OpenSettings then
+            bad("Settings: OpenSettings missing")
+        else
+            TB.OpenSettings()
+            local win = TB.settingsWindow
+            if not win then
+                bad("Settings: did not open")
+            else
+                local wr = frameRect(win, cache)
+                local items = {}
+                for _, key in ipairs({ "slider", "minimapCheck", "lockCheck",
+                    "pollCheck", "pollStepper", "scaleValue" }) do
+                    if win[key] then table.insert(items, { key, win[key] }) end
+                end
+                childrenInside("Settings", win, wr, items, cache, 2)
+                noOverlaps("Settings rows", items, cache)
+                if win.pollStepper and win.pollStepper.label then
+                    local st = win.pollStepper
+                    local span = (st.minus.width or 0) + 2 + (st.label.width or 0)
+                        + 2 + (st.plus.width or 0)
+                    local frame = st.width or 108
+                    if frame - span > 6 then
+                        bad(string.format("Settings poll stepper: children span %dpx in a %dpx stepper (%dpx dead gap)",
+                            span, frame, frame - span))
+                    end
+                end
+            end
+            if TB.CloseSettings then TB.CloseSettings() end
+        end
+    end
+
     do
         local cache = {}
         if TB.frame then

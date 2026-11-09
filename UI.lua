@@ -1476,10 +1476,13 @@ function TB.InitUI()
     local main = CreateFrame("Frame", "TortoiseBotsManagerFrame", UIParent)
     CreateHeader(main)
     if main.SetScale then
-        local sh = (GetScreenHeight and GetScreenHeight()) or 768
-        if sh < 700 then main:SetScale(0.82)
-        elseif sh < 860 then main:SetScale(0.90)
-        else main:SetScale(1) end
+        if TB.GetWindowScale then main:SetScale(TB.GetWindowScale())
+        else
+            local sh = (GetScreenHeight and GetScreenHeight()) or 768
+            if sh < 700 then main:SetScale(0.82)
+            elseif sh < 860 then main:SetScale(0.90)
+            else main:SetScale(1) end
+        end
     end
 
     CreateStatusBar(main)
