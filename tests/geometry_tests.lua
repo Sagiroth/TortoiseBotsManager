@@ -1515,12 +1515,13 @@ return function()
                 -- Each step has its own window height, so a control is
                 -- checked at the step that shows it.
                 local stepOneKeys = { searchBox = true, accessLabel = true, rankBtn = true }
-                local items, items1 = {}, {}
+                local stepThreeKeys = { sendBtn = true, cancelBtn = true, previewLine = true }
+                local items, items1, items2 = {}, {}, {}
                 for _, key in ipairs({ "searchBox", "amountMinus", "amountBox", "amountPlus",
                     "hoursBox", "noLimitBox", "noLimitLabel", "keepBox", "sendBtn", "cancelBtn", "farmNote",
                     "goldLabel", "goldBox", "accessLabel", "rankBtn", "previewLine" }) do
                     if win[key] then
-                        table.insert(stepOneKeys[key] and items1 or items, { key, win[key] })
+                        table.insert(stepOneKeys[key] and items1 or (stepThreeKeys[key] and items or items2), { key, win[key] })
                         if win[key].kind == "Button" then
                             labelFits("OrderWindow " .. key, win[key], nil, 6)
                         end
@@ -1542,6 +1543,10 @@ return function()
                 TB.SetOrderStep(1)
                 wr = frameRect(win, {})
                 childrenInside("OrderWindow step 1", win, wr, items1, {}, 2)
+                TB.SetOrderStep(2)
+                wr = frameRect(win, {})
+                childrenInside("OrderWindow step 2", win, wr, items2, {}, 2)
+                noOverlaps("OrderWindow step 2 controls", items2, {})
                 TB.SetOrderStep(3)
                 wr = frameRect(win, {})
                 childrenInside("OrderWindow step 3", win, wr, items, {}, 2)
