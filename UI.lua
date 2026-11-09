@@ -1415,9 +1415,9 @@ local function BuildSwitchesCard(parent, buttons)
     local switchIdx = 1
     for _, def in ipairs(C.ACTION_DEFINITIONS or {}) do
         if def.section == "switch" then
-            local btn = makeActionButton(card, def.intent, 89, 8 + (switchIdx - 1) * 93, btnY)
+            local btn = makeActionButton(card, def.intent, 91, 8 + (switchIdx - 1) * 93, btnY)
             btn:SetHeight(22)
-            if btn.icon then btn.icon:Hide() end
+            if btn.icon then btn.icon:Show() end
             btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
             setButtonTooltip(btn, def.tip .. " Click to switch for the whole party (or only the targeted bot).",
                 def.label)
