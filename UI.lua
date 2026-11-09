@@ -1616,6 +1616,26 @@ function TB.InitUI()
             TB.SetTextColor(descText, color("muted"))
             row.descText = descText
 
+            -- Vitals from the client alone (the server never sends them):
+            -- thin HP and mana bars along the row bottom, under the role
+            -- picker. Mana hides for classes without any.
+            local hpBar = CreateFrame("StatusBar", nil, row)
+            hpBar:SetWidth(150); hpBar:SetHeight(6)
+            hpBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 150, 8)
+            hpBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+            hpBar:SetMinMaxValues(0, 100)
+            hpBar:SetValue(100)
+            row.hpBar = hpBar
+
+            local manaBar = CreateFrame("StatusBar", nil, row)
+            manaBar:SetWidth(150); manaBar:SetHeight(5)
+            manaBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 150, 1)
+            manaBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+            manaBar:SetStatusBarColor(COL.blue[1], COL.blue[2], COL.blue[3])
+            manaBar:SetMinMaxValues(0, 100)
+            manaBar:SetValue(100)
+            row.manaBar = manaBar
+
             local bagButton = TB.UI.CreateIconButton(row, 22, {
                 point = "RIGHT",
                 relTo = row,
@@ -1713,6 +1733,10 @@ function TB.InitUI()
                     GameTooltip:AddLine("CC mark: " .. mark, 0.9, 0.9, 0.9, 1)
                 elseif row.partyUnit ~= "player" then
                     GameTooltip:AddLine("CC mark: not reported", COL.muted[1], COL.muted[2], COL.muted[3])
+                end
+                if row.partyState then
+                    local stateTip = row.partyState == "OOR" and "Out of range" or row.partyState
+                    GameTooltip:AddLine(stateTip, COL.muted[1], COL.muted[2], COL.muted[3])
                 end
                 if row.partyUnit ~= "player" then
                     GameTooltip:AddLine("Click row to target this bot for CC assignment.", COL.muted[1], COL.muted[2], COL.muted[3])
@@ -2424,8 +2448,53 @@ function TB.InitUI()
                 row.nameText:SetText(name)
                 row.nameText:SetTextColor(col[1], col[2], col[3])
                 TB.SetClassIcon(row.classIcon, classId)
+                -- Dead/ghost from the corpse events, drinking from the aura,
+                -- range from the interact check. Dead wins over the rest.
+                local dead = UnitIsDead and UnitIsDead(unit) and true or false
+                local ghost = not dead and UnitIsGhost and UnitIsGhost(unit) and true or false
+                local range = true
+                if not dead and not ghost and unit ~= "player" and CheckInteractDistance then
+                    range = CheckInteractDistance(unit, 4)
+                end
+                local drinkBuff = nil
+                if not dead and not ghost and UnitBuff then
+                    for b = 1, 32 do
+                        local buff = UnitBuff(unit, b)
+                        if not buff then break end
+                        if string.find(buff, "Drink") or string.find(buff, "drink") then drinkBuff = buff break end
+                    end
+                end
+                local state = nil
+                if dead then state = "Dead"
+                elseif ghost then state = "Ghost"
+                elseif not range then state = "OOR"
+                elseif drinkBuff then state = "Drinking" end
+                row.partyState = state
+                local hp = (UnitHealth and UnitHealth(unit)) or 0
+                local hpMax = (UnitHealthMax and UnitHealthMax(unit)) or 0
+                local mp, mpMax = (UnitMana and UnitMana(unit)) or 0, (UnitManaMax and UnitManaMax(unit)) or 0
+                if row.hpBar then
+                    if hpMax > 0 then row.hpBar:SetMinMaxValues(0, hpMax) end
+                    row.hpBar:SetValue(hp)
+                    if dead or ghost or hp <= 0 then
+                        row.hpBar:SetStatusBarColor(COL.muted[1], COL.muted[2], COL.muted[3])
+                    elseif hpMax > 0 and hp / hpMax < 0.35 then
+                        row.hpBar:SetStatusBarColor(COL.red[1], COL.red[2], COL.red[3])
+                    else
+                        row.hpBar:SetStatusBarColor(COL.green[1], COL.green[2], COL.green[3])
+                    end
+                end
+                if row.manaBar then
+                    if mpMax > 0 then
+                        row.manaBar:SetMinMaxValues(0, mpMax)
+                        row.manaBar:SetValue(mp)
+                        row.manaBar:Show()
+                    else
+                        row.manaBar:Hide()
+                    end
+                end
                 local movement = unit ~= "player" and TB.MovementLabel and TB.MovementLabel(name) or nil
-                row.descText:SetText(lvlText .. (movement and (" · " .. movement) or (" " .. (className or ""))))
+                row.descText:SetText(lvlText .. (state and (" · " .. state) or (movement and (" · " .. movement) or (" " .. (className or "")))))
                 if unit ~= "player" and TB.GetBotState and TB.GetBotState(name)
                     and TB.HasServerCapability and TB.HasServerCapability("inventory") then
                     row.bagButton:Show()
@@ -2438,7 +2507,16 @@ function TB.InitUI()
                     row.summonButton:Hide()
                 end
                 row.accent:SetTexture(col[1], col[2], col[3], 0.95)
-                if unit == "player" then
+                local targeted = false
+                if UnitExists and UnitExists("target") and UnitName then
+                    local targetName = UnitName("target")
+                    targeted = targetName and targetName == name or false
+                end
+                if targeted then
+                    local sel, selEdge = TB.Theme("rowSel"), TB.Theme("rowSelEdge")
+                    row:SetBackdropColor(sel[1], sel[2], sel[3], sel[4])
+                    row:SetBackdropBorderColor(selEdge[1], selEdge[2], selEdge[3], selEdge[4])
+                elseif unit == "player" then
                     row:SetBackdropColor(0.10, 0.09, 0.07, 0.96)
                 else
                     local rc = TB.Theme("row")
@@ -2522,6 +2600,7 @@ function TB.InitUI()
                 row.partyUnit = nil
                 row.partyName = nil
                 row.ccMark = nil
+                row.partyState = nil
                 row.ccIcon:Hide()
                 row.bagButton:Hide()
             end
@@ -2872,10 +2951,19 @@ function TB.InitUI()
     targetWatcher:RegisterEvent("PARTY_MEMBERS_CHANGED")
     targetWatcher:RegisterEvent("RAID_ROSTER_UPDATE")
     targetWatcher:RegisterEvent("UNIT_HEALTH")
+    targetWatcher:RegisterEvent("UNIT_MANA")
+    targetWatcher:RegisterEvent("UNIT_AURA")
     targetWatcher:SetScript("OnEvent", function()
-        if event == "UNIT_HEALTH" then
-            -- Only party deaths/resurrections matter (Release/Corpse run).
-            if arg1 and string.find(arg1, "^party") and TB.RefreshDeathButton then TB.RefreshDeathButton() end
+        if event == "UNIT_HEALTH" or event == "UNIT_MANA" or event == "UNIT_AURA" then
+            -- Party vitals and auras (dead, drinking) live on the Party tab.
+            if arg1 and (string.find(arg1, "^party") or arg1 == "player")
+                and TB.partyFrame and TB.partyFrame:IsVisible() and TB.RefreshPartyView then
+                TB.RefreshPartyView()
+            end
+            if event == "UNIT_HEALTH" then
+                -- Only party deaths/resurrections matter (Release/Corpse run).
+                if arg1 and string.find(arg1, "^party") and TB.RefreshDeathButton then TB.RefreshDeathButton() end
+            end
             return
         end
         if (event == "RAID_ROSTER_UPDATE" or event == "PARTY_MEMBERS_CHANGED") and TB.UpdateRaidTab then

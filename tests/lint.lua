@@ -55,7 +55,8 @@ local WOW_GLOBALS = set({
     "UnitClass", "UnitExists", "UnitFactionGroup", "UnitIsDead", "UnitIsGhost", "UnitIsPlayer",
     "UnitLevel", "UnitName", "GetNumPartyMembers", "GetNumRaidMembers", "TargetByName",
     "TargetUnit", "DoReadyCheck", "CanEditOfficerNote", "GuildControlGetNumRanks",
-    "GuildControlGetRankName", "GuildUninvite",
+    "GuildControlGetRankName", "GuildUninvite", "UnitHealth", "UnitHealthMax",
+    "UnitMana", "UnitManaMax", "UnitBuff", "CheckInteractDistance", "UnitIsUnit",
     -- items and bags
     "GetContainerItemInfo", "GetContainerItemLink", "GetContainerNumSlots", "GetItemInfo",
     "GetItemQualityColor", "PickupContainerItem", "SplitContainerItem", "ClearCursor",
