@@ -647,6 +647,8 @@ this = TB.actionButtons.attack
 TB.actionButtons.attack.scripts.OnClick(TB.actionButtons.attack)
 assert(table.getn(sent) == beforeAttack + 1 and sent[table.getn(sent)] == ".bot action attack",
     "Attack must send exactly one action intent")
+assert(TB.ActionFeedbackState("attack") == "waiting",
+    "Attack click must show a waiting state until the server answers")
 assert(table.getn(TB.GetSelectedRosterNames()) == selectedBeforeAction,
     "gameplay actions must not couple to roster checkbox selection")
 now = now + 1
@@ -821,6 +823,8 @@ TB.stancePills.tank.scripts.OnClick(TB.stancePills.tank)
 assert(sent[table.getn(sent)] == ".bot action stance tank", "Tank stance pill must send stance tank")
 assert(TB.currentStance == "tank" and TB.stancePills.tank.isActive and not TB.stancePills.near.isActive,
     "Active stance pill must become disabled")
+assert(TB.ActionFeedbackState("stance tank") == "waiting",
+    "stance clicks must keep their waiting state through the pill repaint")
 TB.OnSystemMessage("TBM:ACTION_ACK|stance|party|2|tank")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "stance" and TB.lastActionAck.executor == "tank",
     "structured stance ACK must be parsed")
@@ -847,9 +851,13 @@ TB.OnSystemMessage("TBM:ACTION_ACK|attack|party|2|-")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "attack"
     and TB.lastActionAck.scope == "party" and TB.lastActionAck.count == 2,
     "structured action ACK must be parsed")
+assert(TB.ActionFeedbackState("attack") == "ok",
+    "an ACK must flash the clicked button green")
 TB.OnSystemMessage("TBM:ACTION_ERR|pullback|NO_TARGET|Select a living target")
 assert(TB.lastActionError and TB.lastActionError.code == "NO_TARGET",
     "structured action ERR must be parsed")
+assert(TB.ActionFeedbackState("pullback") == "error",
+    "an ACTION_ERR must flash the clicked button red")
 TB.OnSystemMessage("TBM:ACTION_ACK|interrupt|party|1|Arcana")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "interrupt"
     and TB.lastActionAck.executor == "Arcana",
@@ -858,6 +866,20 @@ TB.OnSystemMessage("TBM:ACTION_ERR|interrupt|not-casting|The target is not casti
 assert(TB.lastActionError and TB.lastActionError.intent == "interrupt"
     and TB.lastActionError.code == "not-casting",
     "structured interrupt ERR must be parsed")
+-- A missing answer clears the waiting look after the action timeout.
+TB.NoteActionFeedback("stay", "waiting")
+assert(TB.ActionFeedbackState("stay") == "waiting", "fresh clicks must read waiting")
+now = now + (TB.C.ACTION_TIMEOUT or 8) + 1
+assert(TB.ActionFeedbackState("stay") == nil, "a missing answer must clear the waiting state")
+now = now + 1
+TB.NoteActionFeedback("stay", "waiting")
+assert(TB.ActionFeedbackState("stay") == "waiting", "state must be re-armable after a timeout")
+TB.OnSystemMessage("TBM:ACTION_ACK|stay|party|2|-")
+assert(TB.ActionFeedbackState("stay") == "ok", "a late ACK must still flash green")
+-- Timed pulls ("pull 10") and toggle switches ("aoe on") map back to
+-- the button intent that sent them.
+assert(TB.ActionFeedbackKey("action pull 10") == "pull", "timed pull must map to its button")
+assert(TB.ActionFeedbackKey("action aoe on") == "aoe", "toggle switches must map to their key")
 
 -- Polling now requests the authoritative roster command and deduplicates
 -- queued refreshes; BuildCommand remains available for legacy callers.

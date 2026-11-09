@@ -955,6 +955,8 @@ local function makeActionButton(parent, intent, width, x, y)
     })
     -- Right-click pins the action to the mini bar's favourites.
     if def then button:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+    button.actionIntent = intent
+    TB.SetButtonFeedback(button, TB.ActionFeedbackState and TB.ActionFeedbackState(intent) or nil)
     return button
 end
 
@@ -3254,6 +3256,7 @@ function TB.RefreshActionControls()
     end
     if TB.UpdateFormationPills then TB.UpdateFormationPills() end
     if TB.UpdateStancePills then TB.UpdateStancePills() end
+    if TB.PaintActionFeedback then TB.PaintActionFeedback() end
 
     local scope, botName = targetScope()
     if TB.scopeIcon then
@@ -3281,6 +3284,29 @@ function TB.RefreshActionControls()
     end
 end
 
+-- Repaints the waiting / answer state onto every action button: one call
+-- paints the main window; the mini bar icons paint themselves on refresh.
+-- An optional intent repaints just that button (called right after a send
+-- or a reply lands, between refreshes). Expired entries repaint as normal.
+function TB.PaintActionFeedback(onlyIntent)
+    if not TB.actionButtons then return end
+    if not TB.SetButtonFeedback then return end
+    if not TB.ActionFeedbackState then return end
+    if onlyIntent then
+        for _, btn in pairs(TB.actionButtons) do
+            if btn.actionIntent == onlyIntent then
+                TB.SetButtonFeedback(btn, TB.ActionFeedbackState(onlyIntent))
+            end
+        end
+        return
+    end
+    for _, btn in pairs(TB.actionButtons) do
+        if btn.actionIntent then
+            TB.SetButtonFeedback(btn, TB.ActionFeedbackState(btn.actionIntent))
+        end
+    end
+end
+
 -- An on/off button's look: lit gold and white text when on, dimmed grey
 -- text when off, gold text with "~" when the bots disagree. The word stays
 -- in the label (colour alone is not enough: red/green is unreadable for
@@ -3303,11 +3329,19 @@ function TB.RefreshToggleButtons()
         if key == "aoe" and not state and TB.aoeEnabled then state = "on" end
         paintSwitch(btn, btn.toggle.label, state)
         if TB.togglePending and TB.togglePending[key] then btn:Disable() else btn:Enable() end
+        if btn.actionIntent and TB.SetButtonFeedback and TB.ActionFeedbackState then
+            TB.SetButtonFeedback(btn, TB.ActionFeedbackState(btn.actionIntent))
+        end
     end
     local moveMode = TB.GetPartyMoveMode and TB.GetPartyMoveMode() or nil
     for _, mode in ipairs({ "follow", "stay", "guard", "free" }) do
         local btn = TB.actionButtons and TB.actionButtons[mode]
-        if btn then TB.SetButtonActive(btn, moveMode == mode) end
+        if btn then
+            TB.SetButtonActive(btn, moveMode == mode)
+            if btn.actionIntent and TB.SetButtonFeedback and TB.ActionFeedbackState then
+                TB.SetButtonFeedback(btn, TB.ActionFeedbackState(btn.actionIntent))
+            end
+        end
     end
 end
 
@@ -3317,6 +3351,9 @@ function TB.RefreshCampControls()
     if TB.actionButtons.grind then
         local state = TB.GetGrindState and TB.GetGrindState() or nil
         paintSwitch(TB.actionButtons.grind, "Grind", state == "on" and "on" or "off")
+        if TB.actionButtons.grind.actionIntent and TB.SetButtonFeedback and TB.ActionFeedbackState then
+            TB.SetButtonFeedback(TB.actionButtons.grind, TB.ActionFeedbackState(TB.actionButtons.grind.actionIntent))
+        end
     end
 end
 

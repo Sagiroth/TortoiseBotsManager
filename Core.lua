@@ -762,6 +762,39 @@ function TB.RequestPollSoon(delay)
     pollFrame.elapsed = 0
     if pollFrame.Show then pollFrame:Show() end
 end
+
+-- ── Action feedback timeout ─────────────────────────────────────────────
+-- A missing ACK/ERR must not stick a button in its waiting look: once a
+-- second, drop expired entries and repaint whatever they touched.
+local feedbackFrame
+local function ensureFeedbackFrame()
+    if feedbackFrame then return end
+    feedbackFrame = CreateFrame("Frame", "TortoiseBotsManagerFeedbackFrame")
+    feedbackFrame.elapsed = 0
+    feedbackFrame:SetScript("OnUpdate", function()
+        this.elapsed = (this.elapsed or 0) + (arg1 or 0)
+        if this.elapsed < 1 then return end
+        this.elapsed = 0
+        if not TB.actionFeedback then return end
+        local now = (GetTime and GetTime()) or 0
+        local expired = nil
+        for intent, entry in pairs(TB.actionFeedback) do
+            if (entry.untilAt or 0) <= now then
+                TB.actionFeedback[intent] = nil
+                expired = expired or {}
+                table.insert(expired, intent)
+            end
+        end
+        if expired then
+            if TB.PaintActionFeedback then
+                for _, intent in ipairs(expired) do TB.PaintActionFeedback(intent) end
+            end
+            if TB.RefreshMiniBar then TB.RefreshMiniBar() end
+        end
+    end)
+    if feedbackFrame.Show then feedbackFrame:Show() end
+end
+ensureFeedbackFrame()
 -- ── Slash ───────────────────────────────────────────────────────────────────
 SLASH_TORTOISEBOTSMANAGER1 = "/tbm"
 SLASH_TORTOISEBOTSMANAGER2 = "/tb"
