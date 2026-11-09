@@ -3590,7 +3590,7 @@ local function createWindow()
     win.wipNote = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     win.wipNote:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -50)
     win.wipNote:SetJustifyH("RIGHT")
-    win.wipNote:SetText("Work in progress: expect rough edges")
+    win.wipNote:SetText("Work in progress, there may be bugs")
     TB.SetTextColor(win.wipNote, { 1, 0.82, 0, 1 })
 
     win.stepOne = CreateFrame("Frame", nil, win)
