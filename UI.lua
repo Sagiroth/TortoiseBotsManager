@@ -2114,8 +2114,8 @@ end
             { text = "Level", width = 64, x = 128, sortKey = "level" },
             { text = "Gear", width = 52, x = 194, sortKey = nil },
             { text = "Status", width = 70, x = 248, sortKey = "status" },
-            { text = "Role", width = 74, x = 324, sortKey = nil },
-            { text = "Order", width = 76, x = 400, sortKey = nil },
+            { text = "Role", width = 74, x = 324, sortKey = nil, center = true },
+            { text = "Order", width = 76, x = 400, sortKey = nil, center = true },
         }
         guildFrame.headerBtns = {}
         for _, h in ipairs(headers) do
@@ -2127,7 +2127,7 @@ end
             local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             fs:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, -5)
             fs:SetWidth(h.width)
-            fs:SetJustifyH("LEFT")
+            fs:SetJustifyH(h.center and "CENTER" or "LEFT")
             btn.headerText = h.text
             btn.headerLabel = fs
             if h.sortKey then
