@@ -616,6 +616,7 @@ TB.C.POLL_AFTER_ADD  = 2.0
 TB.C.ADD_TIMEOUT     = 30    -- seconds without login confirmation
 TB.C.REMOVE_TIMEOUT  = 15    -- seconds without removal confirmation
 TB.C.ACTION_TIMEOUT  = 8     -- seconds for a named action acknowledgement
+TB.C.ACTION_FLASH    = 1.2   -- seconds a green/red answer flash stays on a button
 
 -- Adjustable pull timers: DPS delay before pull, join delay before
 -- pullback. Persisted per character in SavedVariables, 0-60 s step 1.

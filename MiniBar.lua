@@ -145,6 +145,17 @@ local function paintLamp(lamp, def)
     lamp:Show()
 end
 
+-- The mini bar has no button frames to repaint: the waiting / answer state
+-- tints the icon slot's frame so it reads next to the main window.
+local function paintFeedback(b, def)
+    if not b or not b.frame then return end
+    local state = def and TB.ActionFeedbackState and TB.ActionFeedbackState(def.intent) or nil
+    if state == "waiting" then b.frame:SetTexture(0.72, 0.54, 0.20, 1)
+    elseif state == "ok" then b.frame:SetTexture(0.30, 0.90, 0.45, 1)
+    elseif state == "error" then b.frame:SetTexture(1.00, 0.34, 0.28, 1)
+    else b.frame:SetTexture(0, 0, 0, 0.9) end
+end
+
 -- An unusable action greys out but stays clickable: a right-click still
 -- pins or drops it; its left-click checks usable() again and does nothing.
 local function setUsable(b, on)
@@ -234,6 +245,7 @@ local function createFlyout()
         slot:SetWidth(22); slot:SetHeight(22)
         slot:SetPoint("LEFT", e, "LEFT", 0, 0)
         slot:SetTexture(0, 0, 0, 0.9)
+        e.frame = slot
         e.icon = e:CreateTexture(nil, "ARTWORK")
         e.icon:SetWidth(20); e.icon:SetHeight(20)
         e.icon:SetPoint("LEFT", e, "LEFT", 1, 0)
@@ -285,6 +297,7 @@ local function renderFlyout()
             else e.label:SetTextColor(0.92, 0.92, 0.92) end
             paintLamp(e.lamp, def)
             setUsable(e, usable(def))
+            if e.frame and paintFeedback then paintFeedback(e, def) end
             e:Show()
         else
             e:Hide()
@@ -498,6 +511,7 @@ function TB.RefreshMiniBar()
         if b.def then
             paintLamp(b.lamp, b.def)
             setUsable(b, usable(b.def))
+            paintFeedback(b, b.def)
         end
     end
     for key, b in pairs(bar.categories) do

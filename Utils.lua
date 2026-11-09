@@ -251,6 +251,88 @@ function TB.StyleButton(button, kind)
     return button
 end
 
+-- ── Action button feedback ──────────────────────────────────────────────────
+-- A click on an action button shows a short "waiting" look, then a green
+-- flash on the ACK or a red flash on ACTION_ERR. A missing answer clears
+-- the waiting look after ACTION_TIMEOUT seconds. One small table drives
+-- both sets of buttons: the Fight/Camp buttons by intent, the mini bar
+-- icons by the same intent.
+TB.actionFeedback = TB.actionFeedback or {}
+
+-- Normalises a command tail to the button intent it came from. Strategy,
+-- command, formation and roster verbs never start an "action" command, so
+-- only action replies clear the state below.
+function TB.ActionFeedbackKey(text)
+    if not text then return nil end
+    local rest = TB.Trim(string.gsub(text, "^%s*action%s+", ""))
+    rest = TB.Trim(rest)
+    if rest == "" then return nil end
+    if TB.PartyToggleKey then
+        -- Toggle switches answer under their key ("auto cc" -> "autocc",
+        -- "aoe on" -> "aoe", "behavior party spread on" -> "spread").
+        if TB.PartyToggleKey(rest) then return TB.PartyToggleKey(rest) end
+        local bare = string.gsub(rest, "%s+(on|off|mixed)$", "")
+        if bare ~= rest and TB.PartyToggleKey(bare) then return TB.PartyToggleKey(bare) end
+        local _, _, last = string.find(bare, "(%S+)%s*$")
+        if last and last ~= bare and TB.PartyToggleKey(last) then return TB.PartyToggleKey(last) end
+        local verb = string.lower(string.gsub(rest, "%s+.*", ""))
+        if verb ~= rest and TB.PartyToggleKey(verb) then return TB.PartyToggleKey(verb) end
+    end
+    -- Timed pulls send seconds after the intent ("pull 10").
+    local verb = string.lower(string.gsub(rest, "%s+.*", ""))
+    if verb == "pull" or verb == "pullback" then return verb end
+    -- The release button sends "corpse run" once the party are ghosts.
+    if verb == "corpse" then return "release" end
+    return rest
+end
+
+function TB.NoteActionFeedback(intent, state)
+    intent = TB.Trim(intent or "")
+    if intent == "" then return end
+    local now = (GetTime and GetTime()) or 0
+    local timeout = (TB.C and TB.C.ACTION_TIMEOUT) or 8
+    if state == "clear" then
+        TB.actionFeedback[intent] = nil
+    elseif state == "ok" or state == "error" then
+        TB.actionFeedback[intent] = { state = state, untilAt = now + ((TB.C and TB.C.ACTION_FLASH) or 1.2) }
+    else
+        TB.actionFeedback[intent] = { state = "waiting", untilAt = now + timeout }
+    end
+    if TB.PaintActionFeedback then TB.PaintActionFeedback(intent) end
+end
+
+-- True while the waiting / flash look still applies; expired entries read
+-- as cleared so a missed answer cannot stick a button.
+function TB.ActionFeedbackState(intent)
+    local entry = intent and TB.actionFeedback[intent] or nil
+    if not entry then return nil end
+    local now = (GetTime and GetTime()) or 0
+    if (entry.untilAt or 0) <= now then
+        TB.actionFeedback[intent] = nil
+        return nil
+    end
+    return entry.state
+end
+
+-- Paints the waiting / answer state onto one Fight/Camp button.
+function TB.SetButtonFeedback(button, state)
+    if not button or not button.SetBackdropColor then return end
+    button.feedbackState = state
+    if state == "waiting" then
+        button:SetBackdropColor(0.21, 0.16, 0.065, 1)
+        button:SetBackdropBorderColor(0.72, 0.54, 0.20, 1)
+    elseif state == "ok" then
+        button:SetBackdropColor(0.07, 0.20, 0.10, 1)
+        button:SetBackdropBorderColor(0.30, 0.90, 0.45, 1)
+    elseif state == "error" then
+        button:SetBackdropColor(0.22, 0.08, 0.07, 1)
+        button:SetBackdropBorderColor(1.00, 0.34, 0.28, 1)
+    else
+        button.feedbackState = nil
+        TB.PaintButton(button)
+    end
+end
+
 -- A panel button as a tab: the window code keeps opening tabs with
 -- Disable() (the open tab cannot be clicked again), so the disabled state
 -- is drawn as "open": bright label and a gold underline, never grey.
@@ -281,6 +363,9 @@ function TB.SetButtonActive(button, active)
     if not button or not button.SetBackdropColor then return end
     button.isActive = active and true or false
     TB.PaintButton(button)
+    if button.actionIntent and button.feedbackState and TB.SetButtonFeedback then
+        TB.SetButtonFeedback(button, button.feedbackState)
+    end
 end
 
 -- The close button keeps UIPanelCloseButton's behaviour (hide the parent);
