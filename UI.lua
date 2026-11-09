@@ -2377,7 +2377,7 @@ end
                 local entry = this:GetParent().entry
                 if entry and TB.OpenGuildRowMenu then TB.OpenGuildRowMenu(entry.name) end
             end)
-            setButtonTooltip(moreBtn, "Release, cancel or move this bot's order. Right-click the row works too.", "More")
+            setButtonTooltip(moreBtn, "Cancel or move this bot's order, or release it. Right-click the row works too.", "More")
             row.moreBtn = moreBtn
 
             -- Enchant Meet: the giver's own order row shows it until the
@@ -2953,7 +2953,7 @@ end
                     end
                 end
                 if row.moreBtn then
-                    if TB.BuildGuildRowMenu and TB.BuildGuildRowMenu(entry.name, function() end) > 0 then
+                    if TB.BuildGuildRowMenu and TB.BuildGuildRowMenu(entry.name, function() end) > 1 then
                         row.moreBtn:Show()
                         if orderCap and order and not mayOrder then row.moreBtn:Disable() else row.moreBtn:Enable() end
                     else

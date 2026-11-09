@@ -2993,7 +2993,7 @@ assert(TB.OpenOrderWindow("Goldie") == false, "the order window stays closed wit
 TB.ShowTab("guild")
 TB.RefreshGuildView()
 assert(not TB.guildFrame.rows[1].ordBtn:IsVisible(), "no capability hides the Order button")
-assert(TB.guildFrame.rows[1].moreBtn:IsVisible(), "no capability keeps the More menu for Release")
+assert(not TB.guildFrame.rows[1].moreBtn:IsVisible(), "a row with only Release has no More button; right-click still opens it")
 
 -- Permission gating: CanEditOfficerNote decides, re-checked every refresh.
 canEditOfficerNote = false
