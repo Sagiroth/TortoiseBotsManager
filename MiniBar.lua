@@ -110,6 +110,7 @@ end
 local function tooltipFor(def)
     local title = def.label or def.intent
     local text = def.tip or (TB.ActionTooltip and TB.ActionTooltip(def.intent)) or ""
+    local binding = def.intent and TB.BindingText and TB.BindingText(def.intent) or nil
     if def.pull then
         local db = TortoiseBotsDB or {}
         local seconds = def.intent == "pullback" and db.pullbackDelay or db.pullDelay

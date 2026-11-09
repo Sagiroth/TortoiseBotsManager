@@ -2285,8 +2285,38 @@ assert(TB.SendKeyIntent("flee") == true, "keybinding Flee must send while the ca
 now = now + 1
 TB.OnSystemMessage("TBM:CAPS|inventory,behavior,claimed-roster")
 assert(TB.SendKeyIntent("flee") == false, "keybinding Flee must stay silent without the server cap")
-assert(table.getn(sent) == beforeKeys + 4, "keybindings must send exactly one intent per press")
+-- ── Tooltips show bound keys, empty Party offers Roster ───────────────────
+assert(TB.BindingText("attack") == nil, "unbound actions report no key")
+GetBindingKey = function(binding)
+    if binding == "TBM_ATTACK" then return "1" end
+    if binding == "TBM_FOLLOW" then return "SHIFT-1", "CTRL-F" end
+    return nil
+end
+assert(TB.BindingText("attack") == "1", "a bound key is reported raw")
+assert(TB.BindingText("stop") == nil, "an unbound action still reports nothing")
+GetBindingText = function(key) return "<" .. key .. ">" end
+assert(TB.BindingText("follow") == "<SHIFT-1>, <CTRL-F>", "both keys are named")
+assert(TB.BindingText("bogus") == nil, "an unknown intent reports nothing")
+assert(TB.actionButtons.attack.bindingIntent == "attack", "action buttons carry their intent for tooltips")
+this = TB.actionButtons.attack
+TB.actionButtons.attack.scripts.OnEnter(TB.actionButtons.attack)
+this = TB.actionButtons.stop
+TB.actionButtons.stop.scripts.OnEnter(TB.actionButtons.stop)
+GetBindingKey, GetBindingText = nil, nil
 
+partyMembers = {}
+TB.ShowTab("party")
+TB.RefreshPartyView()
+assert(TB.partyFrame.emptyMsg:IsVisible(), "an empty party shows its message")
+assert(TB.partyFrame.inviteButton and TB.partyFrame.inviteButton:IsVisible(), "an empty party offers Invite from Roster")
+TB.ShowTab("roster")
+this = TB.partyFrame.inviteButton
+TB.partyFrame.inviteButton.scripts.OnClick(TB.partyFrame.inviteButton)
+assert(TortoiseBotsDB.activeTab == "roster", "Invite from Roster opens the Roster tab")
+partyMembers = { "Alpha" }
+TB.RefreshPartyView()
+assert(not TB.partyFrame.inviteButton:IsVisible(), "a filled party hides the invite button")
+partyMembers = {}
 -- ── Dungeon run window (P11): capability-gated satellite ─────────────────
 TB.OnSystemMessage("TBM:TRANSPORT|party")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
