@@ -4394,6 +4394,17 @@ assert(lastAddon() == "order Goldie farm 2318 10 2 keep gold=0", "gold=0 rides t
 now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|order|invalid|extra argument")
 assert(lastAddon() == "order Goldie farm 2318 10 2 keep", "an invalid-arg reply drops gold=0 first")
+-- A give nobody answers stops saying "waiting" after the wait.
+now = now + 1
+TB.SendOrderGive("Goldie", "farm", 2318, 10)
+TB.SetOrderFeedback("Farm x sent, waiting for the server...", "pending")
+now = now + 5
+TB.GiveWaitTick()
+assert(string.find(TB.GetOrderFeedback().text, "waiting", 1, true), "still waiting inside the wait")
+now = now + 6
+TB.GiveWaitTick()
+assert(string.find(TB.GetOrderFeedback().text, "No answer from the server", 1, true),
+    "an unanswered give says so")
 assert(TB.SetOrderGold(0) == 0 and TB.orderWindow.goldBox:GetText() == "0", "zero shows as 0, not empty")
 TB.SetOrderGold(nil)
 now = now + 1

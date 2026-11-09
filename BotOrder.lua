@@ -2161,6 +2161,9 @@ end
 -- A trailing-hours-or-keep-or-gold give waiting for the server's answer; an
 -- "invalid" reply means an old server that rejects the trailing argument.
 local pendingGive = nil
+-- A give with no answer after this long stops saying "waiting".
+local GIVE_ANSWER_WAIT = 10
+local giveWaitUntil = nil
 
 -- The give's hours slot also takes "inf" (any case) for no time limit.
 local function isInf(hours)
@@ -2209,6 +2212,7 @@ function TB.SendOrderGive(bot, kind, itemId, amount, hours, keep, gold, bring)
     else
         pendingGive = nil
     end
+    giveWaitUntil = now() + GIVE_ANSWER_WAIT
     return TB.SendBotCommand(text)
 end
 
@@ -2285,6 +2289,7 @@ end
 -- paints the progress.
 function TB.OnOrderAck(packet)
     if not packet or packet.intent ~= "order" then return false end
+    giveWaitUntil = nil
     pendingGive = nil
     pendingSearchCat = nil
     local _, _, scopeBot = string.find(packet.scope or "", "^bot:(.+)$")
@@ -2527,6 +2532,17 @@ function TB.OrderPollTick()
     return TB.RequestOrderList()
 end
 
+local function giveWaitTick()
+    if giveWaitUntil and now() >= giveWaitUntil then
+        giveWaitUntil = nil
+        pendingGive = nil
+        TB.SetOrderFeedback("No answer from the server after " .. GIVE_ANSWER_WAIT
+            .. " s. Check that the order reached the bot, then try again.", "warn")
+    end
+end
+
+TB.GiveWaitTick = giveWaitTick
+
 local pollFrame
 local function ensurePollFrame()
     if pollFrame then return end
@@ -2534,6 +2550,7 @@ local function ensurePollFrame()
     pollFrame:SetScript("OnUpdate", function()
         TB.OrderPollTick()
         meetRepaintTick()
+        giveWaitTick()
     end)
     -- The Send-missing-items button follows the mailbox: refresh when it
     -- opens or closes so the button enables/disables itself (D2).
@@ -2797,6 +2814,7 @@ function TB.GetOrderFeedback()
 end
 
 function TB.SetOrderFeedback(text, kind)
+    if kind ~= "pending" then giveWaitUntil = nil end
     feedback = text and { text = text, kind = kind } or nil
     if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
 end
