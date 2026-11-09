@@ -4315,6 +4315,15 @@ assert(table.getn(addonSent) == beforeSearch, "typing waits for the pause")
 now = now + 1
 TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
 assert(lastAddon() == "order search Goldie farm leather", "the pause sends one search")
+-- One typing pause is one search, not one per frame.
+do
+    local sentAfterPause = table.getn(addonSent)
+    for _ = 1, 5 do
+        now = now + 1
+        TB.orderWindow.scripts.OnUpdate(TB.orderWindow)
+    end
+    assert(table.getn(addonSent) == sentAfterPause, "a search is not repeated every frame")
+end
 TB.OnSystemMessage("TBM:ORDER_ITEMS_BEGIN|2")
 TB.OnSystemMessage("TBM:ORDER_ITEM|2318|Light Leather|1|drop,skin|5|393:1|ok|Ashenvale|70")
 TB.OnSystemMessage("TBM:ORDER_ITEM|2319|Medium Leather|1|skin|16|393:100|noskill|-|0")

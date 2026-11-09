@@ -2950,6 +2950,7 @@ end
 
 local function firePendingSearch()
     if not searchPendingAt or now() < searchPendingAt then return end
+    searchPendingAt = nil
     if not (win and win.searchBox) then return end
     local text = trim(win.searchBox:GetText() or "")
     if orderGuild then
