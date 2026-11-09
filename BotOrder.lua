@@ -3679,16 +3679,22 @@ function TB.RefreshOrderWindow()
             end
         end
     end
-    for cat, pill in pairs(win.catPills or {}) do
-        if orderGuild then
+    local slot = 0
+    for _, cat in ipairs(ORDER_CATS) do
+        local pill = win.catPills[cat]
+        local need = CAT_SKILL[cat]
+        local hidden = orderGuild or (need and (orderKind == "farm" or orderKind == "craft")
+            and not botHasSkill(windowBot, need))
+        if hidden then
             pill:Hide()
+            if not orderGuild and orderCat == cat then TB.SetOrderCat("all") end
         else
             if pill.SetActive then pill:SetActive(cat == (orderCat or "all")) end
+            pill:ClearAllPoints()
+            pill:SetPoint("TOPLEFT", pill:GetParent(), "TOPLEFT", 12 + math.mod(slot, 4) * 80,
+                -116 - math.floor(slot / 4) * 22)
             pill:Show()
-            local need = CAT_SKILL[cat]
-            local gated = need and orderKind == "farm" and not botHasSkill(windowBot, need)
-            setPillUsable(pill, not gated, "This bot has no " .. TB.ProfessionSkillName(need) .. ", so it cannot farm this.")
-            if gated and orderCat == cat then TB.SetOrderCat("all") end
+            slot = slot + 1
         end
     end
     if orderGuild then

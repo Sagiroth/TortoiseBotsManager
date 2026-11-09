@@ -5500,13 +5500,13 @@ do
     -- no Mining/Herbalism/Skinning greys that farm filter.
     TB.SetProfessions("Goldie", { skills = { { skill = 393, value = 20, max = 75 } }, recipes = {}, missing = {} })
     assert(TB.orderWindow.kindPills.enchant.enabled == false, "no Enchanting greys the Enchant kind")
-    assert(TB.orderWindow.catPills.herb.enabled == false and TB.orderWindow.catPills.ore.enabled == false,
-        "no Herbalism / Mining greys those farm filters")
-    assert(TB.orderWindow.catPills.leather.enabled ~= false, "Skinning keeps the leather filter")
+    assert(TB.orderWindow.catPills.herb:IsVisible() == false and TB.orderWindow.catPills.ore:IsVisible() == false,
+        "no Herbalism / Mining hides those filters")
+    assert(TB.orderWindow.catPills.leather:IsVisible(), "Skinning keeps the leather filter")
     TB.SetProfessions("Goldie", { skills = { { skill = 333, value = 1, max = 75 }, { skill = 182, value = 1, max = 75 } },
         recipes = {}, missing = {} })
     assert(TB.orderWindow.kindPills.enchant.enabled ~= false, "Enchanting enables the Enchant kind")
-    assert(TB.orderWindow.catPills.herb.enabled ~= false and TB.orderWindow.catPills.leather.enabled == false,
+    assert(TB.orderWindow.catPills.herb:IsVisible() and TB.orderWindow.catPills.leather:IsVisible() == false,
         "the filters follow the bot's skills")
 end
 TB.SetOrderStep(0)
