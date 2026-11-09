@@ -2365,16 +2365,6 @@ end
                 if entry and TB.OpenOrderWindow then TB.OpenOrderWindow(entry.name) end
             end)
             setButtonTooltip(ordBtn, "Open the order window for this bot.", "Order")
-            -- Ask for the bot's skills as soon as the mouse is over the button,
-            -- so the order window already knows them when it opens.
-            local tipEnter = ordBtn:GetScript("OnEnter")
-            ordBtn:SetScript("OnEnter", function()
-                if tipEnter then tipEnter() end
-                local entry = this:GetParent().entry
-                if entry and TB.RequestProfessions and TB.GetProfessions and not TB.GetProfessions(entry.name) then
-                    TB.RequestProfessions(entry.name)
-                end
-            end)
             row.ordBtn = ordBtn
 
             -- The "..." button opens the row's right-click menu for mouse
