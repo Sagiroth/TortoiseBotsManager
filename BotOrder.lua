@@ -3578,7 +3578,7 @@ local function createWindow()
     local head = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     head:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
     head:SetWidth(OW - 24); head:SetJustifyH("LEFT")
-    head:SetText("Pick a real item, how to get it, and how many.")
+    head:SetText("Pick an item, how to get it, and how many.  |cffffd200Work in progress: expect rough edges.|r")
     TB.SetTextColor(head, color("muted"))
     win.head = head
 

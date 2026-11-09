@@ -164,7 +164,7 @@ local function createWindow()
     local hint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
     hint:SetWidth(AW - 24); hint:SetJustifyH("LEFT")
-    hint:SetText("Click an order to see what the bot is doing.")
+    hint:SetText("Click an order to see what the bot is doing.  |cffffd200Work in progress.|r")
     TB.SetTextColor(hint, color("muted"))
 
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerActiveOrdersScroll", win, "FauxScrollFrameTemplate")
