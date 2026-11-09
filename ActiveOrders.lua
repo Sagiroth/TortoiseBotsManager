@@ -9,8 +9,10 @@ local C = TB.C or {}
 local COL = C.COLOR or {}
 local AW = 360
 local ROW_H = 30
-local ROW_N = 6
-local DETAIL_LINES = 11
+local ROW_N = 5
+local STEP_N = 5
+local STEP_H = 14
+local WIN_H = 440
 local REFRESH_EVERY = 1.5
 local LIST_EVERY = 8
 
@@ -31,17 +33,48 @@ local function findPicked()
     return nil
 end
 
-local function firstLines(text, limit)
-    local out, count = {}, 0
-    for line in string.gfind(text or "", "[^\n]+") do
-        count = count + 1
-        if count > limit then
-            table.insert(out, "...")
-            break
-        end
-        table.insert(out, line)
+local function kv(lines, label, value)
+    if value and value ~= "" then
+        table.insert(lines, "|cffd8a657" .. label .. "|r  " .. value)
     end
-    return table.concat(out, "\n")
+end
+
+local function refreshSteps()
+    local steps = (picked and TB.OrderStepsList and TB.OrderStepsList(picked)) or {}
+    local total = table.getn(steps)
+    FauxScrollFrame_Update(win.stepScroll, total, STEP_N, STEP_H)
+    local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(win.stepScroll)) or 0
+    for i = 1, STEP_N do
+        local step = steps[offset + i]
+        if step then
+            win.stepRows[i]:SetText("|cff9a9a9a" .. step.age .. "|r   " .. step.text)
+        else
+            win.stepRows[i]:SetText("")
+        end
+    end
+    if total == 0 then win.stepsEmpty:Show() else win.stepsEmpty:Hide() end
+end
+
+local function fillDetail(order)
+    if not order then
+        win.title:SetText(""); win.state:SetText(""); win.info:SetText("")
+    else
+        win.title:SetText((order.item or "?") .. "  |cffffffff" .. tostring(order.have or 0) .. "/" .. tostring(order.want or 0) .. "|r")
+        local stateText = (TB.OrderStateColor and TB.OrderStateColor(order.state) or "") .. (TB.OrderStateLabel and TB.OrderStateLabel(order.state) or "") .. "|r"
+        local reason = TB.OrderReasonLabel and TB.OrderReasonLabel(order.reason)
+        if reason then stateText = stateText .. "  |cff9a9a9a" .. reason .. "|r" end
+        win.state:SetText((TB.OrderTypeLabel and TB.OrderTypeLabel(order.type) or "") .. "  ·  " .. stateText)
+        local lines = {}
+        kv(lines, "Zone", order.zone)
+        kv(lines, "Now", TB.OrderStepLabel and TB.OrderStepLabel(order))
+        if order.hours == "inf" then kv(lines, "Farm time", "no limit")
+        elseif order.hours and order.hours > 0 then kv(lines, "Farm time", math.floor(order.hours) .. " h") end
+        kv(lines, "Difficulty", TB.OrderDifficultyLabel and TB.OrderDifficultyLabel(order.difficulty))
+        local need = TB.OrderNeedText and TB.OrderNeedText(order)
+        if need then table.insert(lines, need) end
+        win.info:SetText(table.concat(lines, "\n"))
+    end
+    refreshSteps()
 end
 
 function TB.RefreshActiveOrders()
@@ -79,13 +112,11 @@ function TB.RefreshActiveOrders()
         picked = nil
     end
     if order then
-        win.detail:SetText(firstLines(TB.OrderTooltipText and TB.OrderTooltipText(order) or "", DETAIL_LINES))
+        fillDetail(order)
         win.cancelBtn:Enable()
-        win.newBtn:Enable()
     else
-        win.detail:SetText("")
+        fillDetail(nil)
         win.cancelBtn:Disable()
-        win.newBtn:Disable()
     end
     for i = 1, ROW_N do
         local row = win.rows[i]
@@ -102,7 +133,7 @@ end
 
 local function createWindow()
     win = CreateFrame("Frame", "TortoiseBotsManagerActiveOrdersWindow", TB.frame or UIParent)
-    win:SetWidth(AW); win:SetHeight(380)
+    win:SetWidth(AW); win:SetHeight(WIN_H)
     win:SetFrameStrata("DIALOG")
     win:EnableMouse(true)
     win:SetMovable(true)
@@ -177,10 +208,52 @@ local function createWindow()
     win.empty:SetText("No bot has an order right now. Press Order on a bot in the Guild tab to give one.")
     TB.SetTextColor(win.empty, color("muted"))
 
-    win.detail = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.detail:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(56 + ROW_N * ROW_H + 10))
-    win.detail:SetWidth(AW - 24); win.detail:SetJustifyH("LEFT"); win.detail:SetJustifyV("TOP")
-    TB.SetTextColor(win.detail, color("text"))
+    local top = 56 + ROW_N * ROW_H + 8
+    local rule = win:CreateTexture(nil, "ARTWORK")
+    rule:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -top)
+    rule:SetWidth(AW - 24); rule:SetHeight(1)
+    rule:SetTexture(0.85, 0.65, 0.34, 0.35)
+
+    win.title = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    win.title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(top + 8))
+    win.title:SetWidth(AW - 24); win.title:SetJustifyH("LEFT")
+    TB.SetTextColor(win.title, color("title"))
+
+    win.state = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.state:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(top + 28))
+    win.state:SetWidth(AW - 24); win.state:SetJustifyH("LEFT")
+
+    win.info = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.info:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(top + 46))
+    win.info:SetWidth(AW - 24); win.info:SetJustifyH("LEFT"); win.info:SetJustifyV("TOP")
+    TB.SetTextColor(win.info, color("text"))
+
+    local stepsTop = top + 46 + 66
+    local stepsHead = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    stepsHead:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -stepsTop)
+    stepsHead:SetText("Steps, newest first")
+    TB.SetTextColor(stepsHead, color("title"))
+
+    local stepScroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerActiveStepsScroll", win, "FauxScrollFrameTemplate")
+    stepScroll:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -(stepsTop + 14))
+    stepScroll:SetWidth(AW - 28)
+    stepScroll:SetHeight(STEP_N * STEP_H)
+    stepScroll:SetScript("OnVerticalScroll", function()
+        FauxScrollFrame_OnVerticalScroll(STEP_H, refreshSteps)
+    end)
+    win.stepScroll = stepScroll
+    win.stepRows = {}
+    for i = 1, STEP_N do
+        local fs = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -(stepsTop + 14 + (i - 1) * STEP_H))
+        fs:SetWidth(AW - 46); fs:SetJustifyH("LEFT")
+        TB.SetTextColor(fs, color("text"))
+        win.stepRows[i] = fs
+    end
+    win.stepsEmpty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.stepsEmpty:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -(stepsTop + 14))
+    win.stepsEmpty:SetText("No steps recorded yet.")
+    TB.SetTextColor(win.stepsEmpty, color("muted"))
 
     win.cancelBtn = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"), "mode")
     win.cancelBtn:SetWidth(110); win.cancelBtn:SetHeight(20)
@@ -188,14 +261,6 @@ local function createWindow()
     win.cancelBtn:SetText("Cancel order")
     win.cancelBtn:SetScript("OnClick", function()
         if picked and TB.ConfirmOrderCancel then TB.ConfirmOrderCancel(picked) end
-    end)
-
-    win.newBtn = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"), "mode")
-    win.newBtn:SetWidth(110); win.newBtn:SetHeight(20)
-    win.newBtn:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 130, 10)
-    win.newBtn:SetText("New order")
-    win.newBtn:SetScript("OnClick", function()
-        if picked and TB.OpenOrderWindow then TB.OpenOrderWindow(picked) end
     end)
 
     win:SetScript("OnUpdate", function()

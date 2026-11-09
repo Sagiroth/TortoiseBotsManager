@@ -4097,16 +4097,16 @@ do
     assert(aw.rows[1]:IsVisible() and aw.rows[2]:IsVisible() and not aw.rows[3]:IsVisible(),
         "one row per bot with an order")
     assert(aw.rows[1].bot == "Goldie" and aw.rows[2].bot == "Silver", "rows are sorted by bot")
-    assert(string.find(aw.detail:GetText(), "Order:", 1, true) ~= nil, "the first order is picked by default")
-    assert(aw.cancelBtn.enabled ~= false and aw.newBtn.enabled ~= false, "an order enables the buttons")
+    assert(string.find(aw.title:GetText(), "Light Leather", 1, true) ~= nil, "the first order is picked by default")
+    assert(aw.cancelBtn.enabled ~= false, "an order enables the buttons")
     this = aw.rows[2]
     aw.rows[2].scripts.OnClick(aw.rows[2])
-    assert(string.find(aw.detail:GetText(), "Highland Spring Water", 1, true) ~= nil,
+    assert(string.find(aw.title:GetText(), "Highland Spring Water", 1, true) ~= nil,
         "clicking a row shows that bot's order")
     TB.activeOrdersWindow.cancelBtn.scripts.OnClick(TB.activeOrdersWindow.cancelBtn)
     assert(lastPopupShown == "TORTOISEBOTSMANAGER_CANCEL_ORDER", "Cancel order asks first")
-    TB.activeOrdersWindow.newBtn.scripts.OnClick(TB.activeOrdersWindow.newBtn)
-    assert(TB.GetOrderWindowBot() == "Silver", "New order opens the order window for the picked bot")
+    TB.OpenOrderWindow("Silver")
+    assert(not aw:IsVisible(), "opening an order window closes the orders window")
     TB.OpenActiveOrders()
     TB.OnSystemMessage("TBM:ORDER_BEGIN|0")
     TB.OnSystemMessage("TBM:ORDER_END")

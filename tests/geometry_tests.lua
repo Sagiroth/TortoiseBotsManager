@@ -1789,14 +1789,13 @@ return function()
             for i, row in ipairs(win.rows or {}) do
                 if row:IsVisible() then table.insert(items, { "row" .. i, row }) end
             end
-            for _, key in ipairs({ "detail", "cancelBtn", "newBtn" }) do
+            for _, key in ipairs({ "title", "state", "info", "stepScroll", "cancelBtn" }) do
                 if win[key] then table.insert(items, { key, win[key] }) end
             end
             if table.getn(items) < 4 then bad("ActiveOrders: expected two rows plus detail and buttons") end
             childrenInside("ActiveOrders", win, wr, items, cache, 2)
             noOverlaps("ActiveOrders controls", items, cache)
             labelFits("ActiveOrders cancel", win.cancelBtn, nil, 6)
-            labelFits("ActiveOrders new", win.newBtn, nil, 6)
             TB.CloseActiveOrders()
         end
     end

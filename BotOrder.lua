@@ -1112,6 +1112,27 @@ end
 -- The step lines for a bot's tooltip: the "history incomplete, retrying" flag
 -- while its last reply was discarded for the order it holds now, then the
 -- step block. {} without the capability.
+function TB.OrderStateColor(state)
+    return STATE_COLOR[string.lower(trim(state or ""))] or "|cffffffff"
+end
+
+-- Every known step of a bot's current order, newest first, as
+-- { age = "just now", text = "buying on AH: Copper Ore" }.
+function TB.OrderStepsList(bot)
+    local out = {}
+    if not stepsCapable() then return out end
+    local record = TB.GetOrderSteps(bot)
+    if not record or not record.entries then return out end
+    local current = orders[norm(bot)]
+    if current and not sameOrderIdentity(TB.OrderStepIdentity(record), TB.OrderStepIdentity(current)) then return out end
+    local drift = now() - (record.receivedAt or now())
+    for i = table.getn(record.entries), 1, -1 do
+        local entry = record.entries[i]
+        table.insert(out, { age = TB.OrderStepAgeText((tonumber(entry.age) or 0) + drift), text = TB.OrderStepText(entry) })
+    end
+    return out
+end
+
 function TB.OrderStepsTooltipLines(bot)
     if not stepsCapable() then return {} end
     local key = norm(bot)
@@ -4130,6 +4151,7 @@ function TB.OpenOrderWindow(bot)
     if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseBotPanel then TB.CloseBotPanel() end
+    if TB.CloseActiveOrders then TB.CloseActiveOrders() end
     local switched = windowBot ~= bot or orderGuild
     orderGuild = false
     orderStep = 1
@@ -4196,6 +4218,7 @@ function TB.OpenGuildOrderWindow()
     if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseBotPanel then TB.CloseBotPanel() end
+    if TB.CloseActiveOrders then TB.CloseActiveOrders() end
     orderGuild = true
     orderStep = 1
     windowBot = nil
