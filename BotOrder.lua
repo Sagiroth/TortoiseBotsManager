@@ -2558,6 +2558,8 @@ local orderAmount = 10
 local orderNoLimit = true
 local orderKeep = false
 local orderGold = nil
+local orderStep = 1
+local orderStepsMax = 3
 local searchPendingAt = nil
 -- A picked empty-text row clears once typing starts: the next run is a
 -- plain text search again, not another browse.
@@ -2599,6 +2601,32 @@ end
 
 function TB.GetOrderWindowBot()
     return (win and win:IsVisible()) and windowBot or nil
+end
+function TB.GetOrderStep()
+    return orderStep
+end
+
+-- Steps: 1 pick the item, 2 amount and farm time, 3 preview and Send.
+-- Per-bot flow only: guild pick-a-bot mode pins no step. Moving leaves the
+-- pick alone (so Back keeps it) and repaints at most once.
+function TB.SetOrderStep(step)
+    step = math.floor(tonumber(step) or orderStep)
+    if step < 1 then step = 1 end
+    if step > orderStepsMax then step = orderStepsMax end
+    if orderGuild then step = 1 end
+    if step == orderStep and win and win.stepLabel then return orderStep end
+    orderStep = step
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return orderStep
+end
+-- Next moves one step forward; step 1 needs a pick first.
+function TB.OrderStepNext()
+    if orderGuild then return orderStep end
+    if orderStep == 1 and not selectedItemId then
+        TB.SetOrderFeedback("Pick an item from the search first.", "warn")
+        return orderStep
+    end
+    return TB.SetOrderStep(orderStep + 1)
 end
 
 function TB.GetOrderKind()
@@ -3131,49 +3159,14 @@ local function createOrderLimits()
     win.noLimitLabel = noLimitLabel
     return base
 end
-
-local function createWindow()
-    win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
-    win:SetWidth(OW); win:SetHeight(510 + 178)
-    win:SetFrameStrata("DIALOG")
-    win:EnableMouse(true)
-    win:SetMovable(true)
-    win:SetClampedToScreen(true)
-    win:RegisterForDrag("LeftButton")
-    win:SetScript("OnDragStart", function() win:StartMoving() end)
-    win:SetScript("OnDragStop", function()
-        win:StopMovingOrSizing()
-        -- 1.12-safe: re-anchor with GetLeft/GetTop, never GetPoint().
-        local left, top = win:GetLeft(), win:GetTop()
-        if left and top then
-            win:ClearAllPoints()
-            win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
-        end
-    end)
-    if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerOrderWindow") end
-    TB.ApplySurface(win, "window")
-    TB.AddWindowHeader(win, 30)
-
-    win.title = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    win.title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -9)
-    win.title:SetWidth(OW - 50); win.title:SetJustifyH("LEFT")
-    TB.StyleTitle(win.title, 14)
-    TB.SetTextColor(win.title, color("title"))
-
-    local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
-    TB.StyleCloseButton(close, -7, -6)
-    close:SetScript("OnClick", function() TB.CloseOrderWindow() end)
-
-    local head = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    head:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
-    head:SetWidth(OW - 24); head:SetJustifyH("LEFT")
-    head:SetText("Pick a real item, how to get it, and how many.")
-    TB.SetTextColor(head, color("muted"))
-
+-- Step 1 widgets: search, kind and category filters, result rows. Split out
+-- of createWindow so neither function needs more than the 1.12 client's 32
+-- upvalues.
+local function createOrderStepOne()
     local search = CreateFrame("EditBox", "TortoiseBotsManagerOrderSearch", win, "InputBoxTemplate")
     TB.StyleEditBox(search, "Search items")
     search:SetWidth(OW - 24); search:SetHeight(20)
-    search:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -56)
+    search:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -66)
     search:SetAutoFocus(false)
     search:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     search:SetScript("OnEnterPressed", function()
@@ -3217,7 +3210,7 @@ local function createWindow()
                     or (entry[2] == "craft" and "Craft from materials, farming what is missing."
                         or "Search this bot's enchants and order one (spell id).")),
         })
-        pill:SetPoint("TOPLEFT", win, "TOPLEFT", kindX, -80)
+        pill:SetPoint("TOPLEFT", win, "TOPLEFT", kindX, -90)
         kindX = kindX + kindWidths[i] + 4
         local kind = entry[2]
         pill:SetScript("OnClick", function()
@@ -3229,26 +3222,6 @@ local function createWindow()
         end)
         win.kindPills[kind] = pill
     end
--- Guild-mode type switch: the Craft/Enchant pills pick the WHO stream, not
--- today's per-bot kind. Farm/Buy stay per-bot only and leave guild mode.
-function TB.SetGuildOrderKind(kind)
-    kind = string.lower(trim(kind or ""))
-    if kind ~= "craft" and kind ~= "enchant" then return false end
-    lastWhoSearch.kind = kind
-    selectedItemId = nil
-    -- The search goes out on Enter or after the typing pause, never on the
-    -- pill click: the box still holds the other kind's text at click time.
-    if win and win.searchBox then
-        lastWhoSearch = { kind = kind, text = trim(win.searchBox:GetText() or ""), rows = {} }
-    else
-        lastWhoSearch = { kind = kind, text = "", rows = {} }
-    end
-    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
-    return true
-end
-function TB.GetGuildOrderKind()
-    return lastWhoSearch.kind
-end
 
     win.catPills = {}
     for i, cat in ipairs(ORDER_CATS) do
@@ -3257,7 +3230,7 @@ end
             tip = "Only show this kind of item.",
         })
         pill:SetPoint("TOPLEFT", win, "TOPLEFT", 12 + math.mod(i - 1, 4) * 80,
-            -106 - math.floor((i - 1) / 4) * 22)
+            -116 - math.floor((i - 1) / 4) * 22)
         local token = cat
         pill:SetScript("OnClick", function() TB.SetOrderCat(token) end)
         win.catPills[cat] = pill
@@ -3356,39 +3329,33 @@ end
     win.emptyMsg:SetWidth(OW - 24)
     win.emptyMsg:SetJustifyH("CENTER")
     TB.SetTextColor(win.emptyMsg, color("muted"))
-
-    -- Guild bank access the bots can reach: rank, bank tabs, gold.
-    local accessLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    accessLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 4))
-    accessLabel:SetWidth(OW - 24 - 68); accessLabel:SetJustifyH("LEFT")
-    win.accessLabel = accessLabel
-
-    win.rankBtn = smallButton(win, "Rank", 56, 260, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 2),
-        "Change bots' rank", "Pick the guild rank bots get (needs rank rights).",
-        function()
-            TB.OpenOrderRankMenu(this)
-        end)
-
-    -- Live orders and sub-orders: every row names its bot and step, indented
-    -- under its parent, updating as TBM:ORDER lines land.
-    local treeLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    -- The heading gets its own line; the order lines start under it.
-    treeLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 18))
-    treeLabel:SetText("ORDERS")
-    treeLabel:SetWidth(200); treeLabel:SetJustifyH("LEFT")
-    TB.SetTextColor(treeLabel, color("title"))
-
-    win.treeLines = {}
-    for i = 1, 4 do
-        local line = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        line:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 30 + (i - 1) * 11))
-        line:SetWidth(OW - 24 - 68); line:SetJustifyH("LEFT")
-        TB.SetTextColor(line, color("muted"))
-        win.treeLines[i] = line
+end
+-- Guild-mode type switch: the Craft/Enchant pills pick the WHO stream, not
+-- today's per-bot kind. Farm/Buy stay per-bot only and leave guild mode.
+function TB.SetGuildOrderKind(kind)
+    kind = string.lower(trim(kind or ""))
+    if kind ~= "craft" and kind ~= "enchant" then return false end
+    lastWhoSearch.kind = kind
+    selectedItemId = nil
+    -- The search goes out on Enter or after the typing pause, never on the
+    -- pill click: the box still holds the other kind's text at click time.
+    if win and win.searchBox then
+        lastWhoSearch = { kind = kind, text = trim(win.searchBox:GetText() or ""), rows = {} }
+    else
+        lastWhoSearch = { kind = kind, text = "", rows = {} }
     end
+    if TB.RefreshOrderWindow then TB.RefreshOrderWindow() end
+    return true
+end
+function TB.GetGuildOrderKind()
+    return lastWhoSearch.kind
+end
 
-    local base = createOrderLimits()
 
+-- Step 3 widgets: preview, bring ticks, Send and Cancel. Split out of
+-- createWindow so neither function needs more than the 1.12 client's 32
+-- upvalues. Takes the same y base createOrderLimits returned.
+local function createOrderStepThree(base)
     -- What the bot would do for the current pick, asked on selection (never
     -- on a timer). Two lines above Send; hidden until a pick has a preview.
     local previewLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -3423,51 +3390,7 @@ end
     win.sendBtn = smallButton(win, "Send", 76, 194, -(base + 96),
         "Send order", "Give this bot the order (replaces its old one).",
         function()
-            -- The boxes commit on change, but read them anyway: a valid
-            -- number must always win over a stale value.
-            if win.amountBox then
-                local n = tonumber(win.amountBox:GetText() or "")
-                if n then TB.SetOrderAmount(n) end
-            end
-            if win.hoursBox and not orderNoLimit then
-                local h = tonumber(win.hoursBox:GetText() or "")
-                if h then TB.SetOrderHours(h) end
-            end
-            if win.goldBox then
-                local text = trim(win.goldBox:GetText() or "")
-                if text == "" then TB.SetOrderGold(nil)
-                else
-                    local g = tonumber(text)
-                    if g then TB.SetOrderGold(g) end
-                end
-            end
-            local item = nil
-            for _, candidate in ipairs((TB.GetOrderSearch().items) or {}) do
-                if candidate.itemId == selectedItemId then item = candidate break end
-            end
-            if not item then
-                TB.SetOrderFeedback("Pick an item from the search first.", "warn")
-                return
-            end
-            if string.lower(trim(item.verdict or "")) ~= "ok" then
-                TB.SetOrderFeedback("This bot can't get it.", "warn")
-                return
-            end
-            if orderKind == "enchant" then
-                if selectedItemId and windowBot then
-                    TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
-                        .. " sent, waiting for the server...", "pending")
-                    TB.SendOrderGive(windowBot, "enchant", selectedItemId)
-                end
-                return
-            end
-            local timeText = orderNoLimit and "no limit" or (orderHours .. "h")
-            local goldText = orderGold and (" " .. TB.OrderGoldText(orderGold)) or ""
-            TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
-                .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "")
-                .. goldText .. ") sent, waiting for the server...", "pending")
-            TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount,
-                orderNoLimit and "inf" or orderHours, orderKeep, orderGold, orderBring)
+            TB.SendOrderFromStepThree()
         end)
 
     win.cancelBtn = smallButton(win, "Cancel", 62, 274, -(base + 96),
@@ -3492,15 +3415,221 @@ end
     win.feedbackLine = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.feedbackLine:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(base + 138))
     win.feedbackLine:SetWidth(OW - 24); win.feedbackLine:SetJustifyH("LEFT")
+end
+
+-- The old Send click, shared by the step-3 Send button: reads the boxes,
+-- finds the pick in the search and sends it unchanged.
+function TB.SendOrderFromStepThree()
+    -- The boxes commit on change, but read them anyway: a valid
+    -- number must always win over a stale value.
+    if win.amountBox then
+        local n = tonumber(win.amountBox:GetText() or "")
+        if n then TB.SetOrderAmount(n) end
+    end
+    if win.hoursBox and not orderNoLimit then
+        local h = tonumber(win.hoursBox:GetText() or "")
+        if h then TB.SetOrderHours(h) end
+    end
+    if win.goldBox then
+        local text = trim(win.goldBox:GetText() or "")
+        if text == "" then TB.SetOrderGold(nil)
+        else
+            local g = tonumber(text)
+            if g then TB.SetOrderGold(g) end
+        end
+    end
+    local item = nil
+    for _, candidate in ipairs((TB.GetOrderSearch().items) or {}) do
+        if candidate.itemId == selectedItemId then item = candidate break end
+    end
+    if not item then
+        TB.SetOrderFeedback("Pick an item from the search first.", "warn")
+        return
+    end
+    if string.lower(trim(item.verdict or "")) ~= "ok" then
+        TB.SetOrderFeedback("This bot can't get it.", "warn")
+        return
+    end
+    if orderKind == "enchant" then
+        if selectedItemId and windowBot then
+            TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
+                .. " sent, waiting for the server...", "pending")
+            TB.SendOrderGive(windowBot, "enchant", selectedItemId)
+        end
+        return
+    end
+    local timeText = orderNoLimit and "no limit" or (orderHours .. "h")
+    local goldText = orderGold and (" " .. TB.OrderGoldText(orderGold)) or ""
+    TB.SetOrderFeedback(TB.OrderTypeLabel(orderKind) .. " " .. item.item
+        .. " x" .. orderAmount .. " (" .. timeText .. (orderKeep and ", keep" or "")
+        .. goldText .. ") sent, waiting for the server...", "pending")
+    TB.SendOrderGive(windowBot, orderKind, item.itemId, orderAmount,
+        orderNoLimit and "inf" or orderHours, orderKeep, orderGold, orderBring)
+end
+
+local function createWindow()
+    win = CreateFrame("Frame", "TortoiseBotsManagerOrderWindow", TB.frame or UIParent)
+    win:SetWidth(OW); win:SetHeight(510 + 178)
+    win:SetFrameStrata("DIALOG")
+    win:EnableMouse(true)
+    win:SetMovable(true)
+    win:SetClampedToScreen(true)
+    win:RegisterForDrag("LeftButton")
+    win:SetScript("OnDragStart", function() win:StartMoving() end)
+    win:SetScript("OnDragStop", function()
+        win:StopMovingOrSizing()
+        -- 1.12-safe: re-anchor with GetLeft/GetTop, never GetPoint().
+        local left, top = win:GetLeft(), win:GetTop()
+        if left and top then
+            win:ClearAllPoints()
+            win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        end
+    end)
+    if UISpecialFrames then table.insert(UISpecialFrames, "TortoiseBotsManagerOrderWindow") end
+    TB.ApplySurface(win, "window")
+    TB.AddWindowHeader(win, 30)
+
+    win.title = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    win.title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -9)
+    win.title:SetWidth(OW - 50); win.title:SetJustifyH("LEFT")
+    TB.StyleTitle(win.title, 14)
+    TB.SetTextColor(win.title, color("title"))
+
+    local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
+    TB.StyleCloseButton(close, -7, -6)
+    close:SetScript("OnClick", function() TB.CloseOrderWindow() end)
+
+    local head = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    head:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
+    head:SetWidth(OW - 24); head:SetJustifyH("LEFT")
+    head:SetText("Pick a real item, how to get it, and how many.")
+    TB.SetTextColor(head, color("muted"))
+    win.head = head
+
+    win.stepLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    win.stepLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -50)
+    win.stepLabel:SetWidth(OW - 24); win.stepLabel:SetJustifyH("LEFT")
+    TB.SetTextColor(win.stepLabel, color("title"))
+
+    createOrderStepOne()
+    -- Guild bank access the bots can reach: rank, bank tabs, gold.
+    local accessLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    accessLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 4))
+    accessLabel:SetWidth(OW - 24 - 68); accessLabel:SetJustifyH("LEFT")
+    win.accessLabel = accessLabel
+
+    win.rankBtn = smallButton(win, "Rank", 56, 260, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 2),
+        "Change bots' rank", "Pick the guild rank bots get (needs rank rights).",
+        function()
+            TB.OpenOrderRankMenu(this)
+        end)
+    -- Live orders and sub-orders: every row names its bot and step, indented
+    -- under its parent, updating as TBM:ORDER lines land.
+    local treeLabel = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    treeLabel:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 18))
+    treeLabel:SetText("ORDERS")
+    treeLabel:SetWidth(200); treeLabel:SetJustifyH("LEFT")
+    TB.SetTextColor(treeLabel, color("title"))
+
+    win.treeLines = {}
+    for i = 1, 4 do
+        local line = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        line:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(152 + RESULT_ROW_N * RESULT_ROW_H + 4 + 30 + (i - 1) * 11))
+        line:SetWidth(OW - 24 - 68); line:SetJustifyH("LEFT")
+        TB.SetTextColor(line, color("muted"))
+        win.treeLines[i] = line
+    end
+
+    local base = createOrderLimits()
+    createOrderStepThree(base)
+
+    win.backBtn = smallButton(win, "Back", 76, 12, -(base + 164),
+        "Go back", "Go back one step. Your pick is kept.",
+        function()
+            TB.SetOrderStep(orderStep - 1)
+        end)
+
+    win.nextBtn = smallButton(win, "Next", 76, 194, -(base + 164),
+        "Next step", "Continue to the next step.",
+        function()
+            TB.OrderStepNext()
+        end)
 
     win:SetScript("OnUpdate", onOrderWindowUpdate)
 
     win:Hide()
     TB.orderWindow = win
 end
+-- Step panes: guild pick-a-bot mode pins everything visible (no step flow).
+-- Per-bot: step 1 search and rows; step 2 amount and farm time; step 3 the
+-- preview and Send. Cancel, missing-items, rank, tree and access stay on
+-- every step. Hidden widgets return with their paint on the next refresh.
+local function updateOrderStepPane()
+    if orderGuild then
+        if win.searchBox then win.searchBox:Show() end
+        for _, pill in pairs(win.kindPills or {}) do pill:Show() end
+        for _, pill in pairs(win.catPills or {}) do pill:Show() end
+        if win.results then win.results:Show() end
+        if win.amountMinus then win.amountMinus:Show() end
+        if win.amountBox then win.amountBox:Show() end
+        if win.amountPlus then win.amountPlus:Show() end
+        if win.hoursBox then win.hoursBox:Show() end
+        if win.noLimitBox then win.noLimitBox:Show() end
+        if win.noLimitLabel then win.noLimitLabel:Show() end
+        if win.keepBox then win.keepBox:Show() end
+        if win.keepLabel then win.keepLabel:Show() end
+        if win.goldLabel then win.goldLabel:Show() end
+        if win.goldBox then win.goldBox:Show() end
+        if win.farmNote then win.farmNote:Show() end
+        if win.sendBtn then win.sendBtn:Hide() end
+        if win.backBtn then win.backBtn:Disable() end
+        if win.nextBtn then win.nextBtn:Disable() end
+        return
+    end
+    local onOne = orderStep <= 1
+    local onThree = orderStep >= 3
+    if win.searchBox then if onOne then win.searchBox:Show() else win.searchBox:Hide() end end
+    for _, pill in pairs(win.kindPills or {}) do if onOne then pill:Show() else pill:Hide() end end
+    for _, pill in pairs(win.catPills or {}) do if onOne then pill:Show() else pill:Hide() end end
+    if win.results then if onOne then win.results:Show() else win.results:Hide() end end
+    for _, row in ipairs(win.resultRows or {}) do
+        if onOne and (row.item or row.whoEntry) then row:Show() else row:Hide() end
+    end
+    if win.emptyMsg then if not onOne then win.emptyMsg:Hide() end end
+    if win.amountMinus then if onOne then win.amountMinus:Hide() else win.amountMinus:Show() end end
+    if win.amountBox then if onOne then win.amountBox:Hide() else win.amountBox:Show() end end
+    if win.hoursBox then if onOne then win.hoursBox:Hide() else win.hoursBox:Show() end end
+    if win.noLimitBox then if onOne then win.noLimitBox:Hide() else win.noLimitBox:Show() end end
+    if win.noLimitLabel then if onOne then win.noLimitLabel:Hide() else win.noLimitLabel:Show() end end
+    if win.keepBox then if onOne then win.keepBox:Hide() else win.keepBox:Show() end end
+    if win.keepLabel then if onOne then win.keepLabel:Hide() else win.keepLabel:Show() end end
+    if win.goldLabel then if onOne then win.goldLabel:Hide() else win.goldLabel:Show() end end
+    if win.goldBox then if onOne then win.goldBox:Hide() else win.goldBox:Show() end end
+    if win.farmNote then if onOne then win.farmNote:Hide() else win.farmNote:Show() end end
+    if win.sendBtn then if onThree then win.sendBtn:Show() else win.sendBtn:Hide() end end
+    for _, box in ipairs(win.bringRows or {}) do
+        if onThree and box.bringId then box:Show()
+        elseif not onThree then box:Hide() end
+        if box.bringLabel then
+            if onThree and box.bringId then box.bringLabel:Show() else box.bringLabel:Hide() end
+        end
+    end
+    if win.backBtn then
+        if onOne then win.backBtn:Disable() else win.backBtn:Enable() end
+    end
+    if win.nextBtn then
+        if orderStep >= 3 then win.nextBtn:Disable() else win.nextBtn:Enable() end
+        win.nextBtn:SetText("Next")
+    end
+end
 
 function TB.RefreshOrderWindow()
     if not win or not win:IsVisible() then return end
+    updateOrderStepPane()
+    if win.stepLabel then
+        if orderGuild then win.stepLabel:SetText("")
+        else win.stepLabel:SetText("Step " .. orderStep .. " of 3") end
+    end
     if orderGuild then
         win.title:SetText("Order for the guild: pick a bot")
     else
@@ -3896,6 +4025,7 @@ function TB.OpenOrderWindow(bot)
     if TB.CloseBotPanel then TB.CloseBotPanel() end
     local switched = windowBot ~= bot or orderGuild
     orderGuild = false
+    orderStep = 1
     windowBot = bot
     if switched then
         orderKind = "farm"
@@ -3944,7 +4074,6 @@ function TB.OpenOrderWindow(bot)
 end
 -- "Order" button above the Guild list: pick-a-bot mode, no bot pinned.
 -- Craft/Enchant pills switch the WHO stream; a bot click opens the normal
--- per-bot flow for that bot and item.
 function TB.OpenGuildOrderWindow()
     if not TB.HasOrderCapability() then return false end
     if not win then createWindow() end
@@ -3954,8 +4083,8 @@ function TB.OpenGuildOrderWindow()
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseBotPanel then TB.CloseBotPanel() end
     orderGuild = true
+    orderStep = 1
     windowBot = nil
-    selectedItemId = nil
     orderPreview = nil
     previewPending = nil
     previewDueAt = nil
