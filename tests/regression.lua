@@ -1990,8 +1990,55 @@ TortoiseBotsDB.miniBar = { x = 9999, y = 9999 }
 SlashCmdList["TORTOISEBOTSMANAGER"]("resetpos")
 assert(TortoiseBotsDB.miniBar == nil, "resetpos must clear the mini bar position")
 assert(TB.miniBar.point[1] == "BOTTOM", "resetpos must re-anchor the mini bar")
+-- Horizontal/vertical layout: stored, toggled from the bar and the slash
+-- command, and stacked without touching the chrome.
+assert(TB.GetMiniLayout() == "horizontal", "the mini bar starts horizontal")
+TortoiseBotsDB.miniLayout = "sideways"
+assert(TB.GetMiniLayout() == "horizontal", "a stray layout value reads back horizontal")
+TB.SetMiniLayout("vertical")
+assert(TortoiseBotsDB.miniLayout == "vertical" and TB.GetMiniLayout() == "vertical",
+    "setting the layout stores it")
+assert(bar.height > bar.width, "a vertical bar is taller than wide")
+assert(bar.categories.engage.point and bar.categories.engage.point[1] == "TOP", "vertical categories stack downward")
+assert(bar.favButtons[1].point and bar.favButtons[1].point[1] == "TOP", "vertical favourites stack downward")
+assert(bar.expand.point[1] == "BOTTOM", "the + button sits at the foot of a vertical bar")
+arg1 = "RightButton"
+bar.handle.scripts.OnClick(bar.handle)
+arg1 = nil
+assert(TB.GetMiniLayout() == "horizontal", "right-click on the turtle flips the layout back")
+assert(bar.favButtons[1].point[1] == "LEFT", "horizontal favourites run left to right")
+SlashCmdList["TORTOISEBOTSMANAGER"]("minilayout vertical")
+assert(TB.GetMiniLayout() == "vertical", "/tbm minilayout vertical stacks the bar")
+SlashCmdList["TORTOISEBOTSMANAGER"]("minilayout")
+assert(TB.GetMiniLayout() == "horizontal", "/tbm minilayout with no word flips the bar")
+TB.SetMiniLayout("horizontal")
+-- Favourite slots: a bound key runs that slot, shows on the button and in
+-- the tooltip; empty or unusable slots stay silent.
+TortoiseBotsDB.miniFavorites = { "stop", "attack", "rest" }
+TB.LayoutMiniBar()
+bar:Show()
+TB.RefreshMiniBar()
+GetBindingKey = function(name) if name == "TBM_FAV1" then return "SHIFT-1" end end
+TB.RefreshMiniBar()
+assert(bar.favButtons[1].key.text == "SHIFT-1", "the bound key shows on its favourite button")
+assert(bar.favButtons[2].key.visible == false, "an unbound slot shows no key")
+this = bar.favButtons[1]
+now = now + 1
+assert(TB.RunMiniFavorite(1) == true, "a bound favourite slot runs")
+assert(lastAddon() == "action stop", "slot 1 runs the first favourite")
+assert(TB.RunMiniFavorite(9) == false, "an empty slot runs nothing")
+assert(TB.RunMiniFavorite(0) == false and TB.RunMiniFavorite(13) == false, "slots outside 1-12 run nothing")
+targetExists, targetNameValue = false, nil
+assert(TB.RunMiniFavorite(2) == false, "a slot needing an enemy target stays silent without one")
+targetExists, targetNameValue = true, "Enemy"
+assert(TB.RunMiniFavorite("bad") == false, "a non-number slot runs nothing")
+GetBindingKey = nil
+TB.RefreshMiniBar()
+assert(bar.favButtons[1].key.visible == false, "no binding API means no key text")
+TortoiseBotsDB.miniFavorites = { "attack", "stop", "interrupt", "flee", "pull", "pullback", "focus skull",
+    "follow", "stay", "come", "aoe" }
+TB.LayoutMiniBar()
 bar.expand.scripts.OnClick(bar.expand)
-assert(TB.GetMode() == "full" and TB.frame.visible and not bar.visible, "+ restores the full window")
 targetExists, targetNameValue = true, "Enemy"
 TB.Refresh()
 

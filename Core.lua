@@ -774,11 +774,20 @@ SlashCmdList["TORTOISEBOTSMANAGER"] = function(msg)
         return
     end
     if msg == "help" or msg == "h" then
-        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
+        TB.Print("Commands: /tbm — toggle, /tbm party — show party, /tbm bags [name] — bot gear & bags, /tbm mini | full — small fight bar or full window, /tbm minilayout [horizontal|vertical] — mini bar direction, /tbm log — show log, /tbm list — poll, /tbm resetpos — center, /tbm help — this")
         TB.Print("TortoiseBots by " .. TB.C.AUTHOR .. " — " .. TB.C.SOURCE_URL)
         return
     elseif msg == "mini" or msg == "full" then
         TB.RequestMode(msg)
+        return
+    elseif msg == "minilayout" or msg == "minilayout horizontal" or msg == "minilayout vertical" then
+        local _, _, want = string.find(msg, "^minilayout%s*(%S*)$")
+        if TB.SetMiniLayout then
+            if want == "horizontal" or want == "vertical" then TB.SetMiniLayout(want)
+            else TB.ToggleMiniLayout() end
+        else
+            TB.Print("Mini bar layout is not loaded yet. Exit and restart the game client: WoW only loads new addon files on a full restart, not on /reload.")
+        end
         return
     elseif msg == "party" then
         if TB.SetMode then TB.SetMode("full") end

@@ -63,7 +63,7 @@ local WOW_GLOBALS = set({
     -- misc
     "GetTime", "GetCursorPosition", "GetScreenHeight", "GetScreenWidth", "GetRealZoneText",
     "GetZoneText", "IsInInstance", "IsShiftKeyDown", "PlaySound", "SendAddonMessage",
-    "SendChatMessage",
+    "SendChatMessage", "GetBindingKey",
     -- `os and os.date(...)`: a probe that is nil in the client, never called there
     "os",
 })
