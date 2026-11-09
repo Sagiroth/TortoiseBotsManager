@@ -5391,6 +5391,15 @@ assert(table.getn(TB.GetOrderBring()) == 1 and TB.GetOrderBring()[1] == 2319,
 TB.SetOrderStep(3)
 assert(TB.orderWindow.bringRows and TB.orderWindow.bringRows[1]:IsVisible()
     and TB.orderWindow.bringRows[1]:GetChecked(), "the reagent row shows ticked on step 3")
+do
+    -- Preview, ticks and Send stack: Send sits a full row below the tick, and
+    -- the tick below the preview's three lines.
+    local tickY = TB.orderWindow.bringRows[1].point[5]
+    local sendY = TB.orderWindow.sendBtn.point[5]
+    local previewY = TB.orderWindow.previewLine.point[5]
+    assert(tickY <= previewY - 36, "the ticks start below the preview text")
+    assert(sendY <= tickY - 16 - 4, "Send sits below the last tick")
+end
 this = TB.orderWindow.bringRows[1]
 TB.orderWindow.bringRows[1].scripts.OnClick(TB.orderWindow.bringRows[1])
 assert(table.getn(TB.GetOrderBring()) == 0, "the player can untick the row")

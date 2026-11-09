@@ -3394,7 +3394,7 @@ local function createOrderStepThree(pane, base)
         local box = CreateFrame("CheckButton", "TortoiseBotsManagerOrderBring" .. i, pane, "UICheckButtonTemplate")
         TB.StyleCheckButton(box)
         box:SetWidth(16); box:SetHeight(16)
-        box:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -(base + 68 + (i - 1) * 15))
+        box:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -(base + 106 + (i - 1) * 15))
         box:SetScript("OnClick", function()
             local id = this.bringId
             if id then TB.ToggleOrderBringNow(id) end
@@ -3409,13 +3409,14 @@ local function createOrderStepThree(pane, base)
         win.bringRows[i] = box
     end
 
-    win.sendBtn = smallButton(pane, "Send", 76, 194, -(base + 96),
+    win.stepThreeBase = base
+    win.sendBtn = smallButton(pane, "Send", 76, 194, -(base + 112),
         "Send order", "Give this bot the order (replaces its old one).",
         function()
             TB.SendOrderFromStepThree()
         end)
 
-    win.cancelBtn = smallButton(pane, "Cancel", 62, 274, -(base + 96),
+    win.cancelBtn = smallButton(pane, "Cancel", 62, 274, -(base + 112),
         "Cancel order", "Remove this bot's current order. Cancelling also ends keep-in-stock and no-limit orders.",
         function()
             if windowBot then TB.ConfirmOrderCancel(windowBot) end
@@ -3423,7 +3424,7 @@ local function createOrderStepThree(pane, base)
 
     -- Fills the Send Mail form for the bot that needs items; the player
     -- presses Send. Enabled only at an open mailbox with a need (D2/D3).
-    win.sendItemsBtn = smallButton(pane, "Send missing items", 176, 12, -(base + 96),
+    win.sendItemsBtn = smallButton(pane, "Send missing items", 176, 12, -(base + 112),
         "Send missing items", "Fill the mail form for the bot that needs items.",
         function()
             TB.SendOrderMissingItems(TB.GetOrderWindowBot())
@@ -3615,7 +3616,7 @@ end
 -- next refresh.
 -- Each step is only as tall as its own widgets; Back/Next and the status
 -- lines hang from the bottom edge.
-local ORDER_STEP_H = { 462, 270, 272 }
+local ORDER_STEP_H = { 462, 270, 288 }
 
 local function updateOrderStepPane()
     if not win.stepOne then return end
@@ -4057,6 +4058,7 @@ function TB.RefreshOrderBringRows()
         and orderPreview.want == orderAmount then
         reagents = orderPreview.reagents or {}
     end
+    local shown = 0
     for i, box in ipairs(win and win.bringRows or {}) do
         local row = reagents and reagents[i] or nil
         if row then
@@ -4071,10 +4073,21 @@ function TB.RefreshOrderBringRows()
         if row and orderStep >= 3 then
             if box.bringLabel then box.bringLabel:Show() end
             box:Show()
+            shown = shown + 1
         else
             if box.bringLabel then box.bringLabel:Hide() end
             box:Hide()
         end
+    end
+    -- The preview takes up to three lines, the ticks sit under it and Send
+    -- below them: the buttons and the window follow the number of ticks.
+    if win and win.stepThreeBase and win.sendBtn then
+        local y = -(win.stepThreeBase + 112 + 15 * shown)
+        for _, b in ipairs({ { win.sendBtn, 194 }, { win.cancelBtn, 274 }, { win.sendItemsBtn, 12 } }) do
+            b[1]:ClearAllPoints()
+            b[1]:SetPoint("TOPLEFT", win.stepThree, "TOPLEFT", b[2], y)
+        end
+        if orderStep >= 3 then win:SetHeight(ORDER_STEP_H[3] + 15 * shown) end
     end
 end
 
