@@ -2114,7 +2114,8 @@ end
             { text = "Level", width = 64, x = 128, sortKey = "level" },
             { text = "Gear", width = 52, x = 194, sortKey = nil },
             { text = "Status", width = 70, x = 248, sortKey = "status" },
-            { text = "Role · Order", width = 134, x = 324, sortKey = nil },
+            { text = "Role", width = 66, x = 324, sortKey = nil },
+            { text = "Order", width = 76, x = 392, sortKey = nil },
         }
         guildFrame.headerBtns = {}
         for _, h in ipairs(headers) do
@@ -2332,8 +2333,8 @@ end
 
             local roleBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             roleBtn.flatKind = "mode"
-            roleBtn:SetWidth(74); roleBtn:SetHeight(16)
-            roleBtn:SetPoint("LEFT", row, "LEFT", 322, 8)
+            roleBtn:SetWidth(66); roleBtn:SetHeight(16)
+            roleBtn:SetPoint("LEFT", row, "LEFT", 324, 8)
             roleBtn:SetText("Role")
             roleBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -2357,7 +2358,7 @@ end
 
             local ordBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             ordBtn:SetWidth(44); ordBtn:SetHeight(16)
-            ordBtn:SetPoint("LEFT", row, "LEFT", 322, -8)
+            ordBtn:SetPoint("LEFT", row, "LEFT", 392, 8)
             ordBtn:SetText("Order")
             ordBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -2369,8 +2370,8 @@ end
             -- The "..." button opens the row's right-click menu for mouse
             -- users; the same actions stay one right-click away on the row.
             local moreBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            moreBtn:SetWidth(36); moreBtn:SetHeight(16)
-            moreBtn:SetPoint("LEFT", row, "LEFT", 368, -8)
+            moreBtn:SetWidth(30); moreBtn:SetHeight(16)
+            moreBtn:SetPoint("LEFT", row, "LEFT", 438, 8)
             moreBtn:SetText("...")
             moreBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
@@ -2384,8 +2385,8 @@ end
             -- click sends "order <bot> meet" like the other order commands.
             local meetBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             meetBtn.flatKind = "primary"
-            meetBtn:SetWidth(58); meetBtn:SetHeight(16)
-            meetBtn:SetPoint("LEFT", row, "LEFT", 398, 8)
+            meetBtn:SetWidth(76); meetBtn:SetHeight(16)
+            meetBtn:SetPoint("LEFT", row, "LEFT", 392, -8)
             meetBtn:SetText("Meet")
             meetBtn:SetScript("OnClick", function()
                 local entry = this:GetParent().entry
