@@ -5052,7 +5052,6 @@ local function enchantOrderChecks()
     assert(meetRow and meetRow.meetBtn and meetRow.meetBtn:IsVisible(),
         "an unfinished enchant shows Meet")
     assert(meetRow.meetBtn.enabled, "officer rights enable Meet")
-    assert(meetRow.relBtn ~= nil, "the Release control still exists for the menu")
     canEditOfficerNote = false
     TB.RefreshGuildView()
     assert(not meetRow.meetBtn.enabled, "losing the right greys Meet out")
@@ -5065,8 +5064,7 @@ local function enchantOrderChecks()
         "Meet clicks send like the other order commands")
     TB.OnSystemMessage("TBM:ORDER|Goldie|enchant|27747|Enchant Bracer - Stamina|1|1|done|-|-")
     TB.RefreshGuildView()
-    assert(not meetRow.meetBtn:IsVisible() and meetRow.relBtn ~= nil,
-        "done hides Meet")
+    assert(not meetRow.meetBtn:IsVisible(), "done hides Meet")
 
     -- Enchant search: the window lists name, slot, skill and have/need.
     assert(TB.ParseOrderEnchantLine("TBM:ORDER_ENCHANT|27747") == nil,

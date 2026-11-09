@@ -638,7 +638,6 @@ return function()
                     if row[key] then table.insert(cols, { key, row[key] }) end
                 end
                 if row.roleBtn then table.insert(cols, { "roleBtn", row.roleBtn }) end
-                if row.relBtn then table.insert(cols, { "relBtn", row.relBtn }) end
                 if row.orderLine then table.insert(cols, { "orderLine", row.orderLine }) end
                 if row.ordBtn then table.insert(cols, { "ordBtn", row.ordBtn }) end
                 if row.moreBtn then

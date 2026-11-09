@@ -174,6 +174,22 @@ local function openRowMenu(menuName, build)
         build(UIDropDownMenu_AddButton)
     end, "MENU")
     ToggleDropDownMenu(1, nil, menu, "cursor")
+    if not TB._menuWatch then
+        local watch = CreateFrame("Frame")
+        watch:Hide()
+        -- The 1.12 menu only closes on its own timer; a click anywhere
+        -- else must close it at once.
+        watch:SetScript("OnUpdate", function()
+            if not DropDownList1:IsVisible() then this:Hide() return end
+            if (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton"))
+                and not MouseIsOver(DropDownList1) then
+                CloseDropDownMenus()
+                this:Hide()
+            end
+        end)
+        TB._menuWatch = watch
+    end
+    TB._menuWatch:Show()
     return true
 end
 
@@ -2358,25 +2374,11 @@ end
                 local entry = this:GetParent().entry
                 if entry and TB.OpenGuildRowMenu then TB.OpenGuildRowMenu(entry.name) end
             end)
-            setButtonTooltip(moreBtn, "More actions (Cancel, Move, Release). Right-click the row works too.", "More")
+            setButtonTooltip(moreBtn, "Release, cancel or move this bot's order. Right-click the row works too.", "More")
             row.moreBtn = moreBtn
 
-            local relBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
-            relBtn.flatKind = "danger"
-            relBtn:SetWidth(58); relBtn:SetHeight(16)
-            relBtn:SetPoint("LEFT", row, "LEFT", 398, 8)
-            relBtn:SetText("Release")
-            relBtn:SetScript("OnClick", function()
-                local entry = this:GetParent().entry
-                if entry and TB.ConfirmReleaseClaimedBot then
-                    TB.ConfirmReleaseClaimedBot(entry.name)
-                end
-            end)
-            setButtonTooltip(relBtn, "Release this bot back to the wandering bot pool (/gkick)")
-            row.relBtn = relBtn
-
-            -- Enchant Meet: same-slot twin of Release (only one shows). The
-            -- giver's own order row shows Meet until the order finishes; the
+            -- Enchant Meet: the giver's own order row shows it until the
+            -- order finishes; the
             -- click sends "order <bot> meet" like the other order commands.
             local meetBtn = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
             meetBtn.flatKind = "primary"
@@ -2957,11 +2959,6 @@ end
                     else
                         row.meetBtn:Hide()
                     end
-                end
-                if row.relBtn then
-                    -- Meet borrows this slot on unfinished enchant rows; the
-                    -- other rows always show Release for claimed bots.
-                    if showMeet then row.relBtn:Hide() else row.relBtn:Show() end
                 end
 
                 -- Role button label

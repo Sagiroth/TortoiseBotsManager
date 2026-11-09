@@ -67,6 +67,8 @@ local WOW_GLOBALS = set({
     "SendChatMessage",
     -- key bindings (C API plus FrameXML UIParent.lua)
     "GetBindingKey", "GetBindingText",
+    -- dropdown menus (UIDropDownMenu.lua) and the mouse state
+    "DropDownList1", "CloseDropDownMenus", "IsMouseButtonDown", "MouseIsOver",
     -- `os and os.date(...)`: a probe that is nil in the client, never called there
     "os",
 })
