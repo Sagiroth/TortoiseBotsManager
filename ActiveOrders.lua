@@ -12,7 +12,7 @@ local ROW_H = 30
 local ROW_N = 5
 local STEP_N = 5
 local STEP_H = 14
-local WIN_H = 440
+local WIN_H = 452
 local REFRESH_EVERY = 1.5
 local LIST_EVERY = 8
 
@@ -161,14 +161,21 @@ local function createWindow()
     TB.StyleCloseButton(close, -7, -6)
     close:SetScript("OnClick", function() TB.CloseActiveOrders() end)
 
+    local wip = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    wip:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
+    wip:SetWidth(AW - 24); wip:SetJustifyH("LEFT")
+    wip:SetText("Work in progress, there may be bugs")
+    TB.SetTextColor(wip, { 1, 0.82, 0, 1 })
+    win.wipNote = wip
+
     local hint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hint:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
+    hint:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -50)
     hint:SetWidth(AW - 24); hint:SetJustifyH("LEFT")
-    hint:SetText("Click an order to see what the bot is doing.  |cffffd200Work in progress, there may be bugs.|r")
+    hint:SetText("Click an order to see what the bot is doing.")
     TB.SetTextColor(hint, color("muted"))
 
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerActiveOrdersScroll", win, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -54)
+    scroll:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -66)
     scroll:SetWidth(AW - 28)
     scroll:SetHeight(ROW_N * ROW_H + 4)
     scroll:SetScript("OnVerticalScroll", function()
@@ -203,7 +210,7 @@ local function createWindow()
     end
 
     win.empty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.empty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -64)
+    win.empty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -76)
     win.empty:SetWidth(AW - 24); win.empty:SetJustifyH("LEFT")
     win.empty:SetText("No bot has an order right now. Press Order on a bot in the Guild tab to give one.")
     TB.SetTextColor(win.empty, color("muted"))

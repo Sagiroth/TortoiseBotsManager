@@ -3576,9 +3576,9 @@ local function createWindow()
     win.closeBtn = close
 
     local head = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    head:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
-    head:SetWidth(OW - 24); head:SetJustifyH("LEFT")
-    head:SetText("Pick an item, how to get it, and how many.")
+    head:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -50)
+    head:SetWidth(OW - 24 - 90); head:SetJustifyH("RIGHT")
+    head:SetText("Pick an item, how and how many.")
     TB.SetTextColor(head, color("muted"))
     win.head = head
 
@@ -3588,8 +3588,8 @@ local function createWindow()
     TB.SetTextColor(win.stepLabel, color("title"))
 
     win.wipNote = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    win.wipNote:SetPoint("TOPRIGHT", win, "TOPRIGHT", -12, -50)
-    win.wipNote:SetJustifyH("RIGHT")
+    win.wipNote:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -36)
+    win.wipNote:SetWidth(OW - 24); win.wipNote:SetJustifyH("LEFT")
     win.wipNote:SetText("Work in progress, there may be bugs")
     TB.SetTextColor(win.wipNote, { 1, 0.82, 0, 1 })
 
