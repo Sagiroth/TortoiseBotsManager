@@ -216,7 +216,8 @@ local function createWindow()
             if showDone == done then return end
             showDone = done
             picked = nil
-            if FauxScrollFrame_SetOffset then FauxScrollFrame_SetOffset(win.scroll, 0) end
+            local bar = getglobal and getglobal("TortoiseBotsManagerActiveOrdersScrollScrollBar")
+            if bar then bar:SetValue(0) end
             TB.RefreshActiveOrders()
         end)
         return b
