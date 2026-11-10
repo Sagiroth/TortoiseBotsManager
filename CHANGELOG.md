@@ -2,6 +2,22 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.1.2 (2026-11-10)
+
+### Roster & Lifecycle
+- Party rows now show HP and mana bars instead of just names, so you can read bot health at a glance mid-pull. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+- Bots are flagged inline when dead, ghost, drinking, or out of range — no more guessing why a heal or pull didn't land. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+- The bot you currently have targeted is highlighted in the roster, making it obvious which companion an action will apply to. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+- Roster refresh interval is now configurable, so you can trade update frequency against UI churn. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+
+### UI & Controls
+- New settings window, opened with `/tbm settings`, collecting the addon's options in one place instead of scattered slash commands. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+- Window scale slider lets you resize the manager to fit your UI layout and resolution. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+- Minimap button can be toggled on or off from settings. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+- Mini bar can be locked in place to stop accidental drags during combat. [#76](https://github.com/Sagiroth/TortoiseBotsManager/pull/76)
+
+---
+
 ## v2.1.1 (2026-11-08)
 
 ### Roster & Lifecycle
