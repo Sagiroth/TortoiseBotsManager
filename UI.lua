@@ -2175,6 +2175,22 @@ end
 
         -- The row tooltip body lives in one function so a late professions
         -- snapshot can redraw the tooltip of the row under the cursor.
+        -- The bot's zone from the game's own guild roster (online members
+        -- only). A hover asks the client to refresh it; the client throttles.
+        local function guildRosterZone(name)
+            if not (GetNumGuildMembers and GetGuildRosterInfo) then return nil end
+            if GuildRoster then GuildRoster() end
+            local want = TB.NormalizeName and TB.NormalizeName(name) or name
+            for i = 1, GetNumGuildMembers(true) or 0 do
+                local member, _, _, _, _, zone, _, _, online = GetGuildRosterInfo(i)
+                if member and (TB.NormalizeName and TB.NormalizeName(member) or member) == want then
+                    if online and zone and zone ~= "" then return zone end
+                    return nil
+                end
+            end
+            return nil
+        end
+
         function TB.ShowGuildRowTooltip(row)
             local entry = row and row.entry
             if not entry then return end
@@ -2183,6 +2199,8 @@ end
             GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
             GameTooltip:SetText(entry.name)
             GameTooltip:AddLine("Level " .. entry.level .. " " .. (entry.className or "") .. " · " .. (entry.status or "Unknown"), 1, 1, 1)
+            local zone = guildRosterZone(entry.name)
+            if zone then GameTooltip:AddLine("Location: " .. zone, 1, 1, 1) end
             -- Row professions from the CLAIMED snapshot ride the row itself;
             -- the cached Professions snapshot stays the fallback (it carries
             -- skill max). A hover never sends a request.
@@ -2915,7 +2933,8 @@ end
                 end
                 if row.orderLine then
                     if hasOrderLine then
-                        row.orderLine:SetText(TB.OrderRowText(order))
+                        local working = string.lower(order.state or "") == "working"
+                        row.orderLine:SetText(working and ("Working on guild order - " .. TB.OrderItemLink(order) .. " " .. TB.OrderProgress(order)) or TB.OrderRowText(order, true))
                         row.orderLine:Show()
                     else
                         row.orderLine:Hide()

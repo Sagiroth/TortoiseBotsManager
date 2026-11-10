@@ -3051,7 +3051,7 @@ assert(parsedOrder and parsedOrder.bot == "Goldie" and parsedOrder.type == "farm
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318") == nil, "a short order line is dropped")
 local hoursOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3")
 assert(hoursOrder and hoursOrder.hours == 3 and hoursOrder.difficulty == "easy", "an 11-field order line carries the farm hours")
-assert(string.find(TB.OrderTooltipText(hoursOrder), "Farm time: 3 h", 1, true), "the order tooltip shows the farm hours")
+assert(not string.find(TB.OrderTooltipText(hoursOrder), "Farm time", 1, true), "a running order's tooltip leaves the farm hours out")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy").hours == nil,
     "a 10-field order line has no hours")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|nope|Light Leather|4|10|working|-|Ashenvale") == nil,
@@ -3185,15 +3185,20 @@ local function orderCarryChecks()
         "delivered have=10 is done even with carry")
     local oldLine = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3|-|-|-|craft|-")
     assert(oldLine and oldLine.have == 4 and oldLine.carry == nil, "a 16-field old line still parses")
-    assert(TB.OrderRowText(oldLine) == "Light Leather 4/10 · crafting · |cff4ecb5aEasy|r", "an old line without carry shows progress only")
-    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bags|-|3")) == "Light Leather 2/10 (+3 carrying) · checking bags and mail",
+    assert(TB.OrderRowText(oldLine) == "Light Leather 4/10 · crafting", "an old line without carry shows progress only")
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bags|-|3")) == "Light Leather 5/10 · checking bags and mail",
         "a working row with carry shows both counts")
     assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 10/10 · checking bags and mail",
         "a working row at its count says nothing about bags")
     assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|9|10|working|-|-|-|-|-|-|-|bags|-")) == "Light Leather 9/10 · checking bags and mail",
         "a working row short of its count stays unchanged")
-    assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|waiting|grouped|-|-|-|-|-|-|craft|-|2")), "carrying", 1, true) ~= nil,
-        "a waiting row with carry still shows it")
+    assert(string.find(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|7|10|waiting|grouped|-|-|-|-|-|-|craft|-|2")), "9/10", 1, true) ~= nil,
+        "a waiting row counts what it carries into the progress")
+    assert(TB.OrderProgress({ have = 10, want = 10, carry = 2 }) == "10/10", "progress never passes the ordered amount")
+    assert(TB.OrderDeliveredTo({ state = "done", type = "craft" }) == "Guild bank", "a done order sits in the guild bank")
+    assert(TB.OrderDeliveredTo({ state = "done", type = "enchant" }) == "Trade", "a done enchant went by trade")
+    assert(TB.OrderDeliveredTo({ state = "mailed", type = "farm" }) == "Mailbox (guild master)", "a mailed order went to the guild master")
+    assert(TB.OrderDeliveredTo({ state = "working", type = "farm" }) == nil, "a running order has no location yet")
     assert(string.find(TB.OrderRowText({ item = "Light Leather", have = 0, want = 0, state = "working" }), "carrying", 1, true) == nil,
         "a working row with no carry gets no marker")
     local carryTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|2|10|working|-|-|-|-|-|-|-|bags|-|3"))
@@ -3205,7 +3210,7 @@ local function orderCarryChecks()
     local interimTip = TB.OrderTooltipText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|-|-|-|-|-|-|bags|-"))
     assert(string.find(interimTip, "Not deliverable yet: part of the count is not in the bot's bags (usually still in its mail).", 1, true) ~= nil,
         "an old line at its count keeps the interim wording")
-    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|Ashenvale|-|-|keep|-|-|farm|-|2")) == "Light Leather 10/10 (+2 carrying) · farming in Ashenvale · |cff4ecb5aKeep|r",
+    assert(TB.OrderRowText(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|10|10|working|-|Ashenvale|-|-|keep|-|-|farm|-|2")) == "Light Leather 10/10 · farming in Ashenvale · |cff4ecb5aKeep|r",
         "the carry count sits before keep")
 end
 orderCarryChecks()
@@ -3747,7 +3752,7 @@ assert(TB.OrderStateLabel("stocked") == "Stocked", "stocked gets the plain label
 assert(TB.OrderRowText({ item = "Light Leather", have = 10, want = 10, state = "stocked", keep = true })
     == "Light Leather · |cff4ecb5aStocked|r", "stocked rows show the state")
 assert(TB.OrderRowText(keepOrder)
-    == "Light Leather 4/10 (Ashenvale) · |cff4ecb5aKeep|r · |cff4ecb5aEasy|r",
+    == "Light Leather 4/10 (Ashenvale) · |cff4ecb5aKeep|r",
     "keep rows mark the refill")
 assert(string.find(TB.OrderTooltipText(keepOrder),
     "Keep in stock: the bot refills when the bank drops below 10", 1, true) ~= nil,
@@ -4097,6 +4102,12 @@ do
     assert(aw.rows[1]:IsVisible() and aw.rows[2]:IsVisible() and not aw.rows[3]:IsVisible(),
         "one row per bot with an order")
     assert(aw.rows[1].bot == "Goldie" and aw.rows[2].bot == "Silver", "rows are sorted by bot")
+    this = aw.doneTab
+    aw.doneTab.scripts.OnClick(aw.doneTab)
+    assert(not aw.rows[1]:IsVisible() and aw.empty:IsVisible(), "the Done tab hides running orders")
+    this = aw.activeTab
+    aw.activeTab.scripts.OnClick(aw.activeTab)
+    assert(aw.rows[1]:IsVisible() and aw.rows[1].bot == "Goldie", "the Active tab lists them again")
     assert(string.find(aw.title:GetText(), "Light Leather", 1, true) ~= nil, "the first order is picked by default")
     assert(aw.cancelBtn.enabled ~= false, "an order enables the buttons")
     this = aw.rows[2]
@@ -4202,14 +4213,12 @@ assert(TB.OrderItemDetail(lowZoneItem, "farm", 10, 20) == "needs Fishing 150 (As
 -- Order rows carry the difficulty, old 9-field lines still parse.
 local orderWithDiff = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy")
 assert(orderWithDiff and orderWithDiff.difficulty == "easy", "order lines parse the new difficulty field")
-assert(TB.OrderRowText(orderWithDiff) == "Light Leather 4/10 (Ashenvale) · |cff4ecb5aEasy|r",
-    "order rows show the difficulty word")
+assert(TB.OrderRowText(orderWithDiff) == "Light Leather 4/10 (Ashenvale)",
+    "running order rows leave the difficulty out (it shows while picking an item)")
 assert(TB.OrderRowText(parsedOrder) == "Light Leather 4/10 (Ashenvale)",
     "old order lines show no difficulty")
-assert(string.find(TB.OrderTooltipText(orderWithDiff), "Difficulty: |cff4ecb5aEasy|r", 1, true) ~= nil
-    and string.find(TB.OrderTooltipText(orderWithDiff),
-        "Rough effort for this bot: how many kills, gathers or casts it needs", 1, true) ~= nil,
-    "order tooltips explain the difficulty")
+assert(not string.find(TB.OrderTooltipText(orderWithDiff), "Difficulty", 1, true),
+    "running order tooltips leave the difficulty out")
 assert(TB.OrderTooltipText(parsedOrder)
     == "Order: Farm Light Leather 4/10\nState: Working\nZone: Ashenvale",
     "old order tooltips stay unchanged")
@@ -4462,7 +4471,7 @@ assert(not TB.orderWindow:IsVisible(), "a give ACK closes the window")
 assert(TB.lastActionAck and TB.lastActionAck.intent == "order"
     and TB.lastActionAck.executor == "farm", "a give ACK is recorded")
 TB.OnSystemMessage("TBM:ORDER|Goldie|farm|2318|Light Leather|0|25|working|-|Ashenvale")
-assert(guildOrderRow.orderLine:GetText() == "Light Leather 0/25 (Ashenvale)",
+assert(guildOrderRow.orderLine:GetText() == "Working on guild order - |cffffffff[Light Leather]|r 0/25",
     "the live line repaints the guild row")
 assert(guildOrderRow.moreBtn:IsVisible() and guildOrderRow.moreBtn.enabled,
     "an order shows an enabled More menu")
@@ -4663,10 +4672,10 @@ TB.CloseServerInfo()
 -- refused inf retries once as 24 hours. Old numeric rows still parse.
 local infOrder = TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|inf")
 assert(infOrder and infOrder.hours == "inf", "an inf order line parses")
-assert(string.find(TB.OrderRowText(infOrder), "No limit", 1, true) ~= nil,
-    "inf rows show no limit")
-assert(string.find(TB.OrderTooltipText(infOrder), "Farm time: no limit", 1, true) ~= nil,
-    "inf tooltips show no limit")
+assert(not string.find(TB.OrderRowText(infOrder), "No limit", 1, true),
+    "inf rows leave the time limit out")
+assert(not string.find(TB.OrderTooltipText(infOrder), "Farm time", 1, true),
+    "inf tooltips leave the time limit out")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|INF").hours == "inf",
     "INF parses in any case")
 assert(TB.ParseOrderLine("TBM:ORDER|Goldie|farm|2318|Light Leather|4|10|working|-|Ashenvale|easy|3").hours == 3,
