@@ -105,8 +105,8 @@
 -- carry a non-empty need list.
 -- <have> counts delivered only (bank deposit or the mail hand-over to the
 -- guild master); <carry> is what the bot holds in its bags plus its mailbox,
--- not yet delivered ("-" or a missing field on old servers means none). A
--- `working` row with carry > 0 shows "(+N carrying)" after the progress.
+-- not yet delivered ("-" or a missing field on old servers means none). The
+-- progress shown is delivered plus carried, capped at the ordered amount.
 -- TBM:ORDER_ACCESS rides first inside ORDER_BEGIN/END and again after a rank
 -- change; tab lists are comma-separated 1-based tabs or "-". Rank "-" (as in
 -- "-|-|-|-|0|0") means the server leaves bot ranks alone: grey line, no rank
@@ -751,12 +751,20 @@ end
 -- tooltip (RefreshGuildView + the row tooltip in UI.lua). The live step
 -- ("taking from guild bank", "farming in Elwynn" ...) joins working and
 -- waiting rows (except needitems, whose rows name the need instead).
-function TB.OrderRowText(order)
+-- short drops the Keep tag too (guild tab rows). Time limit and difficulty
+-- show only while picking an item to order, never on a running order.
+-- "2/3": delivered plus what the bot already holds, never past the amount.
+function TB.OrderProgress(order)
+    local want = math.floor(tonumber(order.want) or 0)
+    local done = math.floor(tonumber(order.have) or 0) + math.floor(tonumber(order.carry) or 0)
+    if want > 0 and done > want then done = want end
+    return done .. "/" .. want
+end
+
+function TB.OrderRowText(order, short)
     if not order then return "" end
     local item = order.item or ("item #" .. tostring(order.itemId or "?"))
-    local progress = tostring(order.have or 0) .. "/" .. tostring(order.want or 0)
-    local carryCount = math.floor(tonumber(order.carry) or 0)
-    if carryCount > 0 then progress = progress .. " (+" .. carryCount .. " carrying)" end
+    local progress = TB.OrderProgress(order)
     local state = string.lower(trim(order.state or ""))
     local paint = STATE_COLOR[state]
     local function word(text)
@@ -801,11 +809,22 @@ function TB.OrderRowText(order)
         and not string.find(text, "needs items from you", 1, true) then -- a "need" step label already says it
         text = text .. " · " .. "|cffffd200needs items from you|r"
     end
+    if short then return text end
     if order.keep and state ~= "stocked" then text = text .. " · " .. word("Keep") end
-    if order.hours == "inf" then text = text .. " · " .. word("No limit") end
-    local diff = TB.OrderDifficultyLabel(order.difficulty)
-    if diff then text = text .. " · " .. diff end
     return text
+end
+
+-- "[Item]" in its quality colour once the client has the item cached
+-- (white until then; hovering the item caches it).
+function TB.OrderItemLink(order)
+    local id = math.floor(tonumber(order.itemId) or 0)
+    local name, quality
+    if id > 0 and GetItemInfo then
+        local n, _, q = GetItemInfo(id)
+        name, quality = n, q
+    end
+    local hex = (quality and TB.LootQualityHex and TB.LootQualityHex(quality)) or "|cffffffff"
+    return hex .. "[" .. (name or order.item or ("item #" .. id)) .. "]|r"
 end
 
 -- One order-window tree line: always names the bot, indented under its
@@ -840,18 +859,8 @@ function TB.OrderTooltipText(order)
     if order.zone then table.insert(lines, "Zone: " .. order.zone) end
     local step = TB.OrderStepLabel(order)
     if step then table.insert(lines, "Now: " .. step) end
-    if order.hours == "inf" then
-        table.insert(lines, "Farm time: no limit")
-    elseif order.hours and order.hours > 0 then
-        table.insert(lines, "Farm time: " .. math.floor(order.hours) .. " h")
-    end
     if order.goldCap then
         table.insert(lines, "Max guild gold: " .. TB.OrderGoldText(order.goldCap))
-    end
-    local diff = TB.OrderDifficultyLabel(order.difficulty)
-    if diff then
-        table.insert(lines, "Difficulty: " .. diff
-            .. " (Rough effort for this bot: how many kills, gathers or casts it needs)")
     end
     local need = TB.OrderNeedText(order)
     if need then table.insert(lines, need) end
@@ -3469,6 +3478,21 @@ end
 -- A bot holds one order and a new one replaces it: ask first when the old one
 -- is still running, so an accidental second order is not a silent loss.
 local ORDER_ENDED = { done = true, cant = true, noskill = true, mailed = true }
+-- Finished for good (done, mailed, can't, no skill); a stocked keep order
+-- still watches its stock, so it stays active.
+function TB.OrderEnded(order)
+    return order and ORDER_ENDED[string.lower(trim(order.state or ""))] and true or false
+end
+
+-- Where a finished order's items went: done enchants by trade, done items
+-- into the guild bank, mailed ones to the guild master. nil otherwise.
+function TB.OrderDeliveredTo(order)
+    local state = order and string.lower(trim(order.state or "")) or ""
+    if state == "mailed" then return "Mailbox (guild master)" end
+    if state ~= "done" then return nil end
+    if string.lower(trim(order.type or "")) == "enchant" then return "Trade" end
+    return "Guild bank"
+end
 local function confirmReplace(bot, go)
     local old = TB.GetBotOrder(bot)
     local state = old and string.lower(trim(old.state or "")) or ""

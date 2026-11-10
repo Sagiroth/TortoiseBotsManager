@@ -10,9 +10,10 @@ local COL = C.COLOR or {}
 local AW = 360
 local ROW_H = 30
 local ROW_N = 5
+local LIST_TOP = 92
 local STEP_N = 5
 local STEP_H = 14
-local WIN_H = 452
+local WIN_H = 488
 local REFRESH_EVERY = 1.5
 local LIST_EVERY = 8
 
@@ -21,6 +22,7 @@ local function now() return (GetTime and GetTime()) or 0 end
 
 local win
 local picked = nil
+local showDone = false
 local rowsView = {}
 local lastRefresh = 0
 local lastList = 0
@@ -38,6 +40,18 @@ local function kv(lines, label, value)
         table.insert(lines, "|cffd8a657" .. label .. "|r  " .. value)
     end
 end
+
+local function itemText(order) return TB.OrderItemLink(order) end
+
+local function showItemTip(owner, itemId)
+    local id = math.floor(tonumber(itemId) or 0)
+    if id <= 0 or not GameTooltip.SetHyperlink then return end
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetHyperlink("item:" .. id .. ":0:0:0")
+    GameTooltip:Show()
+end
+
+local function hideTip() GameTooltip:Hide() end
 
 local function refreshSteps()
     local steps = (picked and TB.OrderStepsList and TB.OrderStepsList(picked)) or {}
@@ -58,8 +72,10 @@ end
 local function fillDetail(order)
     if not order then
         win.title:SetText(""); win.state:SetText(""); win.info:SetText("")
+        win.titleHit.itemId = nil
     else
-        win.title:SetText((order.item or "?") .. "  |cffffffff" .. tostring(order.have or 0) .. "/" .. tostring(order.want or 0) .. "|r")
+        win.titleHit.itemId = order.itemId
+        win.title:SetText(itemText(order) .. "  |cffffffff" .. TB.OrderProgress(order) .. "|r")
         local stateText = (TB.OrderStateColor and TB.OrderStateColor(order.state) or "") .. (TB.OrderStateLabel and TB.OrderStateLabel(order.state) or "") .. "|r"
         local reason = TB.OrderReasonLabel and TB.OrderReasonLabel(order.reason)
         if reason then stateText = stateText .. "  |cff9a9a9a" .. reason .. "|r" end
@@ -67,9 +83,7 @@ local function fillDetail(order)
         local lines = {}
         kv(lines, "Zone", order.zone)
         kv(lines, "Now", TB.OrderStepLabel and TB.OrderStepLabel(order))
-        if order.hours == "inf" then kv(lines, "Farm time", "no limit")
-        elseif order.hours and order.hours > 0 then kv(lines, "Farm time", math.floor(order.hours) .. " h") end
-        kv(lines, "Difficulty", TB.OrderDifficultyLabel and TB.OrderDifficultyLabel(order.difficulty))
+        kv(lines, "Location", TB.OrderDeliveredTo and TB.OrderDeliveredTo(order))
         local need = TB.OrderNeedText and TB.OrderNeedText(order)
         if need then table.insert(lines, need) end
         win.info:SetText(table.concat(lines, "\n"))
@@ -77,9 +91,27 @@ local function fillDetail(order)
     refreshSteps()
 end
 
+-- List row: item, progress and the state word only; what the bot is doing
+-- right now lives in the detail below.
+local function rowText(order)
+    local text = itemText(order) .. " " .. TB.OrderProgress(order)
+    local label = TB.OrderStateLabel and TB.OrderStateLabel(order.state) or ""
+    if label == "" then return text end
+    return text .. "  ·  " .. (TB.OrderStateColor and TB.OrderStateColor(order.state) or "") .. label .. "|r"
+end
+
 function TB.RefreshActiveOrders()
     if not win or not win:IsVisible() then return end
-    rowsView = TB.GetOrderTree and TB.GetOrderTree() or {}
+    rowsView = {}
+    for _, entry in ipairs(TB.GetOrderTree and TB.GetOrderTree() or {}) do
+        if (TB.OrderEnded and TB.OrderEnded(entry.order) or false) == showDone then
+            table.insert(rowsView, entry)
+        end
+    end
+    TB.SetButtonActive(win.activeTab, not showDone)
+    TB.SetButtonActive(win.doneTab, showDone)
+    win.empty:SetText(showDone and "No finished orders yet."
+        or "No bot has an order right now. Press Order on a bot in the Guild tab to give one.")
     local total = table.getn(rowsView)
     FauxScrollFrame_Update(win.scroll, total, ROW_N, ROW_H)
     local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(win.scroll)) or 0
@@ -89,8 +121,9 @@ function TB.RefreshActiveOrders()
         if entry then
             local order = entry.order
             row.bot = order.bot
+            row.itemId = order.itemId
             row.nameText:SetText(string.rep("  ", entry.depth or 0) .. (order.bot or "?"))
-            row.infoText:SetText(TB.OrderRowText and TB.OrderRowText(order) or "")
+            row.infoText:SetText(rowText(order))
             if order.bot == picked then row.sel:Show() else row.sel:Hide() end
             row:Show()
         else
@@ -174,8 +207,26 @@ local function createWindow()
     hint:SetText("Click an order to see what the bot is doing.")
     TB.SetTextColor(hint, color("muted"))
 
+    local function tabButton(label, x, done)
+        local b = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"), "mode")
+        b:SetWidth(80); b:SetHeight(20)
+        b:SetPoint("TOPLEFT", win, "TOPLEFT", x, -66)
+        b:SetText(label)
+        b:SetScript("OnClick", function()
+            if showDone == done then return end
+            showDone = done
+            picked = nil
+            local bar = getglobal and getglobal("TortoiseBotsManagerActiveOrdersScrollScrollBar")
+            if bar then bar:SetValue(0) end
+            TB.RefreshActiveOrders()
+        end)
+        return b
+    end
+    win.activeTab = tabButton("Active", 12, false)
+    win.doneTab = tabButton("Done", 96, true)
+
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerActiveOrdersScroll", win, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -66)
+    scroll:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -LIST_TOP)
     scroll:SetWidth(AW - 28)
     scroll:SetHeight(ROW_N * ROW_H + 4)
     scroll:SetScript("OnVerticalScroll", function()
@@ -187,7 +238,7 @@ local function createWindow()
     for i = 1, ROW_N do
         local row = CreateFrame("Button", nil, win)
         row:SetWidth(AW - 34); row:SetHeight(ROW_H - 2)
-        row:SetPoint("TOPLEFT", win, "TOPLEFT", 8, -(56 + (i - 1) * ROW_H))
+        row:SetPoint("TOPLEFT", win, "TOPLEFT", 8, -(LIST_TOP + (i - 1) * ROW_H))
         row:RegisterForClicks("LeftButtonUp")
         TB.ApplySurface(row, "row")
         row.sel = row:CreateTexture(nil, "BACKGROUND")
@@ -205,17 +256,18 @@ local function createWindow()
         row:SetScript("OnClick", function()
             if this.bot then pick(this.bot) end
         end)
+        row:SetScript("OnEnter", function() showItemTip(this, this.itemId) end)
+        row:SetScript("OnLeave", hideTip)
         row:Hide()
         win.rows[i] = row
     end
 
     win.empty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.empty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -76)
+    win.empty:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(LIST_TOP + 10))
     win.empty:SetWidth(AW - 24); win.empty:SetJustifyH("LEFT")
-    win.empty:SetText("No bot has an order right now. Press Order on a bot in the Guild tab to give one.")
     TB.SetTextColor(win.empty, color("muted"))
 
-    local top = 56 + ROW_N * ROW_H + 8
+    local top = LIST_TOP + ROW_N * ROW_H + 8
     local rule = win:CreateTexture(nil, "ARTWORK")
     rule:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -top)
     rule:SetWidth(AW - 24); rule:SetHeight(1)
@@ -225,6 +277,12 @@ local function createWindow()
     win.title:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(top + 8))
     win.title:SetWidth(AW - 24); win.title:SetJustifyH("LEFT")
     TB.SetTextColor(win.title, color("title"))
+    win.titleHit = CreateFrame("Frame", nil, win)
+    win.titleHit:SetPoint("TOPLEFT", win.title, "TOPLEFT", 0, 0)
+    win.titleHit:SetWidth(AW - 24); win.titleHit:SetHeight(18)
+    win.titleHit:EnableMouse(true)
+    win.titleHit:SetScript("OnEnter", function() showItemTip(this, this.itemId) end)
+    win.titleHit:SetScript("OnLeave", hideTip)
 
     win.state = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.state:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -(top + 28))
