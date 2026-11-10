@@ -2,6 +2,17 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.1.3 (2026-11-10)
+
+### UI & Controls
+- Active orders window: the hint line under the title now displays in full instead of being clipped by the first order row. [#77](https://github.com/Sagiroth/TortoiseBotsManager/pull/77)
+- Order rows are decluttered: each row now shows the bot, the item in its quality colour (hover for the item tooltip), the progress, and a coloured state word. [#77](https://github.com/Sagiroth/TortoiseBotsManager/pull/77)
+- Redundant "No limit" and "Easy" labels are gone, so rows only surface information that actually matters. [#77](https://github.com/Sagiroth/TortoiseBotsManager/pull/77)
+- Running orders are now visually distinguishable from finished ones, and the current step moved to the details view. [#77](https://github.com/Sagiroth/TortoiseBotsManager/pull/77)
+- Guild tab: order line display cleaned up for consistent, easier scanning. [#77](https://github.com/Sagiroth/TortoiseBotsManager/pull/77)
+
+---
+
 ## v2.1.2 (2026-11-10)
 
 ### Roster & Lifecycle
