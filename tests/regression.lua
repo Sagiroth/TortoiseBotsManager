@@ -5588,6 +5588,14 @@ dofile(root .. "/tests/altsum_tests.lua")({
 
 dofile(root .. "/tests/geometry_tests.lua")()
 
+dofile(root .. "/tests/community_tests.lua")({
+    sent = sent,
+    frames = frames,
+    advanceTime = function(dt) now = now + (dt or 1) end,
+    setParty = function(members, className) partyMembers = members or {}; partyClassName = className or "Priest" end,
+    getParty = function() return partyMembers, partyClassName end,
+})
+
 -- A newer server may append fields to any line: older addons ignore them.
 do
     assert(TB.ParseOrderItemLine("TBM:ORDER_ITEM|2319|Medium Leather|1|drop,skin|16|393:100|ok|Ashenvale|50|4|leather|extra"),

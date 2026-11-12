@@ -57,6 +57,7 @@ Module: [item equip](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/pla
 | Potions | Drink healing and mana potions when low. |
 | Mimic | Copy your food, drink and potion use. |
 | Spread out | Keep distance instead of stacking. |
+| Hold position | Keep following and fighting, but never run from enemies on its own: no fleeing, kiting or stepping back for casting room. Still steps out of ground effects. Hidden until the server reports it. |
 
 Module: [`.bot behavior`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior).
 

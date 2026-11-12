@@ -517,6 +517,7 @@ end
 
 -- Per-bot behaviour toggles in the bot panel (`.bot behavior <bot> <key>`).
 -- `mana` limits a toggle to classes that use mana.
+-- `optional` hides it until the server reports the key (older servers do not).
 TB.C.BEHAVIORS = {
     { key = "loot",     label = "Loot corpses", tip = "Loot corpses after a fight." },
     { key = "aoe",      label = "AoE spells",   tip = "Use area-of-effect abilities (held back next to crowd-controlled mobs)." },
@@ -527,6 +528,7 @@ TB.C.BEHAVIORS = {
     { key = "potions",  label = "Potions",    tip = "Drink healing and mana potions when low." },
     { key = "mimic",    label = "Mimic",      tip = "Copy your consumable use (food, drink, potions) on this bot." },
     { key = "spread",   label = "Spread out", tip = "Keep distance from nearby party members instead of stacking." },
+    { key = "hold",     label = "Hold position", tip = "Keep following and fighting, but never run from enemies on its own: no fleeing, kiting or stepping back for casting room. Still steps out of ground effects.", optional = true },
 }
 TB.C.NO_MANA_CLASSES = { [1] = true, [4] = true } -- Warrior, Rogue
 

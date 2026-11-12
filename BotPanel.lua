@@ -1253,6 +1253,7 @@ local function createPanel()
     bhHint:SetWidth(PW - 24); bhHint:SetJustifyH("LEFT")
     bhHint:SetText("Party-wide switches live on the Fight tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
+    panel.behaviorHint = bhHint
 
     -- Spells view: the bot's spellbook, one row per known spell.
     local spellsView = CreateFrame("Frame", nil, panel)
@@ -1653,17 +1654,25 @@ local function renderBags(inv)
     if bagPage < pages then panel.nextPage:Enable() else panel.nextPage:Disable() end
 end
 
+-- Whether a behaviour chip shows for a bot: a mana chip only for mana
+-- classes, an optional chip only once the bot's state reached us and the
+-- server reported that key.
+function TB.BehaviorChipShown(def, st, classId)
+    if def.mana and classId and C.NO_MANA_CLASSES and C.NO_MANA_CLASSES[classId] then return false end
+    if def.optional and st and st[def.key] == nil then return false end
+    return true
+end
+
 local function renderBehavior()
     local st = TB.GetBotState(currentBot)
     local classId = botClassId(currentBot)
-    local noMana = classId and C.NO_MANA_CLASSES and C.NO_MANA_CLASSES[classId]
     local shown = 0
     for _, def in ipairs(C.BEHAVIORS or {}) do
         local key = def.key
         local chip = panel.behaviorChips[key]
         local value = st and st[key]
         local pending = currentBot and behaviorPending[norm(currentBot) .. "|" .. key]
-        if chip.def.mana and noMana then
+        if not TB.BehaviorChipShown(chip.def, st, classId) then
             chip:Hide()
         else
             -- Two columns, reflowed so a hidden chip leaves no hole.
@@ -1680,6 +1689,8 @@ local function renderBehavior()
             if st and not pending then chip:Enable() else chip:Disable() end
         end
     end
+    panel.behaviorHint:ClearAllPoints()
+    panel.behaviorHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -108 - math.ceil(shown / 2) * 30)
 end
 
 local function renderSpells()

@@ -827,6 +827,35 @@ return function()
                     end
                     childrenInside("BotPanel behavior", panel, pr, chips, cache, 2)
                     noOverlaps("BotPanel behavior chips", chips, cache)
+                    -- Every chip at once (a mage that reports all keys): the
+                    -- longest label must fit and the hint must clear the last row.
+                    local realEntry = TB.GetRosterEntry
+                    TB.GetRosterEntry = function() return { classId = 8 } end
+                    local full = { move = "follow" }
+                    for _, def in ipairs(TB.C.BEHAVIORS) do full[def.key] = "off" end
+                    TB.SetBotState("Alpha", full)
+                    TB.OpenBotPanel("Alpha", "behavior")
+                    TB.GetRosterEntry = realEntry
+                    local all = {}
+                    for key, chip in pairs(panel.behaviorChips) do
+                        if chip:IsVisible() then
+                            table.insert(all, { key, chip })
+                            labelFits("BotPanel behavior." .. key, chip, chip.text, 6)
+                        end
+                    end
+                    if table.getn(all) ~= table.getn(TB.C.BEHAVIORS) then
+                        bad("BotPanel behavior: a mage that reports every key must show every chip")
+                    end
+                    local fresh = {}
+                    childrenInside("BotPanel behavior (all)", panel, frameRect(panel, fresh), all, fresh, 2)
+                    noOverlaps("BotPanel behavior chips (all)", all, fresh)
+                    local hr = boxRect(panel.behaviorHint, fresh)
+                    for _, entry in ipairs(all) do
+                        if overlaps(hr, frameRect(entry[2], fresh)) then
+                            bad("BotPanel behavior: hint overlaps chip " .. entry[1])
+                        end
+                    end
+                    TB.OpenBotPanel("Alpha", "spells")
                 end
                 if panel.spellRows then
                     local rows = {}
