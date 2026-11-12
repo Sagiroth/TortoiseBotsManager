@@ -129,14 +129,14 @@ do
     assert(TB.GetTotems("Thrallbot") == nil, "a rejected line must not reach the cache")
 
     assert(TB.TotemLabel("strength of earth totem") == "Strength of Earth" and TB.TotemLabel("windfury totem") == "Windfury"
-        and TB.TotemLabel("auto") == "Auto" and TB.TotemLabel("none") == "None" and TB.TotemLabel(nil) == "?",
+        and TB.TotemLabel("auto") == "Auto" and TB.TotemLabel("none") == "Auto" and TB.TotemLabel(nil) == "?",
         "totem names read capitalised without the word totem")
     local full = TB.TotemOptions("earth", nil)
-    assert(table.getn(full) == 7 and full[1] == "auto" and full[2] == "none" and full[6] == "strength of earth totem",
-        "without a known list every earth totem is offered after Auto and None")
+    assert(table.getn(full) == 6 and full[1] == "auto" and full[5] == "strength of earth totem",
+        "without a known list every earth totem is offered after Auto")
     local some = TB.TotemOptions("earth", { "stoneskin totem", "windfury totem" })
-    assert(table.getn(some) == 3 and some[3] == "stoneskin totem", "known filters the slot list")
-    assert(table.getn(TB.TotemOptions("air", {})) == 2, "no trained totems leaves Auto and None")
+    assert(table.getn(some) == 2 and some[2] == "stoneskin totem", "known filters the slot list")
+    assert(table.getn(TB.TotemOptions("air", {})) == 1, "no trained totems leaves Auto")
     assert(TB.NextTotemMode("auto") == "prepull" and TB.NextTotemMode("prepull") == "manual"
         and TB.NextTotemMode("manual") == "auto" and TB.NextTotemMode(nil) == "auto", "the drop mode cycles")
 
@@ -201,33 +201,33 @@ do
     TB.OnSystemMessage("TBM:TOTEM|Thrallbot|earth=strength of earth totem,fire=searing totem,water=auto,air=none,"
         .. "mode=auto,known=stoneskin totem+strength of earth totem+searing totem+mana spring totem+windfury totem")
     assert(block.slots.earth.text == "Earth: Strength of Earth" and block.slots.fire.text == "Fire: Searing"
-        and block.slots.water.text == "Water: Auto" and block.slots.air.text == "Air: None"
+        and block.slots.water.text == "Water: Auto" and block.slots.air.text == "Air: Auto"
         and block.mode.text == "Drop: Auto" and block.slots.earth.enabled, "the reply fills the controls")
     assert(block.preset.text == "Melee group" and block.apply.enabled, "the first preset shows")
 
     local rows = {}
-    assert(TB.BuildTotemSlotMenu("Thrallbot", "earth", function(info) table.insert(rows, info) end) == 4
-        and rows[1].text == "Auto" and rows[2].text == "None" and rows[3].text == "Stoneskin"
-        and rows[4].text == "Strength of Earth" and rows[4].checked == 1 and rows[3].checked == nil,
-        "the earth menu offers Auto, None and the trained earth totems, marking the current one")
-    expectCommands("pick earth", commands(function() rows[3].func() end), { ".bot totem Thrallbot earth stoneskin totem" })
+    assert(TB.BuildTotemSlotMenu("Thrallbot", "earth", function(info) table.insert(rows, info) end) == 3
+        and rows[1].text == "Auto" and rows[2].text == "Stoneskin"
+        and rows[3].text == "Strength of Earth" and rows[3].checked == 1 and rows[2].checked == nil,
+        "the earth menu offers Auto and the trained earth totems, marking the current one")
+    expectCommands("pick earth", commands(function() rows[2].func() end), { ".bot totem Thrallbot earth stoneskin totem" })
     expectCommands("ack without line", commands(function()
         TB.OnSystemMessage("TBM:ACTION_ACK|totem earth|bot:Thrallbot|1|stoneskin totem")
     end), { ".bot totem Thrallbot status" })
     expectCommands("no repeat ask", commands(function()
         TB.OnSystemMessage("TBM:ACTION_ACK|totem earth|bot:Thrallbot|1|stoneskin totem")
     end), {})
-    expectCommands("pick air none", commands(function()
+    expectCommands("pick air auto", commands(function()
         local menu = {}
         TB.BuildTotemSlotMenu("Thrallbot", "air", function(info) table.insert(menu, info) end)
-        menu[2].func()
-    end), { ".bot totem Thrallbot air none" })
+        menu[1].func()
+    end), { ".bot totem Thrallbot air auto" })
     expectCommands("fresh line first", commands(function()
         TB.OnSystemMessage("TBM:TOTEM|Thrallbot|earth=stoneskin totem,fire=searing totem,water=auto,air=none,mode=auto")
         TB.OnSystemMessage("TBM:ACTION_ACK|totem air|bot:Thrallbot|1|none")
     end), {})
     assert(block.slots.earth.text == "Earth: Stoneskin", "a fresh line repaints the picker")
-    assert(TB.BuildTotemSlotMenu("Thrallbot", "air", function() end) == 8, "no known list offers the whole air list")
+    assert(TB.BuildTotemSlotMenu("Thrallbot", "air", function() end) == 7, "no known list offers the whole air list")
 
     expectCommands("mode", commands(function() click(block.mode) end), { ".bot totem Thrallbot mode prepull" })
     expectCommands("apply", commands(function() click(block.apply) end),

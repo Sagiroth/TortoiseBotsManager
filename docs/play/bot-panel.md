@@ -68,7 +68,7 @@ On a shaman's Behaviour view a totem block sits under the switches. Opening the 
 
 | Control | What it does | Sends |
 | :--- | :--- | :--- |
-| Earth, Fire, Water, Air | Click to pick **Auto**, **None** or one of that slot's totems. Only totems the bot has trained are listed (an older server that does not say lists them all). The row shows what the server reports. | `.bot totem <bot> <slot> <totem\|auto\|none>` |
+| Earth, Fire, Water, Air | Click to pick **Auto** or one of that slot's totems. Only totems the bot has trained are listed (an older server that does not say lists them all). The row shows what the server reports. | `.bot totem <bot> <slot> <totem\|auto>` |
 | Drop | Click to cycle **Auto**, **Before the pull**, **Only on order**. | `.bot totem <bot> mode <auto\|prepull\|manual>` |
 | Preset | Click to show the next saved preset. Two come with the addon, **Melee group** (Strength of Earth, Searing, Mana Spring, Windfury) and **Caster group** (Stoneskin, Searing, Mana Spring, Grace of Air); you can overwrite or delete them. | none |
 | Apply | Sets this shaman's four totems to the shown preset. | `.bot totem <bot> set <earth>,<fire>,<water>,<air>` |

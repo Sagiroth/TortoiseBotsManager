@@ -99,7 +99,8 @@ end
 -- Capitalised for display: "strength of earth totem" -> "Strength of Earth".
 function TB.TotemLabel(value)
     if value == "auto" then return "Auto" end
-    if value == "none" then return "None" end
+    -- The server treats an empty slot order as automatic.
+    if value == "none" then return "Auto" end
     if not value or value == "" then return "?" end
     local words = {}
     for word in string.gfind(string.gsub(value, "%s+totem$", ""), "%S+") do
@@ -119,10 +120,10 @@ function TB.TotemSlotValueValid(slot, value)
     return false
 end
 
--- Auto, None, then the slot's totems the bot has trained (all of them while
+-- Auto, then the slot's totems the bot has trained (all of them while
 -- the server does not say which).
 function TB.TotemOptions(slot, known)
-    local out = { "auto", "none" }
+    local out = { "auto" }
     for _, name in ipairs(C.TOTEMS[slot] or {}) do
         local keep = known == nil
         for _, k in ipairs(known or {}) do
@@ -424,7 +425,7 @@ function TB.CreateTotemBlock(panel, parent)
         b.slot = slot
         setTooltip(b, C.TOTEM_SLOT_LABELS[slot] .. " totem", {
             "Click to pick the totem this shaman drops in this slot.",
-            "Auto lets the bot decide; None drops nothing here.",
+            "Auto lets the bot decide.",
         })
         b:SetScript("OnClick", function()
             local bot = currentBot()
