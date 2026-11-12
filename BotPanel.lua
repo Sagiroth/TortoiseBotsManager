@@ -1655,10 +1655,11 @@ local function renderBags(inv)
 end
 
 -- Whether a behaviour chip shows for a bot: a mana chip only for mana
--- classes, an optional chip only once the bot's state reached us and the
--- server reported that key.
+-- classes, a class chip only for that class, an optional chip only once the
+-- bot's state reached us and the server reported that key.
 function TB.BehaviorChipShown(def, st, classId)
     if def.mana and classId and C.NO_MANA_CLASSES and C.NO_MANA_CLASSES[classId] then return false end
+    if def.class and def.class ~= classId then return false end
     if def.optional and st and st[def.key] == nil then return false end
     return true
 end

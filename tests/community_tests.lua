@@ -1,4 +1,4 @@
--- Behaviour chips added from community feedback: Hold position.
+-- Behaviour chips added from community feedback: Hold position, No dungeon Blink.
 -- Run from tests/regression.lua, same shape as tests/wire_cases.lua.
 
 return function(env)
@@ -51,17 +51,24 @@ end
 
 local savedMembers, savedClass = getParty()
 
--- ── behaviour chip: Hold position (optional) ──
+-- ── behaviour chips: Hold position (optional) and No dungeon Blink (mage) ──
 do
-    local hold
+    local hold, noblink
     for _, def in ipairs(C.BEHAVIORS) do
         if def.key == "hold" then hold = def end
+        if def.key == "noblink" then noblink = def end
     end
-    assert(hold and hold.label == "Hold position" and hold.optional, "Hold position is an optional chip")
+    assert(hold and hold.label == "Hold position" and hold.optional and not hold.class,
+        "Hold position is an optional chip for every class")
+    assert(noblink and noblink.optional and noblink.class == 8, "No dungeon Blink is an optional mage chip")
 
     assert(TB.BehaviorChipShown(hold, { loot = "on" }, 5) == false, "hold hides while the server omits the key")
     assert(TB.BehaviorChipShown(hold, { hold = "off" }, 5), "hold shows once the server reports it")
     assert(TB.BehaviorChipShown(hold, nil, 5), "hold shows (disabled) before any state arrived")
+    assert(TB.BehaviorChipShown(noblink, { noblink = "off" }, 8), "noblink shows for a mage that reports it")
+    assert(TB.BehaviorChipShown(noblink, { noblink = "off" }, 5) == false, "noblink never shows for a priest")
+    assert(TB.BehaviorChipShown(noblink, { hold = "on" }, 8) == false, "noblink hides on a server without it")
+    assert(TB.BehaviorChipShown(noblink, nil, nil) == false, "noblink hides when the class is unknown")
     local loot, mana
     for _, def in ipairs(C.BEHAVIORS) do
         if def.key == "loot" then loot = def end
@@ -76,14 +83,24 @@ do
     local chips = TB.botPanel.behaviorChips
     assert(chips.hold.visible and not chips.hold.enabled, "Hold position shows disabled before the state arrives")
     TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,aoe=on")
-    assert(not chips.hold.visible, "an older server's state hides the chip")
-    TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,hold=off")
-    assert(chips.hold.visible and chips.hold.text == "Hold position: Off", "a newer server's state shows the chip")
+    assert(not chips.hold.visible and not chips.noblink.visible, "an older server's state hides both chips")
+    TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,hold=off,noblink=on")
+    assert(chips.hold.visible and chips.noblink.visible, "a newer server's state shows both chips")
+    assert(chips.hold.text == "Hold position: Off" and chips.noblink.text == "No dungeon Blink: On",
+        "the chips read the reported state")
     expectCommands("hold on", commands(function() click(chips.hold) end), { ".bot behavior Magebot hold on" })
     TB.OnSystemMessage("TBM:ACTION_ACK|behavior hold|bot:Magebot|1|on")
-    TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,hold=on")
+    TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,hold=on,noblink=on")
     expectCommands("hold off", commands(function() click(chips.hold) end), { ".bot behavior Magebot hold off" })
     TB.OnSystemMessage("TBM:ACTION_ACK|behavior hold|bot:Magebot|1|off")
+    expectCommands("noblink off", commands(function() click(chips.noblink) end), { ".bot behavior Magebot noblink off" })
+    TB.OnSystemMessage("TBM:ACTION_ACK|behavior noblink|bot:Magebot|1|off")
+
+    setParty({ "Priestbot" }, "Priest")
+    TB.OpenBotPanel("Priestbot", "behavior")
+    drainQueue()
+    TB.OnSystemMessage("TBM:BOTSTATE|Priestbot|move=follow,loot=on,hold=off,noblink=off")
+    assert(chips.hold.visible and not chips.noblink.visible, "a priest gets Hold position but never the Blink chip")
     TB.CloseBotPanel()
 end
 

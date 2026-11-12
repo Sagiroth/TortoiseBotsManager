@@ -58,6 +58,7 @@ Module: [item equip](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/pla
 | Mimic | Copy your food, drink and potion use. |
 | Spread out | Keep distance instead of stacking. |
 | Hold position | Keep following and fighting, but never run from enemies on its own: no fleeing, kiting or stepping back for casting room. Still steps out of ground effects. Hidden until the server reports it. |
+| No dungeon Blink | Mages only. Never cast Blink inside dungeons and raids, where it can land in the next pack; Blink still works outdoors. Hidden until the server reports it. |
 
 Module: [`.bot behavior`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior).
 
