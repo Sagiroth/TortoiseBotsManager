@@ -309,6 +309,8 @@ end
 -- Service snapshot (reply to ".bot service", mages and warlocks):
 --   TBM:SERVICE|<bot>|<food 0/1>|<water 0/1>|<healthstone 0/1>|<portals>
 -- <portals> is "-" or comma-separated "<spellId>:<city>" pairs.
+-- Totem snapshot (reply to ".bot totem <bot> status", shamans):
+--   TBM:TOTEM|<bot>|earth=<v>,fire=<v>,water=<v>,air=<v>,mode=<auto|prepull|manual>[,known=<t>+<t>]
 -- Professions snapshot (reply to ".bot professions"):
 --   TBM:PROF_BEGIN|<bot>
 --   TBM:PROF|<skillId>|<value>|<max>
@@ -370,6 +372,10 @@ function TB.ParseBotPanelMessage(msg)
 
     if string.sub(msg, 1, 12) == "TBM:SERVICE|" then
         if TB.ConsumeServiceLine then return TB.ConsumeServiceLine(msg) end
+        return true
+    end
+    if string.sub(msg, 1, 10) == "TBM:TOTEM|" then
+        if TB.ConsumeTotemLine then TB.ConsumeTotemLine(msg) end
         return true
     end
     if string.sub(msg, 1, 14) == "TBM:INV_BEGIN|" then

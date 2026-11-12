@@ -240,6 +240,7 @@ for _, file in ipairs({
     "Comms.lua",
     "UI.lua",
     "BotPanel.lua",
+    "BotTotem.lua",
     "BotNpc.lua",
     "BotVault.lua",
     "BotRun.lua",

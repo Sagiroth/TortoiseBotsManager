@@ -2,8 +2,8 @@
 id: play-bot-panel
 title: Bot Panel
 category: play
-summary: The per-bot window for gear, bags, behaviour switches, spells, professions, NPC errands, bank and mail.
-tags: [bot-panel, gear, bags, inventory, behaviour, spells, professions, bank, mail]
+summary: The per-bot window for gear, bags, behaviour switches, shaman totems, spells, professions, NPC errands, bank and mail.
+tags: [bot-panel, gear, bags, inventory, behaviour, totems, spells, professions, bank, mail]
 relates_to:
   - play-party-roster
   - play-fight-camp
@@ -62,6 +62,22 @@ Module: [item equip](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/pla
 
 Module: [`.bot behavior`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior).
 
+### Shaman totems
+
+On a shaman's Behaviour view a totem block sits under the switches. Opening the panel on a shaman (and **Refresh**) asks the server for its totems (`.bot totem <bot> status`); until the answer arrives the controls read `?` and stay greyed out.
+
+| Control | What it does | Sends |
+| :--- | :--- | :--- |
+| Earth, Fire, Water, Air | Click to pick **Auto**, **None** or one of that slot's totems. Only totems the bot has trained are listed (an older server that does not say lists them all). The row shows what the server reports. | `.bot totem <bot> <slot> <totem\|auto\|none>` |
+| Drop | Click to cycle **Auto**, **Before the pull**, **Only on order**. | `.bot totem <bot> mode <auto\|prepull\|manual>` |
+| Preset | Click to show the next saved preset. Two come with the addon, **Melee group** (Strength of Earth, Searing, Mana Spring, Windfury) and **Caster group** (Stoneskin, Searing, Mana Spring, Grace of Air); you can overwrite or delete them. | none |
+| Apply | Sets this shaman's four totems to the shown preset. | `.bot totem <bot> set <earth>,<fire>,<water>,<air>` |
+| Apply all | The same for every shaman in your party. | `.bot totem party set <earth>,<fire>,<water>,<air>` |
+| Save | Asks for a name and stores this shaman's four slots under it; a name that exists is overwritten. | none |
+| Delete | Removes the shown preset. | none |
+
+Presets are kept on your computer (the addon's saved variables), not on the server. The **Drop totems** button on the Camp tab still drops every shaman's totems right now.
+
 ### Professions
 
 Opening the tab asks the server once (`.bot professions <bot>`); **Refresh** in the view, or the panel footer, asks again. The reply is cached for the session. Each skill shows its value and max with a bar. Each known recipe shows the made item (or the enchant name when there is no item) in the colour it has for this bot's skill, like in your own trade skill window: orange, yellow, green or grey (grey gives no more skill-ups). The tooltip names the reagents (item tooltip for made items, spell tooltip for enchants).
@@ -77,7 +93,7 @@ Hovering a [guild bot's row](party-roster-guild.md#guild-tab) shows its skills (
 | Button | What it does | Sends | Module |
 | :--- | :--- | :--- | :--- |
 | Trade | Opens a trade window; put items or gold in and accept, the bot accepts on its own. | `.bot item <bot> trade` | [trade](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-item-trade) |
-| Refresh | Reload gear, bags, behaviour, conjured goods and professions. | `.bot inv <bot>`, `.bot professions <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
+| Refresh | Reload gear, bags, behaviour, totems, conjured goods and professions. | `.bot inv <bot>`, `.bot totem <bot> status`, `.bot professions <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
 | Upkeep | Restock food, drink, reagents, ammo and repairs. Bot must be online. | `.bot maintenance <bot>` | [maintenance](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-maintenance) |
 | AutoGear | Equip the best gear the bot already has in its bags. | `.bot autogear <bot>` | [autogear](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-autogear) |
 | NPC | NPC errands (below). | | |

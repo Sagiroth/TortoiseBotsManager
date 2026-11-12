@@ -39,6 +39,7 @@ Every feature, where to find it, and what the server needs. "Always" means any T
 | Guild orders (farm, buy, craft) with live progress | Guild | `guild-orders` | [Guild orders](party-roster-guild.md#guild-orders) | |
 | Raid helpers, custom raid tactics | Raid (in a raid) | Always | [Raid tab](party-roster-guild.md#raid-tab) | [raid tactics](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/dungeons-and-raids.md#raid-tactics--boss-mechanics) |
 | Gear, bags, item menu, trade, upkeep, autogear | Bot panel | `inventory` | [Bot panel](bot-panel.md) | [bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-panel-commands) |
+| Shaman totem picker and presets | Bot panel (shaman) | Always | [Shaman totems](bot-panel.md#shaman-totems) | [totem](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md) |
 | Per-bot behaviour switches | Bot panel | Always | [Behaviour](bot-panel.md#behaviour-switches) | [behavior](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior) |
 | Spells, NPC errands, flights, bank, mail | Bot panel | Always | [Bot panel](bot-panel.md#npc-errands) | [bot panel](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md) |
 | Conjured food, water, healthstones, portals | Bot panel (mage or warlock) | Always | [Conjured goods](bot-panel.md#conjured-goods) | [service](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md) |

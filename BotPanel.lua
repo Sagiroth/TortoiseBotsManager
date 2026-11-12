@@ -688,6 +688,8 @@ local function botClassId(name)
     return entry and entry.classId or nil
 end
 
+TB.BotClassId = botClassId
+
 -- Only mages (8) and warlocks (9) answer ".bot service".
 function TB.ServiceWanted(name)
     local classId = botClassId(name)
@@ -814,6 +816,7 @@ end
 
 -- ACK routing from Comms.ParseActionMessage. Returns true when handled.
 function TB.OnBotPanelAck(packet)
+    if TB.OnTotemAck and TB.OnTotemAck(packet) then return true end
     local intent = packet.intent or ""
     local botName = string.gsub(packet.scope or "", "^bot:", "")
     local _, _, op = string.find(intent, "^item%s+(%a+)$")
@@ -855,6 +858,7 @@ function TB.OnBotPanelAck(packet)
 end
 
 function TB.OnBotPanelError(packet)
+    if TB.OnTotemError then TB.OnTotemError(packet) end
     local intent = packet.intent or ""
     if intent == "item give" then pendingGive = nil end
     local _, _, key = string.find(intent, "^behavior%s+(%S+)$")
@@ -1254,6 +1258,7 @@ local function createPanel()
     bhHint:SetText("Party-wide switches live on the Fight tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
     panel.behaviorHint = bhHint
+    if TB.CreateTotemBlock then TB.CreateTotemBlock(panel, behavior) end
 
     -- Spells view: the bot's spellbook, one row per known spell.
     local spellsView = CreateFrame("Frame", nil, panel)
@@ -1459,11 +1464,12 @@ local function createPanel()
     refresh:SetWidth(56); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 3, 0)
     refresh:SetText("Refresh")
-    setTooltip(refresh, "Refresh", { "Reload gear, bags, behaviour, conjured goods and professions from the server." })
+    setTooltip(refresh, "Refresh", { "Reload gear, bags, behaviour, totems, conjured goods and professions from the server." })
     refresh:SetScript("OnClick", function()
         if currentBot then TB.RequestInventory(currentBot) end
         if currentBot then TB.RequestProfessions(currentBot) end
         if currentBot and TB.ServiceWanted(currentBot) then TB.RequestService(currentBot) end
+        if currentBot and TB.TotemWanted(currentBot) then TB.RequestTotems(currentBot) end
         if TB.PollList then TB.PollList(true) end
     end)
     panel.refreshButton = refresh
@@ -1691,7 +1697,9 @@ local function renderBehavior()
         end
     end
     panel.behaviorHint:ClearAllPoints()
-    panel.behaviorHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -108 - math.ceil(shown / 2) * 30)
+    local hintY = -108 - math.ceil(shown / 2) * 30
+    panel.behaviorHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, hintY)
+    if TB.RenderTotemBlock then TB.RenderTotemBlock(currentBot, classId, hintY - 26) end
 end
 
 local function renderSpells()
@@ -2005,6 +2013,7 @@ function TB.OpenBotPanel(name, view)
     -- again. Never on a timer, never on hover. The ask travels with the
     -- inventory request, so one open is one extra line at most.
     if TB.ServiceWanted(name) and not services[name] then TB.RequestService(name) end
+    if TB.TotemWanted(name) then TB.RequestTotems(name) end
     return true
 end
 

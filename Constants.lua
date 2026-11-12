@@ -533,6 +533,29 @@ TB.C.BEHAVIORS = {
 }
 TB.C.NO_MANA_CLASSES = { [1] = true, [4] = true } -- Warrior, Rogue
 
+-- Shaman totems (`.bot totem <bot> <slot> <totem>`): the slots, each slot's
+-- totems in the server's order, and the drop modes.
+TB.C.TOTEM_SLOTS = { "earth", "fire", "water", "air" }
+TB.C.TOTEM_SLOT_LABELS = { earth = "Earth", fire = "Fire", water = "Water", air = "Air" }
+TB.C.TOTEMS = {
+    earth = { "stoneclaw totem", "stoneskin totem", "earthbind totem", "strength of earth totem", "tremor totem" },
+    fire  = { "searing totem", "magma totem", "fire nova totem", "flametongue totem", "fire resistance totem",
+              "frost resistance totem" },
+    water = { "healing stream totem", "mana spring totem", "mana tide totem", "poison cleansing totem",
+              "disease cleansing totem", "fire resistance totem" },
+    air   = { "windfury totem", "grace of air totem", "tranquil air totem", "grounding totem", "windwall totem",
+              "nature resistance totem" },
+}
+TB.C.TOTEM_MODES = { "auto", "prepull", "manual" }
+TB.C.TOTEM_MODE_LABELS = { auto = "Auto", prepull = "Before the pull", manual = "Only on order" }
+-- Presets a fresh install starts with; the player can overwrite or delete them.
+TB.C.TOTEM_PRESETS_DEFAULT = {
+    { name = "Melee group", earth = "strength of earth totem", fire = "searing totem",
+      water = "mana spring totem", air = "windfury totem" },
+    { name = "Caster group", earth = "stoneskin totem", fire = "searing totem",
+      water = "mana spring totem", air = "grace of air totem" },
+}
+
 -- Movement labels for the TBM:BOTSTATE "move" field.
 TB.C.MOVEMENT_LABELS = {
     follow = "Following",

@@ -298,6 +298,17 @@ for _, view in ipairs({ "gear", "bags", "behavior", "spells", "profs" }) do
         dump("panel-" .. view, { main, TB.botPanel }, "Bot panel: " .. view)
     end)
 end
+scene("panel-totems", function()
+    tab("party", nil)
+    feed({
+        "TBM:BOTSTATE|Grimtotem|move=follow,loot=on,aoe=on,hold=off",
+        "TBM:TOTEM|Grimtotem|earth=strength of earth totem,fire=searing totem,water=mana spring totem,air=windfury totem,"
+            .. "mode=auto,known=stoneskin totem+strength of earth totem+searing totem+mana spring totem+windfury totem",
+    })
+    TB.OpenBotPanel("Grimtotem", "behavior")
+    tick(1)
+    dump("panel-totems", { main, TB.botPanel }, "Bot panel: behaviour of a shaman with the totem picker")
+end)
 scene("npc", function()
     tab("party", nil)
     TB.OpenBotPanel("Seraphine", "gear")

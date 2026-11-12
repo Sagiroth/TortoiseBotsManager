@@ -855,6 +855,44 @@ return function()
                             bad("BotPanel behavior: hint overlaps chip " .. entry[1])
                         end
                     end
+                    -- A shaman: chips, hint, totem block and footer stack without overlaps.
+                    TB.GetRosterEntry = function() return { classId = 7 } end
+                    local shamanState = { move = "follow" }
+                    for _, def in ipairs(TB.C.BEHAVIORS) do shamanState[def.key] = "off" end
+                    TB.SetBotState("Alpha", shamanState)
+                    TB.SetTotems("Alpha", {
+                        slots = { earth = "strength of earth totem", fire = "frost resistance totem",
+                            water = "disease cleansing totem", air = "nature resistance totem" },
+                        mode = "prepull" })
+                    TB.SaveTotemPreset("WWWWWWWWWWWWWWWWWWWW", { earth = "auto", fire = "auto", water = "auto", air = "auto" })
+                    TB.OpenBotPanel("Alpha", "behavior")
+                    TB.GetRosterEntry = realEntry
+                    local totemBlock = panel.totemBlock
+                    local shaman = {}
+                    local shamanFresh = {}
+                    for key, chip in pairs(panel.behaviorChips) do
+                        if chip:IsVisible() then table.insert(shaman, { key, chip }) end
+                    end
+                    local hintFs = panel.behaviorHint
+                    table.insert(shaman, { "hint", { points = hintFs.points, point = hintFs.point,
+                        parent = hintFs.parent, width = hintFs.width, height = textHeight(hintFs) } })
+                    local blockItems = {}
+                    for slot, b in pairs(totemBlock.slots) do table.insert(blockItems, { "totem." .. slot, b }) end
+                    for _, key in ipairs({ "mode", "preset", "apply", "applyAll", "save", "delete" }) do
+                        table.insert(blockItems, { "totem." .. key, totemBlock[key] })
+                    end
+                    for _, entry in ipairs(blockItems) do
+                        if not entry[2]:IsVisible() then bad("BotPanel totems: " .. entry[1] .. " must show for a shaman") end
+                        labelFits("BotPanel " .. entry[1], entry[2], nil, 6)
+                        table.insert(shaman, entry)
+                    end
+                    for _, key in ipairs({ "tradeButton", "refreshButton", "npcButton",
+                        "vaultButton", "upkeepButton", "gearUpButton" }) do
+                        table.insert(shaman, { key, panel[key] })
+                    end
+                    childrenInside("BotPanel totems", panel, frameRect(panel, shamanFresh), shaman, shamanFresh, 2)
+                    noOverlaps("BotPanel totems", shaman, shamanFresh)
+                    TB.DeleteTotemPreset("WWWWWWWWWWWWWWWWWWWW")
                     TB.OpenBotPanel("Alpha", "spells")
                 end
                 if panel.spellRows then
