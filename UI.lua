@@ -1966,6 +1966,15 @@ function TB.InitUI()
             end,
             tip = "Summon every bot in your raid to you. Works out of combat.",
         })
+
+        partyFrame.blessingBtn = TB.UI.CreateButton(partyFrame, "Blessings", 100, 22, {
+            point = "TOPLEFT",
+            x = 218,
+            y = -306,
+            onClick = function() TB.ToggleBlessings() end,
+            tip = "Set which blessing each paladin bot gives each class in your group.",
+        })
+        partyFrame.blessingBtn:Hide()
         return partyFrame
     end
 
@@ -2810,6 +2819,7 @@ end
             TB.partyFrame.emptyMsg:Hide()
             if TB.partyFrame.inviteButton then TB.partyFrame.inviteButton:Hide() end
         end
+        if TB.UpdateBlessingButton then TB.UpdateBlessingButton() end
     end
 
     function TB.RefreshGuildView()

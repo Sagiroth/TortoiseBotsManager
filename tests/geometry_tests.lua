@@ -1129,6 +1129,59 @@ return function()
         end
     end
 
+    -- ── Blessings (eight paladin bots, every class) ──────────────────
+    do
+        local cache = {}
+        local classes = { "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin",
+            "Warrior", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock", "Druid" }
+        local realRaid, realName, realClass = GetNumRaidMembers, UnitName, UnitClass
+        GetNumRaidMembers = function() return table.getn(classes) end
+        UnitName = function(unit)
+            local _, _, index = string.find(unit, "^raid(%d+)$")
+            return index and ("Pally" .. index) or realName(unit)
+        end
+        UnitClass = function(unit)
+            local _, _, index = string.find(unit, "^raid(%d+)$")
+            local name = index and classes[tonumber(index)] or "Warrior"
+            return name, string.upper(name)
+        end
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,blessing")
+        for index = 1, 8 do
+            TB.OnSystemMessage("TBM:BOTSTATE|Pally" .. index .. "|move=follow")
+            TB.OnSystemMessage("TBM:BLESSING|Pally" .. index .. "|warrior=might,paladin=kings,hunter=might,rogue=might,"
+                .. "priest=wisdom,shaman=wisdom,mage=wisdom,warlock=auto,druid=salvation,known=might+wisdom+kings")
+        end
+        if not TB.OpenBlessings or not TB.OpenBlessings() then
+            bad("Blessings: the grid did not open")
+        else
+            local win = TB.blessingsWindow
+            local wr = frameRect(win, cache)
+            local items = {}
+            for i, head in ipairs(win.heads) do
+                if head:IsVisible() then table.insert(items, { "head" .. i, head }) end
+            end
+            for r, row in ipairs(win.rows) do
+                if row.name:IsVisible() then
+                    table.insert(items, { "name" .. r, { points = row.name.points, point = row.name.point,
+                        parent = row.name.parent, width = row.name.width, height = textHeight(row.name) } })
+                end
+                for c, cell in ipairs(row.cells) do
+                    if cell:IsVisible() then table.insert(items, { "cell" .. r .. "," .. c, cell }) end
+                end
+            end
+            table.insert(items, { "hint", { points = win.hint.points, point = win.hint.point,
+                parent = win.hint.parent, width = win.hint.width, height = textHeight(win.hint) } })
+            if table.getn(win.heads) ~= 9 or table.getn(items) < 9 + 8 + 72 then
+                bad("Blessings: eight paladins and nine classes must all show, got " .. table.getn(items) .. " items")
+            end
+            childrenInside("Blessings", win, wr, items, cache, 2)
+            noOverlaps("Blessings", items, cache)
+            TB.CloseBlessings()
+        end
+        GetNumRaidMembers, UnitName, UnitClass = realRaid, realName, realClass
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+    end
+
     -- ── BotNpc ───────────────────────────────────────────────────────
     do
         local cache = {}

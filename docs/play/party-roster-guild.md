@@ -2,8 +2,8 @@
 id: play-party-roster
 title: Party, Roster, Guild and Raid Tabs
 category: play
-summary: Party roles, Roster lifecycle, claimed Guild bots and the Raid tab.
-tags: [party, roster, guild, raid, roles, lifecycle]
+summary: Party roles and blessings, Roster lifecycle, claimed Guild bots and the Raid tab.
+tags: [party, roster, guild, raid, roles, blessings, lifecycle]
 relates_to:
   - play-getting-started
   - play-bot-panel
@@ -33,6 +33,20 @@ One row per party member: class icon and colour, level, HP and mana bars with st
 A tank pick sends `.bot role <bot> tank`; other picks send `.bot strategy <specs> <bot>` (and clear a previous tank role). Module: [`.bot role`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role).
 
 **Your own row** picks the role *you* fill for your bots (Tank, Healer, DPS), sent as `.bot role self <role>`. It does not change your spec.
+
+### Blessings
+
+With a paladin bot in your party or raid and a server that lists the `blessing` capability, a **Blessings** button appears at the bottom of the Party tab. It opens a small grid: one row per paladin bot, one column per class present in the group (you count too). Each cell shows the blessing that paladin gives that class, as the spell icon, or **Auto** when the paladin chooses.
+
+- **Left-click** a cell for the next blessing, **right-click** for the previous one. The cycle is **Auto** plus the blessings that paladin has trained; the cell waits for the server's answer before it can be clicked again.
+- The grid asks the server when it opens and again after the group changes while it is open. It closes by itself when the last paladin bot leaves.
+
+| Click | Sends |
+| :--- | :--- |
+| Blessings (open, group change) | `.bot blessing party status` (`raid` inside a raid) |
+| A cell | `.bot blessing <paladin> <class> <might\|wisdom\|kings\|salvation\|sanctuary\|light\|auto>` |
+
+The server refuses a blessing the paladin has not learned and says so in the status line and the Log tab.
 
 ## Roster tab
 

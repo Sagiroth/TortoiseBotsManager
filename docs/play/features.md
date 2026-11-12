@@ -32,6 +32,7 @@ Every feature, where to find it, and what the server needs. "Always" means any T
 | Downtime errands for own alts | Camp | `downtime` | [Camp tab](fight-and-camp.md#camp-tab) | [downtime](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-downtime) |
 | Ten formations | Camp | Always | [Formations](fight-and-camp.md#formations) | [formation](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-formation) |
 | Quest accept/share, grind | Camp | Always | [Quests](fight-and-camp.md#quests) | [commands](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/README.md) |
+| Paladin blessing grid | Party (window) | `blessing` | [Blessings](party-roster-guild.md#blessings) | [blessing](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md) |
 | Bot roles by spec, your own role | Party | Always | [Party tab](party-roster-guild.md#party-tab) | [role](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role) |
 | Log in/out, invite, kick, summon, fill party | Roster | Always | [Roster tab](party-roster-guild.md#roster-tab) | [roster and hiring](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md) |
 | Alt summary: one line per alt-bot playing alone | Roster | Always | [Roster tab](party-roster-guild.md#roster-tab) | |

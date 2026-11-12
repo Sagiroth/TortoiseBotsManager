@@ -4168,6 +4168,7 @@ function TB.OpenOrderWindow(bot)
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseBotPanel then TB.CloseBotPanel() end
     if TB.CloseActiveOrders then TB.CloseActiveOrders() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     local switched = windowBot ~= bot or orderGuild
     orderGuild = false
     orderStep = 1

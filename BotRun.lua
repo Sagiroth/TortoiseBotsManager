@@ -1283,6 +1283,7 @@ function TB.OpenRunWindow()
     if TB.CloseNpc then TB.CloseNpc() end
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseOrderWindow then TB.CloseOrderWindow() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     if TB.SetMode then TB.SetMode("full") end
     win:ClearAllPoints()
     local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame

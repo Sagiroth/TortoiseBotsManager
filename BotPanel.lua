@@ -1987,6 +1987,7 @@ function TB.OpenBotPanel(name, view)
     if currentBot and currentBot ~= name then TB.SetSpellPending(currentBot, false) end
     if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.CloseOrderWindow then TB.CloseOrderWindow() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then bagPage = 1; spellPage = 1; profPage = 1; profSearch = "" end
     currentBot = name

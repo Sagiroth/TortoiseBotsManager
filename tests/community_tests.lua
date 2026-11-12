@@ -275,6 +275,165 @@ do
     TB.CloseBotPanel()
 end
 
+-- ── paladin blessings: parser, cycle, commands, window ──
+do
+    local line = "TBM:BLESSING|Pallybot|warrior=might,paladin=kings,hunter=might,rogue=might,priest=wisdom,"
+        .. "shaman=wisdom,mage=wisdom,warlock=auto,druid=light,known=might+wisdom+kings+light"
+    local b = TB.ParseBlessingLine(line)
+    assert(b and b.name == "Pallybot" and b.classes.warrior == "might" and b.classes.paladin == "kings"
+        and b.classes.warlock == "auto" and b.classes.druid == "light", "a full blessing line parses")
+    assert(table.getn(b.known) == 4 and b.known[3] == "kings", "known splits on +")
+    local noKnown = TB.ParseBlessingLine("TBM:BLESSING|Pallybot|warrior=auto,paladin=auto,hunter=auto,rogue=auto,"
+        .. "priest=auto,shaman=auto,mage=auto,warlock=auto,druid=auto,known=")
+    assert(noKnown and noKnown.known and table.getn(noKnown.known) == 0, "an empty known list stays empty")
+    assert(TB.ParseBlessingLine("TBM:BLESSING|Pallybot|warrior=auto,paladin=auto") == nil, "missing classes are refused")
+    assert(TB.ParseBlessingLine((string.gsub(line, "druid=light", "druid=protection"))) == nil,
+        "an unknown blessing is refused")
+    assert(TB.ParseBlessingLine("TBM:TOTEM|Pallybot|x") == nil and TB.ParseBlessingLine("TBM:BLESSING|") == nil)
+    assert(TB.GetBlessings("Pallybot") == nil, "a rejected line must not reach the cache")
+
+    local known = { "might", "kings", "light" }
+    local opts = TB.BlessingOptions(known)
+    assert(table.getn(opts) == 4 and opts[1] == "auto" and opts[2] == "might" and opts[3] == "kings" and opts[4] == "light",
+        "auto plus the trained blessings in order")
+    assert(table.getn(TB.BlessingOptions(nil)) == 7 and table.getn(TB.BlessingOptions({})) == 1,
+        "no list offers all, an empty list only Auto")
+    assert(TB.NextBlessing("auto", known, 1) == "might" and TB.NextBlessing("kings", known, 1) == "light"
+        and TB.NextBlessing("light", known, 1) == "auto", "forward wraps back to Auto")
+    assert(TB.NextBlessing("auto", known, -1) == "light" and TB.NextBlessing("might", known, -1) == "auto"
+        and TB.NextBlessing("kings", known, -1) == "might", "backward wraps to the last blessing")
+    assert(TB.NextBlessing("salvation", known, 1) == "might", "an untrained value starts from Auto")
+    assert(TB.NextBlessing("auto", {}, 1) == "auto" and TB.NextBlessing("auto", {}, -1) == "auto",
+        "a paladin with nothing trained stays on Auto")
+    assert(TB.BuildBlessingCommand("Pallybot", "warrior", "kings") == "blessing Pallybot warrior kings"
+        and TB.BuildBlessingCommand("Pallybot", "druid", "auto") == "blessing Pallybot druid auto"
+        and TB.BuildBlessingCommand("Pallybot", "deathknight", "auto") == nil
+        and TB.BuildBlessingCommand("Pallybot", "mage", "protection") == nil, "cell commands are validated")
+
+    -- A group of paladin bot, mage, priest and you (a warrior).
+    local classOf = { player = "Warrior", party1 = "Paladin", party2 = "Mage", party3 = "Priest" }
+    local realUnitClass = UnitClass
+    UnitClass = function(unit)
+        local name = classOf[unit] or "Warrior"
+        return name, string.upper(name)
+    end
+    setParty({ "Pallybot", "Magebot", "Priestbot" }, "Paladin")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+    TB.OnSystemMessage("TBM:BOTSTATE|Pallybot|move=follow,loot=on")
+    drainQueue()
+    TB.RefreshPartyView()
+    local button = TB.partyFrame.blessingBtn
+    assert(not button.visible, "no entry point without the blessing capability")
+    assert(not TB.OpenBlessings(), "the grid will not open without the capability")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,blessing")
+    TB.RefreshPartyView()
+    assert(button.visible, "the Party tab offers Blessings with the capability and a paladin bot")
+    local pallies, present = TB.GetBlessingGroup()
+    assert(table.getn(pallies) == 1 and pallies[1] == "Pallybot" and present[1] and present[2] and present[5]
+        and present[8] and not present[3], "the group has one paladin bot and four classes")
+
+    expectCommands("open", commands(function() click(button) end), { ".bot blessing party status" })
+    local win = TB.blessingsWindow
+    assert(win and win.visible, "Blessings opens the grid")
+    expectCommands("reply", commands(function()
+        TB.OnSystemMessage(line)
+        TB.OnSystemMessage("TBM:ACTION_ACK|blessing status|party|1|-")
+    end), {})
+    local cells = win.rows[1].cells
+    -- Columns follow the class order: warrior, paladin, priest, mage.
+    assert(cells[1].word == "warrior" and cells[2].word == "paladin" and cells[3].word == "priest"
+        and cells[4].word == "mage" and not cells[5].visible, "one column per class present")
+    assert(not win.rows[2].name.visible, "one row per paladin bot")
+    assert(cells[1].icon.texture[1] == C.BLESSING_ICONS.might and cells[1].label.text == "",
+        "a blessing shows its icon")
+    assert(cells[3].icon.texture[1] == C.BLESSING_ICONS.wisdom, "priest gets wisdom")
+    expectCommands("left click", commands(function() click(cells[1]) end), { ".bot blessing Pallybot warrior wisdom" })
+    assert(not cells[1].enabled, "the cell waits for the reply")
+    expectCommands("no double send", commands(function() click(cells[1]) end), {})
+    expectCommands("fresh line", commands(function()
+        TB.OnSystemMessage((string.gsub(line, "warrior=might", "warrior=wisdom")))
+        TB.OnSystemMessage("TBM:ACTION_ACK|blessing|bot:Pallybot|1|warrior=wisdom")
+    end), {})
+    assert(cells[1].enabled and cells[1].icon.texture[1] == C.BLESSING_ICONS.wisdom, "the cell repaints from the reply")
+    expectCommands("right click", commands(function()
+        this, arg1 = cells[1], "RightButton"
+        cells[1].scripts.OnClick(cells[1])
+        arg1 = nil
+    end), { ".bot blessing Pallybot warrior might" })
+    expectCommands("error", commands(function()
+        TB.OnSystemMessage("TBM:ACTION_ERR|blessing|unknown-spell|Pallybot has not learned that")
+    end), {})
+    assert(cells[1].enabled, "an error frees the cell")
+    expectCommands("mage forward", commands(function() click(cells[4]) end), { ".bot blessing Pallybot mage kings" })
+    TB.OnSystemMessage((string.gsub(line, "mage=wisdom", "mage=light")))
+    expectCommands("last blessing to auto", commands(function() click(cells[4]) end), { ".bot blessing Pallybot mage auto" })
+    TB.OnSystemMessage(line)
+
+    -- A roster change while open re-asks once; a party without the paladin closes it.
+    local watcher = frames["TortoiseBotsManagerBlessingWatcher"]
+    expectCommands("group change", commands(function()
+        event, this = "PARTY_MEMBERS_CHANGED", watcher
+        watcher.scripts.OnEvent(watcher)
+        advanceTime(2)
+        this, arg1 = watcher, 0.5
+        watcher.scripts.OnUpdate(watcher)
+    end), { ".bot blessing party status" })
+    setParty({ "Magebot", "Priestbot" }, "Paladin")
+    classOf.party1 = "Mage"; classOf.party2 = "Priest"
+    event, this = "PARTY_MEMBERS_CHANGED", watcher
+    watcher.scripts.OnEvent(watcher)
+    advanceTime(2)
+    this, arg1 = watcher, 0.5
+    watcher.scripts.OnUpdate(watcher)
+    assert(not win.visible, "the grid closes when no paladin bot is left")
+    TB.RefreshPartyView()
+    assert(not button.visible, "the entry point goes with the paladin")
+
+    -- In a raid the status ask goes to the raid.
+    local realRaid, realUnitName = GetNumRaidMembers, UnitName
+    GetNumRaidMembers = function() return 2 end
+    UnitName = function(unit)
+        if unit == "raid1" then return "Pallybot" elseif unit == "raid2" then return "Tester" end
+        return realUnitName(unit)
+    end
+    classOf.raid1, classOf.raid2 = "Paladin", "Warrior"
+    assert(TB.BlessingScope() == "raid", "a raid group asks as raid")
+    TB.RefreshPartyView()
+    assert(button.visible, "a paladin bot in a raid offers Blessings")
+    expectCommands("raid open", commands(function() click(button) end), { ".bot blessing raid status" })
+    TB.CloseBlessings()
+
+    -- Layout: eight paladin bots and every class.
+    local raidClasses = { "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin",
+        "Warrior", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock", "Druid" }
+    GetNumRaidMembers = function() return table.getn(raidClasses) end
+    UnitName = function(unit)
+        local _, _, index = string.find(unit, "^raid(%d+)$")
+        index = tonumber(index)
+        if index then return index <= 8 and ("Pal" .. index) or ("Other" .. index) end
+        return realUnitName(unit)
+    end
+    for index, className in ipairs(raidClasses) do classOf["raid" .. index] = className end
+    for index = 1, 8 do TB.OnSystemMessage("TBM:BOTSTATE|Pal" .. index .. "|move=follow") end
+    assert(TB.OpenBlessings(), "the grid opens in a big raid")
+    drainQueue()
+    for index = 1, 8 do TB.OnSystemMessage((string.gsub(line, "Pallybot", "Pal" .. index))) end
+    local shown = {}
+    for r, row in ipairs(win.rows) do
+        assert(row.name.visible, "row " .. r .. " shows its paladin")
+        for c, cell in ipairs(row.cells) do
+            assert(cell.visible, "cell " .. r .. "," .. c .. " shows")
+            table.insert(shown, cell)
+        end
+    end
+    assert(win.width >= 12 + 92 + 9 * 36 and win.height > 62 + 8 * 34, "the window grows to the rows and columns")
+    TB.CloseBlessings()
+
+    GetNumRaidMembers, UnitName, UnitClass = realRaid, realUnitName, realUnitClass
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+    for index = 1, 8 do TB.OnSystemMessage("TBM:BOTSTATE|Pal" .. index .. "|move=follow") end
+end
+
 setParty(savedMembers, savedClass)
 
 print("PASS: community feedback checks")

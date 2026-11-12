@@ -190,7 +190,7 @@ local function scene(name, fn)
 end
 
 local function hideSatellites()
-    for _, n in ipairs({ "CloseBotPanel", "CloseRunWindow", "CloseOrderWindow", "CloseServerInfo", "CloseSettings", "CloseNpc", "CloseVault" }) do
+    for _, n in ipairs({ "CloseBotPanel", "CloseRunWindow", "CloseOrderWindow", "CloseServerInfo", "CloseSettings", "CloseNpc", "CloseVault", "CloseBlessings" }) do
         if TB[n] then pcall(TB[n]) end
     end
     if TB.ccMenu then TB.ccMenu:Hide() end
@@ -308,6 +308,23 @@ scene("panel-totems", function()
     TB.OpenBotPanel("Grimtotem", "behavior")
     tick(1)
     dump("panel-totems", { main, TB.botPanel }, "Bot panel: behaviour of a shaman with the totem picker")
+end)
+scene("blessings", function()
+    table.insert(Mock.world.party, { name = "Kaelthor", class = "Paladin", level = 60 })
+    feed({
+        "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service,blessing",
+        "TBM:BOTSTATE|Kaelthor|move=follow,loot=on",
+        "TBM:BLESSING|Kaelthor|warrior=kings,paladin=kings,hunter=might,rogue=might,priest=wisdom,shaman=wisdom,"
+            .. "mage=wisdom,warlock=auto,druid=light,known=might+wisdom+kings+light",
+    })
+    local gw = Mock.frames["TortoiseBotsManagerGroupWatcher"]
+    event = "PARTY_MEMBERS_CHANGED"; this = gw; gw.scripts.OnEvent(gw)
+    tab("party", nil)
+    TB.OpenBlessings()
+    tick(1)
+    dump("blessings", { main, TB.blessingsWindow }, "Party tab with the blessing grid")
+    table.remove(Mock.world.party)
+    event = "PARTY_MEMBERS_CHANGED"; this = gw; gw.scripts.OnEvent(gw)
 end)
 scene("npc", function()
     tab("party", nil)

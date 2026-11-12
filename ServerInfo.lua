@@ -308,6 +308,7 @@ function TB.OpenServerInfo()
     if TB.CloseVault then TB.CloseVault() end
     if TB.CloseNpc then TB.CloseNpc() end
     if TB.CloseOrderWindow then TB.CloseOrderWindow() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     win:ClearAllPoints()
     local frame = TB.frame
     local right = frame and frame.GetRight and frame:GetRight()

@@ -241,6 +241,7 @@ for _, file in ipairs({
     "UI.lua",
     "BotPanel.lua",
     "BotTotem.lua",
+    "BotBlessing.lua",
     "BotNpc.lua",
     "BotVault.lua",
     "BotRun.lua",
