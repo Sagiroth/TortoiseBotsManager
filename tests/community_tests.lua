@@ -508,32 +508,47 @@ do
     drainQueue()
     local win = TB.blessingsWindow
     assert(not win.auraHead.visible and not win.rows[1].aura.visible, "Aura column hidden without choice cap")
-    assert(not win.excTitle.visible and not win.excAddBtn.visible, "Exceptions hidden without blessing-player cap")
+    assert(not win.excTitle.visible and not win.excAddTargetBtn.visible and not win.excAddMemberBtn.visible,
+        "Exceptions hidden without blessing-player cap")
 
     TB.OnSystemMessage("TBM:CAPS|blessing,choice,blessing-player")
     TB.OnSystemMessage("TBM:CHOICE|Pallybot|aura=devotion aura,known=devotion aura+concentration aura")
     TB.OnSystemMessage(exLine)
     assert(win.auraHead.visible and win.rows[1].aura.visible, "Aura column shown with choice cap")
     assert(win.rows[1].aura.label.text == "Devotion", "Aura cell shows compact aura name")
-    assert(win.excTitle.visible and win.excRows[1].text.visible, "Exceptions list shown with blessing-player cap")
+    assert(win.excTitle.visible and win.excHeads[1].visible and win.excRows[1].name.visible
+        and win.excRows[1].cells[1].visible, "Exceptions sideways grid shown with blessing-player cap")
 
     expectCommands("aura cycle", commands(function() click(win.rows[1].aura) end),
         { ".bot choice Pallybot aura concentration aura" })
+    -- Exception cell cycling (Magebot has salvation, known=might+wisdom+kings -> starts from Auto -> might)
+    expectCommands("cycle exception cell", commands(function() click(win.excRows[1].cells[1]) end),
+        { ".bot blessing Pallybot player Magebot might" })
+    TB.OnSystemMessage(exLine)
+    -- Removing row clears exception on paladin(s) that have one
     expectCommands("remove exception", commands(function() click(win.excRows[1].remove) end),
         { ".bot blessing Pallybot player Magebot auto" })
     TB.OnSystemMessage(exLine)
+
+    -- Add member opens picker and adds a row with all Auto cells that stays open until close/refresh
+    click(win.excAddMemberBtn)
+    assert(win.memberPicker.visible and win.memberPicker.buttons[1].visible, "Add member opens group member picker")
+    click(win.memberPicker.buttons[2]) -- Pallybot
+    assert(not win.memberPicker.visible, "picking a member closes the picker")
+    assert(win.excRows[2].name.visible and win.excRows[2].name.text == "Pallybot"
+        and win.excRows[2].cells[1].label.text == "Auto",
+        "added exception row stays visible with Auto cells")
 
     -- Auto assign sends only changed cells (warrior is already might, paladin/mage change from auto)
     expectCommands("auto assign", commands(function() click(win.autoBtn) end), {
         ".bot blessing Pallybot paladin wisdom",
         ".bot blessing Pallybot mage wisdom",
     })
-    -- Clear sends only non-auto cells back to auto (warrior is might, priest is wisdom, others are auto)
+    -- Clear sends non-auto class cells AND non-auto player exceptions back to auto
     TB.OnSystemMessage(exLine)
-    expectCommands("clear blessings", commands(function() click(win.clearBtn) end), {
-        ".bot blessing Pallybot warrior auto",
-        ".bot blessing Pallybot priest auto",
-    })
+    local clearGot = commands(function() click(win.clearBtn) end)
+    assert(table.getn(clearGot) == 4, "Clear resets both class cells and player exceptions")
+    TB.OnSystemMessage(exLine)
 
     -- Missing-blessing hint via UnitBuff (Auto not judged; player exception wins)
     local realUnitBuff = UnitBuff

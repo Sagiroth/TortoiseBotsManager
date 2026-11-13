@@ -341,7 +341,7 @@ scene("blessings", function()
         "TBM:BOTSTATE|Kaelthor|move=follow,loot=on",
         "TBM:CHOICE|Kaelthor|aura=devotion aura,known=devotion aura+retribution aura+concentration aura+shadow resistance aura",
         "TBM:BLESSING|Kaelthor|warrior=kings,paladin=kings,hunter=might,rogue=might,priest=wisdom,shaman=wisdom,"
-            .. "mage=wisdom,warlock=auto,druid=light,known=might+wisdom+kings+light,players=Valguard:might",
+            .. "mage=wisdom,warlock=auto,druid=light,known=might+wisdom+kings+light,players=Valguard:might+Seraphine:kings",
     })
     local gw = Mock.frames["TortoiseBotsManagerGroupWatcher"]
     event = "PARTY_MEMBERS_CHANGED"; this = gw; gw.scripts.OnEvent(gw)
@@ -389,11 +389,11 @@ scene("blessings-raid", function()
         "TBM:CHOICE|Sunblade|aura=concentration aura,known=devotion aura+concentration aura+shadow resistance aura",
         "TBM:CHOICE|Lightward|aura=auto,known=devotion aura+retribution aura",
         "TBM:BLESSING|Kaelthor|warrior=might,paladin=wisdom,hunter=might,rogue=might,priest=wisdom,shaman=wisdom,"
-            .. "mage=wisdom,warlock=wisdom,druid=wisdom,known=might+wisdom+kings+salvation+sanctuary+light,players=Valguard:sanctuary",
+            .. "mage=wisdom,warlock=wisdom,druid=wisdom,known=might+wisdom+kings+salvation+sanctuary+light,players=Valguard:sanctuary+Vexmora:light",
         "TBM:BLESSING|Sunblade|warrior=kings,paladin=kings,hunter=kings,rogue=kings,priest=kings,shaman=kings,"
-            .. "mage=kings,warlock=kings,druid=kings,known=might+wisdom+kings+salvation+light",
+            .. "mage=kings,warlock=kings,druid=kings,known=might+wisdom+kings+salvation+light,players=Valguard:kings",
         "TBM:BLESSING|Lightward|warrior=auto,paladin=might,hunter=salvation,rogue=salvation,priest=salvation,shaman=might,"
-            .. "mage=salvation,warlock=salvation,druid=might,known=might+wisdom+salvation+light",
+            .. "mage=salvation,warlock=salvation,druid=might,known=might+wisdom+salvation+light,players=Vexmora:salvation",
     })
     tab("party", nil)
     TB.OpenBlessings()

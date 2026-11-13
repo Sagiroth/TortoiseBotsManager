@@ -69,9 +69,9 @@ local function now() return (GetTime and GetTime()) or 0 end
 -- [paladin] = { classes = { warrior = "kings", ... }, known = { "might", ... }, players = { [name] = "kings" } }
 local blessings = {}
 local pendingCell = {} -- [paladin] = true while a cell order waits for its reply
+local openExceptions = {} -- [playerName] = true while kept open in the current session
 local cachedMissingText = ""
 local win
-local excMenu
 
 function TB.HasBlessingCapability()
     return TB.HasServerCapability and TB.HasServerCapability(CAP) or false
@@ -366,6 +366,16 @@ function TB.CycleBlessing(bot, word, step)
     return TB.SendBlessing(bot, word, TB.NextBlessing(snapshot.classes[word], snapshot.known, step))
 end
 
+function TB.CycleBlessingPlayer(bot, playerName, step)
+    local snapshot = TB.GetBlessings(bot)
+    playerName = norm(playerName)
+    if not snapshot or not playerName or pendingCell[norm(bot)] then return false end
+    local current = (snapshot.players and snapshot.players[playerName]) or "auto"
+    local nextVal = TB.NextBlessing(current, snapshot.known, step)
+    openExceptions[playerName] = true
+    return TB.SendBlessingPlayer(bot, playerName, nextVal)
+end
+
 local function cycleAura(bot, step)
     if not TB.GetChoice or not TB.ChoiceOptions or not TB.SendChoice then return false end
     local snap = TB.GetChoice(bot, "aura")
@@ -406,6 +416,7 @@ end
 
 function TB.ClearBlessings()
     local paladins = TB.GetBlessingGroup()
+    local allowPlayer = TB.HasBlessingPlayerCapability()
     local sent = 0
     for _, p in ipairs(paladins) do
         local cur = TB.GetBlessings(p)
@@ -415,8 +426,17 @@ function TB.ClearBlessings()
                     if TB.SendBlessing(p, cls.word, "auto") then sent = sent + 1 end
                 end
             end
+            if allowPlayer and cur.players then
+                for pname, b in pairs(cur.players) do
+                    if b and b ~= "auto" then
+                        if TB.SendBlessingPlayer(p, pname, "auto") then sent = sent + 1 end
+                    end
+                end
+            end
         end
     end
+    for k in pairs(openExceptions) do openExceptions[k] = nil end
+    if TB.RefreshBlessings then TB.RefreshBlessings() end
     return sent
 end
 
@@ -481,24 +501,70 @@ function TB.RefreshMissingBlessings()
     if TB.RefreshBlessings then TB.RefreshBlessings() end
 end
 
-function TB.CollectBlessingExceptions()
+function TB.CollectExceptionPlayers()
     local paladins = TB.GetBlessingGroup()
-    local out = {}
+    local classByName = {}
+    for _, m in ipairs(groupMembers()) do classByName[m.name] = m.classId end
+    local seen, out = {}, {}
     for _, p in ipairs(paladins) do
         local snap = TB.GetBlessings(p)
         if snap and snap.players then
             for pname, b in pairs(snap.players) do
-                if b and b ~= "auto" then
-                    table.insert(out, { player = pname, paladin = p, blessing = b })
+                if b and b ~= "auto" and not seen[pname] then
+                    seen[pname] = true
+                    table.insert(out, { name = pname, classId = classByName[pname] })
                 end
             end
         end
     end
-    table.sort(out, function(a, b)
-        if a.player ~= b.player then return a.player < b.player end
-        return a.paladin < b.paladin
-    end)
+    for pname in pairs(openExceptions) do
+        if openExceptions[pname] and not seen[pname] then
+            seen[pname] = true
+            table.insert(out, { name = pname, classId = classByName[pname] })
+        end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
     return out
+end
+
+function TB.AddExceptionPlayer(name)
+    name = norm(name)
+    if not name or name == "" then return false end
+    openExceptions[name] = true
+    if win and win.memberPicker then win.memberPicker:Hide() end
+    if TB.RefreshBlessings then TB.RefreshBlessings() end
+    return true
+end
+
+function TB.AddTargetException()
+    local targetName = UnitExists and UnitExists("target") and UnitName and norm(UnitName("target"))
+    local inGroup = false
+    if targetName then
+        for _, m in ipairs(groupMembers()) do
+            if m.name == targetName then inGroup = true break end
+        end
+    end
+    if not inGroup then
+        if TB.SetStatus then TB.SetStatus("Target a group member first.", "warn") end
+        return false
+    end
+    return TB.AddExceptionPlayer(targetName)
+end
+
+function TB.RemovePlayerExceptions(playerName)
+    playerName = norm(playerName)
+    if not playerName then return 0 end
+    local paladins = TB.GetBlessingGroup()
+    local sent = 0
+    for _, p in ipairs(paladins) do
+        local snap = TB.GetBlessings(p)
+        if snap and snap.players and snap.players[playerName] and snap.players[playerName] ~= "auto" then
+            if TB.SendBlessingPlayer(p, playerName, "auto") then sent = sent + 1 end
+        end
+    end
+    openExceptions[playerName] = nil
+    if TB.RefreshBlessings then TB.RefreshBlessings() end
+    return sent
 end
 
 -- ACK routing from Comms. Returns true when handled.
@@ -531,75 +597,53 @@ function TB.OnBlessingError(packet)
     if TB.RefreshBlessings then TB.RefreshBlessings() end
 end
 
--- ── exception menu ──────────────────────────────────────────────────────────
-local function addBlessingMenuButtons(paladin, targetName, level)
-    local snap = TB.GetBlessings(paladin)
-    local opts = TB.BlessingOptions(snap and snap.known)
-    for _, b in ipairs(opts) do
-        local blessing = b
-        if blessing ~= "auto" then
-            UIDropDownMenu_AddButton({
-                text = SHORT_BLESSING[blessing] or TB.BlessingLabel(blessing),
-                checked = (snap and snap.players and snap.players[targetName] == blessing) and 1 or nil,
-                func = function() TB.SendBlessingPlayer(paladin, targetName, blessing) end,
-            }, level or 1)
+-- ── member picker (40-man raid capable) ─────────────────────────────────────
+local PICK_COLS = 4
+local PICK_BTN_W = 86
+local PICK_BTN_H = 18
+local PICK_STEP_X = 88
+local PICK_STEP_Y = 20
+local MAX_PICK_MEMBERS = 40
+
+local function renderMemberPicker()
+    local picker = win and win.memberPicker
+    if not picker then return end
+    local members = groupMembers()
+    local count = math.min(table.getn(members), MAX_PICK_MEMBERS)
+    local cols = math.min(PICK_COLS, math.max(1, count))
+    local rows = math.max(1, math.ceil(count / PICK_COLS))
+    picker:SetWidth(cols * PICK_STEP_X + 14)
+    picker:SetHeight(rows * PICK_STEP_Y + 26)
+    for i, btn in ipairs(picker.buttons) do
+        local m = members[i]
+        if i <= count and m then
+            local col = math.mod(i - 1, PICK_COLS)
+            local row = math.floor((i - 1) / PICK_COLS)
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", picker, "TOPLEFT", 8 + col * PICK_STEP_X, -22 - row * PICK_STEP_Y)
+            btn:SetText(m.name)
+            local cc = C.CLASS_COLORS[m.classId] or { 1, 1, 1 }
+            local fs = btn.GetFontString and btn:GetFontString()
+            if fs then fs:SetTextColor(cc[1], cc[2], cc[3]) end
+            btn.memberName = m.name
+            btn:Show()
+        else
+            btn:Hide()
         end
     end
 end
 
-local function openExceptionMenu(anchor)
-    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return end
-    local paladins = TB.GetBlessingGroup()
-    if table.getn(paladins) == 0 then return end
-    local targetName = UnitExists and UnitExists("target") and UnitName and norm(UnitName("target"))
-    local inGroup = false
-    if targetName then
-        for _, m in ipairs(groupMembers()) do
-            if m.name == targetName then inGroup = true break end
-        end
+local function toggleMemberPicker(anchor)
+    local picker = win and win.memberPicker
+    if not picker then return end
+    if picker:IsVisible() then
+        picker:Hide()
+        return
     end
-    if not inGroup then targetName = nil end
-    if not excMenu then
-        excMenu = CreateFrame("Frame", "TortoiseBotsManagerBlessingExcMenu", UIParent, "UIDropDownMenuTemplate")
-    end
-    UIDropDownMenu_Initialize(excMenu, function()
-        local level = (getglobal and getglobal("UIDROPDOWNMENU_MENU_LEVEL")) or 1
-        local val = getglobal and getglobal("UIDROPDOWNMENU_MENU_VALUE")
-        if targetName then
-            if level == 1 then
-                if table.getn(paladins) == 1 then
-                    addBlessingMenuButtons(paladins[1], targetName, 1)
-                else
-                    for _, p in ipairs(paladins) do
-                        local pal = p
-                        UIDropDownMenu_AddButton({ text = pal, hasArrow = 1, value = pal }, 1)
-                    end
-                end
-            elseif level == 2 and val then
-                addBlessingMenuButtons(val, targetName, 2)
-            end
-        else
-            if level == 1 then
-                for _, m in ipairs(groupMembers()) do
-                    local member = m.name
-                    UIDropDownMenu_AddButton({ text = member, hasArrow = 1, value = member }, 1)
-                end
-            elseif level == 2 and val then
-                if table.getn(paladins) == 1 then
-                    addBlessingMenuButtons(paladins[1], val, 2)
-                else
-                    for _, p in ipairs(paladins) do
-                        local pal = p
-                        UIDropDownMenu_AddButton({ text = pal, hasArrow = 1, value = val .. "|" .. pal }, 2)
-                    end
-                end
-            elseif level == 3 and val then
-                local _, _, mname, pal = string.find(val, "^([^|]+)|(.+)$")
-                if mname and pal then addBlessingMenuButtons(pal, mname, 3) end
-            end
-        end
-    end, "MENU")
-    ToggleDropDownMenu(1, nil, excMenu, anchor or "cursor", 0, 0)
+    renderMemberPicker()
+    picker:ClearAllPoints()
+    picker:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    picker:Show()
 end
 
 -- ── window ──────────────────────────────────────────────────────────────────
@@ -690,6 +734,26 @@ local function setBtnTooltip(btn, title, line)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+local function createExcCell(parent)
+    local cell = createCell(parent)
+    cell:SetScript("OnEnter", function()
+        local snapshot = TB.GetBlessings(this.bot)
+        local val = (snapshot and snapshot.players and snapshot.players[this.playerName]) or "auto"
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:SetText((this.bot or "") .. " → " .. (this.playerName or ""))
+        GameTooltip:AddLine("Now: " .. (FULL_BLESSING[val] or TB.BlessingLabel(val)), 0.9, 0.9, 0.9, 1)
+        GameTooltip:AddLine("Left-click: next · Right-click: previous", 0.62, 0.60, 0.56, 1)
+        GameTooltip:AddLine("Auto removes this exception.", 0.62, 0.60, 0.56, 1)
+        GameTooltip:Show()
+    end)
+    cell:SetScript("OnClick", function()
+        if this.bot and this.playerName then
+            TB.CycleBlessingPlayer(this.bot, this.playerName, arg1 == "RightButton" and -1 or 1)
+        end
+    end)
+    return cell
+end
+
 local function makeToolbarButton(parent, label, width, x, tip)
     local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(width); b:SetHeight(20)
@@ -721,11 +785,12 @@ local function createWindow()
         "Spreads trained blessings across paladins for each class.")
     win.autoBtn:SetScript("OnClick", function() TB.ApplyAutoBlessings() end)
     win.clearBtn = makeToolbarButton(win, "Clear", 54, PAD + 92,
-        "Resets every class cell back to Auto.")
+        "Resets every class cell and all player exceptions back to Auto.")
     win.clearBtn:SetScript("OnClick", function() TB.ClearBlessings() end)
     win.refreshBtn = makeToolbarButton(win, "Refresh", 66, PAD + 152,
         "Re-asks the server and checks who is missing a blessing.")
     win.refreshBtn:SetScript("OnClick", function()
+        for k in pairs(openExceptions) do openExceptions[k] = nil end
         TB.RequestBlessings()
         TB.RefreshMissingBlessings()
     end)
@@ -780,32 +845,71 @@ local function createWindow()
     win.excTitle:SetText("Exceptions")
     TB.SetTextColor(win.excTitle, color("gold"))
 
-    win.excAddBtn = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
-    win.excAddBtn:SetWidth(132); win.excAddBtn:SetHeight(18)
-    win.excAddBtn:SetText("Exception for target")
-    setBtnTooltip(win.excAddBtn, "Exception for target",
-        "Override one player's blessing (uses your target, or lets you pick a group member).")
-    win.excAddBtn:SetScript("OnClick", function() openExceptionMenu(this) end)
+    win.excAddTargetBtn = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
+    win.excAddTargetBtn:SetWidth(80); win.excAddTargetBtn:SetHeight(18)
+    win.excAddTargetBtn:SetText("Add target")
+    setBtnTooltip(win.excAddTargetBtn, "Add target",
+        "Adds an exception row for your current group target.")
+    win.excAddTargetBtn:SetScript("OnClick", function() TB.AddTargetException() end)
+
+    win.excAddMemberBtn = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
+    win.excAddMemberBtn:SetWidth(86); win.excAddMemberBtn:SetHeight(18)
+    win.excAddMemberBtn:SetText("Add member")
+    setBtnTooltip(win.excAddMemberBtn, "Add member",
+        "Pick a group member from a list to add an exception row.")
+    win.excAddMemberBtn:SetScript("OnClick", function() toggleMemberPicker(this) end)
 
     win.excEmpty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    win.excEmpty:SetText("None — target a player and click Exception for target.")
+    win.excEmpty:SetText("None — click Add target or Add member to override one character.")
     TB.SetTextColor(win.excEmpty, color("muted"))
+
+    win.excHeads = {}
+    for p = 1, MAX_ROWS do
+        local h = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        h:SetWidth(CELL_W - 4); h:SetJustifyH("CENTER")
+        local pal = C.CLASS_COLORS[2] or { 0.96, 0.55, 0.73 }
+        h:SetTextColor(pal[1], pal[2], pal[3])
+        win.excHeads[p] = h
+    end
 
     win.excRows = {}
     for i = 1, MAX_EXCEPTIONS do
-        local erow = {}
-        erow.text = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        erow.text:SetJustifyH("LEFT")
+        local erow = { cells = {} }
+        erow.name = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        erow.name:SetWidth(NAME_W - 4); erow.name:SetJustifyH("LEFT")
+        for p = 1, MAX_ROWS do
+            erow.cells[p] = createExcCell(win)
+        end
         erow.remove = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
-        erow.remove:SetWidth(18); erow.remove:SetHeight(16)
+        erow.remove:SetWidth(18); erow.remove:SetHeight(18)
         erow.remove:SetText("x")
+        setBtnTooltip(erow.remove, "Remove exceptions",
+            "Clears this character's exceptions on all paladins.")
         erow.remove:SetScript("OnClick", function()
-            if this.paladin and this.player then
-                TB.SendBlessingPlayer(this.paladin, this.player, "auto")
-            end
+            if this.playerName then TB.RemovePlayerExceptions(this.playerName) end
         end)
         win.excRows[i] = erow
     end
+
+    local picker = CreateFrame("Frame", "TortoiseBotsManagerBlessingMemberPicker", win)
+    picker:SetFrameStrata("FULLSCREEN_DIALOG")
+    picker:EnableMouse(true)
+    TB.ApplySurface(picker, "window")
+    local pTitle = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pTitle:SetPoint("TOPLEFT", picker, "TOPLEFT", 8, -6)
+    pTitle:SetText("Pick a group member")
+    TB.SetTextColor(pTitle, color("gold"))
+    picker.buttons = {}
+    for i = 1, MAX_PICK_MEMBERS do
+        local b = TB.StyleButton(CreateFrame("Button", nil, picker, "UIPanelButtonTemplate"))
+        b:SetWidth(PICK_BTN_W); b:SetHeight(PICK_BTN_H)
+        b:SetScript("OnClick", function()
+            if this.memberName then TB.AddExceptionPlayer(this.memberName) end
+        end)
+        picker.buttons[i] = b
+    end
+    picker:Hide()
+    win.memberPicker = picker
 
     win:Hide()
     TB.blessingsWindow = win
@@ -863,7 +967,9 @@ function TB.RefreshBlessings()
     local colCount = table.getn(columns)
     local rowCount = math.min(table.getn(paladins), MAX_ROWS)
     local auraSpace = showAura and AURA_W or 0
-    local width = math.max(PAD * 2 + NAME_W + colCount * CELL_W + auraSpace, 320)
+    local gridW = PAD * 2 + NAME_W + colCount * CELL_W + auraSpace
+    local excW = showPlayers and (PAD * 2 + NAME_W + rowCount * CELL_W + 24) or 0
+    local width = math.max(gridW, excW, 320)
     win:SetWidth(width)
 
     for i, head in ipairs(win.heads) do
@@ -956,46 +1062,82 @@ function TB.RefreshBlessings()
         win.excTitle:ClearAllPoints()
         win.excTitle:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -(y + 3))
         win.excTitle:Show()
-        win.excAddBtn:ClearAllPoints()
-        win.excAddBtn:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + 74, -y)
-        win.excAddBtn:Show()
+        win.excAddTargetBtn:ClearAllPoints()
+        win.excAddTargetBtn:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + 74, -y)
+        win.excAddTargetBtn:Show()
+        win.excAddMemberBtn:ClearAllPoints()
+        win.excAddMemberBtn:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + 160, -y)
+        win.excAddMemberBtn:Show()
         y = y + 22
-        local excs = TB.CollectBlessingExceptions()
-        local excCount = math.min(table.getn(excs), MAX_EXCEPTIONS)
+        local exPlayers = TB.CollectExceptionPlayers()
+        local excCount = math.min(table.getn(exPlayers), MAX_EXCEPTIONS)
         if excCount == 0 then
             win.excEmpty:ClearAllPoints()
             win.excEmpty:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -y)
             win.excEmpty:SetWidth(width - PAD * 2)
             win.excEmpty:Show()
+            for _, h in ipairs(win.excHeads) do h:Hide() end
             y = y + 16
         else
             win.excEmpty:Hide()
+            for p = 1, MAX_ROWS do
+                local h = win.excHeads[p]
+                local pal = paladins[p]
+                if p <= rowCount and pal then
+                    h:ClearAllPoints()
+                    h:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + (p - 1) * CELL_W + 2, -y)
+                    h:SetText(pal)
+                    h:Show()
+                else
+                    h:Hide()
+                end
+            end
+            y = y + 16
         end
         for i, erow in ipairs(win.excRows) do
-            local ex = excs[i]
+            local ex = exPlayers[i]
             if i <= excCount and ex then
-                erow.text:ClearAllPoints()
-                erow.text:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -(y + 2))
-                erow.text:SetWidth(width - PAD * 2 - 24)
-                erow.text:SetText(ex.player .. " — " .. ex.paladin .. ": " .. (SHORT_BLESSING[ex.blessing] or TB.BlessingLabel(ex.blessing)))
-                erow.text:Show()
+                erow.name:ClearAllPoints()
+                erow.name:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -(y + 11))
+                erow.name:SetText(ex.name)
+                local cc = (ex.classId and C.CLASS_COLORS[ex.classId]) or { 0.9, 0.9, 0.9 }
+                erow.name:SetTextColor(cc[1], cc[2], cc[3])
+                erow.name:Show()
+                for p = 1, MAX_ROWS do
+                    local cell = erow.cells[p]
+                    local pal = paladins[p]
+                    if p <= rowCount and pal then
+                        local snap = TB.GetBlessings(pal)
+                        local val = (snap and snap.players and snap.players[ex.name]) or (snap and "auto")
+                        cell:ClearAllPoints()
+                        cell:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + (p - 1) * CELL_W + 2, -y)
+                        cell.bot, cell.playerName = pal, ex.name
+                        renderCell(cell, val, snap and not pendingCell[pal])
+                        cell:Show()
+                    else
+                        cell:Hide()
+                    end
+                end
                 erow.remove:ClearAllPoints()
-                erow.remove:SetPoint("TOPRIGHT", win, "TOPRIGHT", -PAD, -y)
-                erow.remove.paladin = ex.paladin
-                erow.remove.player = ex.player
+                erow.remove:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + rowCount * CELL_W + 4, -(y + 8))
+                erow.remove.playerName = ex.name
                 erow.remove:Show()
-                y = y + EXC_ROW_H
+                y = y + ROW_STEP
             else
-                erow.text:Hide()
+                erow.name:Hide()
+                for _, cell in ipairs(erow.cells) do cell:Hide() end
                 erow.remove:Hide()
             end
         end
     else
         win.excTitle:Hide()
-        win.excAddBtn:Hide()
+        win.excAddTargetBtn:Hide()
+        win.excAddMemberBtn:Hide()
         win.excEmpty:Hide()
+        for _, h in ipairs(win.excHeads) do h:Hide() end
         for _, erow in ipairs(win.excRows) do
-            erow.text:Hide()
+            erow.name:Hide()
+            for _, cell in ipairs(erow.cells) do cell:Hide() end
             erow.remove:Hide()
         end
     end
@@ -1026,6 +1168,8 @@ function TB.OpenBlessings()
     else
         win:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
+    for k in pairs(openExceptions) do openExceptions[k] = nil end
+    if win.memberPicker then win.memberPicker:Hide() end
     cachedMissingText = TB.ComputeMissingBlessings()
     win:Show()
     TB.RefreshBlessings()
@@ -1034,7 +1178,11 @@ function TB.OpenBlessings()
 end
 
 function TB.CloseBlessings()
-    if win then win:Hide() end
+    for k in pairs(openExceptions) do openExceptions[k] = nil end
+    if win then
+        if win.memberPicker then win.memberPicker:Hide() end
+        win:Hide()
+    end
 end
 
 function TB.ToggleBlessings()
