@@ -440,6 +440,11 @@ function TB.ClearBlessings()
     return sent
 end
 
+local BLESSING_HEX = {
+    might = "ffe0705a", wisdom = "ff6fa8ff", kings = "ffb48cff",
+    salvation = "ffffd966", sanctuary = "ffc8d0d8", light = "fffff0a0",
+}
+
 -- ── missing-blessing check ──────────────────────────────────────────────────
 local function unitHasBlessing(unit, blessing)
     if not UnitBuff then return false end
@@ -478,11 +483,13 @@ function TB.ComputeMissingBlessings()
             local lacking = {}
             for _, b in ipairs(list) do
                 if not unitHasBlessing(m.unit, b) then
-                    table.insert(lacking, SHORT_BLESSING[b] or TB.BlessingLabel(b))
+                    table.insert(lacking, "|c" .. (BLESSING_HEX[b] or "ffffffff") ..
+                        (SHORT_BLESSING[b] or TB.BlessingLabel(b)) .. "|r")
                 end
             end
             if table.getn(lacking) > 0 then
-                table.insert(missing, m.name .. " (" .. table.concat(lacking, ", ") .. ")")
+                table.insert(missing, "|c" .. TB.GetClassColor(m.classId).hex .. m.name .. "|r (" ..
+                    table.concat(lacking, ", ") .. ")")
             end
         end
     end
