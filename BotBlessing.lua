@@ -71,6 +71,7 @@ local blessings = {}
 local pendingCell = {} -- [paladin] = true while a cell order waits for its reply
 local openExceptions = {} -- [playerName] = true while kept open in the current session
 local cachedMissingText = ""
+local cachedMissing = {}
 local win
 
 function TB.HasBlessingCapability()
@@ -440,11 +441,6 @@ function TB.ClearBlessings()
     return sent
 end
 
-local BLESSING_HEX = {
-    might = "ffe0705a", wisdom = "ff6fa8ff", kings = "ffb48cff",
-    salvation = "ffffd966", sanctuary = "ffc8d0d8", light = "fffff0a0",
-}
-
 -- ── missing-blessing check ──────────────────────────────────────────────────
 local function unitHasBlessing(unit, blessing)
     if not UnitBuff then return false end
@@ -464,6 +460,7 @@ end
 function TB.ComputeMissingBlessings()
     local paladins = TB.GetBlessingGroup()
     local hasOrders, missing = false, {}
+    cachedMissing = missing
     local allowPlayer = TB.HasBlessingPlayerCapability()
     for _, m in ipairs(groupMembers()) do
         local dead = (UnitIsDead and UnitIsDead(m.unit)) or (UnitIsGhost and UnitIsGhost(m.unit))
@@ -483,24 +480,17 @@ function TB.ComputeMissingBlessings()
             local lacking = {}
             for _, b in ipairs(list) do
                 if not unitHasBlessing(m.unit, b) then
-                    table.insert(lacking, "|c" .. (BLESSING_HEX[b] or "ffffffff") ..
-                        (SHORT_BLESSING[b] or TB.BlessingLabel(b)) .. "|r")
+                    table.insert(lacking, b)
                 end
             end
             if table.getn(lacking) > 0 then
-                table.insert(missing, "|c" .. TB.GetClassColor(m.classId).hex .. m.name .. "|r (" ..
-                    table.concat(lacking, ", ") .. ")")
+                table.insert(missing, { name = m.name, classId = m.classId, blessings = lacking })
             end
         end
     end
     if not hasOrders then return "" end
     if table.getn(missing) == 0 then return "All ordered blessings active." end
-    if table.getn(missing) > 3 then
-        local shown = {}
-        for i = 1, 3 do table.insert(shown, missing[i]) end
-        return "Missing: " .. table.concat(shown, ", ") .. " +" .. (table.getn(missing) - 3) .. " more"
-    end
-    return "Missing: " .. table.concat(missing, ", ")
+    return "Missing:"
 end
 
 function TB.RefreshMissingBlessings()
@@ -847,6 +837,9 @@ local function createWindow()
     win.missingHint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.missingHint:SetJustifyH("LEFT")
     TB.SetTextColor(win.missingHint, color("warn"))
+    win.missingEntries = {}
+    win.missingMore = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    TB.SetTextColor(win.missingMore, color("muted"))
 
     win.excTitle = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     win.excTitle:SetText("Exceptions")
@@ -930,8 +923,8 @@ local function renderCell(cell, value, enabled)
         cell.icon:Show()
         cell.label:ClearAllPoints()
         cell.label:SetPoint("BOTTOM", cell, "BOTTOM", 0, 3)
-        cell.label:SetText("|c" .. (BLESSING_HEX[value] or "fff2ebd6") ..
-            (SHORT_BLESSING[value] or TB.BlessingLabel(value)) .. "|r")
+        cell.label:SetText(SHORT_BLESSING[value] or TB.BlessingLabel(value))
+        cell.label:SetTextColor(0.95, 0.92, 0.84)
     else
         cell.border:SetTexture(0.13, 0.13, 0.15, 0.85)
         cell.icon:Hide()
@@ -1053,15 +1046,68 @@ function TB.RefreshBlessings()
         win.missingHint:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -y)
         win.missingHint:SetWidth(width - PAD * 2)
         win.missingHint:SetText(cachedMissingText)
-        if string.sub(cachedMissingText, 1, 8) == "Missing:" then
-            TB.SetTextColor(win.missingHint, color("warn"))
-        else
-            TB.SetTextColor(win.missingHint, color("muted"))
-        end
+        local isMissing = cachedMissingText == "Missing:"
+        TB.SetTextColor(win.missingHint, color(isMissing and "warn" or "muted"))
         win.missingHint:Show()
+        -- 1.12 font strings cannot hold inline icons, so each entry is a
+        -- name plus icon textures laid out by hand.
+        local x, limit, shown = PAD + 54, width - PAD - 60, 0
+        for i, m in ipairs(isMissing and cachedMissing or {}) do
+            local nameWidth = string.len(m.name) * 5.5
+            local need = nameWidth + table.getn(m.blessings) * 16 + 14
+            if x + need > limit then break end
+            local entry = win.missingEntries[i]
+            if not entry then
+                entry = { name = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), icons = {} }
+                win.missingEntries[i] = entry
+            end
+            local col = TB.GetClassColor(m.classId)
+            entry.name:ClearAllPoints()
+            entry.name:SetPoint("TOPLEFT", win, "TOPLEFT", x, -y)
+            entry.name:SetText(m.name)
+            entry.name:SetTextColor(col[1], col[2], col[3])
+            entry.name:Show()
+            x = x + nameWidth + 4
+            for k, b in ipairs(m.blessings) do
+                local icon = entry.icons[k]
+                if not icon then
+                    icon = win:CreateTexture(nil, "OVERLAY")
+                    icon:SetWidth(14)
+                    icon:SetHeight(14)
+                    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    entry.icons[k] = icon
+                end
+                icon:ClearAllPoints()
+                icon:SetPoint("TOPLEFT", win, "TOPLEFT", x, -y + 1)
+                icon:SetTexture(C.BLESSING_ICONS[b])
+                icon:Show()
+                x = x + 16
+            end
+            for k = table.getn(m.blessings) + 1, table.getn(entry.icons) do entry.icons[k]:Hide() end
+            x = x + 10
+            shown = i
+        end
+        for i = shown + 1, table.getn(win.missingEntries) do
+            win.missingEntries[i].name:Hide()
+            for _, icon in ipairs(win.missingEntries[i].icons) do icon:Hide() end
+        end
+        local rest = (isMissing and table.getn(cachedMissing) or 0) - shown
+        if rest > 0 then
+            win.missingMore:ClearAllPoints()
+            win.missingMore:SetPoint("TOPLEFT", win, "TOPLEFT", x, -y)
+            win.missingMore:SetText("+" .. rest .. " more")
+            win.missingMore:Show()
+        else
+            win.missingMore:Hide()
+        end
         y = y + 16
     else
         win.missingHint:Hide()
+        win.missingMore:Hide()
+        for _, entry in ipairs(win.missingEntries) do
+            entry.name:Hide()
+            for _, icon in ipairs(entry.icons) do icon:Hide() end
+        end
     end
 
     if showPlayers then

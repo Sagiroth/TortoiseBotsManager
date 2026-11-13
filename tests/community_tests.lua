@@ -346,7 +346,7 @@ do
     assert(cells[1].word == "warrior" and cells[2].word == "paladin" and cells[3].word == "priest"
         and cells[4].word == "mage" and not cells[5].visible, "one column per class present")
     assert(not win.rows[2].name.visible, "one row per paladin bot")
-    assert(cells[1].icon.texture[1] == C.BLESSING_ICONS.might and string.find(cells[1].label.text, "Might", 1, true),
+    assert(cells[1].icon.texture[1] == C.BLESSING_ICONS.might and cells[1].label.text == "Might",
         "a blessing shows its icon and short label")
     assert(cells[3].icon.texture[1] == C.BLESSING_ICONS.wisdom, "priest gets wisdom")
     expectCommands("left click", commands(function() click(cells[1]) end), { ".bot blessing Pallybot warrior wisdom" })
@@ -558,8 +558,12 @@ do
     end
     click(win.refreshBtn)
     drainQueue()
-    assert(string.find(win.missingHint.text, playerName, 1, true)
-        and not string.find(win.missingHint.text, "Magebot", 1, true),
+    local missingNames = ""
+    for _, entry in ipairs(win.missingEntries) do
+        if entry.name.shown ~= false then missingNames = missingNames .. entry.name.text .. " " end
+    end
+    assert(win.missingHint.text == "Missing:" and string.find(missingNames, playerName, 1, true)
+        and not string.find(missingNames, "Magebot", 1, true),
         "missing hint flags player (exception Kings) and accepts Magebot's Greater Salvation")
     UnitBuff = realUnitBuff
 
