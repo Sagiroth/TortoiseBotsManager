@@ -2395,7 +2395,7 @@ end
                 local entry = this:GetParent().entry
                 if entry and TB.OpenGuildRowMenu then TB.OpenGuildRowMenu(entry.name) end
             end)
-            setButtonTooltip(moreBtn, "Cancel or move this bot's order, or release it. Right-click the row works too.", "More")
+            setButtonTooltip(moreBtn, "Cancel or move this bot's order, or release the bot from the guild. Right-clicking the row opens this menu too.", "Bot menu")
             row.moreBtn = moreBtn
 
             -- Enchant Meet: the giver's own order row shows it until the
@@ -2961,7 +2961,7 @@ end
                 local statusColor = entry.online and "|cff4ecb5a" or "|cff757575"
                 local statusStr = entry.status or (entry.online and "Online" or "Offline")
                 statusStr = string.upper(string.sub(statusStr, 1, 1)) .. string.sub(statusStr, 2)
-                if entry.group then statusColor, statusStr = "|cff42a5f5", "In party" end
+                if entry.group then statusColor, statusStr = "|cff42a5f5", "Group" end
                 row.status:SetText(statusColor .. (entry.online and "● " or "○ ") .. statusStr .. "|r")
 
                 -- Guild order line: hidden with no capability, greyed with no

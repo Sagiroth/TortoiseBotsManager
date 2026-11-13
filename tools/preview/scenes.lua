@@ -263,6 +263,18 @@ scene("dungeon", function()
     tab("dungeon", nil)
     dump("dungeon", { main, TB.runWindow }, "Dungeon tab and run window")
 end)
+scene("run", function()
+    tab("dungeon", nil)
+    TB.OpenRunWindow()
+    feed({
+        "Dungeon plans: deadmines (map 36, 28 steps), uldaman (map 70, 41 steps, 2 not supported yet), stratholme (map 329, 54 steps)",
+        "TBM:ACTION_ACK|run list|plans|3|-",
+        "TBM:RUN|uldaman|running|12/41|1|pull|fighting|Clearing Stonevault room",
+    })
+    tick(1)
+    dump("run", { main, TB.runWindow }, "Dungeon run window")
+    TB.CloseRunWindow()
+end)
 scene("raid", function()
     Mock.world.raid = 12
     tab("raid", nil)
