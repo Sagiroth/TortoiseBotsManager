@@ -337,19 +337,71 @@ end)
 scene("blessings", function()
     table.insert(Mock.world.party, { name = "Kaelthor", class = "Paladin", level = 60 })
     feed({
-        "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service,blessing",
+        "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service,blessing,choice,blessing-player",
         "TBM:BOTSTATE|Kaelthor|move=follow,loot=on",
+        "TBM:CHOICE|Kaelthor|aura=devotion aura,known=devotion aura+retribution aura+concentration aura+shadow resistance aura",
         "TBM:BLESSING|Kaelthor|warrior=kings,paladin=kings,hunter=might,rogue=might,priest=wisdom,shaman=wisdom,"
-            .. "mage=wisdom,warlock=auto,druid=light,known=might+wisdom+kings+light",
+            .. "mage=wisdom,warlock=auto,druid=light,known=might+wisdom+kings+light,players=Valguard:might",
     })
     local gw = Mock.frames["TortoiseBotsManagerGroupWatcher"]
     event = "PARTY_MEMBERS_CHANGED"; this = gw; gw.scripts.OnEvent(gw)
     tab("party", nil)
     TB.OpenBlessings()
     tick(1)
-    dump("blessings", { main, TB.blessingsWindow }, "Party tab with the blessing grid")
+    dump("blessings", { main, TB.blessingsWindow }, "Party tab with the blessing board (1 paladin)")
+    TB.CloseBlessings()
     table.remove(Mock.world.party)
     event = "PARTY_MEMBERS_CHANGED"; this = gw; gw.scripts.OnEvent(gw)
+end)
+scene("blessings-raid", function()
+    local raidRoster = {
+        { name = "Valguard", class = "Warrior" },
+        { name = "Kaelthor", class = "Paladin" },
+        { name = "Sunblade", class = "Paladin" },
+        { name = "Lightward", class = "Paladin" },
+        { name = "Swiftarrow", class = "Hunter" },
+        { name = "Shadeblade", class = "Rogue" },
+        { name = "Seraphine", class = "Priest" },
+        { name = "Grimtotem", class = "Shaman" },
+        { name = "Vexmora", class = "Mage" },
+        { name = "Dreadcoil", class = "Warlock" },
+        { name = "Bramblewood", class = "Druid" },
+    }
+    local realName, realClass = UnitName, UnitClass
+    Mock.world.raid = table.getn(raidRoster)
+    UnitName = function(u)
+        local _, _, idx = string.find(u or "", "^raid(%d+)$")
+        local r = idx and raidRoster[tonumber(idx)]
+        return r and r.name or realName(u)
+    end
+    UnitClass = function(u)
+        local _, _, idx = string.find(u or "", "^raid(%d+)$")
+        local r = idx and raidRoster[tonumber(idx)]
+        if r then return r.class, string.upper(r.class) end
+        return realClass(u)
+    end
+    feed({
+        "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service,blessing,choice,blessing-player",
+        "TBM:BOTSTATE|Kaelthor|move=follow,loot=on",
+        "TBM:BOTSTATE|Sunblade|move=follow,loot=on",
+        "TBM:BOTSTATE|Lightward|move=follow,loot=on",
+        "TBM:CHOICE|Kaelthor|aura=devotion aura,known=devotion aura+retribution aura+concentration aura",
+        "TBM:CHOICE|Sunblade|aura=concentration aura,known=devotion aura+concentration aura+shadow resistance aura",
+        "TBM:CHOICE|Lightward|aura=auto,known=devotion aura+retribution aura",
+        "TBM:BLESSING|Kaelthor|warrior=might,paladin=wisdom,hunter=might,rogue=might,priest=wisdom,shaman=wisdom,"
+            .. "mage=wisdom,warlock=wisdom,druid=wisdom,known=might+wisdom+kings+salvation+sanctuary+light,players=Valguard:sanctuary",
+        "TBM:BLESSING|Sunblade|warrior=kings,paladin=kings,hunter=kings,rogue=kings,priest=kings,shaman=kings,"
+            .. "mage=kings,warlock=kings,druid=kings,known=might+wisdom+kings+salvation+light",
+        "TBM:BLESSING|Lightward|warrior=auto,paladin=might,hunter=salvation,rogue=salvation,priest=salvation,shaman=might,"
+            .. "mage=salvation,warlock=salvation,druid=might,known=might+wisdom+salvation+light",
+    })
+    tab("party", nil)
+    TB.OpenBlessings()
+    tick(1)
+    dump("blessings-raid", { main, TB.blessingsWindow }, "Blessing board in a 9-class raid (3 paladins)")
+    TB.CloseBlessings()
+    Mock.world.raid = 0
+    UnitName, UnitClass = realName, realClass
 end)
 scene("npc", function()
     tab("party", nil)
