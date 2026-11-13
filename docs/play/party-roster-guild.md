@@ -47,15 +47,20 @@ repaints from the next bot-state reply.
 
 ### Blessings
 
-With a paladin bot in your party or raid and a server that lists the `blessing` capability, a **Blessings** button appears at the bottom of the Party tab. It opens a small grid: one row per paladin bot, one column per class present in the group (you count too). Each cell shows the blessing that paladin gives that class, as the spell icon, or **Auto** when the paladin chooses.
+With a paladin bot in your party or raid and a server that lists the `blessing` capability, a **Blessings** button appears at the bottom of the Party tab. It opens the blessing assignment board: one row per paladin bot, one column per class present in the group (you count too, with class-coloured names), and an **Aura** column when the server lists the `choice` capability. Each cell shows the blessing icon and short name (**Might**, **Wisdom**, **Kings**, **Salv**, **Sanc**, **Light**), or dimmed **Auto** when the paladin chooses.
 
-- **Left-click** a cell for the next blessing, **right-click** for the previous one. The cycle is **Auto** plus the blessings that paladin has trained; the cell waits for the server's answer before it can be clicked again.
-- The grid asks the server when it opens and again after the group changes while it is open. It closes by itself when the last paladin bot leaves.
+- **Left-click** a cell for the next blessing or aura, **right-click** for the previous one. The cycle is **Auto** plus the spells that paladin has trained; the cell waits for the server's answer before it can be clicked again.
+- **Auto assign** spreads trained blessings across the paladins in the group (Might for physical classes, Wisdom for casters and hybrids, Kings for a second paladin, Salvation for a third except warriors, then Light/Sanctuary) and only sends cells that change. **Clear** resets every cell back to **Auto**.
+- **Refresh** re-asks the server and updates the missing-blessing line, which lists group members who currently lack a non-Auto blessing ordered for them.
+- **Exceptions** (when the server lists `blessing-player`): overrides a single player's blessing from a chosen paladin, taking precedence over that player's class column. Target a group member and click **Exception for target** (or pick from the group list if nothing is targeted), and click **x** to remove an exception.
+- The board asks the server when it opens and again after the group changes while it is open. It closes by itself when the last paladin bot leaves.
 
 | Click | Sends |
 | :--- | :--- |
-| Blessings (open, group change) | `.bot blessing party status` (`raid` inside a raid) |
-| A cell | `.bot blessing <paladin> <class> <might\|wisdom\|kings\|salvation\|sanctuary\|light\|auto>` |
+| Blessings (open, group change, Refresh) | `.bot blessing party status` (`raid` inside a raid) |
+| A blessing cell | `.bot blessing <paladin> <class> <might\|wisdom\|kings\|salvation\|sanctuary\|light\|auto>` |
+| An Aura cell | `.bot choice <paladin> aura <aura\|auto>` |
+| Add / remove exception | `.bot blessing <paladin> player <name> <blessing\|auto>` |
 
 The server refuses a blessing the paladin has not learned and says so in the status line and the Log tab.
 

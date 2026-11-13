@@ -346,8 +346,8 @@ do
     assert(cells[1].word == "warrior" and cells[2].word == "paladin" and cells[3].word == "priest"
         and cells[4].word == "mage" and not cells[5].visible, "one column per class present")
     assert(not win.rows[2].name.visible, "one row per paladin bot")
-    assert(cells[1].icon.texture[1] == C.BLESSING_ICONS.might and cells[1].label.text == "",
-        "a blessing shows its icon")
+    assert(cells[1].icon.texture[1] == C.BLESSING_ICONS.might and cells[1].label.text == "Might",
+        "a blessing shows its icon and short label")
     assert(cells[3].icon.texture[1] == C.BLESSING_ICONS.wisdom, "priest gets wisdom")
     expectCommands("left click", commands(function() click(cells[1]) end), { ".bot blessing Pallybot warrior wisdom" })
     assert(not cells[1].enabled, "the cell waits for the reply")
@@ -434,6 +434,123 @@ do
     GetNumRaidMembers, UnitName, UnitClass = realRaid, realUnitName, realUnitClass
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
     for index = 1, 8 do TB.OnSystemMessage("TBM:BOTSTATE|Pal" .. index .. "|move=follow") end
+end
+
+-- ── blessing assignment board: auto-assign, clear, aura, missing, player exceptions ──
+do
+    local fullKnown = { "might", "wisdom", "kings", "salvation", "sanctuary", "light" }
+    local noKings = { "might", "wisdom", "salvation", "sanctuary", "light" }
+
+    -- 1 paladin
+    local p1 = TB.ComputeAutoBlessings({ "P1" }, { P1 = { known = fullKnown } })
+    assert(p1.P1.warrior == "might" and p1.P1.rogue == "might" and p1.P1.hunter == "might",
+        "1 paladin: physical classes get Might")
+    assert(p1.P1.mage == "wisdom" and p1.P1.warlock == "wisdom" and p1.P1.priest == "wisdom",
+        "1 paladin: casters get Wisdom")
+    assert(p1.P1.paladin == "wisdom" and p1.P1.druid == "wisdom" and p1.P1.shaman == "wisdom",
+        "1 paladin: hybrids get Wisdom first")
+
+    -- 2 paladins
+    local p2 = TB.ComputeAutoBlessings({ "P1", "P2" }, { P1 = { known = fullKnown }, P2 = { known = fullKnown } })
+    assert(p2.P1.warrior == "might" and p2.P2.warrior == "kings", "2 paladins: warrior gets Might + Kings")
+    assert(p2.P1.mage == "wisdom" and p2.P2.mage == "kings", "2 paladins: mage gets Wisdom + Kings")
+    assert(p2.P1.druid == "wisdom" and p2.P2.druid == "kings", "2 paladins: hybrid gets Wisdom + Kings")
+
+    -- 3 paladins (warriors skip Salvation)
+    local p3 = TB.ComputeAutoBlessings({ "P1", "P2", "P3" },
+        { P1 = { known = fullKnown }, P2 = { known = fullKnown }, P3 = { known = fullKnown } })
+    assert(p3.P1.warrior == "might" and p3.P2.warrior == "kings" and p3.P3.warrior == "sanctuary",
+        "3 paladins: warrior gets Might, Kings, Sanctuary (no Salvation)")
+    assert(p3.P1.rogue == "might" and p3.P2.rogue == "kings" and p3.P3.rogue == "salvation",
+        "3 paladins: rogue gets Might, Kings, Salvation")
+    assert(p3.P1.mage == "wisdom" and p3.P2.mage == "kings" and p3.P3.mage == "salvation",
+        "3 paladins: mage gets Wisdom, Kings, Salvation")
+    assert(p3.P1.paladin == "wisdom" and p3.P2.paladin == "kings" and p3.P3.paladin == "might",
+        "3 paladins: hybrid gets Wisdom, Kings, Might")
+
+    -- 4 paladins
+    local p4 = TB.ComputeAutoBlessings({ "P1", "P2", "P3", "P4" },
+        { P1 = { known = fullKnown }, P2 = { known = fullKnown }, P3 = { known = fullKnown }, P4 = { known = fullKnown } })
+    assert(p4.P4.warrior == "light" and p4.P4.rogue == "light" and p4.P4.mage == "light"
+        and p4.P4.paladin == "salvation", "4 paladins: fourth fills Light / Salvation")
+
+    -- Paladin missing Kings: P2 lacks Kings, P1 has Kings -> P1 takes Kings, P2 takes Might/Wisdom
+    local pm = TB.ComputeAutoBlessings({ "P1", "P2" }, { P1 = { known = fullKnown }, P2 = { known = noKings } })
+    assert(pm.P2.warrior == "might" and pm.P1.warrior == "kings",
+        "missing Kings: paladin with Kings is assigned Kings")
+    assert(pm.P2.mage == "wisdom" and pm.P1.mage == "kings",
+        "missing Kings: caster still gets Wisdom + Kings")
+
+    local playerName = UnitName("player")
+    -- Player exception parsing and command builder
+    local exLine = "TBM:BLESSING|Pallybot|warrior=might,paladin=auto,hunter=auto,rogue=auto,"
+        .. "priest=wisdom,shaman=auto,mage=auto,warlock=auto,druid=auto,known=might+wisdom+kings,players="
+        .. playerName .. ":kings+Magebot:salvation"
+    local parsedEx = TB.ParseBlessingLine(exLine)
+    assert(parsedEx and parsedEx.players[playerName] == "kings" and parsedEx.players.Magebot == "salvation",
+        "ParseBlessingLine reads players= exceptions")
+    assert(TB.BuildBlessingPlayerCommand("Pallybot", "Valguard", "kings") == "blessing Pallybot player Valguard kings"
+        and TB.BuildBlessingPlayerCommand("Pallybot", "Valguard", "auto") == "blessing Pallybot player Valguard auto"
+        and TB.BuildBlessingPlayerCommand("Pallybot", "Valguard", "bogus") == nil,
+        "player exception commands are validated")
+
+    -- UI integration: Auto assign, Clear, Aura column, Missing hint, Exceptions
+    setParty({ "Pallybot", "Magebot" }, "Warrior")
+    local realUnitClass = UnitClass
+    local classesByUnit = { player = "Warrior", party1 = "Paladin", party2 = "Mage" }
+    UnitClass = function(u)
+        local c = classesByUnit[u] or "Warrior"
+        return c, string.upper(c)
+    end
+    TB.OnSystemMessage("TBM:CAPS|blessing")
+    TB.OnSystemMessage("TBM:BOTSTATE|Pallybot|move=follow")
+    assert(TB.OpenBlessings())
+    drainQueue()
+    local win = TB.blessingsWindow
+    assert(not win.auraHead.visible and not win.rows[1].aura.visible, "Aura column hidden without choice cap")
+    assert(not win.excTitle.visible and not win.excAddBtn.visible, "Exceptions hidden without blessing-player cap")
+
+    TB.OnSystemMessage("TBM:CAPS|blessing,choice,blessing-player")
+    TB.OnSystemMessage("TBM:CHOICE|Pallybot|aura=devotion aura,known=devotion aura+concentration aura")
+    TB.OnSystemMessage(exLine)
+    assert(win.auraHead.visible and win.rows[1].aura.visible, "Aura column shown with choice cap")
+    assert(win.rows[1].aura.label.text == "Devotion", "Aura cell shows compact aura name")
+    assert(win.excTitle.visible and win.excRows[1].text.visible, "Exceptions list shown with blessing-player cap")
+
+    expectCommands("aura cycle", commands(function() click(win.rows[1].aura) end),
+        { ".bot choice Pallybot aura concentration aura" })
+    expectCommands("remove exception", commands(function() click(win.excRows[1].remove) end),
+        { ".bot blessing Pallybot player Magebot auto" })
+    TB.OnSystemMessage(exLine)
+
+    -- Auto assign sends only changed cells (warrior is already might, paladin/mage change from auto)
+    expectCommands("auto assign", commands(function() click(win.autoBtn) end), {
+        ".bot blessing Pallybot paladin wisdom",
+        ".bot blessing Pallybot mage wisdom",
+    })
+    -- Clear sends only non-auto cells back to auto (warrior is might, priest is wisdom, others are auto)
+    TB.OnSystemMessage(exLine)
+    expectCommands("clear blessings", commands(function() click(win.clearBtn) end), {
+        ".bot blessing Pallybot warrior auto",
+        ".bot blessing Pallybot priest auto",
+    })
+
+    -- Missing-blessing hint via UnitBuff (Auto not judged; player exception wins)
+    local realUnitBuff = UnitBuff
+    UnitBuff = function(unit, idx)
+        if unit == "party2" and idx == 1 then return "Interface\\Icons\\Spell_Holy_GreaterBlessingofSalvation" end
+        return nil
+    end
+    click(win.refreshBtn)
+    drainQueue()
+    assert(string.find(win.missingHint.text, playerName, 1, true)
+        and not string.find(win.missingHint.text, "Magebot", 1, true),
+        "missing hint flags player (exception Kings) and accepts Magebot's Greater Salvation")
+    UnitBuff = realUnitBuff
+
+    TB.CloseBlessings()
+    UnitClass = realUnitClass
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
 end
 
 -- ── target-a-bot shortcut: key binding target, button, setting ──

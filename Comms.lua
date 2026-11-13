@@ -387,7 +387,9 @@ function TB.ParseBotPanelMessage(msg)
         return true
     end
     if string.sub(msg, 1, 11) == "TBM:CHOICE|" then
-        if TB.ConsumeChoiceLine then TB.ConsumeChoiceLine(msg) end
+        if TB.ConsumeChoiceLine and TB.ConsumeChoiceLine(msg) then
+            if TB.RefreshBlessings then TB.RefreshBlessings() end
+        end
         return true
     end
     if string.sub(msg, 1, 10) == "TBM:TOTEM|" then
