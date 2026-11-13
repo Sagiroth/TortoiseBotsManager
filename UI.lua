@@ -1275,8 +1275,8 @@ local function BuildCcMenu(parent, buttons)
 end
 
 local function BuildEngageCard(parent, buttons)
-    -- Fight: Engage (attack, stop, interrupt, flee)
-    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 48, { y = -40, line = true })
+    -- Fight: Combat (attack, stop, interrupt, flee)
+    local card = TB.UI.CreateCard(parent, "COMBAT", W - (C.PAD or 10) * 2, 48, { y = -40, line = true })
     local btnY = -22
     buttons.attack    = makeActionButton(card, "attack", 110, 8, btnY)
     buttons.stop      = makeActionButton(card, "stop", 110, 126, btnY)
@@ -1426,8 +1426,20 @@ local function BuildSwitchesCard(parent, buttons)
             btn:SetHeight(22)
             if btn.icon then btn.icon:Show() end
             btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
-            setButtonTooltip(btn, def.tip .. " Click to switch for the whole party (or only the targeted bot).",
-                def.label)
+            btn:SetScript("OnEnter", function()
+                if not GameTooltip then return end
+                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                GameTooltip:SetText(this.toggle.label, 1, 0.82, 0)
+                GameTooltip:AddLine(this.toggle.tip, 1, 1, 1, 1)
+                local st = this.switchState
+                local stateWord = st == "on" and "On"
+                    or (st == "off" and "Off"
+                    or (st == "mixed" and "Mixed (~, bots differ)" or "Not yet known"))
+                GameTooltip:AddLine("State: " .. stateWord, 0.9, 0.9, 0.9, 1)
+                GameTooltip:AddLine("Click to switch for the whole party (or only the targeted bot).", 0.85, 0.85, 0.85, 1)
+                GameTooltip:Show()
+            end)
+            btn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
             TB.toggleButtons[def.toggle] = btn
             switchIdx = switchIdx + 1
         end
@@ -3436,6 +3448,7 @@ end
 -- text when off, gold text with "~" when the bots disagree. Colour codes in
 -- the text hold through hover and press.
 local function paintSwitch(btn, label, state)
+    btn.switchState = state
     if state == "on" then
         btn:SetText("|cffffffff" .. label .. "|r")
     elseif state == "mixed" then

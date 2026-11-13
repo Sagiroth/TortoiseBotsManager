@@ -1248,7 +1248,17 @@ local function createPanel()
         chip.lamp = chip:CreateTexture(nil, "OVERLAY")
         chip.lamp:SetWidth(8); chip.lamp:SetHeight(8)
         chip.lamp:SetPoint("RIGHT", chip, "RIGHT", -8, 0)
-        setTooltip(chip, def.label, { def.tip, "Click to switch on/off." })
+        chip:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+            GameTooltip:SetText(this.def.label)
+            GameTooltip:AddLine(this.def.tip, 0.9, 0.9, 0.9, 1)
+            local stateWord = this.state == "on" and "On"
+                or (this.state == "off" and "Off" or "Not yet known")
+            GameTooltip:AddLine("State: " .. stateWord, 0.9, 0.9, 0.9, 1)
+            GameTooltip:AddLine("Click to switch on/off.", 0.9, 0.9, 0.9, 1)
+            GameTooltip:Show()
+        end)
+        chip:SetScript("OnLeave", function() GameTooltip:Hide() end)
         chip:SetScript("OnClick", function()
             if currentBot then TB.SendBehavior(currentBot, this.def.key) end
         end)
@@ -1689,9 +1699,10 @@ local function renderBehavior()
             -- Two columns, reflowed so a hidden chip leaves no hole.
             chip:ClearAllPoints()
             chip:SetPoint("TOPLEFT", panel, "TOPLEFT", 12 + math.mod(shown, 2) * 156,
-                -98 - math.floor(shown / 2) * 30)
+                -96 - math.floor(shown / 2) * 28)
             shown = shown + 1
             chip:Show()
+            chip.state = value
             local stateText = value == "on" and "On" or (value == "off" and "Off" or "?")
             chip:SetText(chip.def.label .. ": " .. stateText)
             if value == "on" then chip.lamp:SetTexture(0.30, 0.90, 0.45, 1)
@@ -1701,9 +1712,9 @@ local function renderBehavior()
         end
     end
     panel.behaviorHint:ClearAllPoints()
-    local hintY = -108 - math.ceil(shown / 2) * 30
+    local hintY = -98 - math.ceil(shown / 2) * 28
     panel.behaviorHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, hintY)
-    local choiceTop = hintY - 26
+    local choiceTop = hintY - 20
     if TB.RenderTotemBlock then TB.RenderTotemBlock(currentBot, classId, choiceTop) end
     if TB.RenderChoiceBlock then TB.RenderChoiceBlock(currentBot, classId, choiceTop) end
 end

@@ -204,8 +204,8 @@ do
         .. "mode=auto,known=stoneskin totem+strength of earth totem+searing totem+mana spring totem+windfury totem")
     assert(block.slots.earth.text == "Earth: Strength of Earth" and block.slots.fire.text == "Fire: Searing"
         and block.slots.water.text == "Water: Auto" and block.slots.air.text == "Air: Auto"
-        and block.mode.text == "Drop: Auto" and block.slots.earth.enabled, "the reply fills the controls")
-    assert(block.preset.text == "Melee group" and block.apply.enabled, "the first preset shows")
+        and block.mode.text == "When: Auto" and block.slots.earth.enabled, "the reply fills the controls")
+    assert(block.preset.text == "Preset: Melee group" and block.apply.enabled, "the first preset shows")
 
     local rows = {}
     assert(TB.BuildTotemSlotMenu("Thrallbot", "earth", function(info) table.insert(rows, info) end) == 3
@@ -240,7 +240,7 @@ do
         TB.OnSystemMessage("TBM:ACTION_ACK|totem set|party|2|-")
     end), {})
     click(block.preset)
-    assert(block.preset.text == "Caster group", "the preset button picks the next preset")
+    assert(block.preset.text == "Preset: Caster group", "the preset button picks the next preset")
     expectCommands("apply caster", commands(function() click(block.apply) end),
         { ".bot totem Thrallbot set stoneskin totem,searing totem,mana spring totem,grace of air totem" })
     TB.OnSystemMessage("TBM:ACTION_ERR|totem set|invalid|bad totem")
@@ -258,7 +258,7 @@ do
     local saved = TB.FindTotemPreset("My totems")
     assert(saved and saved.earth == "stoneskin totem" and saved.air == "none" and saved.water == "auto"
         and saved.fire == "searing totem", "Save stores the shaman's current four slots")
-    assert(block.preset.text == "My totems", "the saved preset shows")
+    assert(block.preset.text == "Preset: My totems", "the saved preset shows")
     click(block.delete)
     assert(not TB.FindTotemPreset("My totems"), "Delete removes the shown preset")
 

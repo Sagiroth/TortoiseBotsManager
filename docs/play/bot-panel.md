@@ -88,12 +88,12 @@ On a shaman's Behaviour view a totem block sits under the switches. Opening the 
 | Control | What it does | Sends |
 | :--- | :--- | :--- |
 | Earth, Fire, Water, Air | Click to pick **Auto** or one of that slot's totems. Only totems the bot has trained are listed (an older server that does not say lists them all). The row shows what the server reports. | `.bot totem <bot> <slot> <totem\|auto>` |
-| Drop | Click to cycle **Auto**, **Before the pull**, **Only on order**. | `.bot totem <bot> mode <auto\|prepull\|manual>` |
+| When | Click to cycle **Auto**, **Before the pull**, **Only on order**. | `.bot totem <bot> mode <auto\|prepull\|manual>` |
 | Preset | Click to show the next saved preset. Two come with the addon, **Melee group** (Strength of Earth, Searing, Mana Spring, Windfury) and **Caster group** (Stoneskin, Searing, Mana Spring, Grace of Air); you can overwrite or delete them. | none |
 | Apply | Sets this shaman's four totems to the shown preset. | `.bot totem <bot> set <earth>,<fire>,<water>,<air>` |
 | Apply all | The same for every shaman in your party. | `.bot totem party set <earth>,<fire>,<water>,<air>` |
-| Save | Asks for a name and stores this shaman's four slots under it; a name that exists is overwritten. | none |
-| Delete | Removes the shown preset. | none |
+| Save preset | Asks for a name and stores this shaman's four slots under it; a name that exists is overwritten. | none |
+| Delete preset | Removes the shown preset. | none |
 
 Presets are kept on your computer (the addon's saved variables), not on the server. A slot with a chosen totem never switches by itself, except Tremor Totem, which may take the earth slot while the group is feared and then gives it back. The **Drop totems** button on the Camp tab still drops every shaman's totems right now.
 

@@ -258,6 +258,12 @@ end
 -- Built once with the panel; RenderChoiceBlock places and shows it.
 function TB.CreateChoiceBlock(panel, parent)
     block = { kinds = {} }
+    local heading = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    heading:SetText("Class")
+    local titleCol = C.COLOR and C.COLOR.title or { 0.85, 0.65, 0.34 }
+    TB.SetTextColor(heading, titleCol)
+    heading:Hide()
+    block.heading = heading
     for i = 1, MAX_CHOICES do
         local b = makeButton(parent, 12, PANEL_W - 24)
         b.slot = i
@@ -284,7 +290,7 @@ local function setTooltip(button, title, lines)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
--- `top` is the y offset (negative, from the panel's top) of the first row.
+-- `top` is the y offset (negative, from the panel's top) of the heading.
 -- Returns the y offset just below the block (for stacking callers).
 function TB.RenderChoiceBlock(bot, classId, top)
     if not block then return top end
@@ -295,26 +301,37 @@ function TB.RenderChoiceBlock(bot, classId, top)
         for i = 1, MAX_CHOICES do table.insert(trimmed, kinds[i]) end
         kinds = trimmed
     end
+    local visibleCount = 0
     for i, b in ipairs(block.kinds) do
         local kind = kinds[i]
-        if show and kind then
+        if show and kind and (not TB.ChoiceKindWanted or TB.ChoiceKindWanted(kind, classId)) then
             local snapshot = TB.GetChoice(bot, kind)
             b.choiceKind = kind
             b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", b:GetParent(), "TOPLEFT", b.x, top - (i - 1) * ROW_STEP)
+            b:SetPoint("TOPLEFT", b:GetParent(), "TOPLEFT", b.x, top - 16 - visibleCount * ROW_STEP)
             b:SetText(TB.ChoiceKindLabel(kind) .. ": " .. TB.ChoiceLabel(kind, snapshot and snapshot.value or nil))
             setTooltip(b, TB.ChoiceKindLabel(kind), {
                 "Click to pick the " .. string.lower(TB.ChoiceKindLabel(kind)) .. " this bot uses.",
                 "Auto lets the bot decide.",
             })
             setEnabled(b, snapshot)
-            if TB.ChoiceKindWanted and not TB.ChoiceKindWanted(kind, classId) then b:Hide() else b:Show() end
+            b:Show()
+            visibleCount = visibleCount + 1
         else
             b:Hide()
         end
     end
-    if not show or table.getn(kinds) == 0 then return top end
-    return top - table.getn(kinds) * ROW_STEP - 4
+    if block.heading then
+        if visibleCount > 0 then
+            block.heading:ClearAllPoints()
+            block.heading:SetPoint("TOPLEFT", block.heading:GetParent(), "TOPLEFT", 12, top)
+            block.heading:Show()
+        else
+            block.heading:Hide()
+        end
+    end
+    if visibleCount == 0 then return top end
+    return top - 16 - visibleCount * ROW_STEP - 4
 end
 
 -- Whether a kind's control shows for a bot: a known kind only for its

@@ -37,10 +37,10 @@ A tank pick sends `.bot role <bot> tank`; other picks send `.bot strategy <specs
 ### Bots
 
 Next to **Blessings**, a **Bots** button opens one compact row per party bot:
-its name with class colour and role, up to four of the switches that matter
-in a fight (Hold position, No dungeon Blink, then Loot, AoE, Auto CC, Save
-mana, Cooldowns, Watch threat and Potions — whichever the bot panel
-Behaviour view shows for that bot), and a **Controls** button that opens the
+its name with class colour and role, fixed columns for the common fight
+switches (**Hold position**, **Loot corpses**, **AoE spells**, **Auto CC**)
+plus a **Class** column (for example **No dungeon Blink** on a mage, empty
+for other classes), and a **Controls** button that opens the
 full [bot panel](bot-panel.md). A chip click sends the same
 `.bot behavior <bot> <key> on|off` the Behaviour view sends, and the row
 repaints from the next bot-state reply.

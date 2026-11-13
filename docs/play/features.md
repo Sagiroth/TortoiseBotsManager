@@ -21,9 +21,9 @@ Every feature, where to find it, and what the server needs. "Always" means any T
 
 | Feature | Where | Needs | Addon page | Module page |
 | :--- | :--- | :--- | :--- | :--- |
-| Attack, stop, interrupt | Fight | Always | [Engage](fight-and-camp.md#engage) | [party actions](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md) |
+| Attack, stop, interrupt | Fight | Always | [Combat](fight-and-camp.md#combat) | [party actions](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md) |
 | My pull (you pull, bots hold fire, then join) | Fight | `engage` | [Pull and focus](fight-and-camp.md#pull-and-focus) | [engage](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-engage) |
-| Flee | Fight | `flee` | [Engage](fight-and-camp.md#engage) | [flee](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-flee) |
+| Flee | Fight | `flee` | [Combat](fight-and-camp.md#combat) | [flee](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-flee) |
 | Pull and pullback with timers | Fight | Timers need `pull-seconds` | [Pull and focus](fight-and-camp.md#pull-and-focus) | [pullback](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/dungeons-and-raids.md#the-pullback-maneuver) |
 | Focus Skull, CC marks | Fight | Always | [Pull and focus](fight-and-camp.md#pull-and-focus) | [crowd control](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/dungeons-and-raids.md#crowd-control-protocol) |
 | Follow, stay, come, guard, free, stances | Fight | Always | [Move](fight-and-camp.md#move) | [movement](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#direct-movement-and-party-commands) |

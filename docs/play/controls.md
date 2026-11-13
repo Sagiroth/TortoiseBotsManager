@@ -26,7 +26,7 @@ Under **Key Bindings → TortoiseBots Manager** in the game menu:
 
 | Binding | Same as |
 | :--- | :--- |
-| Attack target, Stop combat, Interrupt target, Flee | Fight → Engage |
+| Attack target, Stop combat, Interrupt target, Flee | Fight → Combat |
 | Pull target, Pull target back (with your pull timers), Focus skull | Fight → Pull and focus |
 | Follow, Stay, Come and hold | Fight → Move |
 | Mini favourite 1–12 | The favourite in that slot on the mini bar (a bound key shows on the button and in its tooltip) |

@@ -12,14 +12,16 @@ local COL = C.COLOR or {}
 
 local CAP = "choice"
 local NAME_W = 92
-local CHIP_W = 128
+local CHIP_W = 124
 local CHIP_H = 20
 local CHIP_STEP = 22
 local ROW_STEP = 28
 local MAX_ROWS = 5
-local ROWS_TOP = 44
+local HEADER_TOP = 32
+local ROWS_TOP = 50
 local PAD = 12
-local WIN_W = PAD * 2 + NAME_W + 4 * CHIP_W + 5 * 4 + 76
+local NUM_COLS = 5
+local WIN_W = PAD * 2 + NAME_W + NUM_COLS * CHIP_W + (NUM_COLS + 1) * 4 + 76
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
 local function color(name) return COL[name] or { 1, 1, 1 } end
@@ -62,26 +64,43 @@ function TB.GetOverviewGroup()
     return overviewGroup()
 end
 
--- The chips that matter in a fight, in Behaviour-view order: Hold position,
--- No dungeon Blink, then the fight switches the bot panel already shows
--- (Loot, AoE, Auto CC, Save mana, Cooldowns, Watch threat, Potions). Max
--- four per row. Uses the same definitions, so labels and tips match.
-local FIGHT_KEYS = { "hold", "noblink", "loot", "aoe", "autocc", "savemana", "boost", "threat", "potions" }
+-- Fixed columns so every bot's switches align top to bottom: four common
+-- switches first, then the class-specific column (empty for other classes).
+local COMMON_KEYS = { "hold", "loot", "aoe", "autocc" }
+local CLASS_KEYS = { "noblink" }
+local COL_HEADERS = { "Hold", "Loot", "AoE", "Auto CC", "Class" }
+
+local function byKeyDefs()
+    local byKey = {}
+    for _, def in ipairs(C.BEHAVIORS or {}) do byKey[def.key] = def end
+    return byKey
+end
+
+local function rowColumns(name, classId)
+    local byKey = byKeyDefs()
+    local st = TB.GetBotState and TB.GetBotState(name) or nil
+    local cols = {}
+    local function pick(key, col)
+        local def = byKey[key]
+        if not def then return end
+        local shown = true
+        if TB.BehaviorChipShown then
+            shown = TB.BehaviorChipShown(def, st, classId)
+        end
+        if shown then cols[col] = def end
+    end
+    for col, key in ipairs(COMMON_KEYS) do pick(key, col) end
+    for _, key in ipairs(CLASS_KEYS) do
+        if not cols[NUM_COLS] then pick(key, NUM_COLS) end
+    end
+    return cols
+end
 
 function TB.OverviewChips(name, classId)
     local defs = {}
-    local byKey = {}
-    for _, def in ipairs(C.BEHAVIORS or {}) do byKey[def.key] = def end
-    local st = TB.GetBotState and TB.GetBotState(name) or nil
-    for _, key in ipairs(FIGHT_KEYS) do
-        local def = byKey[key]
-        if def and table.getn(defs) < 4 then
-            local shown = true
-            if TB.BehaviorChipShown then
-                shown = TB.BehaviorChipShown(def, st, classId)
-            end
-            if shown then table.insert(defs, def) end
-        end
+    local cols = rowColumns(name, classId)
+    for col = 1, NUM_COLS do
+        if cols[col] then table.insert(defs, cols[col]) end
     end
     return defs
 end
@@ -91,7 +110,7 @@ local function createRow(parent)
     row.name = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.name:SetWidth(NAME_W); row.name:SetJustifyH("LEFT")
     row.chips = {}
-    for i = 1, 4 do
+    for i = 1, NUM_COLS do
         local chip = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
         chip:SetWidth(CHIP_W); chip:SetHeight(CHIP_H)
         chip.lamp = chip:CreateTexture(nil, "OVERLAY")
@@ -102,6 +121,9 @@ local function createRow(parent)
             GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
             GameTooltip:SetText(this.def.label)
             GameTooltip:AddLine(this.def.tip, 0.9, 0.9, 0.9, 1)
+            local stateWord = this.state == "on" and "On"
+                or (this.state == "off" and "Off" or "Not yet known")
+            GameTooltip:AddLine("State: " .. stateWord, 0.9, 0.9, 0.9, 1)
             GameTooltip:AddLine("Click to switch on/off.", 0.9, 0.9, 0.9, 1)
             GameTooltip:Show()
         end)
@@ -147,12 +169,32 @@ local function createWindow()
     TB.StyleCloseButton(close, -7, -6)
     close:SetScript("OnClick", function() TB.CloseBots() end)
 
+    win.headers = {}
+    local botHeader = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    botHeader:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -HEADER_TOP)
+    botHeader:SetWidth(NAME_W); botHeader:SetJustifyH("LEFT")
+    botHeader:SetText("BOT")
+    TB.SetTextColor(botHeader, color("muted"))
+    table.insert(win.headers, botHeader)
+    for col = 1, NUM_COLS do
+        local hdr = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        hdr:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + 4 + (col - 1) * (CHIP_W + 4), -HEADER_TOP)
+        hdr:SetWidth(CHIP_W); hdr:SetJustifyH("CENTER")
+        hdr:SetText(string.upper(COL_HEADERS[col] or ""))
+        TB.SetTextColor(hdr, color("muted"))
+        table.insert(win.headers, hdr)
+    end
+
     win.rows = {}
     for r = 1, MAX_ROWS do win.rows[r] = createRow(win) end
     win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.hint:SetJustifyH("LEFT")
     win.hint:SetText("One row per party bot. Chips switch the same behaviour as the bot panel.")
     TB.SetTextColor(win.hint, color("muted"))
+    win.legend = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.legend:SetJustifyH("LEFT")
+    win.legend:SetText("Lamps: |cff4de673green|r = on · |cff8c8c8cgrey|r = off · |cfff2b847amber|r = not yet known")
+    TB.SetTextColor(win.legend, color("muted"))
     win:Hide()
     TB.botsWindow = win
 end
@@ -162,7 +204,7 @@ function TB.RefreshBots()
     local bots, classIds = overviewGroup()
     local rowCount = math.min(table.getn(bots), MAX_ROWS)
     win:SetWidth(WIN_W)
-    win:SetHeight(ROWS_TOP + rowCount * ROW_STEP + 26)
+    win:SetHeight(ROWS_TOP + rowCount * ROW_STEP + 40)
     for r, row in ipairs(win.rows) do
         local name = bots[r]
         if r <= rowCount and name then
@@ -183,10 +225,10 @@ function TB.RefreshBots()
                 row.name:SetText(name .. "\n" .. second)
             end
             row.name:Show()
-            local defs = TB.OverviewChips(name, classId)
+            local cols = rowColumns(name, classId)
             local st = TB.GetBotState and TB.GetBotState(name) or nil
             for i, chip in ipairs(row.chips) do
-                local def = defs[i]
+                local def = cols[i]
                 if def then
                     local value = st and st[def.key]
                     chip:ClearAllPoints()
@@ -201,11 +243,12 @@ function TB.RefreshBots()
                     if st then chip:Enable() else chip:Disable() end
                     chip:Show()
                 else
+                    chip.def = nil
                     chip:Hide()
                 end
             end
             row.open:ClearAllPoints()
-            row.open:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + 4 + 4 * (CHIP_W + 4), top)
+            row.open:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + 4 + NUM_COLS * (CHIP_W + 4), top)
             row.open.bot = name
             row.open:Show()
         else
@@ -217,6 +260,9 @@ function TB.RefreshBots()
     win.hint:ClearAllPoints()
     win.hint:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -(ROWS_TOP + rowCount * ROW_STEP + 4))
     win.hint:SetWidth(WIN_W - PAD * 2)
+    win.legend:ClearAllPoints()
+    win.legend:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, -(ROWS_TOP + rowCount * ROW_STEP + 20))
+    win.legend:SetWidth(WIN_W - PAD * 2)
     if TB.RefreshBotViews then TB.RefreshBotViews() end
 end
 

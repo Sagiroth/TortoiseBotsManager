@@ -420,6 +420,12 @@ end
 -- Built once with the panel; RenderTotemBlock places and shows it.
 function TB.CreateTotemBlock(panel, parent)
     block = { slots = {} }
+    local heading = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    heading:SetText("Totems")
+    local titleCol = C.COLOR and C.COLOR.title or { 0.85, 0.65, 0.34 }
+    TB.SetTextColor(heading, titleCol)
+    heading:Hide()
+    block.heading = heading
     for _, slot in ipairs(C.TOTEM_SLOTS) do
         local b = makeButton(parent, 12, PANEL_W - 24)
         b.slot = slot
@@ -438,7 +444,7 @@ function TB.CreateTotemBlock(panel, parent)
     end
 
     block.mode = makeButton(parent, 12, 150)
-    setTooltip(block.mode, "Drop mode", {
+    setTooltip(block.mode, "When to drop totems", {
         "Click to switch.",
         "Auto: the bot decides when to drop totems.",
         "Before the pull: totems go down ahead of a pull.",
@@ -452,28 +458,28 @@ function TB.CreateTotemBlock(panel, parent)
 
     block.preset = makeButton(parent, 168, 150)
     setTooltip(block.preset, "Totem preset", {
-        "Click to pick the next preset.",
-        "Apply sends it to this shaman, Apply to all to every shaman in the party.",
+        "Click to cycle through saved totem presets.",
+        "Apply sets this shaman's four slots; Apply all sets every shaman in the party.",
     })
     block.preset:SetScript("OnClick", function() TB.CycleTotemPreset() end)
 
-    block.apply = makeButton(parent, 12, 72)
+    block.apply = makeButton(parent, 12, 52)
     block.apply:SetText("Apply")
-    setTooltip(block.apply, "Apply preset", { "Sets all four totems of this shaman to the preset." })
+    setTooltip(block.apply, "Apply preset", { "Sets all four totems of this shaman to the shown preset." })
     block.apply:SetScript("OnClick", function()
         local bot = currentBot()
         if bot then TB.ApplyTotemPreset(bot) end
     end)
 
-    block.applyAll = makeButton(parent, 90, 72)
+    block.applyAll = makeButton(parent, 68, 68)
     block.applyAll:SetText("Apply all")
-    setTooltip(block.applyAll, "Apply to all", { "Sets all four totems of every shaman in your party to the preset." })
+    setTooltip(block.applyAll, "Apply preset to all", { "Sets all four totems of every shaman in your party to the shown preset." })
     block.applyAll:SetScript("OnClick", function() TB.ApplyTotemPreset("party") end)
 
-    block.save = makeButton(parent, 168, 72)
-    block.save:SetText("Save")
+    block.save = makeButton(parent, 140, 84)
+    block.save:SetText("Save preset")
     setTooltip(block.save, "Save preset", {
-        "Stores this shaman's four totems under a name you type.",
+        "Stores this shaman's current four totems under a preset name you type.",
         "A name that exists is overwritten.",
     })
     block.save:SetScript("OnClick", function()
@@ -481,9 +487,9 @@ function TB.CreateTotemBlock(panel, parent)
         if bot then TB.ConfirmSaveTotemPreset(bot) end
     end)
 
-    block.delete = makeButton(parent, 246, 72)
-    block.delete:SetText("Delete")
-    setTooltip(block.delete, "Delete preset", { "Removes the shown preset from this list." })
+    block.delete = makeButton(parent, 228, 90)
+    block.delete:SetText("Delete preset")
+    setTooltip(block.delete, "Delete preset", { "Removes the shown preset from your saved list." })
     block.delete:SetScript("OnClick", function()
         local preset = TB.GetSelectedTotemPreset()
         if preset then TB.DeleteTotemPreset(preset.name) end
@@ -501,15 +507,16 @@ local function place(button, top, row)
     button:SetPoint("TOPLEFT", button:GetParent(), "TOPLEFT", button.x, top - row * ROW_STEP)
 end
 
--- `top` is the y offset (negative, from the panel's top) of the first row.
+-- `top` is the y offset (negative, from the panel's top) of the heading.
 function TB.RenderTotemBlock(bot, classId, top)
     if not block then return end
     local show = bot and classId == 7
     local snapshot = show and TB.GetTotems(bot) or nil
+    local rowsTop = top - 16
     for row, slot in ipairs(C.TOTEM_SLOTS) do
         local b = block.slots[slot]
         if show then
-            place(b, top, row - 1)
+            place(b, rowsTop, row - 1)
             b:SetText(C.TOTEM_SLOT_LABELS[slot] .. ": " .. TB.TotemLabel(snapshot and snapshot.slots[slot] or nil))
             setEnabled(b, snapshot)
             b:Show()
@@ -518,21 +525,31 @@ function TB.RenderTotemBlock(bot, classId, top)
         end
     end
     if not show then
+        if block.heading then block.heading:Hide() end
         block.mode:Hide(); block.preset:Hide(); block.apply:Hide()
         block.applyAll:Hide(); block.save:Hide(); block.delete:Hide()
         return
     end
+    if block.heading then
+        block.heading:ClearAllPoints()
+        block.heading:SetPoint("TOPLEFT", block.heading:GetParent(), "TOPLEFT", 12, top)
+        block.heading:Show()
+    end
     local preset = TB.GetSelectedTotemPreset()
-    place(block.mode, top, 4)
-    block.mode:SetText("Drop: " .. (snapshot and snapshot.mode and C.TOTEM_MODE_LABELS[snapshot.mode] or "?"))
+    place(block.mode, rowsTop, 4)
+    block.mode:SetText("When: " .. (snapshot and snapshot.mode and C.TOTEM_MODE_LABELS[snapshot.mode] or "?"))
     setEnabled(block.mode, snapshot and snapshot.mode)
-    place(block.preset, top, 4)
-    block.preset:SetText(preset and preset.name or "No presets")
+    place(block.preset, rowsTop, 4)
+    local presetLabel = preset and preset.name or "None"
+    if string.len(presetLabel) > 12 then
+        presetLabel = string.sub(presetLabel, 1, 11) .. "..."
+    end
+    block.preset:SetText("Preset: " .. presetLabel)
     setEnabled(block.preset, preset)
-    place(block.apply, top, 5)
-    place(block.applyAll, top, 5)
-    place(block.save, top, 5)
-    place(block.delete, top, 5)
+    place(block.apply, rowsTop, 5)
+    place(block.applyAll, rowsTop, 5)
+    place(block.save, rowsTop, 5)
+    place(block.delete, rowsTop, 5)
     setEnabled(block.apply, preset and snapshot)
     setEnabled(block.applyAll, preset)
     setEnabled(block.save, snapshot)

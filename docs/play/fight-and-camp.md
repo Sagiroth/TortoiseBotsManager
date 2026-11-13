@@ -18,7 +18,7 @@ Module docs base: [party actions](https://github.com/Sagiroth/TortoiseBots/blob/
 
 ## Fight tab
 
-### Engage
+### Combat
 
 | Button | What it does | Sends | Module |
 | :--- | :--- | :--- | :--- |
