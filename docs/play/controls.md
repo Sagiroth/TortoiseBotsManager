@@ -30,6 +30,7 @@ Under **Key Bindings → TortoiseBots Manager** in the game menu:
 | Pull target, Pull target back (with your pull timers), Focus skull | Fight → Pull and focus |
 | Follow, Stay, Come and hold | Fight → Move |
 | Mini favourite 1–12 | The favourite in that slot on the mini bar (a bound key shows on the button and in its tooltip) |
+| Open bot controls for target | Opens the [bot panel](bot-panel.md) for the bot you have targeted (only when the target is one of your bots) |
 | Toggle window, Toggle mini bar | `/tbm`, `/tbm mini` |
 
 ## Slash commands
@@ -55,7 +56,7 @@ Left-click opens or closes the window, right-click refreshes the roster, middle-
 
 ## Settings window
 
-`/tbm settings` (or middle-click the minimap button) opens the options: window size (a slider from 70% to 110%; **Auto** returns to the size picked from your screen height), minimap button on or off, lock the mini bar in place, and automatic roster refresh with its interval (4–60 seconds).
+`/tbm settings` (or middle-click the minimap button) opens the options: window size (a slider from 70% to 110%; **Auto** returns to the size picked from your screen height), minimap button on or off, lock the mini bar in place, the bot button at the target frame on or off, and automatic roster refresh with its interval (4–60 seconds).
 
 ## Info window
 

@@ -22,7 +22,7 @@ BINDING_NAME_TBM_FAV10 = "Mini favourite 10"
 BINDING_NAME_TBM_FAV11 = "Mini favourite 11"
 BINDING_NAME_TBM_FAV12 = "Mini favourite 12"
 BINDING_NAME_TBM_TOGGLE_WINDOW = "Toggle window"
-BINDING_NAME_TBM_MINI_MODE = "Toggle mini bar"
+BINDING_NAME_TBM_TARGET_PANEL = "Open bot controls for target"
 
 local TB = TortoiseBots
 

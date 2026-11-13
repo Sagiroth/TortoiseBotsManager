@@ -241,6 +241,7 @@ for _, file in ipairs({
     "UI.lua",
     "BotPanel.lua",
     "BotTotem.lua",
+    "BotTarget.lua",
     "BotBlessing.lua",
     "BotNpc.lua",
     "BotVault.lua",
@@ -5594,6 +5595,7 @@ dofile(root .. "/tests/community_tests.lua")({
     sent = sent,
     frames = frames,
     advanceTime = function(dt) now = now + (dt or 1) end,
+    setTarget = function(exists, name) targetExists = exists; targetNameValue = name end,
     setParty = function(members, className) partyMembers = members or {}; partyClassName = className or "Priest" end,
     getParty = function() return partyMembers, partyClassName end,
 })

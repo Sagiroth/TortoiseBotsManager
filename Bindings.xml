@@ -71,4 +71,7 @@
   <Binding runOnUp="false" name="TBM_MINI_MODE">
     if TortoiseBots and TortoiseBots.ToggleMiniBar then TortoiseBots.ToggleMiniBar() end
   </Binding>
+  <Binding runOnUp="false" name="TBM_TARGET_PANEL">
+    if TortoiseBots and TortoiseBots.OpenTargetBotPanel then TortoiseBots.OpenTargetBotPanel() end
+  </Binding>
 </Bindings>

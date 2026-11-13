@@ -8,6 +8,7 @@ local frames = env.frames
 local advanceTime = env.advanceTime
 local setParty = env.setParty
 local getParty = env.getParty
+local setTarget = env.setTarget
 
 local TB = TortoiseBots
 local C = TB.C or {}
@@ -432,6 +433,76 @@ do
     GetNumRaidMembers, UnitName, UnitClass = realRaid, realUnitName, realUnitClass
     TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
     for index = 1, 8 do TB.OnSystemMessage("TBM:BOTSTATE|Pal" .. index .. "|move=follow") end
+end
+
+-- ── target-a-bot shortcut: key binding target, button, setting ──
+do
+    setParty({ "Targetbot" }, "Priest")
+    TB.OnSystemMessage("TBM:BOTSTATE|Targetbot|move=follow,loot=on")
+    TB.InitTargetButton()
+    local watcher
+    for name, frame in pairs(frames) do
+        if name == "TortoiseBotsManagerTargetButtonWatcher" then watcher = frame end
+    end
+    assert(watcher and watcher.events.PLAYER_TARGET_CHANGED, "the target watcher listens for target changes")
+    local targetFrame = { name = "TargetFrame" }
+    local realGetglobal = getglobal
+    getglobal = function(name)
+        if name == "TargetFrame" then return targetFrame end
+        return realGetglobal(name)
+    end
+    TB.targetButton = nil
+    assert(TB.CreateTargetButton(), "the target button anchors to the target frame")
+    getglobal = realGetglobal
+    local btn = TB.targetButton
+    assert(btn, "the target button exists")
+
+    -- Nobody targeted: closed and hidden, sends nothing.
+    setTarget(false, nil)
+    event, this = "PLAYER_TARGET_CHANGED", watcher
+    watcher.scripts.OnEvent(watcher)
+    assert(TB.GetTargetBot() == nil, "no target is no bot")
+    assert(not TB.OpenTargetBotPanel(), "opening with no target fails without sending")
+    assert(not btn.visible, "the button hides with no target")
+
+    -- An enemy target is not one of my bots.
+    setTarget(true, "Training Dummy")
+    event, this = "PLAYER_TARGET_CHANGED", watcher
+    watcher.scripts.OnEvent(watcher)
+    assert(TB.GetTargetBot() == nil, "an enemy target is not a bot")
+    assert(not TB.OpenTargetBotPanel(), "opening on an enemy fails without sending")
+    assert(not btn.visible, "the button hides on an enemy target")
+
+    -- Targeting my bot opens its panel, like the Party bag button.
+    setTarget(true, "Targetbot")
+    event, this = "PLAYER_TARGET_CHANGED", watcher
+    watcher.scripts.OnEvent(watcher)
+    assert(TB.GetTargetBot() == "Targetbot", "the targeted bot resolves by name")
+    assert(btn.visible, "the button shows on a targeted bot")
+    expectCommands("target panel", commands(function() click(btn) end),
+        { ".bot inv Targetbot" })
+    assert(TB.botPanel and TB.botPanel.visible, "the button opens the bot panel")
+    TB.CloseBotPanel()
+    expectCommands("key binding", commands(function() TB.OpenTargetBotPanel() end),
+        { ".bot inv Targetbot" })
+    TB.CloseBotPanel()
+
+    -- The setting hides the button; the binding still works.
+    TortoiseBotsDB.targetButton = nil
+    assert(TB.TargetButtonShown(), "the button shows by default")
+    TB.SetTargetButtonShown(false)
+    assert(not TB.TargetButtonShown() and not btn.visible, "the setting hides the button")
+    expectCommands("hidden binding", commands(function() TB.OpenTargetBotPanel() end),
+        { ".bot inv Targetbot" })
+    TB.CloseBotPanel()
+    TB.SetTargetButtonShown(true)
+    event, this = "PLAYER_TARGET_CHANGED", watcher
+    watcher.scripts.OnEvent(watcher)
+    assert(btn.visible, "showing the setting brings the button back")
+
+    setTarget(true, "Enemy")
+    TB.OnSystemMessage("TBM:BOTSTATE|Targetbot|move=follow,loot=on")
+    setTarget(false, nil)
 end
 
 setParty(savedMembers, savedClass)

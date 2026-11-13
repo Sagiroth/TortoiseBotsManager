@@ -16,6 +16,7 @@ One window per bot for its gear and habits. Open it with:
 
 - the bag icon on a [Party](party-roster-guild.md#party-tab) or [Guild](party-roster-guild.md#guild-tab) row,
 - **Gear & bags** on the Fight tab while a bot is targeted,
+- the small button next to the target frame (only when your target is one of your bots), or the **Open bot controls for target** key binding,
 - `/tbm bags <name>` (or `/tbm bags` with the bot targeted).
 
 Everything shown comes from the server; each click sends one request and the server answers with fresh state. Module: [bot panel commands](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-panel-commands).

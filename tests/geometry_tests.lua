@@ -1934,8 +1934,8 @@ return function()
             else
                 local wr = frameRect(win, cache)
                 local items = {}
-                for _, key in ipairs({ "slider", "minimapCheck", "lockCheck",
-                    "pollCheck", "pollStepper", "scaleValue" }) do
+                for _, key in ipairs({ "slider", "minimapCheck", "lockCheck", "verticalCheck",
+                    "pollCheck", "targetCheck", "pollStepper", "scaleValue" }) do
                     if win[key] then table.insert(items, { key, win[key] }) end
                 end
                 childrenInside("Settings", win, wr, items, cache, 2)

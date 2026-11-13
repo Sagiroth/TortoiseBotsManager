@@ -3184,7 +3184,7 @@ end
     main:Hide()
     TB.frame = main
     TB.uiReady = true
-    TB.Refresh()
+    if TB.InitTargetButton then TB.InitTargetButton() end
     -- Mini mode survives a reload: the login events fire before InitUI on
     -- first load, so restore the bar view here as well.
     if TB.GetMode and TB.GetMode() == "mini" and TB.SetMode then
