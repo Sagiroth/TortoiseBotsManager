@@ -144,6 +144,15 @@ TB.C.ACTION_DEFINITIONS = {
         mini = 5,
     },
     {
+        id = "engage",
+        intent = "engage",
+        label = "Engage",
+        section = "pull",
+        cap = "engage",
+        icon = "Interface\\Icons\\Ability_Warrior_Charge",
+        tip = "Bots hold fire until your pull reaches them (or a few seconds after you enter combat): you tank, they join.",
+    },
+    {
         id = "pullback",
         intent = "pullback",
         label = "Pullback",

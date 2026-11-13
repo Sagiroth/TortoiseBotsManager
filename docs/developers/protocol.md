@@ -28,6 +28,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | Token | Gates |
 | :--- | :--- |
 | `pull-seconds` | Pull and pullback timers (without it, plain `pull` / `pullback`) |
+| `engage` | Engage button on the Fight tab (`.bot action engage`; the success ACK carries an empty executor) |
 | `flee` | Flee button and key binding |
 | `inventory` | Bag icons and the bot panel |
 | `claimed-roster` | Guild tab data |

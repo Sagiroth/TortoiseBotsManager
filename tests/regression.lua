@@ -1471,6 +1471,7 @@ for _, id in ipairs({ "attack", "stop", "interrupt", "flee" }) do
         "engage control " .. id .. " must fit the 360px content")
 end
 assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -360, "end pull must fit the 360px content")
+assert(cardBottom(TB.actionButtons.engage, fightTops.pull) >= -360, "engage must fit the 360px content")
 -- Release follows the party's death state.
 TB.Refresh()
 assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")

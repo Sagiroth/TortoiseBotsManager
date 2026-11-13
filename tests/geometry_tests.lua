@@ -289,7 +289,7 @@ return function()
         end
         cardControls("engage", { "attack", "stop", "interrupt", "flee" })
         cardControls("pull", { "pull", "pullback", "pullTimer", "pullbackTimer",
-            "endPull", "focusSkull", "ccMoon" })
+            "endPull", "engage", "focusSkull", "ccMoon" })
         cardControls("move", { "follow", "stay", "come", "guard", "free" })
         local moveList = {}
         for _, n in ipairs({ "follow", "stay", "come", "guard", "free" }) do
@@ -321,7 +321,7 @@ return function()
         for _, n in ipairs({ "follow", "stay", "come", "guard", "free" }) do
             if B[n] then labelFits("Fight move." .. n, B[n], nil, 6) end
         end
-        for _, n in ipairs({ "pull", "pullback", "focusSkull", "ccMoon", "endPull" }) do
+        for _, n in ipairs({ "pull", "pullback", "focusSkull", "ccMoon", "endPull", "engage" }) do
             if B[n] then labelFits("Fight pull." .. n, B[n], nil, 6) end
         end
         for _, n in ipairs({ "pullTimer", "pullbackTimer" }) do

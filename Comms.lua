@@ -173,9 +173,12 @@ local function setActionAck(fields)
     if table.getn(fields) < 4 then return nil end
     local intent, scope, count, executor = fields[1], fields[2], fields[3], fields[4]
     if TB.Trim(intent) == "" or TB.Trim(scope) == ""
-        or not string.find(count, "^%d+$") or TB.Trim(executor) == "" then
+        or not string.find(count, "^%d+$") then
         return nil
     end
+    -- An empty executor means "no detail", like "-": the engage order
+    -- answers with a trailing "|" and no detail word.
+    if TB.Trim(executor) == "" then executor = "-" end
     if string.sub(scope, 1, 4) == "bot:" and TB.Trim(string.sub(scope, 5)) == "" then return nil end
     return {
         intent = intent,

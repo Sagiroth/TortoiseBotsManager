@@ -1347,6 +1347,13 @@ local function BuildPullCard(parent, buttons)
     if buttons.endPull.icon then
         buttons.endPull.icon:SetWidth(12); buttons.endPull.icon:SetHeight(12)
     end
+    -- Engage sits beside End pull in the timer row: you pull yourself, so
+    -- it needs no enemy target, only the engage capability.
+    buttons.engage = makeActionButton(card, "engage", 110, 362, -46)
+    buttons.engage:SetHeight(18)
+    if buttons.engage.icon then
+        buttons.engage.icon:SetWidth(12); buttons.engage.icon:SetHeight(12)
+    end
     buttons.focusSkull = makeActionButton(card, "focus skull", 110, 244, btnY)
     buttons.ccMoon     = makeActionButton(card, "cc moon", 110, 362, btnY)
     buttons.pull:SetHeight(22); buttons.pullback:SetHeight(22)
@@ -3361,8 +3368,13 @@ function TB.RefreshActionControls()
     if TB.RefreshCampControls then TB.RefreshCampControls() end
     -- Flee and downtime are newer server intents: disable them on servers
     -- that do not advertise the capability rather than let the click fail.
+    -- Engage hides entirely without its capability (you pull yourself, so it
+    -- needs no enemy target either).
     if TB.actionButtons.flee then
         if serverHasCap("flee") then TB.actionButtons.flee:Enable() else TB.actionButtons.flee:Disable() end
+    end
+    if TB.actionButtons.engage then
+        if serverHasCap("engage") then TB.actionButtons.engage:Show() else TB.actionButtons.engage:Hide() end
     end
     if TB.actionButtons.downtime then
         if serverHasCap("downtime") then TB.actionButtons.downtime:Enable() else TB.actionButtons.downtime:Disable() end
