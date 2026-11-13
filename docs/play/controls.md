@@ -15,7 +15,7 @@ relates_to:
 
 **Mini** in the window header (or `/tbm mini`) swaps the window for a small draggable bar. **+** (or `/tbm full`) brings the window back; the choice survives a reload.
 
-- Category icons (Engage, Pull & Focus, Move, Party switches, Tactics, Camp) open a flyout with the same actions as the [Fight and Camp tabs](fight-and-camp.md). The short bar under a category turns gold while its flyout is open; a thin line separates the categories from your favourites.
+- Category icons (Combat, Pull & Focus, Move, Party switches, Tactics, Camp) open a flyout with the same actions as the [Fight and Camp tabs](fight-and-camp.md). The short bar under a category turns gold while its flyout is open; a thin line separates the categories from your favourites.
 - **Right-click** an action in a flyout to pin it as a favourite on the bar; right-click a favourite to remove it.
 - Actions follow the same rules as in the window: enemy-target actions are grey without an enemy target.
 - **Direction:** right-click the turtle to stack the bar vertically or back horizontally; `/tbm minilayout [horizontal|vertical]` does the same (bare `/tbm minilayout` flips it).

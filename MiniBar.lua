@@ -24,7 +24,7 @@ local FLY_W = 132
 local FLY_ROWS = 4
 
 local CATEGORIES = {
-    { key = "engage", label = "Engage", sections = { "engage" } },
+    { key = "engage", label = "Combat", sections = { "engage" } },
     { key = "pull", label = "Pull & Focus", sections = { "pull" } },
     { key = "move", label = "Move", sections = { "move", "stance" } },
     { key = "switch", label = "Party switches", sections = { "switch" } },

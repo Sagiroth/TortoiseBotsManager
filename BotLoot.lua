@@ -476,6 +476,7 @@ function TB.CreateLootTab(parent)
     clearBtn:SetScript("OnClick", function()
         if TB.ClearLootHistory then TB.ClearLootHistory() end
         if TB.RefreshLootView then TB.RefreshLootView() end
+        if TB.SetStatus then TB.SetStatus("Loot history cleared.", "ok") end
     end)
     tab.clearButton = clearBtn
 
@@ -484,7 +485,7 @@ function TB.CreateLootTab(parent)
     local function searchBox(name, x, width, key, tip, hint)
         local box = CreateFrame("EditBox", name, tab, "InputBoxTemplate")
         box:SetWidth(width); box:SetHeight(20)
-        box:SetPoint("TOPLEFT", tab, "TOPLEFT", x, -20)
+        box:SetPoint("TOPLEFT", tab, "TOPLEFT", x, -32)
         box:SetAutoFocus(false)
         box:SetScript("OnEscapePressed", function() this:ClearFocus() end)
         box:SetScript("OnEnterPressed", function() this:ClearFocus() end)
@@ -499,10 +500,21 @@ function TB.CreateLootTab(parent)
     tab.itemSearch = searchBox("TortoiseBotsManagerLootItemSearch", 86, 112, "item", "Show only items with this name", "Item")
     tab.sourceSearch = searchBox("TortoiseBotsManagerLootSourceSearch", 202, 84, "source", "Show only this source", "Source")
 
+    local function stepperLabel(x, width, text)
+        local fs = tab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("TOPLEFT", tab, "TOPLEFT", x, -19)
+        fs:SetWidth(width); fs:SetJustifyH("CENTER")
+        fs:SetText(text)
+        TB.SetTextColor(fs, color("muted"))
+        return fs
+    end
+    tab.qualityLabel = stepperLabel(290, 100, "Quality")
+    tab.typeLabel = stepperLabel(404, 76, "Type")
+
     local function stepper(x, width, label, set, tip)
         local row = CreateFrame("Frame", nil, tab)
         row:SetWidth(width); row:SetHeight(18)
-        row:SetPoint("TOPLEFT", tab, "TOPLEFT", x, -22)
+        row:SetPoint("TOPLEFT", tab, "TOPLEFT", x, -34)
         row:EnableMouse(true)
         local minus = TB.StyleButton(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"), "mode")
         minus:SetWidth(20); minus:SetHeight(18)
@@ -554,7 +566,7 @@ function TB.CreateLootTab(parent)
     end, "Row type: items, rolls, or all")
 
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLootScroll", tab, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -46)
+    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -55)
     scroll:SetWidth(tw - 22)
     scroll:SetHeight(LOOT_ROW_N * LOOT_ROW_H + 4)
     scroll:SetScript("OnVerticalScroll", function()
@@ -618,7 +630,17 @@ function TB.RefreshLootView()
         end
     end
     if tab and tab.emptyMsg then
-        if total == 0 then tab.emptyMsg:Show() else tab.emptyMsg:Hide() end
+        if total == 0 then
+            local rawCount = TB.GetLootHistory and table.getn(TB.GetLootHistory()) or 0
+            if rawCount > 0 then
+                tab.emptyMsg:SetText("|cff888888No loot matches your filters.|r")
+            else
+                tab.emptyMsg:SetText("|cff888888No loot yet. Your party bots' loot and rolls land here.|r")
+            end
+            tab.emptyMsg:Show()
+        else
+            tab.emptyMsg:Hide()
+        end
     end
     if tab then
         if tab.qualityStep and tab.qualityStep.paint then tab.qualityStep.paint() end

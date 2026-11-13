@@ -2053,7 +2053,7 @@ function TB.InitUI()
         end)
         raidFrame.customCheck = button(custom, "Check", 90, 196, -24, "raid custom status",
             "Ask every bot whether custom raid tactics are on.")
-        note(custom, "The server can switch these off entirely (AiPlayerbot.EnableCustomRaidTactics).", -54)
+        note(custom, "Your server may have custom raid tactics turned off.", -54)
 
         local status = card("BOT RAID TACTICS", -182, 146)
         raidFrame.statusButton = button(status, "Check bots", 120, 8, -24, nil,
@@ -2578,6 +2578,7 @@ end
         clearBtn:SetScript("OnClick", function()
             if TB.ClearLogHistory then TB.ClearLogHistory() end
             if TB.RefreshLogView then TB.RefreshLogView() end
+            if TB.SetStatus then TB.SetStatus("Activity log cleared.", "ok") end
         end)
 
 
@@ -2624,6 +2625,15 @@ end
             table.insert(rows, row)
         end
         TB.logRows = rows
+
+        local emptyMsg = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        emptyMsg:SetPoint("CENTER", scroll, "CENTER", 0, 0)
+        emptyMsg:SetWidth(W - (C.PAD or 10) * 2 - 40)
+        emptyMsg:SetJustifyH("CENTER")
+        emptyMsg:SetText("No activity yet. Bot messages and server replies land here.")
+        TB.SetTextColor(emptyMsg, color("muted"))
+        logFrame.emptyMsg = emptyMsg
+
         return logFrame
     end
 
@@ -2650,6 +2660,9 @@ end
             else
                 row:Hide()
             end
+        end
+        if TB.logFrame and TB.logFrame.emptyMsg then
+            if total == 0 then TB.logFrame.emptyMsg:Show() else TB.logFrame.emptyMsg:Hide() end
         end
     end
 
