@@ -316,6 +316,8 @@ end
 -- <portals> is "-" or comma-separated "<spellId>:<city>" pairs.
 -- Totem snapshot (reply to ".bot totem <bot> status", shamans):
 --   TBM:TOTEM|<bot>|earth=<v>,fire=<v>,water=<v>,air=<v>,mode=<auto|prepull|manual>[,known=<t>+<t>]
+-- Choice snapshot (reply to ".bot choice <scope> status"): one line per kind,
+--   TBM:CHOICE|<bot>|<kind>=<value|auto>,known=<v>+<v>+...
 -- Blessing snapshot (reply to ".bot blessing <scope> status", paladins):
 --   TBM:BLESSING|<bot>|warrior=<b>,paladin=<b>,...,druid=<b>,known=<b>+<b>
 -- Professions snapshot (reply to ".bot professions"):
@@ -379,6 +381,10 @@ function TB.ParseBotPanelMessage(msg)
 
     if string.sub(msg, 1, 12) == "TBM:SERVICE|" then
         if TB.ConsumeServiceLine then return TB.ConsumeServiceLine(msg) end
+        return true
+    end
+    if string.sub(msg, 1, 11) == "TBM:CHOICE|" then
+        if TB.ConsumeChoiceLine then TB.ConsumeChoiceLine(msg) end
         return true
     end
     if string.sub(msg, 1, 10) == "TBM:TOTEM|" then
@@ -836,6 +842,8 @@ function TB.OnSystemMessage(msg)
             if TB.NoteOrderCaps then TB.NoteOrderCaps() end
             if TB.NoteProfessionsCaps then TB.NoteProfessionsCaps() end
             if TB.NoteBlessingCaps then TB.NoteBlessingCaps() end
+            if TB.NoteChoiceCaps then TB.NoteChoiceCaps() end
+            if TB.NoteChoiceBlockCaps then TB.NoteChoiceBlockCaps() end
             -- CAPS closes the roster reply, after PROTO and VERSION: a module
             -- that sent no PROTO by now is older than the protocol check.
             if TB.CheckCompat then TB.CheckCompat() end

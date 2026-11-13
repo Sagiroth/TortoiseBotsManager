@@ -63,6 +63,24 @@ Module: [item equip](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/pla
 
 Module: [`.bot behavior`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior).
 
+### Class choices
+
+On the Behaviour view of a paladin, hunter or warlock, a class block sits
+under the switches when the server lists the `choice` capability. Opening
+the panel on such a bot (and **Refresh**) asks the server for its choices
+(`.bot choice <bot> status`); until the answer arrives the controls read `?`
+and stay greyed out.
+
+| Control | What it does | Sends |
+| :--- | :--- | :--- |
+| Aura (paladin) | Click to pick **Auto** or one of the auras the paladin has trained. | `.bot choice <bot> aura <aura\|auto>` |
+| Aspect (hunter) | Click to pick **Auto** or one of the aspects the hunter has trained. | `.bot choice <bot> aspect <aspect\|auto>` |
+| Curse (warlock) | Click to pick **Auto** or one of the curses the warlock has trained. | `.bot choice <bot> curse <curse\|auto>` |
+
+The row shows what the server reports. The kinds are data-driven: a new
+kind from the server appears with Auto plus its values, with no addon
+change. Module: `.bot choice`.
+
 ### Shaman totems
 
 On a shaman's Behaviour view a totem block sits under the switches. Opening the panel on a shaman (and **Refresh**) asks the server for its totems (`.bot totem <bot> status`); until the answer arrives the controls read `?` and stay greyed out.
@@ -77,7 +95,7 @@ On a shaman's Behaviour view a totem block sits under the switches. Opening the 
 | Save | Asks for a name and stores this shaman's four slots under it; a name that exists is overwritten. | none |
 | Delete | Removes the shown preset. | none |
 
-Presets are kept on your computer (the addon's saved variables), not on the server. The **Drop totems** button on the Camp tab still drops every shaman's totems right now.
+Presets are kept on your computer (the addon's saved variables), not on the server. A slot with a chosen totem never switches by itself, except Tremor Totem, which may take the earth slot while the group is feared and then gives it back. The **Drop totems** button on the Camp tab still drops every shaman's totems right now.
 
 ### Professions
 

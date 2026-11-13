@@ -194,6 +194,7 @@ end
 
 -- ── shaman totems: panel, wire ──
 do
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
     setParty({ "Thrallbot" }, "Shaman")
     expectCommands("shaman open", commands(function() TB.OpenBotPanel("Thrallbot", "behavior") end), { ".bot inv Thrallbot", ".bot totem Thrallbot status" })
     local block = TB.botPanel.totemBlock
@@ -603,6 +604,133 @@ do
         end
     end
     TB.CloseBots()
+end
+
+-- -- Class choices: parser, builders, panel, wire -- --
+do
+    local line = "TBM:CHOICE|Pallybot|aura=devotion aura,known=devotion aura+retribution aura+shadow resistance"
+    local c = TB.ParseChoiceLine(line)
+    assert(c and c.name == "Pallybot" and c.kind == "aura" and c.value == "devotion aura"
+        and table.getn(c.known) == 3 and c.known[3] == "shadow resistance",
+        "a choice line parses, spaces and all")
+    local noKnown = TB.ParseChoiceLine("TBM:CHOICE|Hexbot|curse=curse of agony")
+    assert(noKnown and noKnown.known == nil, "a line without known reads as nil")
+    local empty = TB.ParseChoiceLine("TBM:CHOICE|Hexbot|curse=auto,known=")
+    assert(empty and empty.value == "auto" and table.getn(empty.known) == 0,
+        "an empty known list stays an empty list")
+    assert(TB.ParseChoiceLine("TBM:CHOICE|Hexbot|curse=") == nil
+        and TB.ParseChoiceLine("TBM:CHOICE||curse=auto") == nil
+        and TB.ParseChoiceLine("TBM:CHOICE|Hexbot") == nil
+        and TB.ParseChoiceLine("TBM:TOTEM|x|earth=auto") == nil, "short or foreign lines are refused")
+    assert(TB.ChoiceKindLabel("aura") == "Aura" and TB.ChoiceKindLabel("aspect") == "Aspect"
+        and TB.ChoiceKindLabel("curse") == "Curse", "kind labels capitalise")
+    assert(TB.ChoiceLabel("aura", "auto") == "Auto"
+        and TB.ChoiceLabel("aura", "devotion aura") == "Devotion Aura"
+        and TB.ChoiceLabel("curse", "shadow resistance") == "Shadow Resistance"
+        and TB.ChoiceLabel("aura", nil) == "?", "values read capitalised")
+    assert(table.getn(TB.ChoiceKinds("Nobody")) == 0, "no records means no kinds")
+    assert(table.getn(TB.ChoiceOptions("aura", nil)) == 1
+        and table.getn(TB.ChoiceOptions("aura", {})) == 1
+        and table.getn(TB.ChoiceOptions("aura", { "devotion aura" })) == 2,
+        "Auto alone without known; known lists follow Auto")
+    assert(TB.BuildChoiceCommand("Pallybot", "aura", "devotion aura")
+            == "choice Pallybot aura devotion aura"
+        and TB.BuildChoiceCommand("Hexbot", "curse", "auto") == "choice Hexbot curse auto"
+        and TB.BuildChoiceCommand("party", "aura", "auto") == "choice party aura auto"
+        and TB.BuildChoiceCommand("Pallybot", "", "auto") == nil
+        and TB.BuildChoiceCommand("Pallybot", "aura", "") == nil
+        and TB.BuildChoiceCommand(nil, "aura", "auto") == nil, "choice commands are validated")
+    assert(TB.ChoiceKindWanted("aura", 2) and not TB.ChoiceKindWanted("aura", 3)
+        and TB.ChoiceKindWanted("aspect", 3) and not TB.ChoiceKindWanted("aspect", 2)
+        and TB.ChoiceKindWanted("curse", 9) and not TB.ChoiceKindWanted("curse", 5)
+        and TB.ChoiceKindWanted("stance", 1), "known kinds gate on class, unknown kinds show")
+
+    -- Wire: open asks, lines fill the picker, ACKs and errors behave.
+    setParty({ "Pallybot" }, "Paladin")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,choice")
+    assert(TB.HasChoiceCapability(), "the choice capability gates the section")
+    local knownClasses = { Paladin = "Paladin" }
+    local realUnitClass = UnitClass
+    UnitClass = function(unit)
+        if unit == "player" then return "Warrior", "WARRIOR" end
+        return "Paladin", "PALADIN"
+    end
+    expectCommands("paladin open", commands(function() TB.OpenBotPanel("Pallybot", "behavior") end),
+        { ".bot inv Pallybot", ".bot choice Pallybot status" })
+    local block = TB.botPanel.choiceBlock
+    assert(block.kinds[1] and not block.kinds[1].visible, "no records yet: no choice rows")
+    expectCommands("record fills", commands(function()
+        TB.OnSystemMessage("TBM:CHOICE|Pallybot|aura=devotion aura,known=devotion aura+retribution aura")
+    end), {})
+    assert(block.kinds[1].visible and block.kinds[1].text == "Aura: Devotion Aura",
+        "the record fills the picker, got '" .. tostring(block.kinds[1].text) .. "'")
+    assert(not block.kinds[2].visible, "only recorded kinds show")
+    assert(TB.ChoiceKinds("Pallybot")[1] == "aura", "one record means one kind")
+
+    local rows = {}
+    assert(TB.BuildChoiceMenu("Pallybot", "aura", function(info) table.insert(rows, info) end) == 3
+        and rows[1].text == "Auto" and rows[2].text == "Devotion Aura"
+        and rows[3].text == "Retribution Aura" and rows[2].checked == 1 and rows[1].checked == nil,
+        "the menu offers Auto plus the trained values, marking the current one")
+    expectCommands("pick aura", commands(function() rows[3].func() end),
+        { ".bot choice Pallybot aura retribution aura" })
+    expectCommands("ack without line", commands(function()
+        TB.OnSystemMessage("TBM:ACTION_ACK|choice|bot:Pallybot|1|aura=retribution aura")
+    end), { ".bot choice Pallybot status" })
+    expectCommands("no repeat ask", commands(function()
+        TB.OnSystemMessage("TBM:ACTION_ACK|choice|bot:Pallybot|1|aura=retribution aura")
+    end), {})
+    expectCommands("fresh line first", commands(function()
+        TB.OnSystemMessage("TBM:CHOICE|Pallybot|aura=retribution aura,known=devotion aura+retribution aura")
+        TB.OnSystemMessage("TBM:ACTION_ACK|choice|bot:Pallybot|1|aura=retribution aura")
+    end), {})
+    assert(block.kinds[1].text == "Aura: Retribution Aura", "a fresh line repaints the picker")
+    TB.OnSystemMessage("TBM:ACTION_ERR|choice|unknown-spell|Pallybot has not learned that")
+    assert(TB.lastActionError and TB.lastActionError.intent == "choice", "a choice error is reported")
+    TB.OnSystemMessage("TBM:ACTION_ERR|choice|invalid|usage")
+    TB.OnSystemMessage("TBM:ACTION_ERR|choice|no-bot|no such bot")
+
+    -- Status ask for the whole party; cancel the per-bot ask when the error
+    -- for a stale order arrives first.
+    expectCommands("status", commands(function() TB.RequestChoices("party") end),
+        { ".bot choice party status" })
+    TB.OnSystemMessage("TBM:CHOICE|Pallybot|aura=auto,known=devotion aura")
+    UnitClass = realUnitClass
+    expectCommands("party status", commands(function() TB.RequestChoices() end), {})
+
+    -- Other classes: a hunter gets aspect, a priest gets nothing.
+    local realBotClass = TB.BotClassId
+    TB.BotClassId = function(name)
+        if name == "Aspectbot" then return 3 end
+        if name == "Cursebot" then return 9 end
+        return 2
+    end
+    TB.BotClassId = realBotClass
+    setParty({ "Aspectbot" }, "Hunter")
+    expectCommands("hunter open", commands(function() TB.OpenBotPanel("Aspectbot", "behavior") end),
+        { ".bot inv Aspectbot", ".bot choice Aspectbot status" })
+    TB.OnSystemMessage("TBM:CHOICE|Aspectbot|aspect=hawk,known=hawk+monkey")
+    assert(block.kinds[1].visible and block.kinds[1].text == "Aspect: Hawk",
+        "a hunter shows its aspect")
+    setParty({ "Cursebot" }, "Warlock")
+    expectCommands("warlock open", commands(function() TB.OpenBotPanel("Cursebot", "behavior") end),
+        { ".bot inv Cursebot", ".bot service Cursebot", ".bot choice Cursebot status" })
+    TB.OnSystemMessage("TBM:CHOICE|Cursebot|curse=curse of agony,known=curse of agony+curse of doom")
+    assert(block.kinds[1].visible and block.kinds[1].text == "Curse: Curse of Agony",
+        "a warlock shows its curse")
+    setParty({ "Healbot" }, "Priest")
+    expectCommands("priest open", commands(function() TB.OpenBotPanel("Healbot", "behavior") end),
+        { ".bot inv Healbot", ".bot choice Healbot status" })
+    TB.OnSystemMessage("TBM:CHOICE|Healbot|aura=auto,known=devotion aura")
+    assert(not block.kinds[1].visible, "aura never shows for a priest")
+
+    -- No capability: no section, no ask.
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
+    assert(not TB.HasChoiceCapability(), "the section hides without the capability")
+    expectCommands("no cap open", commands(function() TB.OpenBotPanel("Pallybot", "behavior") end),
+        { ".bot inv Pallybot" })
+    assert(not block.kinds[1].visible, "no capability means no choice rows")
+    TB.CloseBotPanel()
 end
 
 setParty(savedMembers, savedClass)

@@ -817,6 +817,7 @@ end
 -- ACK routing from Comms.ParseActionMessage. Returns true when handled.
 function TB.OnBotPanelAck(packet)
     if TB.OnTotemAck and TB.OnTotemAck(packet) then return true end
+    if TB.OnChoiceAck and TB.OnChoiceAck(packet) then return true end
     local intent = packet.intent or ""
     local botName = string.gsub(packet.scope or "", "^bot:", "")
     local _, _, op = string.find(intent, "^item%s+(%a+)$")
@@ -859,6 +860,7 @@ end
 
 function TB.OnBotPanelError(packet)
     if TB.OnTotemError then TB.OnTotemError(packet) end
+    if TB.OnChoiceError then TB.OnChoiceError(packet) end
     local intent = packet.intent or ""
     if intent == "item give" then pendingGive = nil end
     local _, _, key = string.find(intent, "^behavior%s+(%S+)$")
@@ -1259,6 +1261,7 @@ local function createPanel()
     TB.SetTextColor(bhHint, color("muted"))
     panel.behaviorHint = bhHint
     if TB.CreateTotemBlock then TB.CreateTotemBlock(panel, behavior) end
+    if TB.CreateChoiceBlock then TB.CreateChoiceBlock(panel, behavior) end
 
     -- Spells view: the bot's spellbook, one row per known spell.
     local spellsView = CreateFrame("Frame", nil, panel)
@@ -1470,6 +1473,7 @@ local function createPanel()
         if currentBot then TB.RequestProfessions(currentBot) end
         if currentBot and TB.ServiceWanted(currentBot) then TB.RequestService(currentBot) end
         if currentBot and TB.TotemWanted(currentBot) then TB.RequestTotems(currentBot) end
+        if currentBot and TB.HasChoiceCapability and TB.HasChoiceCapability() then TB.RequestChoices(currentBot) end
         if TB.PollList then TB.PollList(true) end
     end)
     panel.refreshButton = refresh
@@ -1699,7 +1703,9 @@ local function renderBehavior()
     panel.behaviorHint:ClearAllPoints()
     local hintY = -108 - math.ceil(shown / 2) * 30
     panel.behaviorHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, hintY)
-    if TB.RenderTotemBlock then TB.RenderTotemBlock(currentBot, classId, hintY - 26) end
+    local choiceTop = hintY - 26
+    if TB.RenderTotemBlock then TB.RenderTotemBlock(currentBot, classId, choiceTop) end
+    if TB.RenderChoiceBlock then TB.RenderChoiceBlock(currentBot, classId, choiceTop) end
 end
 
 local function renderSpells()
@@ -2015,6 +2021,7 @@ function TB.OpenBotPanel(name, view)
     -- inventory request, so one open is one extra line at most.
     if TB.ServiceWanted(name) and not services[name] then TB.RequestService(name) end
     if TB.TotemWanted(name) then TB.RequestTotems(name) end
+    if TB.HasChoiceCapability and TB.HasChoiceCapability() and TB.GetChoices and not TB.GetChoices(name) then TB.RequestChoices(name) end
     return true
 end
 

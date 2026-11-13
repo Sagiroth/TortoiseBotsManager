@@ -426,6 +426,9 @@ function TB.CreateTotemBlock(panel, parent)
         setTooltip(b, C.TOTEM_SLOT_LABELS[slot] .. " totem", {
             "Click to pick the totem this shaman drops in this slot.",
             "Auto lets the bot decide.",
+            "A picked totem never switches by itself, except Tremor",
+            "Totem, which may take the earth slot while the group",
+            "is feared and then gives it back.",
         })
         b:SetScript("OnClick", function()
             local bot = currentBot()

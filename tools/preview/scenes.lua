@@ -309,6 +309,25 @@ scene("panel-totems", function()
     tick(1)
     dump("panel-totems", { main, TB.botPanel }, "Bot panel: behaviour of a shaman with the totem picker")
 end)
+scene("panel-choices", function()
+    tab("party", nil)
+    feed({
+        "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service,choice",
+        "TBM:BOTSTATE|Kaelthor|move=follow,loot=on,hold=on",
+        "TBM:CHOICE|Kaelthor|aura=devotion aura,known=devotion aura+retribution aura+shadow resistance",
+    })
+    table.insert(Mock.world.party, { name = "Kaelthor", class = "Paladin", level = 60 })
+    TB.OpenBotPanel("Kaelthor", "behavior")
+    tick(1)
+    dump("panel-choices", { main, TB.botPanel }, "Bot panel: behaviour of a paladin with the class picker")
+    table.remove(Mock.world.party)
+end)
+scene("bots", function()
+    tab("party", nil)
+    TB.OpenBots()
+    tick(1)
+    dump("bots", { main, TB.botsWindow }, "Party tab with the Bots overview")
+end)
 scene("blessings", function()
     table.insert(Mock.world.party, { name = "Kaelthor", class = "Paladin", level = 60 })
     feed({

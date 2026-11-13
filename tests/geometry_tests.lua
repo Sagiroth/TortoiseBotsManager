@@ -1993,6 +1993,39 @@ return function()
         end
     end
 
+    -- -- Class choices (paladin aura picker) -- --
+    do
+        local cache = {}
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,choice")
+        TB.SetChoices("Gamma", { aura = { value = "devotion aura",
+            known = { "devotion aura", "retribution aura", "shadow resistance" } } })
+        local realEntry = TB.GetRosterEntry
+        TB.GetRosterEntry = function() return { classId = 2 } end
+        TB.OpenBotPanel("Gamma", "behavior")
+        TB.GetRosterEntry = realEntry
+        local panel, block = TB.botPanel, TB.botPanel and TB.botPanel.choiceBlock
+        if panel and block then
+            local fresh = {}
+            local items = {}
+            local rows = block.kinds or {}
+            table.insert(items, { "hint", { points = panel.behaviorHint.points, point = panel.behaviorHint.point,
+                parent = panel.behaviorHint.parent, width = panel.behaviorHint.width,
+                height = textHeight(panel.behaviorHint) } })
+            for i, b in ipairs(rows) do
+                if b:IsVisible() then
+                    table.insert(items, { "choice" .. i, b })
+                    labelFits("BotPanel choice" .. i, b, nil, 6)
+                end
+            end
+            if table.getn(items) < 2 then
+                bad("BotPanel choices: one recorded aura must show one row")
+            end
+            childrenInside("BotPanel choices", panel, frameRect(panel, fresh), items, fresh, 2)
+            noOverlaps("BotPanel choices", items, fresh)
+        end
+        TB.CloseBotPanel()
+    end
+
     do
         local cache = {}
         if TB.frame then
