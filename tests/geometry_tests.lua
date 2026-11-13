@@ -1955,6 +1955,44 @@ return function()
         end
     end
 
+    -- -- Bots overview (two party bots, full chips) -- --
+    do
+        local cache = {}
+        TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,hold=on,aoe=off,autocc=on")
+        TB.OnSystemMessage("TBM:BOTSTATE|Beta|move=follow,loot=on,hold=off,aoe=on,autocc=off")
+        if TB.OpenBots and TB.OpenBots() then
+            local win = TB.botsWindow
+            local wr = frameRect(win, cache)
+            local items = {}
+            for r, row in ipairs(win.rows) do
+                if row.name:IsVisible() then
+                    table.insert(items, { "name" .. r, { points = row.name.points, point = row.name.point,
+                        parent = row.name.parent, width = row.name.width, height = textHeight(row.name) } })
+                end
+                for c, chip in ipairs(row.chips) do
+                    if chip:IsVisible() then
+                        table.insert(items, { "chip" .. r .. "," .. c, chip })
+                        labelFits("Bots chip" .. r .. "," .. c, chip, nil, 6)
+                    end
+                end
+                if row.open:IsVisible() then
+                    table.insert(items, { "open" .. r, row.open })
+                    labelFits("Bots open" .. r, row.open, nil, 6)
+                end
+            end
+            if win.hint then
+                table.insert(items, { "hint", { points = win.hint.points, point = win.hint.point,
+                    parent = win.hint.parent, width = win.hint.width, height = textHeight(win.hint) } })
+            end
+            if table.getn(items) < 2 + 8 + 2 then
+                bad("Bots: two party bots must show two rows of four chips, got " .. table.getn(items) .. " items")
+            end
+            childrenInside("Bots", win, wr, items, cache, 2)
+            noOverlaps("Bots", items, cache)
+            TB.CloseBots()
+        end
+    end
+
     do
         local cache = {}
         if TB.frame then

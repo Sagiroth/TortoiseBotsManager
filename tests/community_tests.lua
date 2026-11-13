@@ -505,6 +505,106 @@ do
     setTarget(false, nil)
 end
 
+-- -- Bots overview: one row per party bot, fight chips, panel button -- --
+do
+    setParty({ "Holdbot", "Magebot" }, "Priest")
+    TB.OnSystemMessage("TBM:BOTSTATE|Holdbot|move=follow,loot=on,hold=off")
+    TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,hold=on,noblink=off")
+    TB.RefreshPartyView()
+    local button = TB.partyFrame.botsBtn
+    assert(button and button.visible, "the Party tab offers Bots with party bots")
+    assert(TB.BotsAvailable(), "BotsAvailable with party bots")
+    expectCommands("bots open", commands(function() click(button) end), {})
+    local win = TB.botsWindow
+    assert(win and win.visible, "Bots opens the overview")
+
+    -- Rows: one per bot, sorted; role line; chips reuse the Behaviour defs.
+    assert(win.rows[1].name.visible and win.rows[2].name.visible
+        and not win.rows[3].name.visible, "two party bots give two rows")
+    assert(win.rows[1].name.text == "Holdbot\nProtection"
+        or string.find(win.rows[1].name.text, "Holdbot", 1, true),
+        "row 1 names the first bot, got '" .. tostring(win.rows[1].name.text) .. "'")
+    assert(win.rows[2].name.visible, "row 2 shows the second bot")
+    local chips1 = {}
+    for i, chip in ipairs(win.rows[1].chips) do
+        if chip.visible then table.insert(chips1, chip) end
+    end
+    assert(table.getn(chips1) >= 2, "a row shows its fight chips")
+    assert(chips1[1].def.key == "hold", "Hold position leads the row")
+    assert(win.rows[1].open.visible, "each row opens the full panel")
+    local defs = TB.OverviewChips("Holdbot", 1)
+    assert(table.getn(defs) <= 4 and defs[1].key == "hold", "max four chips, Hold first")
+
+    -- Chip clicks reuse the behaviour command path, no duplicated strings.
+    expectCommands("overview hold", commands(function() click(win.rows[1].chips[1]) end),
+        { ".bot behavior Holdbot hold on" })
+    TB.OnSystemMessage("TBM:ACTION_ACK|behavior hold|bot:Holdbot|1|on")
+    TB.OnSystemMessage("TBM:BOTSTATE|Holdbot|move=follow,loot=on,hold=on")
+    TB.RefreshBots()
+    assert(string.find(win.rows[1].chips[1].text, "On", 1, true),
+        "the row chip repaints from the reply")
+    expectCommands("overview open", commands(function() click(win.rows[2].open) end),
+        { ".bot inv Magebot" })
+    assert(TB.botPanel and TB.botPanel.visible, "Controls opens the full panel")
+    TB.CloseBotPanel()
+    TB.RefreshBots()
+
+    -- A mage row shows its class chip; a priest row never does.
+    local mageChips = {}
+    for _, chip in ipairs(win.rows[2].chips) do
+        if chip.visible then table.insert(mageChips, chip.def.key) end
+    end
+    local sawBlink = false
+    for _, key in ipairs(mageChips) do if key == "noblink" then sawBlink = true end end
+    assert(not sawBlink, "a priest row has no Blink chip")
+    setParty({ "Magebot" }, "Mage")
+    TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,hold=on,noblink=off")
+    TB.RefreshPartyView()
+    TB.RefreshBots()
+    local only = {}
+    for _, chip in ipairs(win.rows[1].chips) do
+        if chip.visible then table.insert(only, chip.def.key) end
+    end
+    sawBlink = false
+    for _, key in ipairs(only) do if key == "noblink" then sawBlink = true end end
+    assert(sawBlink, "a mage that reports it shows No dungeon Blink")
+
+    -- The window closes when the last party bot leaves.
+    local watcher
+    for name, frame in pairs(frames) do
+        if name == "TortoiseBotsManagerBotsWatcher" then watcher = frame end
+    end
+    assert(watcher and watcher.events.PARTY_MEMBERS_CHANGED, "the Bots watcher listens for group changes")
+    setParty({}, "Priest")
+    event, this = "PARTY_MEMBERS_CHANGED", watcher
+    watcher.scripts.OnEvent(watcher)
+    advanceTime(2)
+    this, arg1 = watcher, 0.5
+    watcher.scripts.OnUpdate(watcher)
+    assert(not TB.BotsAvailable(), "no party bots means no overview")
+    assert(not TB.OpenBots(), "Bots will not open with no party bots")
+    TB.RefreshPartyView()
+    assert(not button.visible, "the entry point hides with no party bots")
+
+    -- Layout estimate: the window fits rows, chips and hint.
+    setParty({ "Holdbot", "Magebot" }, "Priest")
+    TB.OnSystemMessage("TBM:BOTSTATE|Holdbot|move=follow,loot=on,hold=off")
+    TB.OnSystemMessage("TBM:BOTSTATE|Magebot|move=follow,loot=on,hold=on,noblink=off")
+    assert(TB.OpenBots(), "Bots reopens for layout")
+    win = TB.botsWindow
+    assert(win.width >= 12 + 92 + 4 * 128 + 5 * 4 + 76 - 4, "the window fits four chips and Controls")
+    assert(win.height > 62 + 2 * 28, "the window grows with the rows")
+    for r = 1, 2 do
+        for _, chip in ipairs(win.rows[r].chips) do
+            if chip.visible then
+                assert(string.len(chip.text) * 6 + 14 <= chip.width,
+                    "chip '" .. chip.text .. "' fits its button")
+            end
+        end
+    end
+    TB.CloseBots()
+end
+
 setParty(savedMembers, savedClass)
 
 print("PASS: community feedback checks")
