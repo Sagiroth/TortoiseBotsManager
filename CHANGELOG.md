@@ -2,6 +2,21 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.2.0 (2026-11-13)
+
+### Tactical & Actions
+- New **Hold Position** chip in the Behaviour view: the bot keeps following and fighting but no longer runs from enemies on its own. [#82](https://github.com/Sagiroth/TortoiseBotsManager/pull/82)
+- New **No Dungeon Blink** chip, shown on mage bots only: disables Blink inside dungeons and raids. [#82](https://github.com/Sagiroth/TortoiseBotsManager/pull/82)
+- **Shaman totem picker** (Behaviour view): one button per element slot (earth, fire, water, air) with "Auto" plus any totems the bot has trained. [#82](https://github.com/Sagiroth/TortoiseBotsManager/pull/82)
+- Totem drop mode control added alongside the picker (auto, before the pull, on demand) so you can set when totems go down. [#82](https://github.com/Sagiroth/TortoiseBotsManager/pull/82)
+- **Blessings grid** for paladin bots: pick and apply blessings per bot from a single grid instead of one buff at a time. [#82](https://github.com/Sagiroth/TortoiseBotsManager/pull/82)
+
+### UI & Controls
+- New controls are gated on the matching TortoiseBots server build — on an older server the new chips and pickers stay hidden rather than showing dead options. [#82](https://github.com/Sagiroth/TortoiseBotsManager/pull/82)
+- Totem presets let you save and re-apply a full elemental loadout in one click. [#82](https://github.com/Sagiroth/TortoiseBotsManager/pull/82)
+
+---
+
 ## v2.1.3 (2026-11-10)
 
 ### UI & Controls
