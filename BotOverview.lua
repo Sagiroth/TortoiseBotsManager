@@ -17,7 +17,7 @@ local CHIP_H = 20
 local CHIP_STEP = 22
 local ROW_STEP = 28
 local MAX_ROWS = 5
-local ROWS_TOP = 62
+local ROWS_TOP = 44
 local PAD = 12
 local WIN_W = PAD * 2 + NAME_W + 4 * CHIP_W + 5 * 4 + 76
 
@@ -193,8 +193,8 @@ function TB.RefreshBots()
                     chip:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + 4 + (i - 1) * (CHIP_W + 4), top)
                     chip.def = def
                     chip.bot = name
-                    local stateText = value == "on" and "On" or (value == "off" and "Off" or "?")
-                    chip:SetText(def.label .. ": " .. stateText)
+                    chip:SetText(def.label)
+                    chip.state = value
                     if value == "on" then chip.lamp:SetTexture(0.30, 0.90, 0.45, 1)
                     elseif value == "off" then chip.lamp:SetTexture(0.45, 0.45, 0.45, 1)
                     else chip.lamp:SetTexture(0.95, 0.72, 0.28, 1) end

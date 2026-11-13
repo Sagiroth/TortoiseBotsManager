@@ -21,7 +21,7 @@ After an update, restart the game client fully: WoW loads new addon files only o
 
 | Tab | What it's for |
 | :--- | :--- |
-| **Fight** | Attack, stop, interrupt, flee, pull and pull back, engage hold, focus and CC marks, movement orders, party switches (AoE, auto CC, loot, sap, spread) and tactics. |
+| **Fight** | Attack, stop, interrupt, flee, pull and pull back, "My pull" hold, focus and CC marks, movement orders, party switches (AoE, auto CC, loot, sap, spread) and tactics. |
 | **Camp** | Between pulls: rest, ready check, repair, sell junk, train, downtime errands for own alts, release and corpse run, rebuff, formations, quests and grinding. |
 | **Party** | Your group and its roles; opens each bot's gear and bags. |
 | **Guild** | Bots you claimed into your guild as raid alts; farm, buy and craft orders with live progress. |

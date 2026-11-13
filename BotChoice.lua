@@ -263,7 +263,7 @@ function TB.CreateChoiceBlock(panel, parent)
         b.slot = i
         b:SetScript("OnClick", function()
             local bot = currentBot()
-            if bot and this.kind then TB.OpenChoiceMenu(bot, this.kind) end
+            if bot and this.choiceKind then TB.OpenChoiceMenu(bot, this.choiceKind) end
         end)
         block.kinds[i] = b
     end
@@ -299,7 +299,7 @@ function TB.RenderChoiceBlock(bot, classId, top)
         local kind = kinds[i]
         if show and kind then
             local snapshot = TB.GetChoice(bot, kind)
-            b.kind = kind
+            b.choiceKind = kind
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", b:GetParent(), "TOPLEFT", b.x, top - (i - 1) * ROW_STEP)
             b:SetText(TB.ChoiceKindLabel(kind) .. ": " .. TB.ChoiceLabel(kind, snapshot and snapshot.value or nil))

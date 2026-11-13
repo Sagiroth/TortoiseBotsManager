@@ -542,7 +542,7 @@ do
     TB.OnSystemMessage("TBM:ACTION_ACK|behavior hold|bot:Holdbot|1|on")
     TB.OnSystemMessage("TBM:BOTSTATE|Holdbot|move=follow,loot=on,hold=on")
     TB.RefreshBots()
-    assert(string.find(win.rows[1].chips[1].text, "On", 1, true),
+    assert(win.rows[1].chips[1].state == "on",
         "the row chip repaints from the reply")
     expectCommands("overview open", commands(function() click(win.rows[2].open) end),
         { ".bot inv Magebot" })

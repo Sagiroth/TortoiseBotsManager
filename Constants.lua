@@ -146,7 +146,7 @@ TB.C.ACTION_DEFINITIONS = {
     {
         id = "engage",
         intent = "engage",
-        label = "Engage",
+        label = "My pull",
         section = "pull",
         cap = "engage",
         icon = "Interface\\Icons\\Ability_Warrior_Charge",

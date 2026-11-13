@@ -76,10 +76,10 @@ feed({
     "TBM:ROSTER_END",
     "TBM:ALTBOTS|Felbrand",
     "TBM:BOTSTATE_BEGIN|4",
-    "TBM:BOTSTATE|Thalgrim|move=follow,loot=on,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,specs=protection",
-    "TBM:BOTSTATE|Seraphine|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on,specs=holy",
-    "TBM:BOTSTATE|Vexmora|move=follow,loot=on,aoe=on,autocc=on,savemana=off,boost=on,threat=on,potions=on,specs=frost",
-    "TBM:BOTSTATE|Bramblewood|move=follow,loot=off,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,specs=restoration",
+    "TBM:BOTSTATE|Thalgrim|move=follow,loot=on,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,hold=off,specs=protection",
+    "TBM:BOTSTATE|Seraphine|move=follow,loot=on,aoe=on,autocc=off,savemana=on,boost=on,threat=on,potions=on,hold=on,specs=holy",
+    "TBM:BOTSTATE|Vexmora|move=follow,loot=on,aoe=on,autocc=on,savemana=off,boost=on,threat=on,potions=on,hold=off,noblink=on,specs=frost",
+    "TBM:BOTSTATE|Bramblewood|move=follow,loot=off,aoe=on,autocc=off,savemana=off,boost=on,threat=on,potions=on,hold=off,specs=restoration",
     "TBM:BOTSTATE_END",
     "TBM:CC_ASSIGN_BEGIN|1",
     "TBM:CC_ASSIGN|Vexmora|moon",
@@ -213,6 +213,12 @@ local function tab(name, target)
 end
 
 scene("fight", function() tab("actions", nil); dump("fight", { main }, "Fight tab, no target") end)
+scene("fight-engage", function()
+    feed({ "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service,engage" })
+    tab("actions", nil)
+    dump("fight-engage", { main }, "Fight tab on a server with the Engage hold")
+    feed({ "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service" })
+end)
 scene("fight-target", function()
     tab("actions", { name = "Defias Pillager", player = false, class = "Rogue" })
     dump("fight-target", { main }, "Fight tab with an enemy target")
