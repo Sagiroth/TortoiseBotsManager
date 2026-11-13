@@ -144,6 +144,15 @@ TB.C.ACTION_DEFINITIONS = {
         mini = 5,
     },
     {
+        id = "engage",
+        intent = "engage",
+        label = "My pull",
+        section = "pull",
+        cap = "engage",
+        icon = "Interface\\Icons\\Ability_Warrior_Charge",
+        tip = "Bots hold fire until your pull reaches them (or a few seconds after you enter combat): you tank, they join.",
+    },
+    {
         id = "pullback",
         intent = "pullback",
         label = "Pullback",
@@ -474,6 +483,8 @@ TB.C.ACTION_LABELS = {
     ["item give"]          = "Give",
     ["item trade"]         = "Trade",
     ["service portal"]     = "Portal",
+    ["blessing"]           = "Blessing",
+    ["blessing status"]    = "Blessings",
     ["cast Disenchant"]    = "Disenchant",
     ["sendmail"]           = "Send by mail",
     ["bank"]               = "Put to bank",
@@ -516,7 +527,8 @@ for _, def in ipairs(TB.C.ACTION_DEFINITIONS) do
 end
 
 -- Per-bot behaviour toggles in the bot panel (`.bot behavior <bot> <key>`).
--- `mana` limits a toggle to classes that use mana.
+-- `mana` limits a toggle to classes that use mana, `class` to one class id.
+-- `optional` hides it until the server reports the key (older servers do not).
 TB.C.BEHAVIORS = {
     { key = "loot",     label = "Loot corpses", tip = "Loot corpses after a fight." },
     { key = "aoe",      label = "AoE spells",   tip = "Use area-of-effect abilities (held back next to crowd-controlled mobs)." },
@@ -527,8 +539,52 @@ TB.C.BEHAVIORS = {
     { key = "potions",  label = "Potions",    tip = "Drink healing and mana potions when low." },
     { key = "mimic",    label = "Mimic",      tip = "Copy your consumable use (food, drink, potions) on this bot." },
     { key = "spread",   label = "Spread out", tip = "Keep distance from nearby party members instead of stacking." },
+    { key = "hold",     label = "Hold position", tip = "Keep following and fighting, but never run from enemies on its own: no fleeing, kiting or stepping back for casting room. Still steps out of ground effects.", optional = true },
+    { key = "noblink",  label = "No dungeon Blink", tip = "Never cast Blink inside dungeons and raids, where it can land in the next pack. Blink still works outdoors.", optional = true, class = 8 },
 }
 TB.C.NO_MANA_CLASSES = { [1] = true, [4] = true } -- Warrior, Rogue
+
+-- Shaman totems (`.bot totem <bot> <slot> <totem>`): the slots, each slot's
+-- totems in the server's order, and the drop modes.
+TB.C.TOTEM_SLOTS = { "earth", "fire", "water", "air" }
+TB.C.TOTEM_SLOT_LABELS = { earth = "Earth", fire = "Fire", water = "Water", air = "Air" }
+TB.C.TOTEMS = {
+    earth = { "stoneclaw totem", "stoneskin totem", "earthbind totem", "strength of earth totem", "tremor totem" },
+    fire  = { "searing totem", "magma totem", "fire nova totem", "flametongue totem", "fire resistance totem",
+              "frost resistance totem" },
+    water = { "healing stream totem", "mana spring totem", "mana tide totem", "poison cleansing totem",
+              "disease cleansing totem", "fire resistance totem" },
+    air   = { "windfury totem", "grace of air totem", "tranquil air totem", "grounding totem", "windwall totem",
+              "nature resistance totem" },
+}
+TB.C.TOTEM_MODES = { "auto", "prepull", "manual" }
+TB.C.TOTEM_MODE_LABELS = { auto = "Auto", prepull = "Before the pull", manual = "Only on order" }
+-- Presets a fresh install starts with; the player can overwrite or delete them.
+TB.C.TOTEM_PRESETS_DEFAULT = {
+    { name = "Melee group", earth = "strength of earth totem", fire = "searing totem",
+      water = "mana spring totem", air = "windfury totem" },
+    { name = "Caster group", earth = "stoneskin totem", fire = "searing totem",
+      water = "mana spring totem", air = "grace of air totem" },
+}
+
+-- Paladin blessings (`.bot blessing <bot> <class> <blessing|auto>`): the
+-- blessings, their icons, and the class words in grid order.
+TB.C.BLESSINGS = { "might", "wisdom", "kings", "salvation", "sanctuary", "light" }
+TB.C.BLESSING_LABELS = { might = "Might", wisdom = "Wisdom", kings = "Kings", salvation = "Salvation",
+    sanctuary = "Sanctuary", light = "Light" }
+TB.C.BLESSING_ICONS = {
+    might = "Interface\\Icons\\Spell_Holy_FistOfJustice",
+    wisdom = "Interface\\Icons\\Spell_Holy_SealOfWisdom",
+    kings = "Interface\\Icons\\Spell_Magic_MageArmor",
+    salvation = "Interface\\Icons\\Spell_Holy_SealOfSalvation",
+    sanctuary = "Interface\\Icons\\Spell_Nature_LightningShield",
+    light = "Interface\\Icons\\Spell_Holy_PrayerOfHealing02",
+}
+TB.C.BLESSING_CLASSES = {
+    { word = "warrior", id = 1 }, { word = "paladin", id = 2 }, { word = "hunter", id = 3 },
+    { word = "rogue", id = 4 }, { word = "priest", id = 5 }, { word = "shaman", id = 7 },
+    { word = "mage", id = 8 }, { word = "warlock", id = 9 }, { word = "druid", id = 11 },
+}
 
 -- Movement labels for the TBM:BOTSTATE "move" field.
 TB.C.MOVEMENT_LABELS = {

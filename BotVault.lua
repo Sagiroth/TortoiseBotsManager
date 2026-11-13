@@ -302,6 +302,12 @@ local function createVault()
     TB.SetTextColor(hint, color("muted"))
     vault.hint = hint
 
+    local empty = vault:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    empty:SetPoint("TOPLEFT", vault, "TOPLEFT", 12, -150)
+    empty:SetWidth(VW - 24); empty:SetJustifyH("CENTER")
+    TB.SetTextColor(empty, color("muted"))
+    vault.empty = empty
+
     vault:Hide()
     TB.botVault = vault
 end
@@ -345,6 +351,20 @@ local function renderRows()
     else
         vault.ask:SetText("Ask again")
         vault.ask:Enable()
+    end
+    if table.getn(list) == 0 then
+        vault.hint:Hide()
+        if v and v.pending then
+            vault.empty:SetText("Asking the bot…")
+        elseif currentView == "mail" then
+            vault.empty:SetText("Mailbox is empty. Click Ask again to check.")
+        else
+            vault.empty:SetText("Bank is empty. Stand near a bank and click Ask again.")
+        end
+        vault.empty:Show()
+    else
+        vault.hint:Show()
+        vault.empty:Hide()
     end
     return list
 end

@@ -173,9 +173,12 @@ local function setActionAck(fields)
     if table.getn(fields) < 4 then return nil end
     local intent, scope, count, executor = fields[1], fields[2], fields[3], fields[4]
     if TB.Trim(intent) == "" or TB.Trim(scope) == ""
-        or not string.find(count, "^%d+$") or TB.Trim(executor) == "" then
+        or not string.find(count, "^%d+$") then
         return nil
     end
+    -- An empty executor means "no detail", like "-": the engage order
+    -- answers with a trailing "|" and no detail word.
+    if TB.Trim(executor) == "" then executor = "-" end
     if string.sub(scope, 1, 4) == "bot:" and TB.Trim(string.sub(scope, 5)) == "" then return nil end
     return {
         intent = intent,
@@ -246,6 +249,10 @@ function TB.ParseActionMessage(msg)
             if TB.Refresh then TB.Refresh() end
             return true, "ack", packet
         end
+        if TB.OnBlessingAck and TB.OnBlessingAck(packet) then
+            if TB.Refresh then TB.Refresh() end
+            return true, "ack", packet
+        end
         if TB.OnRaidAck and TB.OnRaidAck(packet) then
             if TB.Refresh then TB.Refresh() end
             return true, "ack", packet
@@ -282,6 +289,7 @@ function TB.ParseActionMessage(msg)
             TB.OnPartyToggleResult(toggleKey, nil, nil)
         end
         if TB.OnBotPanelError then TB.OnBotPanelError(packet) end
+        if TB.OnBlessingError then TB.OnBlessingError(packet) end
         if TB.OnRunError then TB.OnRunError(packet) end
         if TB.OnOrderError then TB.OnOrderError(packet) end
         if TB.OnLootError and TB.OnLootError(packet) then
@@ -309,6 +317,12 @@ end
 -- Service snapshot (reply to ".bot service", mages and warlocks):
 --   TBM:SERVICE|<bot>|<food 0/1>|<water 0/1>|<healthstone 0/1>|<portals>
 -- <portals> is "-" or comma-separated "<spellId>:<city>" pairs.
+-- Totem snapshot (reply to ".bot totem <bot> status", shamans):
+--   TBM:TOTEM|<bot>|earth=<v>,fire=<v>,water=<v>,air=<v>,mode=<auto|prepull|manual>[,known=<t>+<t>]
+-- Choice snapshot (reply to ".bot choice <scope> status"): one line per kind,
+--   TBM:CHOICE|<bot>|<kind>=<value|auto>,known=<v>+<v>+...
+-- Blessing snapshot (reply to ".bot blessing <scope> status", paladins):
+--   TBM:BLESSING|<bot>|warrior=<b>,paladin=<b>,...,druid=<b>,known=<b>+<b>
 -- Professions snapshot (reply to ".bot professions"):
 --   TBM:PROF_BEGIN|<bot>
 --   TBM:PROF|<skillId>|<value>|<max>
@@ -370,6 +384,20 @@ function TB.ParseBotPanelMessage(msg)
 
     if string.sub(msg, 1, 12) == "TBM:SERVICE|" then
         if TB.ConsumeServiceLine then return TB.ConsumeServiceLine(msg) end
+        return true
+    end
+    if string.sub(msg, 1, 11) == "TBM:CHOICE|" then
+        if TB.ConsumeChoiceLine and TB.ConsumeChoiceLine(msg) then
+            if TB.RefreshBlessings then TB.RefreshBlessings() end
+        end
+        return true
+    end
+    if string.sub(msg, 1, 10) == "TBM:TOTEM|" then
+        if TB.ConsumeTotemLine then TB.ConsumeTotemLine(msg) end
+        return true
+    end
+    if string.sub(msg, 1, 13) == "TBM:BLESSING|" then
+        if TB.ConsumeBlessingLine then TB.ConsumeBlessingLine(msg) end
         return true
     end
     if string.sub(msg, 1, 14) == "TBM:INV_BEGIN|" then
@@ -818,6 +846,9 @@ function TB.OnSystemMessage(msg)
             if TB.NoteLootCaps then TB.NoteLootCaps() end
             if TB.NoteOrderCaps then TB.NoteOrderCaps() end
             if TB.NoteProfessionsCaps then TB.NoteProfessionsCaps() end
+            if TB.NoteBlessingCaps then TB.NoteBlessingCaps() end
+            if TB.NoteChoiceCaps then TB.NoteChoiceCaps() end
+            if TB.NoteChoiceBlockCaps then TB.NoteChoiceBlockCaps() end
             -- CAPS closes the roster reply, after PROTO and VERSION: a module
             -- that sent no PROTO by now is older than the protocol check.
             if TB.CheckCompat then TB.CheckCompat() end

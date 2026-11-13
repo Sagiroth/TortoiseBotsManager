@@ -289,7 +289,7 @@ return function()
         end
         cardControls("engage", { "attack", "stop", "interrupt", "flee" })
         cardControls("pull", { "pull", "pullback", "pullTimer", "pullbackTimer",
-            "endPull", "focusSkull", "ccMoon" })
+            "endPull", "engage", "focusSkull", "ccMoon" })
         cardControls("move", { "follow", "stay", "come", "guard", "free" })
         local moveList = {}
         for _, n in ipairs({ "follow", "stay", "come", "guard", "free" }) do
@@ -321,7 +321,7 @@ return function()
         for _, n in ipairs({ "follow", "stay", "come", "guard", "free" }) do
             if B[n] then labelFits("Fight move." .. n, B[n], nil, 6) end
         end
-        for _, n in ipairs({ "pull", "pullback", "focusSkull", "ccMoon", "endPull" }) do
+        for _, n in ipairs({ "pull", "pullback", "focusSkull", "ccMoon", "endPull", "engage" }) do
             if B[n] then labelFits("Fight pull." .. n, B[n], nil, 6) end
         end
         for _, n in ipairs({ "pullTimer", "pullbackTimer" }) do
@@ -827,6 +827,73 @@ return function()
                     end
                     childrenInside("BotPanel behavior", panel, pr, chips, cache, 2)
                     noOverlaps("BotPanel behavior chips", chips, cache)
+                    -- Every chip at once (a mage that reports all keys): the
+                    -- longest label must fit and the hint must clear the last row.
+                    local realEntry = TB.GetRosterEntry
+                    TB.GetRosterEntry = function() return { classId = 8 } end
+                    local full = { move = "follow" }
+                    for _, def in ipairs(TB.C.BEHAVIORS) do full[def.key] = "off" end
+                    TB.SetBotState("Alpha", full)
+                    TB.OpenBotPanel("Alpha", "behavior")
+                    TB.GetRosterEntry = realEntry
+                    local all = {}
+                    for key, chip in pairs(panel.behaviorChips) do
+                        if chip:IsVisible() then
+                            table.insert(all, { key, chip })
+                            labelFits("BotPanel behavior." .. key, chip, chip.text, 6)
+                        end
+                    end
+                    if table.getn(all) ~= table.getn(TB.C.BEHAVIORS) then
+                        bad("BotPanel behavior: a mage that reports every key must show every chip")
+                    end
+                    local fresh = {}
+                    childrenInside("BotPanel behavior (all)", panel, frameRect(panel, fresh), all, fresh, 2)
+                    noOverlaps("BotPanel behavior chips (all)", all, fresh)
+                    local hr = boxRect(panel.behaviorHint, fresh)
+                    for _, entry in ipairs(all) do
+                        if overlaps(hr, frameRect(entry[2], fresh)) then
+                            bad("BotPanel behavior: hint overlaps chip " .. entry[1])
+                        end
+                    end
+                    -- A shaman: chips, hint, totem block and footer stack without overlaps.
+                    TB.GetRosterEntry = function() return { classId = 7 } end
+                    local shamanState = { move = "follow" }
+                    for _, def in ipairs(TB.C.BEHAVIORS) do shamanState[def.key] = "off" end
+                    TB.SetBotState("Alpha", shamanState)
+                    TB.SetTotems("Alpha", {
+                        slots = { earth = "strength of earth totem", fire = "frost resistance totem",
+                            water = "disease cleansing totem", air = "nature resistance totem" },
+                        mode = "prepull" })
+                    TB.SaveTotemPreset("WWWWWWWWWWWWWWWWWWWW", { earth = "auto", fire = "auto", water = "auto", air = "auto" })
+                    TB.OpenBotPanel("Alpha", "behavior")
+                    TB.GetRosterEntry = realEntry
+                    local totemBlock = panel.totemBlock
+                    local shaman = {}
+                    local shamanFresh = {}
+                    for key, chip in pairs(panel.behaviorChips) do
+                        if chip:IsVisible() then table.insert(shaman, { key, chip }) end
+                    end
+                    local hintFs = panel.behaviorHint
+                    table.insert(shaman, { "hint", { points = hintFs.points, point = hintFs.point,
+                        parent = hintFs.parent, width = hintFs.width, height = textHeight(hintFs) } })
+                    local blockItems = {}
+                    for slot, b in pairs(totemBlock.slots) do table.insert(blockItems, { "totem." .. slot, b }) end
+                    for _, key in ipairs({ "mode", "preset", "apply", "applyAll", "save", "delete" }) do
+                        table.insert(blockItems, { "totem." .. key, totemBlock[key] })
+                    end
+                    for _, entry in ipairs(blockItems) do
+                        if not entry[2]:IsVisible() then bad("BotPanel totems: " .. entry[1] .. " must show for a shaman") end
+                        labelFits("BotPanel " .. entry[1], entry[2], nil, 6)
+                        table.insert(shaman, entry)
+                    end
+                    for _, key in ipairs({ "tradeButton", "refreshButton", "npcButton",
+                        "vaultButton", "upkeepButton", "gearUpButton" }) do
+                        table.insert(shaman, { key, panel[key] })
+                    end
+                    childrenInside("BotPanel totems", panel, frameRect(panel, shamanFresh), shaman, shamanFresh, 2)
+                    noOverlaps("BotPanel totems", shaman, shamanFresh)
+                    TB.DeleteTotemPreset("WWWWWWWWWWWWWWWWWWWW")
+                    TB.OpenBotPanel("Alpha", "spells")
                 end
                 if panel.spellRows then
                     local rows = {}
@@ -1060,6 +1127,59 @@ return function()
             end
             TB.CloseVault()
         end
+    end
+
+    -- ── Blessings (eight paladin bots, every class) ──────────────────
+    do
+        local cache = {}
+        local classes = { "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin", "Paladin",
+            "Warrior", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock", "Druid" }
+        local realRaid, realName, realClass = GetNumRaidMembers, UnitName, UnitClass
+        GetNumRaidMembers = function() return table.getn(classes) end
+        UnitName = function(unit)
+            local _, _, index = string.find(unit, "^raid(%d+)$")
+            return index and ("Pally" .. index) or realName(unit)
+        end
+        UnitClass = function(unit)
+            local _, _, index = string.find(unit, "^raid(%d+)$")
+            local name = index and classes[tonumber(index)] or "Warrior"
+            return name, string.upper(name)
+        end
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,blessing")
+        for index = 1, 8 do
+            TB.OnSystemMessage("TBM:BOTSTATE|Pally" .. index .. "|move=follow")
+            TB.OnSystemMessage("TBM:BLESSING|Pally" .. index .. "|warrior=might,paladin=kings,hunter=might,rogue=might,"
+                .. "priest=wisdom,shaman=wisdom,mage=wisdom,warlock=auto,druid=salvation,known=might+wisdom+kings")
+        end
+        if not TB.OpenBlessings or not TB.OpenBlessings() then
+            bad("Blessings: the grid did not open")
+        else
+            local win = TB.blessingsWindow
+            local wr = frameRect(win, cache)
+            local items = {}
+            for i, head in ipairs(win.heads) do
+                if head:IsVisible() then table.insert(items, { "head" .. i, head }) end
+            end
+            for r, row in ipairs(win.rows) do
+                if row.name:IsVisible() then
+                    table.insert(items, { "name" .. r, { points = row.name.points, point = row.name.point,
+                        parent = row.name.parent, width = row.name.width, height = textHeight(row.name) } })
+                end
+                for c, cell in ipairs(row.cells) do
+                    if cell:IsVisible() then table.insert(items, { "cell" .. r .. "," .. c, cell }) end
+                end
+            end
+            table.insert(items, { "hint", { points = win.hint.points, point = win.hint.point,
+                parent = win.hint.parent, width = win.hint.width, height = textHeight(win.hint) } })
+            if table.getn(win.heads) ~= 9 or table.getn(items) < 9 + 8 + 72 then
+                bad("Blessings: eight paladins and nine classes must all show, got " .. table.getn(items) .. " items")
+            end
+            childrenInside("Blessings", win, wr, items, cache, 2)
+            noOverlaps("Blessings", items, cache)
+            TB.CloseBlessings()
+        end
+        GetNumRaidMembers, UnitName, UnitClass = realRaid, realName, realClass
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster")
     end
 
     -- ── BotNpc ───────────────────────────────────────────────────────
@@ -1814,8 +1934,8 @@ return function()
             else
                 local wr = frameRect(win, cache)
                 local items = {}
-                for _, key in ipairs({ "slider", "minimapCheck", "lockCheck",
-                    "pollCheck", "pollStepper", "scaleValue" }) do
+                for _, key in ipairs({ "slider", "minimapCheck", "lockCheck", "verticalCheck",
+                    "pollCheck", "targetCheck", "pollStepper", "scaleValue" }) do
                     if win[key] then table.insert(items, { key, win[key] }) end
                 end
                 childrenInside("Settings", win, wr, items, cache, 2)
@@ -1833,6 +1953,77 @@ return function()
             end
             if TB.CloseSettings then TB.CloseSettings() end
         end
+    end
+
+    -- -- Bots overview (two party bots, full chips) -- --
+    do
+        local cache = {}
+        TB.OnSystemMessage("TBM:BOTSTATE|Alpha|move=follow,loot=on,hold=on,aoe=off,autocc=on")
+        TB.OnSystemMessage("TBM:BOTSTATE|Beta|move=follow,loot=on,hold=off,aoe=on,autocc=off")
+        if TB.OpenBots and TB.OpenBots() then
+            local win = TB.botsWindow
+            local wr = frameRect(win, cache)
+            local items = {}
+            for r, row in ipairs(win.rows) do
+                if row.name:IsVisible() then
+                    table.insert(items, { "name" .. r, { points = row.name.points, point = row.name.point,
+                        parent = row.name.parent, width = row.name.width, height = textHeight(row.name) } })
+                end
+                for c, chip in ipairs(row.chips) do
+                    if chip:IsVisible() then
+                        table.insert(items, { "chip" .. r .. "," .. c, chip })
+                        labelFits("Bots chip" .. r .. "," .. c, chip, nil, 6)
+                    end
+                end
+                if row.open:IsVisible() then
+                    table.insert(items, { "open" .. r, row.open })
+                    labelFits("Bots open" .. r, row.open, nil, 6)
+                end
+            end
+            if win.hint then
+                table.insert(items, { "hint", { points = win.hint.points, point = win.hint.point,
+                    parent = win.hint.parent, width = win.hint.width, height = textHeight(win.hint) } })
+            end
+            if table.getn(items) < 2 + 8 + 2 then
+                bad("Bots: two party bots must show two rows of four chips, got " .. table.getn(items) .. " items")
+            end
+            childrenInside("Bots", win, wr, items, cache, 2)
+            noOverlaps("Bots", items, cache)
+            TB.CloseBots()
+        end
+    end
+
+    -- -- Class choices (paladin aura picker) -- --
+    do
+        local cache = {}
+        TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,choice")
+        TB.SetChoices("Gamma", { aura = { value = "devotion aura",
+            known = { "devotion aura", "retribution aura", "shadow resistance" } } })
+        local realEntry = TB.GetRosterEntry
+        TB.GetRosterEntry = function() return { classId = 2 } end
+        TB.OpenBotPanel("Gamma", "behavior")
+        TB.GetRosterEntry = realEntry
+        local panel, block = TB.botPanel, TB.botPanel and TB.botPanel.choiceBlock
+        if panel and block then
+            local fresh = {}
+            local items = {}
+            local rows = block.kinds or {}
+            table.insert(items, { "hint", { points = panel.behaviorHint.points, point = panel.behaviorHint.point,
+                parent = panel.behaviorHint.parent, width = panel.behaviorHint.width,
+                height = textHeight(panel.behaviorHint) } })
+            for i, b in ipairs(rows) do
+                if b:IsVisible() then
+                    table.insert(items, { "choice" .. i, b })
+                    labelFits("BotPanel choice" .. i, b, nil, 6)
+                end
+            end
+            if table.getn(items) < 2 then
+                bad("BotPanel choices: one recorded aura must show one row")
+            end
+            childrenInside("BotPanel choices", panel, frameRect(panel, fresh), items, fresh, 2)
+            noOverlaps("BotPanel choices", items, fresh)
+        end
+        TB.CloseBotPanel()
     end
 
     do

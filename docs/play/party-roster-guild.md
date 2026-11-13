@@ -2,8 +2,8 @@
 id: play-party-roster
 title: Party, Roster, Guild and Raid Tabs
 category: play
-summary: Party roles, Roster lifecycle, claimed Guild bots and the Raid tab.
-tags: [party, roster, guild, raid, roles, lifecycle]
+summary: Party roles and blessings, Roster lifecycle, claimed Guild bots and the Raid tab.
+tags: [party, roster, guild, raid, roles, blessings, lifecycle]
 relates_to:
   - play-getting-started
   - play-bot-panel
@@ -33,6 +33,36 @@ One row per party member: class icon and colour, level, HP and mana bars with st
 A tank pick sends `.bot role <bot> tank`; other picks send `.bot strategy <specs> <bot>` (and clear a previous tank role). Module: [`.bot role`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role).
 
 **Your own row** picks the role *you* fill for your bots (Tank, Healer, DPS), sent as `.bot role self <role>`. It does not change your spec.
+
+### Bots
+
+Next to **Blessings**, a **Bots** button opens one compact row per party bot:
+its name with class colour and role, fixed columns for the common fight
+switches (**Hold position**, **Loot corpses**, **AoE spells**, **Auto CC**)
+plus a **Class** column (for example **No dungeon Blink** on a mage, empty
+for other classes), and a **Controls** button that opens the
+full [bot panel](bot-panel.md). A chip click sends the same
+`.bot behavior <bot> <key> on|off` the Behaviour view sends, and the row
+repaints from the next bot-state reply.
+
+### Blessings
+
+With a paladin bot in your party or raid and a server that lists the `blessing` capability, a **Blessings** button appears at the bottom of the Party tab. It opens the blessing assignment board: one row per paladin bot, one column per class present in the group (you count too, with class-coloured names), and an **Aura** column when the server lists the `choice` capability. Each cell shows the blessing icon and short name (**Might**, **Wisdom**, **Kings**, **Salv**, **Sanc**, **Light**), or dimmed **Auto** when the paladin chooses.
+
+- **Left-click** a cell for the next blessing or aura, **right-click** for the previous one. The cycle is **Auto** plus the spells that paladin has trained; the cell waits for the server's answer before it can be clicked again.
+- **Auto assign** spreads trained blessings across the paladins in the group (Might for physical classes, Wisdom for casters and hybrids, Kings for a second paladin, Salvation for a third except warriors, then Light/Sanctuary) and only sends cells that change. **Clear** resets every class cell and all player exceptions back to **Auto**.
+- **Refresh** re-asks the server and updates the missing-blessing line, which lists group members who currently lack a non-Auto blessing ordered for them.
+- **Exceptions** (when the server lists `blessing-player`): overrides a single character's blessing, taking precedence over that character's class column. Click **Add target** to add a row for your current target, or **Add member** to pick from a class-coloured list of group members. Each exception row has one cell per paladin (left/right-click to cycle, **Auto** means no override from that paladin) and an **x** button to clear that character's exceptions on all paladins.
+- The board asks the server when it opens and again after the group changes while it is open. It closes by itself when the last paladin bot leaves.
+
+| Click | Sends |
+| :--- | :--- |
+| Blessings (open, group change, Refresh) | `.bot blessing party status` (`raid` inside a raid) |
+| A blessing cell | `.bot blessing <paladin> <class> <might\|wisdom\|kings\|salvation\|sanctuary\|light\|auto>` |
+| An Aura cell | `.bot choice <paladin> aura <aura\|auto>` |
+| Add / remove exception | `.bot blessing <paladin> player <name> <blessing\|auto>` |
+
+The server refuses a blessing the paladin has not learned and says so in the status line and the Log tab.
 
 ## Roster tab
 
@@ -77,7 +107,7 @@ Only guild ranks that may edit officer notes can give or cancel orders; without 
 
 With a mailbox open, the window also shows a **Send missing items** button: it fills the Send Mail form for the first bot in the order tree that needs items (recipient, `Order: <item>` subject, the need list in the body) and attaches one stack of a needed item from your bags (a partial stack when the need is smaller). You press **Send** yourself - one click is one stack, and you click again for the next mail once the server shrinks the need list. Your cursor and the attachment slot must both be empty: with an item on the cursor or one already attached, the click fills the form, says why and attaches nothing rather than swapping your items. The button stays greyed out until a mailbox is open and an order needs items.
 
-- **Badges:** level 60 bots show `Locked` (they never equip or vendor on their own; you gear them). Levelling bots show `Leveling` (they equip upgrades but keep blues and epics). Status reads `Online`, `Offline` or `In party`.
+- **Badges:** level 60 bots show `Locked` (they never equip or vendor on their own; you gear them). Levelling bots show `Leveling` (they equip upgrades but keep blues and epics). Status reads `Online`, `Offline` or `Group`.
 - **Per row:** the backpack button for the [bot panel](bot-panel.md) sits left of the name. The right-hand side has, in one line, the role cycler (`.bot role`), **Order** for the [order window](#guild-orders) and, while the bot has an order, a **...** button. **...** (or a right-click on the row, always) opens a menu with **Release** to send the bot back to the wandering pool (`/gkick`), **Cancel order** and, on a sub-order, **Move sub-order**; each keeps its confirmation.
 - **Bar:** tick rows, then **Invite** (to your party; a full party becomes a raid) or **Summon**. **Fill raid** invites online claimed bots until the raid has 40. **Sync** refreshes the list. **Orders** opens the active-orders window (below). **Guild order** opens the guild-wide order search.
 

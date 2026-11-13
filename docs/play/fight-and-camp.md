@@ -18,7 +18,7 @@ Module docs base: [party actions](https://github.com/Sagiroth/TortoiseBots/blob/
 
 ## Fight tab
 
-### Engage
+### Combat
 
 | Button | What it does | Sends | Module |
 | :--- | :--- | :--- | :--- |
@@ -34,6 +34,7 @@ Module docs base: [party actions](https://github.com/Sagiroth/TortoiseBots/blob/
 | Pull | The tank pulls your target; the others wait the **pull timer** (0–60 s, default 10) before joining. | `.bot action pull <s>` | [pull](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-pull) |
 | Pullback | The tank pulls and runs back to you; the others wait the **pullback timer** (default 3 s) after it is back. | `.bot action pullback <s>` | [pullback](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-pullback) |
 | End pull | Calls off the current pull. | `.bot action end pull` | [end pull](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-end-pull) |
+| My pull | Bots hold fire until your pull reaches them (or a few seconds after you enter combat). Needs the `engage` capability; needs no target. | `.bot action engage` | [engage](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-engage) |
 | Focus Skull | Everyone burns the Skull target. | `.bot action focus skull` | [focus skull](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-focus-skull) |
 | CC Mark | Opens the marks panel: give each raid mark to one bot for crowd control, clear one mark or all. Party rows show each bot's mark. | `.bot action cc <mark> <bot>`, `cc clear [bot]` | [cc](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-cc) |
 

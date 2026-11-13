@@ -153,6 +153,43 @@ local cases = {
         end,
     },
     {
+        id = "fight.engage",
+        expected = { ".bot action engage" },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|flee,inventory,behavior,claimed-roster,engage")
+            setTarget(false, nil)
+            TB.Refresh()
+            assert(TB.actionButtons.engage.visible, "Engage shows with the capability")
+            assert(TB.actionButtons.engage.enabled, "Engage needs no enemy target")
+            this = TB.actionButtons.engage
+            TB.actionButtons.engage.scripts.OnClick(TB.actionButtons.engage)
+        end,
+    },
+    {
+        id = "fight.engage.hidden",
+        expected = { },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|flee,inventory,behavior,claimed-roster")
+            setTarget(true, "Enemy")
+            TB.Refresh()
+            assert(not TB.actionButtons.engage.visible, "Engage hides without the capability")
+        end,
+    },
+    {
+        id = "fight.engage.ack",
+        expected = { },
+        trigger = function()
+            TB.OnSystemMessage("TBM:CAPS|engage")
+            TB.OnSystemMessage("TBM:ACTION_ACK|engage|party|2|")
+            assert(TB.lastActionAck and TB.lastActionAck.intent == "engage"
+                and TB.lastActionAck.scope == "party" and TB.lastActionAck.count == 2
+                and TB.lastActionAck.executor == "-", "the empty-executor engage ACK parses")
+            TB.OnSystemMessage("TBM:ACTION_ERR|engage|no-bots|No scoped bot accepted")
+            assert(TB.lastActionError and TB.lastActionError.intent == "engage"
+                and TB.lastActionError.code == "no-bots", "the engage refusal parses")
+        end,
+    },
+    {
         id = "fight.focusSkull",
         expected = { ".bot action focus skull" },
         trigger = function()

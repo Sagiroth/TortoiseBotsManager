@@ -359,6 +359,7 @@ function TB.OpenActiveOrders()
     if TB.CloseVault then TB.CloseVault() end
     if TB.CloseNpc then TB.CloseNpc() end
     if TB.CloseSettings then TB.CloseSettings() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     win:ClearAllPoints()
     local frame = TB.frame
     local right = frame and frame.GetRight and frame:GetRight()

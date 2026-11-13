@@ -834,11 +834,11 @@ local function createWindow()
     })
     win.untilLabel = lower:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.untilLabel:SetPoint("LEFT", win.untilBoss, "RIGHT", 2, 0)
-    win.untilLabel:SetWidth(70); win.untilLabel:SetJustifyH("LEFT")
-    win.untilLabel:SetText("No boss")
+    win.untilLabel:SetWidth(110); win.untilLabel:SetJustifyH("LEFT")
+    win.untilLabel:SetText("Stop before boss")
     TB.SetTextColor(win.untilLabel, color("muted"))
     win.stopBox = CreateFrame("EditBox", "TortoiseBotsManagerRunStopBox", win, "InputBoxTemplate")
-    TB.StyleEditBox(win.stopBox)
+    TB.StyleEditBox(win.stopBox, "Optional stop reason")
     win.stopBox:SetWidth(RW - 24); win.stopBox:SetHeight(20)
     win.stopBox:SetPoint("TOPLEFT", lower, "TOPLEFT", 12, ctlY - 70)
     win.stopBox:SetAutoFocus(false)
@@ -875,6 +875,7 @@ local function createWindow()
     -- plain dark backing replaces the tooltip backdrop here.
     local barBg = win.runBar:CreateTexture(nil, "BACKGROUND")
     barBg:SetAllPoints(win.runBar)
+    barBg:SetTexture(0.14, 0.14, 0.17, 1)
     win.runFill = win.runBar:CreateTexture(nil, "ARTWORK")
     win.runFill:SetHeight(6)
     win.runLeg = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1268,10 +1269,10 @@ function TB.RefreshRunWindow()
     if win.untilBoss.SetChecked then win.untilBoss:SetChecked(stopBeforeBoss) end
     if live or playerLed then
         win.untilBoss:Disable()
-        win.untilLabel:SetText("|cff8a8a8aNo boss|r")
+        win.untilLabel:SetText("|cff8a8a8aStop before boss|r")
     else
         win.untilBoss:Enable()
-        win.untilLabel:SetText(stopBeforeBoss and "No boss: on" or "No boss")
+        win.untilLabel:SetText(stopBeforeBoss and "Stop before boss: on" or "Stop before boss")
     end
     if live then win.stop:Enable() else win.stop:Disable() end
 end
@@ -1283,6 +1284,7 @@ function TB.OpenRunWindow()
     if TB.CloseNpc then TB.CloseNpc() end
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseOrderWindow then TB.CloseOrderWindow() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     if TB.SetMode then TB.SetMode("full") end
     win:ClearAllPoints()
     local anchor = (TB.botPanel and TB.botPanel.IsVisible and TB.botPanel:IsVisible()) and TB.botPanel or TB.frame

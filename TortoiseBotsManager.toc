@@ -13,6 +13,11 @@ Roster.lua
 Comms.lua
 UI.lua
 BotPanel.lua
+BotTarget.lua
+BotTotem.lua
+BotBlessing.lua
+BotOverview.lua
+BotChoice.lua
 BotNpc.lua
 BotVault.lua
 BotRun.lua

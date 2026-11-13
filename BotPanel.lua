@@ -688,6 +688,8 @@ local function botClassId(name)
     return entry and entry.classId or nil
 end
 
+TB.BotClassId = botClassId
+
 -- Only mages (8) and warlocks (9) answer ".bot service".
 function TB.ServiceWanted(name)
     local classId = botClassId(name)
@@ -814,6 +816,8 @@ end
 
 -- ACK routing from Comms.ParseActionMessage. Returns true when handled.
 function TB.OnBotPanelAck(packet)
+    if TB.OnTotemAck and TB.OnTotemAck(packet) then return true end
+    if TB.OnChoiceAck and TB.OnChoiceAck(packet) then return true end
     local intent = packet.intent or ""
     local botName = string.gsub(packet.scope or "", "^bot:", "")
     local _, _, op = string.find(intent, "^item%s+(%a+)$")
@@ -855,6 +859,8 @@ function TB.OnBotPanelAck(packet)
 end
 
 function TB.OnBotPanelError(packet)
+    if TB.OnTotemError then TB.OnTotemError(packet) end
+    if TB.OnChoiceError then TB.OnChoiceError(packet) end
     local intent = packet.intent or ""
     if intent == "item give" then pendingGive = nil end
     local _, _, key = string.find(intent, "^behavior%s+(%S+)$")
@@ -1242,7 +1248,17 @@ local function createPanel()
         chip.lamp = chip:CreateTexture(nil, "OVERLAY")
         chip.lamp:SetWidth(8); chip.lamp:SetHeight(8)
         chip.lamp:SetPoint("RIGHT", chip, "RIGHT", -8, 0)
-        setTooltip(chip, def.label, { def.tip, "Click to switch on/off." })
+        chip:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+            GameTooltip:SetText(this.def.label)
+            GameTooltip:AddLine(this.def.tip, 0.9, 0.9, 0.9, 1)
+            local stateWord = this.state == "on" and "On"
+                or (this.state == "off" and "Off" or "Not yet known")
+            GameTooltip:AddLine("State: " .. stateWord, 0.9, 0.9, 0.9, 1)
+            GameTooltip:AddLine("Click to switch on/off.", 0.9, 0.9, 0.9, 1)
+            GameTooltip:Show()
+        end)
+        chip:SetScript("OnLeave", function() GameTooltip:Hide() end)
         chip:SetScript("OnClick", function()
             if currentBot then TB.SendBehavior(currentBot, this.def.key) end
         end)
@@ -1253,6 +1269,9 @@ local function createPanel()
     bhHint:SetWidth(PW - 24); bhHint:SetJustifyH("LEFT")
     bhHint:SetText("Party-wide switches live on the Fight tab; these override one bot.")
     TB.SetTextColor(bhHint, color("muted"))
+    panel.behaviorHint = bhHint
+    if TB.CreateTotemBlock then TB.CreateTotemBlock(panel, behavior) end
+    if TB.CreateChoiceBlock then TB.CreateChoiceBlock(panel, behavior) end
 
     -- Spells view: the bot's spellbook, one row per known spell.
     local spellsView = CreateFrame("Frame", nil, panel)
@@ -1458,11 +1477,13 @@ local function createPanel()
     refresh:SetWidth(56); refresh:SetHeight(22)
     refresh:SetPoint("LEFT", trade, "RIGHT", 3, 0)
     refresh:SetText("Refresh")
-    setTooltip(refresh, "Refresh", { "Reload gear, bags, behaviour, conjured goods and professions from the server." })
+    setTooltip(refresh, "Refresh", { "Reload gear, bags, behaviour, totems, conjured goods and professions from the server." })
     refresh:SetScript("OnClick", function()
         if currentBot then TB.RequestInventory(currentBot) end
         if currentBot then TB.RequestProfessions(currentBot) end
         if currentBot and TB.ServiceWanted(currentBot) then TB.RequestService(currentBot) end
+        if currentBot and TB.TotemWanted(currentBot) then TB.RequestTotems(currentBot) end
+        if currentBot and TB.HasChoiceCapability and TB.HasChoiceCapability() then TB.RequestChoices(currentBot) end
         if TB.PollList then TB.PollList(true) end
     end)
     panel.refreshButton = refresh
@@ -1653,25 +1674,35 @@ local function renderBags(inv)
     if bagPage < pages then panel.nextPage:Enable() else panel.nextPage:Disable() end
 end
 
+-- Whether a behaviour chip shows for a bot: a mana chip only for mana
+-- classes, a class chip only for that class, an optional chip only once the
+-- bot's state reached us and the server reported that key.
+function TB.BehaviorChipShown(def, st, classId)
+    if def.mana and classId and C.NO_MANA_CLASSES and C.NO_MANA_CLASSES[classId] then return false end
+    if def.class and def.class ~= classId then return false end
+    if def.optional and st and st[def.key] == nil then return false end
+    return true
+end
+
 local function renderBehavior()
     local st = TB.GetBotState(currentBot)
     local classId = botClassId(currentBot)
-    local noMana = classId and C.NO_MANA_CLASSES and C.NO_MANA_CLASSES[classId]
     local shown = 0
     for _, def in ipairs(C.BEHAVIORS or {}) do
         local key = def.key
         local chip = panel.behaviorChips[key]
         local value = st and st[key]
         local pending = currentBot and behaviorPending[norm(currentBot) .. "|" .. key]
-        if chip.def.mana and noMana then
+        if not TB.BehaviorChipShown(chip.def, st, classId) then
             chip:Hide()
         else
             -- Two columns, reflowed so a hidden chip leaves no hole.
             chip:ClearAllPoints()
             chip:SetPoint("TOPLEFT", panel, "TOPLEFT", 12 + math.mod(shown, 2) * 156,
-                -98 - math.floor(shown / 2) * 30)
+                -96 - math.floor(shown / 2) * 28)
             shown = shown + 1
             chip:Show()
+            chip.state = value
             local stateText = value == "on" and "On" or (value == "off" and "Off" or "?")
             chip:SetText(chip.def.label .. ": " .. stateText)
             if value == "on" then chip.lamp:SetTexture(0.30, 0.90, 0.45, 1)
@@ -1680,6 +1711,12 @@ local function renderBehavior()
             if st and not pending then chip:Enable() else chip:Disable() end
         end
     end
+    panel.behaviorHint:ClearAllPoints()
+    local hintY = -98 - math.ceil(shown / 2) * 28
+    panel.behaviorHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, hintY)
+    local choiceTop = hintY - 20
+    if TB.RenderTotemBlock then TB.RenderTotemBlock(currentBot, classId, choiceTop) end
+    if TB.RenderChoiceBlock then TB.RenderChoiceBlock(currentBot, classId, choiceTop) end
 end
 
 local function renderSpells()
@@ -1967,6 +2004,7 @@ function TB.OpenBotPanel(name, view)
     if currentBot and currentBot ~= name then TB.SetSpellPending(currentBot, false) end
     if TB.CloseRunWindow then TB.CloseRunWindow() end
     if TB.CloseOrderWindow then TB.CloseOrderWindow() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     if TB.SetMode then TB.SetMode("full") end
     if currentBot ~= name then bagPage = 1; spellPage = 1; profPage = 1; profSearch = "" end
     currentBot = name
@@ -1993,6 +2031,8 @@ function TB.OpenBotPanel(name, view)
     -- again. Never on a timer, never on hover. The ask travels with the
     -- inventory request, so one open is one extra line at most.
     if TB.ServiceWanted(name) and not services[name] then TB.RequestService(name) end
+    if TB.TotemWanted(name) then TB.RequestTotems(name) end
+    if TB.HasChoiceCapability and TB.HasChoiceCapability() and TB.GetChoices and not TB.GetChoices(name) then TB.RequestChoices(name) end
     return true
 end
 

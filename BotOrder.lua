@@ -3997,7 +3997,7 @@ function TB.RefreshOrderChrome(order)
     end
     if win.statusLine then
         if orderGuild then
-            win.statusLine:SetText("Pick a bot to open its order flow.")
+            win.statusLine:SetText("Click a bot to place an order for it.")
         elseif order then
             win.statusLine:SetText("Current: " .. TB.OrderRowText(order))
         else
@@ -4168,6 +4168,7 @@ function TB.OpenOrderWindow(bot)
     if TB.CloseServerInfo then TB.CloseServerInfo() end
     if TB.CloseBotPanel then TB.CloseBotPanel() end
     if TB.CloseActiveOrders then TB.CloseActiveOrders() end
+    if TB.CloseBlessings then TB.CloseBlessings() end
     local switched = windowBot ~= bot or orderGuild
     orderGuild = false
     orderStep = 1

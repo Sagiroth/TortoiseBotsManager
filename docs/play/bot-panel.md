@@ -2,8 +2,8 @@
 id: play-bot-panel
 title: Bot Panel
 category: play
-summary: The per-bot window for gear, bags, behaviour switches, spells, professions, NPC errands, bank and mail.
-tags: [bot-panel, gear, bags, inventory, behaviour, spells, professions, bank, mail]
+summary: The per-bot window for gear, bags, behaviour switches, shaman totems, spells, professions, NPC errands, bank and mail.
+tags: [bot-panel, gear, bags, inventory, behaviour, totems, spells, professions, bank, mail]
 relates_to:
   - play-party-roster
   - play-fight-camp
@@ -16,6 +16,7 @@ One window per bot for its gear and habits. Open it with:
 
 - the bag icon on a [Party](party-roster-guild.md#party-tab) or [Guild](party-roster-guild.md#guild-tab) row,
 - **Gear & bags** on the Fight tab while a bot is targeted,
+- the small button next to the target frame (only when your target is one of your bots), or the **Open bot controls for target** key binding,
 - `/tbm bags <name>` (or `/tbm bags` with the bot targeted).
 
 Everything shown comes from the server; each click sends one request and the server answers with fresh state. Module: [bot panel commands](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-panel-commands).
@@ -57,8 +58,44 @@ Module: [item equip](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/pla
 | Potions | Drink healing and mana potions when low. |
 | Mimic | Copy your food, drink and potion use. |
 | Spread out | Keep distance instead of stacking. |
+| Hold position | Keep following and fighting, but never run from enemies on its own: no fleeing, kiting or stepping back for casting room. Still steps out of ground effects. Hidden until the server reports it. |
+| No dungeon Blink | Mages only. Never cast Blink inside dungeons and raids, where it can land in the next pack; Blink still works outdoors. Hidden until the server reports it. |
 
 Module: [`.bot behavior`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior).
+
+### Class choices
+
+On the Behaviour view of a paladin, hunter or warlock, a class block sits
+under the switches when the server lists the `choice` capability. Opening
+the panel on such a bot (and **Refresh**) asks the server for its choices
+(`.bot choice <bot> status`); until the answer arrives the controls read `?`
+and stay greyed out.
+
+| Control | What it does | Sends |
+| :--- | :--- | :--- |
+| Aura (paladin) | Click to pick **Auto** or one of the auras the paladin has trained. | `.bot choice <bot> aura <aura\|auto>` |
+| Aspect (hunter) | Click to pick **Auto** or one of the aspects the hunter has trained. | `.bot choice <bot> aspect <aspect\|auto>` |
+| Curse (warlock) | Click to pick **Auto** or one of the curses the warlock has trained. | `.bot choice <bot> curse <curse\|auto>` |
+
+The row shows what the server reports. The kinds are data-driven: a new
+kind from the server appears with Auto plus its values, with no addon
+change. Module: `.bot choice`.
+
+### Shaman totems
+
+On a shaman's Behaviour view a totem block sits under the switches. Opening the panel on a shaman (and **Refresh**) asks the server for its totems (`.bot totem <bot> status`); until the answer arrives the controls read `?` and stay greyed out.
+
+| Control | What it does | Sends |
+| :--- | :--- | :--- |
+| Earth, Fire, Water, Air | Click to pick **Auto** or one of that slot's totems. Only totems the bot has trained are listed (an older server that does not say lists them all). The row shows what the server reports. | `.bot totem <bot> <slot> <totem\|auto>` |
+| When | Click to cycle **Auto**, **Before the pull**, **Only on order**. | `.bot totem <bot> mode <auto\|prepull\|manual>` |
+| Preset | Click to show the next saved preset. Two come with the addon, **Melee group** (Strength of Earth, Searing, Mana Spring, Windfury) and **Caster group** (Stoneskin, Searing, Mana Spring, Grace of Air); you can overwrite or delete them. | none |
+| Apply | Sets this shaman's four totems to the shown preset. | `.bot totem <bot> set <earth>,<fire>,<water>,<air>` |
+| Apply all | The same for every shaman in your party. | `.bot totem party set <earth>,<fire>,<water>,<air>` |
+| Save preset | Asks for a name and stores this shaman's four slots under it; a name that exists is overwritten. | none |
+| Delete preset | Removes the shown preset. | none |
+
+Presets are kept on your computer (the addon's saved variables), not on the server. A slot with a chosen totem never switches by itself, except Tremor Totem, which may take the earth slot while the group is feared and then gives it back. The **Drop totems** button on the Camp tab still drops every shaman's totems right now.
 
 ### Professions
 
@@ -75,7 +112,7 @@ Hovering a [guild bot's row](party-roster-guild.md#guild-tab) shows its skills (
 | Button | What it does | Sends | Module |
 | :--- | :--- | :--- | :--- |
 | Trade | Opens a trade window; put items or gold in and accept, the bot accepts on its own. | `.bot item <bot> trade` | [trade](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-item-trade) |
-| Refresh | Reload gear, bags, behaviour, conjured goods and professions. | `.bot inv <bot>`, `.bot professions <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
+| Refresh | Reload gear, bags, behaviour, totems, conjured goods and professions. | `.bot inv <bot>`, `.bot totem <bot> status`, `.bot professions <bot>` | [inv](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-inv) |
 | Upkeep | Restock food, drink, reagents, ammo and repairs. Bot must be online. | `.bot maintenance <bot>` | [maintenance](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-maintenance) |
 | AutoGear | Equip the best gear the bot already has in its bags. | `.bot autogear <bot>` | [autogear](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-autogear) |
 | NPC | NPC errands (below). | | |

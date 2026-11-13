@@ -1275,8 +1275,8 @@ local function BuildCcMenu(parent, buttons)
 end
 
 local function BuildEngageCard(parent, buttons)
-    -- Fight: Engage (attack, stop, interrupt, flee)
-    local card = TB.UI.CreateCard(parent, "ENGAGE", W - (C.PAD or 10) * 2, 48, { y = -40, line = true })
+    -- Fight: Combat (attack, stop, interrupt, flee)
+    local card = TB.UI.CreateCard(parent, "COMBAT", W - (C.PAD or 10) * 2, 48, { y = -40, line = true })
     local btnY = -22
     buttons.attack    = makeActionButton(card, "attack", 110, 8, btnY)
     buttons.stop      = makeActionButton(card, "stop", 110, 126, btnY)
@@ -1346,6 +1346,13 @@ local function BuildPullCard(parent, buttons)
     -- leave 12px of interior, so a 16px icon would bleed onto the borders.
     if buttons.endPull.icon then
         buttons.endPull.icon:SetWidth(12); buttons.endPull.icon:SetHeight(12)
+    end
+    -- Engage sits beside End pull in the timer row: you pull yourself, so
+    -- it needs no enemy target, only the engage capability.
+    buttons.engage = makeActionButton(card, "engage", 110, 362, -46)
+    buttons.engage:SetHeight(18)
+    if buttons.engage.icon then
+        buttons.engage.icon:SetWidth(12); buttons.engage.icon:SetHeight(12)
     end
     buttons.focusSkull = makeActionButton(card, "focus skull", 110, 244, btnY)
     buttons.ccMoon     = makeActionButton(card, "cc moon", 110, 362, btnY)
@@ -1419,8 +1426,20 @@ local function BuildSwitchesCard(parent, buttons)
             btn:SetHeight(22)
             if btn.icon then btn.icon:Show() end
             btn.toggle = { key = def.toggle, intent = def.intent, label = def.label, tip = def.tip }
-            setButtonTooltip(btn, def.tip .. " Click to switch for the whole party (or only the targeted bot).",
-                def.label)
+            btn:SetScript("OnEnter", function()
+                if not GameTooltip then return end
+                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                GameTooltip:SetText(this.toggle.label, 1, 0.82, 0)
+                GameTooltip:AddLine(this.toggle.tip, 1, 1, 1, 1)
+                local st = this.switchState
+                local stateWord = st == "on" and "On"
+                    or (st == "off" and "Off"
+                    or (st == "mixed" and "Mixed (~, bots differ)" or "Not yet known"))
+                GameTooltip:AddLine("State: " .. stateWord, 0.9, 0.9, 0.9, 1)
+                GameTooltip:AddLine("Click to switch for the whole party (or only the targeted bot).", 0.85, 0.85, 0.85, 1)
+                GameTooltip:Show()
+            end)
+            btn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
             TB.toggleButtons[def.toggle] = btn
             switchIdx = switchIdx + 1
         end
@@ -1966,6 +1985,23 @@ function TB.InitUI()
             end,
             tip = "Summon every bot in your raid to you. Works out of combat.",
         })
+
+        partyFrame.botsBtn = TB.UI.CreateButton(partyFrame, "Bots", 100, 22, {
+            point = "TOPLEFT",
+            x = 218,
+            y = -306,
+            onClick = function() TB.ToggleBots() end,
+            tip = "One row per party bot with its fight switches; open any bot's full panel from there.",
+        })
+        partyFrame.botsBtn:Hide()
+        partyFrame.blessingBtn = TB.UI.CreateButton(partyFrame, "Blessings", 100, 22, {
+            point = "TOPLEFT",
+            x = 324,
+            y = -306,
+            onClick = function() TB.ToggleBlessings() end,
+            tip = "Set which blessing each paladin bot gives each class in your group.",
+        })
+        partyFrame.blessingBtn:Hide()
         return partyFrame
     end
 
@@ -2017,7 +2053,7 @@ function TB.InitUI()
         end)
         raidFrame.customCheck = button(custom, "Check", 90, 196, -24, "raid custom status",
             "Ask every bot whether custom raid tactics are on.")
-        note(custom, "The server can switch these off entirely (AiPlayerbot.EnableCustomRaidTactics).", -54)
+        note(custom, "Your server may have custom raid tactics turned off.", -54)
 
         local status = card("BOT RAID TACTICS", -182, 146)
         raidFrame.statusButton = button(status, "Check bots", 120, 8, -24, nil,
@@ -2359,7 +2395,7 @@ end
                 local entry = this:GetParent().entry
                 if entry and TB.OpenGuildRowMenu then TB.OpenGuildRowMenu(entry.name) end
             end)
-            setButtonTooltip(moreBtn, "Cancel or move this bot's order, or release it. Right-click the row works too.", "More")
+            setButtonTooltip(moreBtn, "Cancel or move this bot's order, or release the bot from the guild. Right-clicking the row opens this menu too.", "Bot menu")
             row.moreBtn = moreBtn
 
             -- Enchant Meet: the giver's own order row shows it until the
@@ -2542,6 +2578,7 @@ end
         clearBtn:SetScript("OnClick", function()
             if TB.ClearLogHistory then TB.ClearLogHistory() end
             if TB.RefreshLogView then TB.RefreshLogView() end
+            if TB.SetStatus then TB.SetStatus("Activity log cleared.", "ok") end
         end)
 
 
@@ -2588,6 +2625,15 @@ end
             table.insert(rows, row)
         end
         TB.logRows = rows
+
+        local emptyMsg = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        emptyMsg:SetPoint("CENTER", scroll, "CENTER", 0, 0)
+        emptyMsg:SetWidth(W - (C.PAD or 10) * 2 - 40)
+        emptyMsg:SetJustifyH("CENTER")
+        emptyMsg:SetText("No activity yet. Bot messages and server replies land here.")
+        TB.SetTextColor(emptyMsg, color("muted"))
+        logFrame.emptyMsg = emptyMsg
+
         return logFrame
     end
 
@@ -2614,6 +2660,9 @@ end
             else
                 row:Hide()
             end
+        end
+        if TB.logFrame and TB.logFrame.emptyMsg then
+            if total == 0 then TB.logFrame.emptyMsg:Show() else TB.logFrame.emptyMsg:Hide() end
         end
     end
 
@@ -2810,6 +2859,8 @@ end
             TB.partyFrame.emptyMsg:Hide()
             if TB.partyFrame.inviteButton then TB.partyFrame.inviteButton:Hide() end
         end
+        if TB.UpdateBotsButton then TB.UpdateBotsButton() end
+        if TB.UpdateBlessingButton then TB.UpdateBlessingButton() end
     end
 
     function TB.RefreshGuildView()
@@ -2910,7 +2961,7 @@ end
                 local statusColor = entry.online and "|cff4ecb5a" or "|cff757575"
                 local statusStr = entry.status or (entry.online and "Online" or "Offline")
                 statusStr = string.upper(string.sub(statusStr, 1, 1)) .. string.sub(statusStr, 2)
-                if entry.group then statusColor, statusStr = "|cff42a5f5", "In party" end
+                if entry.group then statusColor, statusStr = "|cff42a5f5", "Group" end
                 row.status:SetText(statusColor .. (entry.online and "● " or "○ ") .. statusStr .. "|r")
 
                 -- Guild order line: hidden with no capability, greyed with no
@@ -3174,7 +3225,7 @@ end
     main:Hide()
     TB.frame = main
     TB.uiReady = true
-    TB.Refresh()
+    if TB.InitTargetButton then TB.InitTargetButton() end
     -- Mini mode survives a reload: the login events fire before InitUI on
     -- first load, so restore the bar view here as well.
     if TB.GetMode and TB.GetMode() == "mini" and TB.SetMode then
@@ -3342,8 +3393,13 @@ function TB.RefreshActionControls()
     if TB.RefreshCampControls then TB.RefreshCampControls() end
     -- Flee and downtime are newer server intents: disable them on servers
     -- that do not advertise the capability rather than let the click fail.
+    -- Engage hides entirely without its capability (you pull yourself, so it
+    -- needs no enemy target either).
     if TB.actionButtons.flee then
         if serverHasCap("flee") then TB.actionButtons.flee:Enable() else TB.actionButtons.flee:Disable() end
+    end
+    if TB.actionButtons.engage then
+        if serverHasCap("engage") then TB.actionButtons.engage:Show() else TB.actionButtons.engage:Hide() end
     end
     if TB.actionButtons.downtime then
         if serverHasCap("downtime") then TB.actionButtons.downtime:Enable() else TB.actionButtons.downtime:Disable() end
@@ -3405,6 +3461,7 @@ end
 -- text when off, gold text with "~" when the bots disagree. Colour codes in
 -- the text hold through hover and press.
 local function paintSwitch(btn, label, state)
+    btn.switchState = state
     if state == "on" then
         btn:SetText("|cffffffff" .. label .. "|r")
     elseif state == "mixed" then

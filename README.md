@@ -21,7 +21,7 @@ After an update, restart the game client fully: WoW loads new addon files only o
 
 | Tab | What it's for |
 | :--- | :--- |
-| **Fight** | Attack, stop, interrupt, flee, pull and pull back, focus and CC marks, movement orders, party switches (AoE, auto CC, loot, sap, spread) and tactics. |
+| **Fight** | Attack, stop, interrupt, flee, pull and pull back, "My pull" hold, focus and CC marks, movement orders, party switches (AoE, auto CC, loot, sap, spread) and tactics. |
 | **Camp** | Between pulls: rest, ready check, repair, sell junk, train, downtime errands for own alts, release and corpse run, rebuff, formations, quests and grinding. |
 | **Party** | Your group and its roles; opens each bot's gear and bags. |
 | **Guild** | Bots you claimed into your guild as raid alts; farm, buy and craft orders with live progress. |
@@ -31,7 +31,8 @@ After an update, restart the game client fully: WoW loads new addon files only o
 | **Loot** | Shown only when the server enables it: what your party bots looted or rolled. |
 | **Log** | Recent bot messages and server replies. |
 
-- **Bot panel** — paper doll, bags with upgrade markers, equip, trade, use, mail or bank items, per-bot behaviour switches, spells, NPC errands and flights. Open it from a Party row, the `Gear & bags` button, or `/tbm bags <name>`.
+- **Bot panel** — paper doll, bags with upgrade markers, equip, trade, use, mail or bank items, per-bot behaviour switches, shaman totems, paladin auras, hunter aspects and warlock curses, spells, NPC errands and flights. Open it from a Party row, the `Gear & bags` button, the target-frame button (or its key binding), or `/tbm bags <name>`.
+- **Bots overview** — one row per party bot with its fight switches, from the **Bots** button on the Party tab.
 - **Mini mode** — `Mini` (or `/tbm mini`) swaps the window for a small bar of fight buttons and favourites.
 - **Quiet** — button clicks travel as addon messages, so nothing shows up in chat for you or anyone nearby.
 

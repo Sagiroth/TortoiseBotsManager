@@ -15,7 +15,7 @@ relates_to:
 
 **Mini** in the window header (or `/tbm mini`) swaps the window for a small draggable bar. **+** (or `/tbm full`) brings the window back; the choice survives a reload.
 
-- Category icons (Engage, Pull & Focus, Move, Party switches, Tactics, Camp) open a flyout with the same actions as the [Fight and Camp tabs](fight-and-camp.md). The short bar under a category turns gold while its flyout is open; a thin line separates the categories from your favourites.
+- Category icons (Combat, Pull & Focus, Move, Party switches, Tactics, Camp) open a flyout with the same actions as the [Fight and Camp tabs](fight-and-camp.md). The short bar under a category turns gold while its flyout is open; a thin line separates the categories from your favourites.
 - **Right-click** an action in a flyout to pin it as a favourite on the bar; right-click a favourite to remove it.
 - Actions follow the same rules as in the window: enemy-target actions are grey without an enemy target.
 - **Direction:** right-click the turtle to stack the bar vertically or back horizontally; `/tbm minilayout [horizontal|vertical]` does the same (bare `/tbm minilayout` flips it).
@@ -26,10 +26,11 @@ Under **Key Bindings → TortoiseBots Manager** in the game menu:
 
 | Binding | Same as |
 | :--- | :--- |
-| Attack target, Stop combat, Interrupt target, Flee | Fight → Engage |
+| Attack target, Stop combat, Interrupt target, Flee | Fight → Combat |
 | Pull target, Pull target back (with your pull timers), Focus skull | Fight → Pull and focus |
 | Follow, Stay, Come and hold | Fight → Move |
 | Mini favourite 1–12 | The favourite in that slot on the mini bar (a bound key shows on the button and in its tooltip) |
+| Open bot controls for target | Opens the [bot panel](bot-panel.md) for the bot you have targeted (only when the target is one of your bots) |
 | Toggle window, Toggle mini bar | `/tbm`, `/tbm mini` |
 
 ## Slash commands
@@ -55,7 +56,7 @@ Left-click opens or closes the window, right-click refreshes the roster, middle-
 
 ## Settings window
 
-`/tbm settings` (or middle-click the minimap button) opens the options: window size (a slider from 70% to 110%; **Auto** returns to the size picked from your screen height), minimap button on or off, lock the mini bar in place, and automatic roster refresh with its interval (4–60 seconds).
+`/tbm settings` (or middle-click the minimap button) opens the options: window size (a slider from 70% to 110%; **Auto** returns to the size picked from your screen height), minimap button on or off, lock the mini bar in place, the bot button at the target frame on or off, and automatic roster refresh with its interval (4–60 seconds).
 
 ## Info window
 

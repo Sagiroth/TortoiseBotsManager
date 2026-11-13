@@ -240,6 +240,11 @@ for _, file in ipairs({
     "Comms.lua",
     "UI.lua",
     "BotPanel.lua",
+    "BotTotem.lua",
+    "BotTarget.lua",
+    "BotBlessing.lua",
+    "BotOverview.lua",
+    "BotChoice.lua",
     "BotNpc.lua",
     "BotVault.lua",
     "BotRun.lua",
@@ -1466,6 +1471,7 @@ for _, id in ipairs({ "attack", "stop", "interrupt", "flee" }) do
         "engage control " .. id .. " must fit the 360px content")
 end
 assert(cardBottom(TB.actionButtons.endPull, fightTops.pull) >= -360, "end pull must fit the 360px content")
+assert(cardBottom(TB.actionButtons.engage, fightTops.pull) >= -360, "engage must fit the 360px content")
 -- Release follows the party's death state.
 TB.Refresh()
 assert(not TB.actionButtons.release.enabled, "Release is idle while everyone lives")
@@ -5587,6 +5593,15 @@ dofile(root .. "/tests/altsum_tests.lua")({
 })
 
 dofile(root .. "/tests/geometry_tests.lua")()
+
+dofile(root .. "/tests/community_tests.lua")({
+    sent = sent,
+    frames = frames,
+    advanceTime = function(dt) now = now + (dt or 1) end,
+    setTarget = function(exists, name) targetExists = exists; targetNameValue = name end,
+    setParty = function(members, className) partyMembers = members or {}; partyClassName = className or "Priest" end,
+    getParty = function() return partyMembers, partyClassName end,
+})
 
 -- A newer server may append fields to any line: older addons ignore them.
 do
