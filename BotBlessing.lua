@@ -930,8 +930,8 @@ local function renderCell(cell, value, enabled)
         cell.icon:Show()
         cell.label:ClearAllPoints()
         cell.label:SetPoint("BOTTOM", cell, "BOTTOM", 0, 3)
-        cell.label:SetText(SHORT_BLESSING[value] or TB.BlessingLabel(value))
-        cell.label:SetTextColor(0.95, 0.92, 0.84)
+        cell.label:SetText("|c" .. (BLESSING_HEX[value] or "fff2ebd6") ..
+            (SHORT_BLESSING[value] or TB.BlessingLabel(value)) .. "|r")
     else
         cell.border:SetTexture(0.13, 0.13, 0.15, 0.85)
         cell.icon:Hide()

@@ -346,7 +346,7 @@ do
     assert(cells[1].word == "warrior" and cells[2].word == "paladin" and cells[3].word == "priest"
         and cells[4].word == "mage" and not cells[5].visible, "one column per class present")
     assert(not win.rows[2].name.visible, "one row per paladin bot")
-    assert(cells[1].icon.texture[1] == C.BLESSING_ICONS.might and cells[1].label.text == "Might",
+    assert(cells[1].icon.texture[1] == C.BLESSING_ICONS.might and string.find(cells[1].label.text, "Might", 1, true),
         "a blessing shows its icon and short label")
     assert(cells[3].icon.texture[1] == C.BLESSING_ICONS.wisdom, "priest gets wisdom")
     expectCommands("left click", commands(function() click(cells[1]) end), { ".bot blessing Pallybot warrior wisdom" })
