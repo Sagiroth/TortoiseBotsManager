@@ -3997,7 +3997,7 @@ function TB.RefreshOrderChrome(order)
     end
     if win.statusLine then
         if orderGuild then
-            win.statusLine:SetText("Pick a bot to open its order flow.")
+            win.statusLine:SetText("Click a bot to place an order for it.")
         elseif order then
             win.statusLine:SetText("Current: " .. TB.OrderRowText(order))
         else

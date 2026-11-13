@@ -680,11 +680,22 @@ local function createAuraCell(parent)
     return cell
 end
 
-local function makeToolbarButton(parent, label, width, x)
+local function setBtnTooltip(btn, title, line)
+    btn:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title)
+        GameTooltip:AddLine(line, 0.9, 0.9, 0.9, 1)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+local function makeToolbarButton(parent, label, width, x, tip)
     local b = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetWidth(width); b:SetHeight(20)
     b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -TOOLBAR_TOP)
     b:SetText(label)
+    if tip then setBtnTooltip(b, label, tip) end
     return b
 end
 
@@ -706,11 +717,14 @@ local function createWindow()
     TB.StyleCloseButton(close, -7, -6)
     close:SetScript("OnClick", function() TB.CloseBlessings() end)
 
-    win.autoBtn = makeToolbarButton(win, "Auto assign", 86, PAD)
+    win.autoBtn = makeToolbarButton(win, "Auto assign", 86, PAD,
+        "Spreads trained blessings across paladins for each class.")
     win.autoBtn:SetScript("OnClick", function() TB.ApplyAutoBlessings() end)
-    win.clearBtn = makeToolbarButton(win, "Clear", 54, PAD + 92)
+    win.clearBtn = makeToolbarButton(win, "Clear", 54, PAD + 92,
+        "Resets every class cell back to Auto.")
     win.clearBtn:SetScript("OnClick", function() TB.ClearBlessings() end)
-    win.refreshBtn = makeToolbarButton(win, "Refresh", 66, PAD + 152)
+    win.refreshBtn = makeToolbarButton(win, "Refresh", 66, PAD + 152,
+        "Re-asks the server and checks who is missing a blessing.")
     win.refreshBtn:SetScript("OnClick", function()
         TB.RequestBlessings()
         TB.RefreshMissingBlessings()
@@ -769,6 +783,8 @@ local function createWindow()
     win.excAddBtn = TB.StyleButton(CreateFrame("Button", nil, win, "UIPanelButtonTemplate"))
     win.excAddBtn:SetWidth(132); win.excAddBtn:SetHeight(18)
     win.excAddBtn:SetText("Exception for target")
+    setBtnTooltip(win.excAddBtn, "Exception for target",
+        "Override one player's blessing (uses your target, or lets you pick a group member).")
     win.excAddBtn:SetScript("OnClick", function() openExceptionMenu(this) end)
 
     win.excEmpty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
