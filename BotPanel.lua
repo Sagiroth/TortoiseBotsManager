@@ -818,6 +818,7 @@ end
 function TB.OnBotPanelAck(packet)
     if TB.OnTotemAck and TB.OnTotemAck(packet) then return true end
     if TB.OnChoiceAck and TB.OnChoiceAck(packet) then return true end
+    if TB.OnFocusAck and TB.OnFocusAck(packet) then return true end
     local intent = packet.intent or ""
     local botName = string.gsub(packet.scope or "", "^bot:", "")
     local _, _, op = string.find(intent, "^item%s+(%a+)$")
@@ -1272,6 +1273,7 @@ local function createPanel()
     panel.behaviorHint = bhHint
     if TB.CreateTotemBlock then TB.CreateTotemBlock(panel, behavior) end
     if TB.CreateChoiceBlock then TB.CreateChoiceBlock(panel, behavior) end
+    if TB.CreateFocusBlock then TB.CreateFocusBlock(panel, behavior) end
 
     -- Spells view: the bot's spellbook, one row per known spell.
     local spellsView = CreateFrame("Frame", nil, panel)
@@ -1677,9 +1679,27 @@ end
 -- Whether a behaviour chip shows for a bot: a mana chip only for mana
 -- classes, a class chip only for that class, an optional chip only once the
 -- bot's state reached us and the server reported that key.
+-- "heal" or "dps" from the BOTSTATE specs field, nil for a tank spec or
+-- while unknown (a priest's `hybrid` fights as Holy with Off-DPS).
+local HEAL_SPECS = { holy = true, discipline = true, restoration = true }
+local DPS_SPECS = { shadow = true, elemental = true, enhancement = true, retribution = true,
+    ["dps feral"] = true, balance = true }
+local TANK_SPECS = { protection = true, ["tank feral"] = true, ["tank shaman"] = true }
+function TB.BotSpecKind(specs)
+    if not specs or specs == "" then return nil end
+    local kind = nil
+    for spec in string.gfind(specs, "[^+]+") do
+        if TANK_SPECS[spec] then return nil end
+        if HEAL_SPECS[spec] then kind = "heal"
+        elseif DPS_SPECS[spec] and not kind then kind = "dps" end
+    end
+    return kind
+end
+
 function TB.BehaviorChipShown(def, st, classId)
     if def.mana and classId and C.NO_MANA_CLASSES and C.NO_MANA_CLASSES[classId] then return false end
     if def.class and def.class ~= classId then return false end
+    if def.spec and TB.BotSpecKind(st and st.specs) ~= def.spec then return false end
     if def.optional and st and st[def.key] == nil then return false end
     return true
 end
@@ -1715,6 +1735,7 @@ local function renderBehavior()
     local hintY = -98 - math.ceil(shown / 2) * 28
     panel.behaviorHint:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, hintY)
     local choiceTop = hintY - 20
+    if TB.RenderFocusBlock then choiceTop = TB.RenderFocusBlock(currentBot, choiceTop) end
     if TB.RenderTotemBlock then TB.RenderTotemBlock(currentBot, classId, choiceTop) end
     if TB.RenderChoiceBlock then TB.RenderChoiceBlock(currentBot, classId, choiceTop) end
 end

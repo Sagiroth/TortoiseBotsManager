@@ -346,6 +346,57 @@ scene("bots", function()
     tick(1)
     dump("bots", { main, TB.botsWindow }, "Party tab with the Bots overview")
 end)
+-- Class controls: off-spec switch in the Bots class column, focus marks,
+-- and a hunter's Aspect + Sting pickers with the focus button.
+local function classControlsParty()
+    -- A party holds four bots: Nightveil and Swiftarrow stand in for Thalgrim and Bramblewood.
+    local saved = Mock.world.party
+    Mock.world.party = {}
+    for _, member in ipairs(saved) do
+        if member.name == "Seraphine" or member.name == "Vexmora" then table.insert(Mock.world.party, member) end
+    end
+    table.insert(Mock.world.party, { name = "Nightveil", class = "Priest", level = 60 })
+    table.insert(Mock.world.party, { name = "Swiftarrow", class = "Hunter", level = 60 })
+    feed({
+        "TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,claimed-roster,guild-orders,professions,dungeon-run,loot-log,service,choice,focus-mark",
+        "TBM:CC_ASSIGN_BEGIN|1",
+        "TBM:CC_ASSIGN|Vexmora|moon",
+        "TBM:CC_ASSIGN_END",
+        "TBM:BOTSTATE|Thalgrim|move=follow,loot=on,aoe=on,autocc=off,hold=off,specs=protection,focus=skull",
+        "TBM:BOTSTATE|Seraphine|move=follow,loot=on,aoe=on,autocc=off,hold=on,offheal=off,offdps=on,specs=holy+offdps,focus=skull",
+        "TBM:BOTSTATE|Vexmora|move=follow,loot=on,aoe=on,autocc=on,hold=off,noblink=on,specs=frost,focus=cross",
+        "TBM:BOTSTATE|Bramblewood|move=follow,loot=off,aoe=on,autocc=off,hold=off,offheal=off,offdps=off,specs=restoration,focus=skull",
+        "TBM:BOTSTATE|Nightveil|move=follow,loot=on,aoe=on,autocc=off,hold=off,offheal=on,offdps=off,specs=shadow+offheal,focus=square",
+        "TBM:BOTSTATE|Swiftarrow|move=follow,loot=on,aoe=on,autocc=off,hold=off,specs=marksmanship,focus=skull",
+        "TBM:CHOICE|Swiftarrow|aspect=auto,known=hawk+monkey+cheetah+pack+wild",
+        "TBM:CHOICE|Swiftarrow|sting=scorpid,known=serpent+scorpid+viper",
+    })
+    return saved
+end
+scene("bots-class-controls", function()
+    local saved = classControlsParty()
+    tab("party", nil)
+    TB.OpenBots()
+    tick(1)
+    dump("bots-class-controls", { main, TB.botsWindow }, "Bots overview with off-spec switch and focus marks")
+    Mock.world.party = saved
+end)
+scene("panel-class-controls", function()
+    local saved = classControlsParty()
+    tab("party", nil)
+    TB.OpenBotPanel("Swiftarrow", "behavior")
+    tick(1)
+    dump("panel-class-controls", { main, TB.botPanel }, "Bot panel: hunter with focus mark, Aspect and Sting")
+    Mock.world.party = saved
+end)
+scene("panel-offheal", function()
+    local saved = classControlsParty()
+    tab("party", nil)
+    TB.OpenBotPanel("Nightveil", "behavior")
+    tick(1)
+    dump("panel-offheal", { main, TB.botPanel }, "Bot panel: Shadow priest with Off-heal")
+    Mock.world.party = saved
+end)
 scene("blessings", function()
     table.insert(Mock.world.party, { name = "Kaelthor", class = "Paladin", level = 60 })
     feed({

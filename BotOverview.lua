@@ -21,7 +21,9 @@ local HEADER_TOP = 32
 local ROWS_TOP = 50
 local PAD = 12
 local NUM_COLS = 5
-local WIN_W = PAD * 2 + NAME_W + NUM_COLS * CHIP_W + (NUM_COLS + 1) * 4 + 76
+local FOCUS_W = 44
+local WIN_W = PAD * 2 + NAME_W + NUM_COLS * CHIP_W + (NUM_COLS + 1) * 4 + FOCUS_W + 4 + 76
+local FOCUS_X = PAD + NAME_W + 4 + NUM_COLS * (CHIP_W + 4)
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
 local function color(name) return COL[name] or { 1, 1, 1 } end
@@ -65,9 +67,12 @@ function TB.GetOverviewGroup()
 end
 
 -- Fixed columns so every bot's switches align top to bottom: four common
--- switches first, then the class-specific column (empty for other classes).
+-- switches first, then the class-specific column: No dungeon Blink for a
+-- mage, the off-spec switch that fits a hybrid's current spec (Off-heal on a
+-- damage spec, Off-DPS on a healer), empty otherwise. The focus mark sits in
+-- its own narrow column after it.
 local COMMON_KEYS = { "hold", "loot", "aoe", "autocc" }
-local CLASS_KEYS = { "noblink" }
+local CLASS_KEYS = { "noblink", "offheal", "offdps" }
 local COL_HEADERS = { "Hold", "Loot", "AoE", "Auto CC", "Class" }
 
 local function byKeyDefs()
@@ -135,6 +140,7 @@ local function createRow(parent)
         end)
         row.chips[i] = chip
     end
+    if TB.CreateFocusIconButton then row.focus = TB.CreateFocusIconButton(parent, CHIP_H) end
     row.open = TB.StyleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     row.open:SetWidth(72); row.open:SetHeight(CHIP_H)
     row.open:SetText("Controls")
@@ -185,6 +191,13 @@ local function createWindow()
         table.insert(win.headers, hdr)
     end
 
+    local focusHeader = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    focusHeader:SetPoint("TOPLEFT", win, "TOPLEFT", FOCUS_X, -HEADER_TOP)
+    focusHeader:SetWidth(FOCUS_W); focusHeader:SetJustifyH("CENTER")
+    focusHeader:SetText("FOCUS")
+    TB.SetTextColor(focusHeader, color("muted"))
+    win.focusHeader = focusHeader
+
     win.rows = {}
     for r = 1, MAX_ROWS do win.rows[r] = createRow(win) end
     win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -205,6 +218,7 @@ function TB.RefreshBots()
     local rowCount = math.min(table.getn(bots), MAX_ROWS)
     win:SetWidth(WIN_W)
     win:SetHeight(ROWS_TOP + rowCount * ROW_STEP + 40)
+    if TB.HasFocusCapability and TB.HasFocusCapability() then win.focusHeader:Show() else win.focusHeader:Hide() end
     for r, row in ipairs(win.rows) do
         local name = bots[r]
         if r <= rowCount and name then
@@ -247,13 +261,19 @@ function TB.RefreshBots()
                     chip:Hide()
                 end
             end
+            if row.focus then
+                row.focus:ClearAllPoints()
+                row.focus:SetPoint("TOPLEFT", win, "TOPLEFT", FOCUS_X + (FOCUS_W - CHIP_H) / 2, top)
+                TB.UpdateFocusIconButton(row.focus, name)
+            end
             row.open:ClearAllPoints()
-            row.open:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + NAME_W + 4 + NUM_COLS * (CHIP_W + 4), top)
+            row.open:SetPoint("TOPLEFT", win, "TOPLEFT", FOCUS_X + FOCUS_W + 4, top)
             row.open.bot = name
             row.open:Show()
         else
             row.name:Hide()
             for _, chip in ipairs(row.chips) do chip:Hide() end
+            if row.focus then row.focus:Hide() end
             row.open:Hide()
         end
     end

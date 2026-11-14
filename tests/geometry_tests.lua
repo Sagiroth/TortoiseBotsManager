@@ -843,7 +843,12 @@ return function()
                             labelFits("BotPanel behavior." .. key, chip, chip.text, 6)
                         end
                     end
-                    if table.getn(all) ~= table.getn(TB.C.BEHAVIORS) then
+                    -- Spec-gated chips (Off-heal/Off-DPS) never show on a mage.
+                    local expected = 0
+                    for _, def in ipairs(TB.C.BEHAVIORS) do
+                        if not def.spec then expected = expected + 1 end
+                    end
+                    if table.getn(all) ~= expected then
                         bad("BotPanel behavior: a mage that reports every key must show every chip")
                     end
                     local fresh = {}

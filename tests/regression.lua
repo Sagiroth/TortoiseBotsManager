@@ -245,6 +245,7 @@ for _, file in ipairs({
     "BotBlessing.lua",
     "BotOverview.lua",
     "BotChoice.lua",
+    "BotFocus.lua",
     "BotNpc.lua",
     "BotVault.lua",
     "BotRun.lua",
@@ -1019,8 +1020,8 @@ now = now + 1
 local beforeRoleCmd = table.getn(sent)
 TB.partyFrame.rows[2].roleButtons[3].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Priestbot"] == "dps", "Priestbot role must be stored as dps")
-assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot strategy +shadow,-holy,-discipline,-offdps Priestbot",
-    "Clicking Shadow role must send Playerbot strategy command")
+assert(table.getn(sent) == beforeRoleCmd + 1 and sent[table.getn(sent)] == ".bot role Priestbot shadow",
+    "Clicking Shadow role must send the server spec id so the whole kit is rebuilt")
 assert(TB.partyFrame.rows[2].roleButtons[3].isActive, "Selected Shadow button must be filled gold")
 
 -- Tank designation uses the explicit role command (forced role + pull kit).
@@ -1034,25 +1035,41 @@ now = now + 1
 local beforeTankCmd = table.getn(sent)
 TB.partyFrame.rows[2].roleButtons[1].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Tankbot"] == "tank", "Tankbot role must be stored as tank")
-assert(table.getn(sent) == beforeTankCmd + 1 and sent[table.getn(sent)] == ".bot role Tankbot tank",
-    "Clicking Tank role must send the explicit role command")
--- Demotion clears the stale forced tank before the spec strategy is applied.
--- Two commands in the same tick: first sends, second queues on SEND_DELAY.
+assert(table.getn(sent) == beforeTankCmd + 1 and sent[table.getn(sent)] == ".bot role Tankbot protection",
+    "Clicking Tank role must send the Protection spec id")
+-- Demotion is one spec command too: the spec id sets the forced role.
 now = now + 1
 local beforeDemoteCmd = table.getn(sent)
 TB.partyFrame.rows[2].roleButtons[2].scripts.OnClick()
 assert(TortoiseBotsDB.botRoles["Tankbot"] == "dps", "Tankbot role must be stored as dps")
 assert(table.getn(sent) == beforeDemoteCmd + 1
-    and sent[table.getn(sent)] == ".bot role Tankbot clear",
-    "Demotion from Tank must clear the forced role first")
-now = now + 1
-local queueFrame = frames["TortoiseBotsManagerQueueFrame"]
-assert(queueFrame, "demotion spec strategy must queue behind the throttle")
-this, arg1 = queueFrame, 0.1
-queueFrame.scripts.OnUpdate(queueFrame)
-assert(table.getn(sent) == beforeDemoteCmd + 2
-    and sent[table.getn(sent)] == ".bot strategy +arms,-protection,-fury Tankbot",
-    "Demotion spec strategy must follow after the throttle clears")
+    and sent[table.getn(sent)] == ".bot role Tankbot arms",
+    "Demotion from Tank sends the Arms spec id only")
+
+-- Every role row maps to a spec id the server knows for that class
+-- (kSpecRows in the module); shaman Enh Tank keeps the plain tank role.
+do
+    local serverSpecs = {
+        [1] = { arms = true, fury = true, protection = true },
+        [2] = { holy = true, protection = true, retribution = true },
+        [3] = { bm = true, mm = true, survival = true },
+        [4] = { assa = true, combat = true, subtlety = true },
+        [5] = { discipline = true, holy = true, shadow = true, hybrid = true },
+        [7] = { ele = true, enh = true, restoration = true, tank = true },
+        [8] = { arcane = true, fire = true, frost = true },
+        [9] = { affliction = true, demonology = true, destruction = true },
+        [11] = { balance = true, boomkin = true, cat = true, bear = true, restoration = true },
+    }
+    for classId, roles in pairs(TB.C.CLASS_ROLES) do
+        for _, role in ipairs(roles) do
+            assert(role.spec and serverSpecs[classId] and serverSpecs[classId][role.spec],
+                "role " .. role.id .. " of class " .. classId .. " must map to a server spec id")
+        end
+    end
+    assert(TB.Roles.FindRole(7, "tank").spec == "tank" and TB.Roles.FindRole(11, "tank").spec == "bear"
+        and TB.Roles.FindRole(5, "disc").spec == "discipline" and TB.Roles.FindRole(11, "boomkin").spec == "boomkin",
+        "explicit TBM id to server spec id map")
+end
 partyClassName = "Priest"
 partyMembers = { "Priestbot" }
 TB.RefreshPartyView()
