@@ -2,6 +2,22 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.3.0 (2026-11-14)
+
+### Guild Orders & Alts
+- Guild tab now shows your own alts with a blue **Your alt** badge, so you can send them on guild orders directly from the addon. [#85](https://github.com/Sagiroth/TortoiseBotsManager/pull/85)
+- Alt rows have no **Release** entry, since Release only applies to claimed bots. [#85](https://github.com/Sagiroth/TortoiseBotsManager/pull/85)
+- The Guild header counts them separately, e.g. **Claimed: 6, 2 alts**, keeping claimed bots and your own characters distinct. [#85](https://github.com/Sagiroth/TortoiseBotsManager/pull/85)
+- Before an alt’s order window opens, a confirmation asks you to accept: the order spends that alt’s own gold, and rewards go to the guild bank or by mail. [#85](https://github.com/Sagiroth/TortoiseBotsManager/pull/85)
+
+### Tactical & Class Controls
+- Added an **Off-heal / Off-DPS** switch in the bot panel’s **Behaviour** view and the **Class** column of the Bots window. [#84](https://github.com/Sagiroth/TortoiseBotsManager/pull/84)
+- The switch only appears when it fits the bot’s current spec: Off-heal on damage specs, Off-DPS on healers, nothing on tanks; hidden on servers that do not report it. [#84](https://github.com/Sagiroth/TortoiseBotsManager/pull/84)
+- Added class-specific controls for poisons, stings, and demons. [#84](https://github.com/Sagiroth/TortoiseBotsManager/pull/84)
+- New **Focus** column in the Bots window shows each bot’s raid-mark icon, with a **Focus mark: Skull** button in the Behaviour view. [#84](https://github.com/Sagiroth/TortoiseBotsManager/pull/84)
+
+---
+
 ## v2.2.0 (2026-11-13)
 
 ### Tactical & Actions
