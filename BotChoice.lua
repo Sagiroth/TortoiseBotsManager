@@ -1,6 +1,7 @@
 -- TortoiseBotsManager/BotChoice.lua
 -- Class choices in the bot panel's Behaviour view (paladin aura, hunter
--- aspect, warlock curse), data-driven from the server: one control per kind
+-- aspect and sting, warlock curse and demon, rogue poison per hand),
+-- data-driven from the server: one control per kind
 -- with Auto plus the `known` values, same UX as the totem slot picker.
 -- Shown only with the `choice` capability and a record for that bot.
 --
@@ -8,7 +9,8 @@
 --   .bot choice <bot|party> status            everything
 --   TBM:CHOICE|<bot>|<kind>=<value|auto>,known=<v>+<v>+...   (one line per kind)
 --   TBM:ACTION_ACK|choice|<scope>|<n>|<kind>=<value> / TBM:ACTION_ACK|choice status|<scope>|<n>|-
---   TBM:ACTION_ERR|choice|invalid|<usage> | choice|unknown-spell|<msg> | choice|no-bot|<msg>
+--   TBM:ACTION_ERR|choice|invalid|<usage> | choice|unknown-spell|<msg> | choice|no-item|<msg>
+--   | choice|no-bot|<msg>
 --
 -- The UI is generic over kinds (label = capitalised kind, values
 -- capitalised), so a new kind from the server needs no addon change. The
@@ -99,12 +101,16 @@ function TB.ConsumeChoiceLine(msg)
     return true
 end
 
+-- Values whose short word reads badly on its own.
+local VALUE_LABELS = { poison_mh = { mind = "Mind-numbing" }, poison_oh = { mind = "Mind-numbing" } }
+
 -- Capitalised for display: "shadow resistance" -> "Shadow Resistance".
 function TB.ChoiceLabel(kind, value)
     if not kind then return "?" end
     if not value or value == "" then return "?" end
     if value == "auto" then return "Auto" end
     if kind ~= string.lower(kind) then kind = string.lower(kind) end
+    if VALUE_LABELS[kind] and VALUE_LABELS[kind][value] then return VALUE_LABELS[kind][value] end
     local words = {}
     for word in string.gfind(value, "%S+") do
         if word ~= "of" then
@@ -115,10 +121,13 @@ function TB.ChoiceLabel(kind, value)
     return table.concat(words, " ")
 end
 
--- Display label of a kind: capitalised ("aura" -> "Aura").
+-- Display label of a kind: a readable name for the known ones, else
+-- capitalised ("aura" -> "Aura").
+local KIND_LABELS = { poison_mh = "Main-hand poison", poison_oh = "Off-hand poison", sting = "Sting", pet = "Demon" }
 function TB.ChoiceKindLabel(kind)
     if not kind or kind == "" then return "?" end
     kind = string.lower(kind)
+    if KIND_LABELS[kind] then return KIND_LABELS[kind] end
     return string.upper(string.sub(kind, 1, 1)) .. string.sub(kind, 2)
 end
 
@@ -335,10 +344,10 @@ function TB.RenderChoiceBlock(bot, classId, top)
 end
 
 -- Whether a kind's control shows for a bot: a known kind only for its
--- class (aura for paladins, aspect for hunters, curse for warlocks); an
--- unknown kind (a future server addition) shows for every class, so no
--- addon change is needed.
-local KIND_CLASS = { aura = 2, aspect = 3, curse = 9 }
+-- class (aura for paladins, aspect and sting for hunters, curse and demon
+-- for warlocks, poisons for rogues); an unknown kind (a future server
+-- addition) shows for every class, so no addon change is needed.
+local KIND_CLASS = { aura = 2, aspect = 3, curse = 9, poison_mh = 4, poison_oh = 4, sting = 3, pet = 9 }
 
 function TB.ChoiceKindWanted(kind, classId)
     kind = kind and string.lower(kind) or nil

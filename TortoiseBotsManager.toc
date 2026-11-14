@@ -18,6 +18,7 @@ BotTotem.lua
 BotBlessing.lua
 BotOverview.lua
 BotChoice.lua
+BotFocus.lua
 BotNpc.lua
 BotVault.lua
 BotRun.lua

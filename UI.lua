@@ -2369,6 +2369,7 @@ end
                 GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Combat Role: " .. curLabel)
                 GameTooltip:AddLine("Click to cycle to the next combat role.", 0.9, 0.9, 0.9, 1)
+                GameTooltip:AddLine("A spec change resets the bot's behaviour switches to the spec's defaults.", 0.9, 0.9, 0.9, 1)
                 GameTooltip:Show()
             end)
             roleBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2831,8 +2832,8 @@ end
                             setButtonTooltip(btn, "Tell your bots you play as " .. capturedRole.label ..
                                 " (bots use " .. playerRoleToken .. "). Your own spec does not change.")
                         else
-                            setButtonTooltip(btn, "Set " .. capturedName .. " role to " .. capturedRole.label ..
-                                (capturedRole.strat ~= "" and (" (" .. capturedRole.strat .. ")") or ""))
+                            setButtonTooltip(btn, "Set " .. capturedName .. " to " .. capturedRole.label ..
+                                ". The server rebuilds the bot's kit: its behaviour switches go back to the spec's defaults.")
                         end
                         btn:Show()
                     else

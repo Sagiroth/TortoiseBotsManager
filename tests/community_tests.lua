@@ -869,6 +869,75 @@ do
     TB.CloseBotPanel()
 end
 
+-- -- Class controls: new choice kinds, off-spec chips, focus mark -- --
+do
+    assert(TB.ChoiceKindLabel("poison_mh") == "Main-hand poison" and TB.ChoiceKindLabel("poison_oh") == "Off-hand poison"
+        and TB.ChoiceKindLabel("sting") == "Sting" and TB.ChoiceKindLabel("pet") == "Demon", "new kinds read in words")
+    assert(TB.ChoiceLabel("poison_mh", "mind") == "Mind-numbing" and TB.ChoiceLabel("poison_oh", "deadly") == "Deadly"
+        and TB.ChoiceLabel("pet", "felhunter") == "Felhunter" and TB.ChoiceLabel("aura", "mind") == "Mind",
+        "poison and demon values read in words")
+    assert(TB.ChoiceKindWanted("poison_mh", 4) and TB.ChoiceKindWanted("poison_oh", 4) and not TB.ChoiceKindWanted("poison_mh", 3)
+        and TB.ChoiceKindWanted("sting", 3) and not TB.ChoiceKindWanted("sting", 9)
+        and TB.ChoiceKindWanted("pet", 9) and not TB.ChoiceKindWanted("pet", 3), "new kinds gate on class")
+    assert(TB.BuildChoiceCommand("Stabby", "poison_mh", "deadly") == "choice Stabby poison_mh deadly",
+        "underscored kinds build")
+    local hunter = TB.ParseChoiceLine("TBM:CHOICE|Arrow|sting=scorpid,known=serpent+scorpid")
+    assert(hunter and hunter.kind == "sting" and hunter.value == "scorpid", "a sting record parses")
+    local rogue = TB.ParseChoiceLine("TBM:CHOICE|Stabby|poison_oh=auto,known=instant+deadly")
+    assert(rogue and rogue.kind == "poison_oh", "an underscored kind parses")
+    TB.ConsumeChoiceLine("TBM:CHOICE|Arrow|aspect=auto,known=hawk")
+    TB.ConsumeChoiceLine("TBM:CHOICE|Arrow|sting=scorpid,known=serpent+scorpid")
+    local kinds = TB.ChoiceKinds("Arrow")
+    assert(table.getn(kinds) == 2 and kinds[1] == "aspect" and kinds[2] == "sting", "a hunter shows Aspect and Sting")
+
+    assert(TB.BotSpecKind("shadow+offheal") == "dps" and TB.BotSpecKind("holy+offdps") == "heal"
+        and TB.BotSpecKind("restoration") == "heal" and TB.BotSpecKind("dps feral+offheal") == "dps"
+        and TB.BotSpecKind("protection") == nil and TB.BotSpecKind("tank feral") == nil
+        and TB.BotSpecKind(nil) == nil, "spec kind from the BOTSTATE specs")
+    local offheal, offdps
+    for _, def in ipairs(TB.C.BEHAVIORS) do
+        if def.key == "offheal" then offheal = def elseif def.key == "offdps" then offdps = def end
+    end
+    local shadow = { offheal = "on", offdps = "off", specs = "shadow+offheal" }
+    local holy = { offheal = "off", offdps = "on", specs = "holy+offdps" }
+    assert(TB.BehaviorChipShown(offheal, shadow, 5) and not TB.BehaviorChipShown(offdps, shadow, 5),
+        "a Shadow priest shows Off-heal only")
+    assert(TB.BehaviorChipShown(offdps, holy, 5) and not TB.BehaviorChipShown(offheal, holy, 5),
+        "a Holy priest shows Off-DPS only")
+    assert(not TB.BehaviorChipShown(offheal, { specs = "shadow" }, 5), "an older server without the key hides it")
+    TB.SetBotState("Shadowpri", shadow)
+    local chips = TB.OverviewChips("Shadowpri", 5)
+    assert(chips[table.getn(chips)].key == "offheal", "the Bots class column shows the off-spec switch")
+
+    -- Focus mark.
+    assert(TB.BuildFocusCommand("Stabby", "cross") == "focus Stabby cross"
+        and TB.BuildFocusCommand("party", "clear") == "focus party clear"
+        and TB.BuildFocusCommand("Stabby", "status") == "focus Stabby status"
+        and TB.BuildFocusCommand("Stabby", "banana") == nil and TB.BuildFocusCommand(nil, "cross") == nil,
+        "focus commands are validated")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,choice")
+    TB.SetBotState("Stabby", { move = "follow", focus = "cross" })
+    assert(not TB.FocusShown("Stabby"), "no focus-mark capability: no focus control")
+    TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,choice,focus-mark")
+    assert(TB.FocusShown("Stabby") and TB.GetFocusMark("Stabby") == "cross", "the server's focus mark shows")
+    TB.SetBotState("Healpri", { move = "follow", focus = "skull", specs = "holy+offdps" })
+    assert(not TB.FocusShown("Healpri"), "healers get no focus control")
+    TB.SetBotState("Oldbot", { move = "follow" })
+    assert(not TB.FocusShown("Oldbot"), "no focus field: no control")
+    TB.SetCcAssignment("Vexmage", "moon")
+    local rows = {}
+    assert(TB.BuildFocusMenu("Stabby", function(info) table.insert(rows, info) end) == 8, "eight marks")
+    assert(rows[1].text == "Skull (default)" and rows[2].checked == 1, "Skull first, the current mark checked")
+    local moonRow
+    for _, info in ipairs(rows) do if string.find(info.text, "^Moon") then moonRow = info end end
+    assert(moonRow and moonRow.disabled == 1 and string.find(moonRow.text, "CC: Vexmage", 1, true),
+        "a mark held as CC is greyed out with its owner")
+    expectCommands("focus pick", commands(function() rows[3].func() end), { ".bot focus Stabby square" })
+    TB.OnSystemMessage("TBM:ACTION_ERR|focus|cc-mark|A party bot holds moon as its CC mark")
+    assert(TB.lastActionError and TB.lastActionError.code == "cc-mark", "a focus refusal is reported")
+    TB.ClearCcAssignment("Vexmage")
+end
+
 setParty(savedMembers, savedClass)
 
 print("PASS: community feedback checks")
