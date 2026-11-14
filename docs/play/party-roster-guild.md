@@ -30,7 +30,7 @@ One row per party member: class icon and colour, level, HP and mana bars with st
 | Warlock | Affliction, Demonology, Destruction |
 | Druid | Feral Bear, Feral Cat, Restoration, Balance |
 
-A tank pick sends `.bot role <bot> tank`; other picks send `.bot strategy <specs> <bot>` (and clear a previous tank role). Module: [`.bot role`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role).
+Every pick sends `.bot role <bot> <spec>` (for example `protection`, `arms`, `holy`, `shadow`, `bear`; the shaman Enh Tank sends `tank`), so the server rebuilds the bot's whole kit, off-spec default included. That also puts the bot's [behaviour switches](bot-panel.md#behaviour-switches) back to the spec's defaults and gives the bot a fixed role; class choices and the focus mark are kept. Module: [`.bot role`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/roster-and-hiring.md#bot-role).
 
 **Your own row** picks the role *you* fill for your bots (Tank, Healer, DPS), sent as `.bot role self <role>`. It does not change your spec.
 
@@ -39,8 +39,11 @@ A tank pick sends `.bot role <bot> tank`; other picks send `.bot strategy <specs
 Next to **Blessings**, a **Bots** button opens one compact row per party bot:
 its name with class colour and role, fixed columns for the common fight
 switches (**Hold position**, **Loot corpses**, **AoE spells**, **Auto CC**)
-plus a **Class** column (for example **No dungeon Blink** on a mage, empty
-for other classes), and a **Controls** button that opens the
+plus a **Class** column (**No dungeon Blink** on a mage, **Off-heal** on a
+damage-spec paladin, priest, shaman or druid, **Off-DPS** on a healer, empty
+otherwise), a **Focus** column with the bot's focus mark icon (click to pick a
+mark, see [Focus mark](bot-panel.md#focus-mark); empty on healers and on servers
+without `focus-mark`), and a **Controls** button that opens the
 full [bot panel](bot-panel.md). A chip click sends the same
 `.bot behavior <bot> <key> on|off` the Behaviour view sends, and the row
 repaints from the next bot-state reply.

@@ -609,53 +609,56 @@ end
 -- ── Unified Role Policy ─────────────────────────────────────────────────────
 TB.Roles = {}
 
+-- `spec` is the server's `.bot role <bot> <spec>` id for the row (shaman Enh
+-- Tank stays on the plain `tank` role); `strat` is only read back to find the
+-- current row from the live BOTSTATE specs.
 TB.Roles.CLASS_ROLES = {
     [1] = { -- Warrior
-        { id = "tank", label = "Protection", strat = "+protection,-arms,-fury" },
-        { id = "dps", label = "Arms", strat = "+arms,-protection,-fury" },
-        { id = "fury", label = "Fury", strat = "+fury,-protection,-arms" },
+        { id = "tank", spec = "protection", label = "Protection", strat = "+protection,-arms,-fury" },
+        { id = "dps", spec = "arms", label = "Arms", strat = "+arms,-protection,-fury" },
+        { id = "fury", spec = "fury", label = "Fury", strat = "+fury,-protection,-arms" },
     },
     [2] = { -- Paladin
-        { id = "tank", label = "Protection", strat = "+protection,-holy,-retribution" },
-        { id = "heal", label = "Holy", strat = "+holy,-protection,-retribution" },
-        { id = "dps", label = "Retribution", strat = "+retribution,-protection,-holy" },
+        { id = "tank", spec = "protection", label = "Protection", strat = "+protection,-holy,-retribution" },
+        { id = "heal", spec = "holy", label = "Holy", strat = "+holy,-protection,-retribution" },
+        { id = "dps", spec = "retribution", label = "Retribution", strat = "+retribution,-protection,-holy" },
     },
     [3] = { -- Hunter
-        { id = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
-        { id = "mm", label = "Marksman", strat = "+marksmanship,-beast mastery,-survival" },
-        { id = "survival", label = "Survival", strat = "+survival,-beast mastery,-marksmanship" },
+        { id = "bm", spec = "bm", label = "Beastmaster", strat = "+beast mastery,-marksmanship,-survival" },
+        { id = "mm", spec = "mm", label = "Marksman", strat = "+marksmanship,-beast mastery,-survival" },
+        { id = "survival", spec = "survival", label = "Survival", strat = "+survival,-beast mastery,-marksmanship" },
     },
     [4] = { -- Rogue
-        { id = "combat", label = "Combat", strat = "+combat,-assassination,-subtlety" },
-        { id = "assa", label = "Assassination", strat = "+assassination,-combat,-subtlety" },
-        { id = "subtlety", label = "Subtlety", strat = "+subtlety,-combat,-assassination" },
+        { id = "combat", spec = "combat", label = "Combat", strat = "+combat,-assassination,-subtlety" },
+        { id = "assa", spec = "assa", label = "Assassination", strat = "+assassination,-combat,-subtlety" },
+        { id = "subtlety", spec = "subtlety", label = "Subtlety", strat = "+subtlety,-combat,-assassination" },
     },
     [5] = { -- Priest
-        { id = "heal", label = "Holy", strat = "+holy,-discipline,-shadow" },
-        { id = "disc", label = "Discipline", strat = "+discipline,-holy,-shadow" },
-        { id = "dps", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
+        { id = "heal", spec = "holy", label = "Holy", strat = "+holy,-discipline,-shadow" },
+        { id = "disc", spec = "discipline", label = "Discipline", strat = "+discipline,-holy,-shadow" },
+        { id = "dps", spec = "shadow", label = "Shadow", strat = "+shadow,-holy,-discipline,-offdps" },
     },
     [7] = { -- Shaman
-        { id = "heal", label = "Restoration", strat = "+restoration,-elemental,-enhancement" },
-        { id = "ele", label = "Elemental", strat = "+elemental,-restoration,-enhancement" },
-        { id = "enh", label = "Enhancement", strat = "+enhancement,-restoration,-elemental" },
-        { id = "tank", label = "Enh Tank", strat = "+tank shaman,-restoration,-elemental,-enhancement" },
+        { id = "heal", spec = "restoration", label = "Restoration", strat = "+restoration,-elemental,-enhancement" },
+        { id = "ele", spec = "ele", label = "Elemental", strat = "+elemental,-restoration,-enhancement" },
+        { id = "enh", spec = "enh", label = "Enhancement", strat = "+enhancement,-restoration,-elemental" },
+        { id = "tank", spec = "tank", label = "Enh Tank", strat = "+tank shaman,-restoration,-elemental,-enhancement" },
     },
     [8] = { -- Mage
-        { id = "frost", label = "Frost", strat = "+frost,-fire,-arcane" },
-        { id = "fire", label = "Fire", strat = "+fire,-frost,-arcane" },
-        { id = "arcane", label = "Arcane", strat = "+arcane,-frost,-fire" },
+        { id = "frost", spec = "frost", label = "Frost", strat = "+frost,-fire,-arcane" },
+        { id = "fire", spec = "fire", label = "Fire", strat = "+fire,-frost,-arcane" },
+        { id = "arcane", spec = "arcane", label = "Arcane", strat = "+arcane,-frost,-fire" },
     },
     [9] = { -- Warlock
-        { id = "affliction", label = "Affliction", strat = "+affliction,-demonology,-destruction" },
-        { id = "demonology", label = "Demonology", strat = "+demonology,-affliction,-destruction" },
-        { id = "destruction", label = "Destruction", strat = "+destruction,-affliction,-demonology" },
+        { id = "affliction", spec = "affliction", label = "Affliction", strat = "+affliction,-demonology,-destruction" },
+        { id = "demonology", spec = "demonology", label = "Demonology", strat = "+demonology,-affliction,-destruction" },
+        { id = "destruction", spec = "destruction", label = "Destruction", strat = "+destruction,-affliction,-demonology" },
     },
     [11] = { -- Druid
-        { id = "tank", label = "Feral Bear", strat = "+tank feral,-dps feral,-restoration,-balance" },
-        { id = "cat", label = "Feral Cat", strat = "+dps feral,-tank feral,-restoration,-balance" },
-        { id = "heal", label = "Restoration", strat = "+restoration,-tank feral,-dps feral,-balance" },
-        { id = "boomkin", label = "Balance", strat = "+balance,-tank feral,-dps feral,-restoration" },
+        { id = "tank", spec = "bear", label = "Feral Bear", strat = "+tank feral,-dps feral,-restoration,-balance" },
+        { id = "cat", spec = "cat", label = "Feral Cat", strat = "+dps feral,-tank feral,-restoration,-balance" },
+        { id = "heal", spec = "restoration", label = "Restoration", strat = "+restoration,-tank feral,-dps feral,-balance" },
+        { id = "boomkin", spec = "boomkin", label = "Balance", strat = "+balance,-tank feral,-dps feral,-restoration" },
     },
 }
 
@@ -807,22 +810,13 @@ function TB.Roles.SetBotRole(botName, role, classId)
     TortoiseBotsDB = TortoiseBotsDB or {}
     TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
     local state = TB.GetBotState and TB.GetBotState(botName)
-    local previousRole = (state and state.specs and roleFromSpecs(TB.Roles.GetClassRoles(classId), state.specs))
-        or TortoiseBotsDB.botRoles[botName]
     TortoiseBotsDB.botRoles[botName] = roleDef.id
     -- Show the pick until the next roster snapshot reports the new specs.
     if state then state.specs = nil end
 
-    if roleDef.id == "tank" then
-        TB.SendBotCommand("role " .. botName .. " tank")
-    else
-        if previousRole == "tank" then
-            TB.SendBotCommand("role " .. botName .. " clear")
-        end
-        if roleDef.strat and roleDef.strat ~= "" then
-            TB.SendBotCommand("strategy " .. roleDef.strat .. " " .. botName)
-        end
-    end
+    -- The server rebuilds the whole kit for the spec, off-spec default
+    -- included; the bot's behaviour switches go back to their defaults.
+    TB.SendBotCommand("role " .. botName .. " " .. (roleDef.spec or roleDef.id))
     if TB.Print then TB.Print(botName .. " role set to " .. roleDef.label) end
     return true
 end

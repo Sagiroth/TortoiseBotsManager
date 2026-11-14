@@ -1023,7 +1023,7 @@ local cases = {
     },
     {
         id = "party.bot.tank",
-        expected = { ".bot role Tankbot tank" },
+        expected = { ".bot role Tankbot protection" },
         trigger = function()
             setParty({ "Tankbot" }, "Warrior")
             TB.ShowTab("party")
@@ -1034,7 +1034,7 @@ local cases = {
     },
     {
         id = "party.bot.demote_to_dps",
-        expected = { ".bot role Tankbot clear", ".bot strategy +arms,-protection,-fury Tankbot" },
+        expected = { ".bot role Tankbot arms" },
         trigger = function()
             setParty({ "Tankbot" }, "Warrior")
             TortoiseBotsDB.botRoles["Tankbot"] = "tank"
@@ -1046,7 +1046,7 @@ local cases = {
     },
     {
         id = "party.bot.priest.shadow",
-        expected = { ".bot strategy +shadow,-holy,-discipline,-offdps Priestbot" },
+        expected = { ".bot role Priestbot shadow" },
         trigger = function()
             setParty({ "Priestbot" }, "Priest")
             TortoiseBotsDB.botRoles["Priestbot"] = "heal"
@@ -1185,7 +1185,7 @@ local cases = {
     },
     {
         id = "guild.role.demote",
-        expected = { ".bot role Goldie clear", ".bot strategy +arms,-protection,-fury Goldie" },
+        expected = { ".bot role Goldie arms" },
         trigger = function()
             TB.ShowTab("guild")
             TortoiseBotsDB.botRoles["Goldie"] = "tank"
@@ -1196,7 +1196,7 @@ local cases = {
     },
     {
         id = "guild.role.promote_tank",
-        expected = { ".bot role Goldie tank" },
+        expected = { ".bot role Goldie protection" },
         trigger = function()
             TB.ShowTab("guild")
             TortoiseBotsDB.botRoles["Goldie"] = "fury"
@@ -1949,7 +1949,7 @@ local cases = {
     -- ── P1: role-wire correctness ────────────────────────────────────
     {
         id = "p1.role.warrior.dps",
-        expected = { ".bot strategy +arms,-protection,-fury Warrspec" },
+        expected = { ".bot role Warrspec arms" },
         trigger = function()
             setParty({ "Warrspec" }, "Warrior")
             TortoiseBotsDB.botRoles["Warrspec"] = nil
@@ -1961,7 +1961,7 @@ local cases = {
     },
     {
         id = "p1.role.paladin.heal",
-        expected = { ".bot strategy +holy,-protection,-retribution Pallyspec" },
+        expected = { ".bot role Pallyspec holy" },
         trigger = function()
             setParty({ "Pallyspec" }, "Paladin")
             TortoiseBotsDB.botRoles["Pallyspec"] = "dps"
@@ -1973,7 +1973,7 @@ local cases = {
     },
     {
         id = "p1.role.priest.shadow",
-        expected = { ".bot strategy +shadow,-holy,-discipline,-offdps Prispec" },
+        expected = { ".bot role Prispec shadow" },
         trigger = function()
             setParty({ "Prispec" }, "Priest")
             TortoiseBotsDB.botRoles["Prispec"] = "heal"

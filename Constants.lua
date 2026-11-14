@@ -472,6 +472,8 @@ TB.C.ACTION_ICONS.hold = "Interface\\Icons\\Spell_Nature_Slow"
 
 TB.C.ACTION_LABELS = {
     ["corpse run"]         = "Corpse run",
+    ["focus"]              = "Focus mark",
+    ["focus status"]       = "Focus mark",
     ["raid status"]        = "Raid status",
     ["raid tankface"]      = "Tank face",
     ["raid douse"]         = "Douse runes",
@@ -529,6 +531,8 @@ end
 -- Per-bot behaviour toggles in the bot panel (`.bot behavior <bot> <key>`).
 -- `mana` limits a toggle to classes that use mana, `class` to one class id.
 -- `optional` hides it until the server reports the key (older servers do not).
+-- `spec` shows it only while the bot fights in that kind of spec ("heal" or
+-- "dps", read from the BOTSTATE specs; see TB.BotSpecKind).
 TB.C.BEHAVIORS = {
     { key = "loot",     label = "Loot corpses", tip = "Loot corpses after a fight." },
     { key = "aoe",      label = "AoE spells",   tip = "Use area-of-effect abilities (held back next to crowd-controlled mobs)." },
@@ -540,6 +544,8 @@ TB.C.BEHAVIORS = {
     { key = "mimic",    label = "Mimic",      tip = "Copy your consumable use (food, drink, potions) on this bot." },
     { key = "spread",   label = "Spread out", tip = "Keep distance from nearby party members instead of stacking." },
     { key = "hold",     label = "Hold position", tip = "Keep following and fighting, but never run from enemies on its own: no fleeing, kiting or stepping back for casting room. Still steps out of ground effects.", optional = true },
+    { key = "offheal",  label = "Off-heal", tip = "Damage spec: stop attacking and heal an ally who drops low. A spec change sets the spec's default again.", optional = true, spec = "dps" },
+    { key = "offdps",   label = "Off-DPS",  tip = "Healer: attack while nobody needs healing; healing always wins. A spec change sets the spec's default again.", optional = true, spec = "heal" },
     { key = "noblink",  label = "No dungeon Blink", tip = "Never cast Blink inside dungeons and raids, where it can land in the next pack. Blink still works outdoors.", optional = true, class = 8 },
 }
 TB.C.NO_MANA_CLASSES = { [1] = true, [4] = true } -- Warrior, Rogue

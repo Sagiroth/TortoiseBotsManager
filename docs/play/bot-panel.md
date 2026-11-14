@@ -59,13 +59,30 @@ Module: [item equip](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/pla
 | Mimic | Copy your food, drink and potion use. |
 | Spread out | Keep distance instead of stacking. |
 | Hold position | Keep following and fighting, but never run from enemies on its own: no fleeing, kiting or stepping back for casting room. Still steps out of ground effects. Hidden until the server reports it. |
+| Off-heal | Damage-spec paladin, priest, shaman or druid: stop attacking and heal an ally who drops low. Shown only while the bot fights in a damage spec, and only when the server reports it. |
+| Off-DPS | Healer paladin, priest, shaman or druid: attack while nobody needs healing; healing always wins. Shown only while the bot fights in a healing spec, and only when the server reports it. |
 | No dungeon Blink | Mages only. Never cast Blink inside dungeons and raids, where it can land in the next pack; Blink still works outdoors. Hidden until the server reports it. |
+
+A spec change from the role buttons resets every switch to the new spec's
+defaults (Off-heal on for a damage spec, Off-DPS on for a healer). Class
+choices and the focus mark are kept.
 
 Module: [`.bot behavior`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/bot-panel.md#bot-behavior).
 
+### Focus mark
+
+Under the switches, **Focus mark** shows the raid mark this bot attacks
+first (Skull by default) with its icon. Click it to pick one of the eight
+marks; a mark another bot holds as its CC mark is greyed out with that bot's
+name, because focus fire would break the crowd control. When the bot's mark
+is on no mob it takes Skull. **Focus Skull** and the dungeon run put every
+bot back on Skull, and the button shows that as soon as the server reports
+it. Hidden on healers and on servers without the `focus-mark` capability.
+Sends `.bot focus <bot> <mark>`. Module: [`.bot focus`](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-focus).
+
 ### Class choices
 
-On the Behaviour view of a paladin, hunter or warlock, a class block sits
+On the Behaviour view of a paladin, hunter, warlock or rogue, a class block sits
 under the switches when the server lists the `choice` capability. Opening
 the panel on such a bot (and **Refresh**) asks the server for its choices
 (`.bot choice <bot> status`); until the answer arrives the controls read `?`
@@ -76,6 +93,9 @@ and stay greyed out.
 | Aura (paladin) | Click to pick **Auto** or one of the auras the paladin has trained. | `.bot choice <bot> aura <aura\|auto>` |
 | Aspect (hunter) | Click to pick **Auto** or one of the aspects the hunter has trained. | `.bot choice <bot> aspect <aspect\|auto>` |
 | Curse (warlock) | Click to pick **Auto** or one of the curses the warlock has trained. | `.bot choice <bot> curse <curse\|auto>` |
+| Sting (hunter) | Click to pick **Auto**, Serpent, Scorpid or Viper (those the hunter has trained). | `.bot choice <bot> sting <sting\|auto>` |
+| Demon (warlock) | Click to pick **Auto** or one of the demons the warlock can summon. Swaps out of combat; needs a Soul Shard unless the bot has the item cheat. | `.bot choice <bot> pet <demon\|auto>` |
+| Main-hand / Off-hand poison (rogue) | Click to pick **Auto** or a poison the rogue holds (any poison its level allows when it has the item cheat). | `.bot choice <bot> poison_mh\|poison_oh <poison\|auto>` |
 
 The row shows what the server reports. The kinds are data-driven: a new
 kind from the server appears with Auto plus its values, with no addon

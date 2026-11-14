@@ -27,6 +27,7 @@ Plain Vanilla 1.12 Lua (Lua 5.0 API in the client): no libraries, no Ace. Copy t
 | `BotPanel.lua` | Bot panel: live bot state, gear, bags, behaviour, spells |
 | `BotBlessing.lua` | Paladin blessing grid window, opened from the Party tab |
 | `BotTotem.lua` | Shaman totem picker, drop mode and presets in the bot panel's Behaviour view |
+| `BotFocus.lua` | Per-bot focus mark: the button in the Behaviour view, the Bots overview Focus column and the mark menu |
 | `BotNpc.lua`, `BotVault.lua` | NPC errands and flights; bank and mail lists |
 | `BotRun.lua` | Dungeon tab and run window |
 | `ServerInfo.lua` | Info window |
