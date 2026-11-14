@@ -4156,10 +4156,36 @@ function TB.RefreshOrderBringRows()
     end
 end
 
+-- The player's own alt spends its own gold and gives away what it gets, so
+-- the order window asks first. altPass lets the accepted call (and the
+-- order window it opens) through.
+local altPass = nil
+local function confirmAltOrder(bot, again)
+    local entry = TB.GetClaimedEntry and TB.GetClaimedEntry(bot)
+    if not (entry and entry.alt) or altPass == bot then return true end
+    StaticPopupDialogs["TORTOISEBOTSMANAGER_ALT_ORDER"] = {
+        text = bot .. " is your own character, not a guild bot.\n\nAn order spends " .. bot
+            .. "'s own gold and sends what it gets to the guild bank or by mail. Are you sure?",
+        button1 = "Yes",
+        button2 = "Cancel",
+        OnAccept = function()
+            altPass = bot
+            again()
+            altPass = nil
+        end,
+        timeout = 0,
+        whileDead = 1,
+        hideOnEscape = 1,
+    }
+    StaticPopup_Show("TORTOISEBOTSMANAGER_ALT_ORDER")
+    return false
+end
+
 function TB.OpenOrderWindow(bot)
     if not TB.HasOrderCapability() then return false end
     bot = norm(bot)
     if not bot then return false end
+    if not confirmAltOrder(bot, function() TB.OpenOrderWindow(bot) end) then return false end
     if not win then createWindow() end
     -- Same anchor as the other satellites: only one shows at a time.
     if TB.CloseVault then TB.CloseVault() end
@@ -4269,6 +4295,7 @@ function TB.PickGuildOrderBot(entry, bot)
     if not entry or not bot then return false end
     bot = norm(bot)
     if not bot then return false end
+    if not confirmAltOrder(bot, function() TB.PickGuildOrderBot(entry, bot) end) then return false end
     if entry.kind == "enchant" then
         if not TB.OpenOrderWindow(bot) then return false end
         orderGuild = false
