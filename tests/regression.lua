@@ -2396,6 +2396,30 @@ TB.OnSystemMessage("TBM:CLAIMED_END")
 assert(table.getn(TB.GetClaimedBots()) == 1 and TB.GetClaimedBots()[1].name == "Future"
     and TB.ClaimedProfsLine(TB.GetClaimedBots()[1]) == "Enchanting 300",
     "fields a newer server appends are ignored")
+-- Own alt rows: the trailing alt flag marks them, the order window asks
+-- before it opens for one, and a claimed bot opens without asking.
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,claimed-roster,guild-orders")
+TB.OnSystemMessage("TBM:CLAIMED_BEGIN|2")
+TB.OnSystemMessage("TBM:CLAIMED|305|Guildy|1|60|online|0|Ironforge|1|-|0")
+TB.OnSystemMessage("TBM:CLAIMED|306|Myalt|8|40|online|0|Ironforge|0|-|1")
+TB.OnSystemMessage("TBM:CLAIMED_END")
+assert(TB.GetClaimedEntry("Myalt").alt == true, "alt flag 1 marks the player's own alt")
+assert(not TB.GetClaimedEntry("Guildy").alt, "alt flag 0 is a claimed bot")
+lastPopupShown = nil
+assert(TB.OpenOrderWindow("Myalt") == false, "the order window waits for the alt confirmation")
+assert(lastPopupShown == "TORTOISEBOTSMANAGER_ALT_ORDER", "opening an order for an alt asks first")
+assert(TB.GetOrderWindowBot() ~= "Myalt", "no order window before the answer")
+StaticPopupDialogs["TORTOISEBOTSMANAGER_ALT_ORDER"].OnAccept()
+assert(TB.GetOrderWindowBot() == "Myalt", "Yes opens the order window for the alt")
+TB.CloseOrderWindow()
+lastPopupShown = nil
+assert(TB.OpenOrderWindow("Guildy") == true and lastPopupShown == nil, "a claimed bot opens without asking")
+TB.CloseOrderWindow()
+do
+    local labels = {}
+    TB.BuildGuildRowMenu("Myalt", function(item) table.insert(labels, item.text) end)
+    for _, label in ipairs(labels) do assert(label ~= "Release", "an alt has no Release entry") end
+end
 -- Back to the original rows for the UI block below.
 TB.OnSystemMessage("TBM:CLAIMED_BEGIN|3")
 TB.OnSystemMessage("TBM:CLAIMED|201|Goldie|1|60|online|0|Ironforge|1")

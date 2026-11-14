@@ -277,6 +277,7 @@ local function commitClaimedSnapshot(rows)
                 online = online,
                 enteredWorld = enteredWorld,
                 profs = row.profs,
+                alt = row.alt == true,
             }
             claimedState[name] = entry
             table.insert(claimedBots, entry)
@@ -487,7 +488,7 @@ function TB.ParseRosterMessage(msg)
     fields = protocolFields(msg, "TBM:CLAIMED|")
     if fields then
         local count = table.getn(fields)
-        -- Fields past the 9th come from newer servers and are ignored, so a
+        -- Fields past the 10th come from newer servers and are ignored, so a
         -- module update that appends a field does not break older addons.
         if not claimedReceiving or count < 8 then
             claimedReceiving = nil
@@ -511,6 +512,8 @@ function TB.ParseRosterMessage(msg)
             end
             if profs and table.getn(profs) == 0 then profs = nil end
         end
+        -- Trailing alt flag: the player's own alt in the guild, not a claimed bot.
+        local alt = count >= 10 and fields[10] == "1"
         local normalized = normalize(name)
         if not normalized or claimedReceiving.names[normalized] then
             claimedReceiving = nil
@@ -527,6 +530,7 @@ function TB.ParseRosterMessage(msg)
             location = location,
             gearLocked = (gearLocked == "1"),
             profs = profs,
+            alt = alt,
         })
         return true, "claimed_row", normalized
     end

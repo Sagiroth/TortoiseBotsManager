@@ -212,7 +212,8 @@ function TB.BuildGuildRowMenu(name, addButton)
             func = function() TB.OpenOrderReassignMenu(name, nil) end })
         count = count + 1
     end
-    if TB.ConfirmReleaseClaimedBot then
+    local claimed = TB.GetClaimedEntry and TB.GetClaimedEntry(name)
+    if TB.ConfirmReleaseClaimedBot and not (claimed and claimed.alt) then
         addButton({ text = "Release", notCheckable = 1,
             func = function() TB.ConfirmReleaseClaimedBot(name) end })
         count = count + 1
@@ -2872,13 +2873,16 @@ end
         local total = table.getn(allBots)
         local onlineCount = 0
         local lockedCount = 0
+        local altCount = 0
         for _, b in ipairs(allBots) do
             if b.online then onlineCount = onlineCount + 1 end
-            if b.gearLocked then lockedCount = lockedCount + 1 end
+            if b.alt then altCount = altCount + 1
+            elseif b.gearLocked then lockedCount = lockedCount + 1 end
         end
 
         if frame.countLabel then
-            frame.countLabel:SetText("Claimed: " .. total .. "  (|cff4ecb5a" .. onlineCount
+            local altText = altCount > 0 and (", |cff42a5f5" .. altCount .. " alts|r") or ""
+            frame.countLabel:SetText("Claimed: " .. (total - altCount) .. altText .. "  (|cff4ecb5a" .. onlineCount
                 .. " online|r, |cffffd200" .. lockedCount .. " locked|r)")
         end
 
@@ -2953,7 +2957,9 @@ end
                 end
 
                 row.lvlClass:SetText(entry.level .. " " .. (entry.className or ""))
-                if entry.gearLocked then
+                if entry.alt then
+                    row.gearBadge:SetText("|cff42a5f5Your alt|r")
+                elseif entry.gearLocked then
                     row.gearBadge:SetText("|cffffd200Locked|r")
                 else
                     row.gearBadge:SetText("|cff4ecb5aLeveling|r")
