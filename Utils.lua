@@ -545,6 +545,44 @@ function TB.StatusText(st, inGroup)
     return "Online"
 end
 
+function TB.FindGroupUnit(name)
+    local target = TB.NormalizeName(name)
+    if not target or not UnitName then return nil end
+    local raid = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    if raid > 0 then
+        for i = 1, raid do
+            local unit = "raid" .. i
+            if TB.NormalizeName(UnitName(unit)) == target then return unit end
+        end
+    end
+    local party = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    for i = 1, party do
+        local unit = "party" .. i
+        if TB.NormalizeName(UnitName(unit)) == target then return unit end
+    end
+    return nil
+end
+
+function TB.GetClassName(classId, serverClassName, botName)
+    if classId and C.CLASS_NAMES and C.CLASS_NAMES[classId] then
+        return C.CLASS_NAMES[classId]
+    end
+    local trimmed = TB.Trim(serverClassName or "")
+    if trimmed ~= "" and trimmed ~= "-" then
+        return trimmed
+    end
+    if botName and UnitClass then
+        local unit = TB.FindGroupUnit(botName)
+        if unit then
+            local unitClass = UnitClass(unit)
+            if unitClass and unitClass ~= "" and unitClass ~= "Unknown" then
+                return unitClass
+            end
+        end
+    end
+    return "Unknown class"
+end
+
 function TB.GetClassColor(classId)
     local colors = (C and C.CLASS_COLORS) or {}
     if classId and colors[classId] then
@@ -553,11 +591,14 @@ function TB.GetClassColor(classId)
     return { 0.92, 0.90, 0.84, hex = "ffebe6d6" }
 end
 
--- Point a texture at a class's icon; false when the class has none.
+-- Point a texture at a class's icon; falls back to a question mark when unknown.
 function TB.SetClassIcon(tex, classId)
+    if not tex then return false end
     local coords = C.CLASS_ICON_TCOORDS and C.CLASS_ICON_TCOORDS[classId]
-    if not tex or not coords then
-        if tex then tex:Hide() end
+    if not coords then
+        tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        tex:Show()
         return false
     end
     tex:SetTexture(C.CLASS_ICON_FILE)

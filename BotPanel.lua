@@ -681,7 +681,8 @@ local function botClassId(name)
     if unit and UnitClass then
         local className, classFile = UnitClass(unit)
         local ids = C.CLASS_NAME_TO_ID or {}
-        return ids[classFile or ""] or ids[className or ""]
+        local id = ids[classFile or ""] or ids[className or ""]
+        if id then return id end
     end
     local entry = (TB.GetRosterEntry and TB.GetRosterEntry(name))
         or (TB.GetClaimedEntry and TB.GetClaimedEntry(name))
@@ -1566,7 +1567,7 @@ end
 -- ── rendering ───────────────────────────────────────────────────────────────
 local function renderHeader(inv)
     local classId = botClassId(currentBot)
-    local col = classId and C.CLASS_COLORS and C.CLASS_COLORS[classId] or color("gold")
+    local col = TB.GetClassColor and TB.GetClassColor(classId) or color("gold")
     panel.nameText:SetText(currentBot or "")
     panel.nameText:SetTextColor(col[1], col[2], col[3])
     local parts = {}
@@ -1577,7 +1578,11 @@ local function renderHeader(inv)
     elseif claimed and claimed.level then
         table.insert(parts, "Lvl " .. claimed.level)
     end
-    if classId and C.CLASS_NAMES then table.insert(parts, C.CLASS_NAMES[classId]) end
+    local entry = (TB.GetRosterEntry and TB.GetRosterEntry(currentBot))
+        or (TB.GetClaimedEntry and TB.GetClaimedEntry(currentBot))
+    local className = TB.GetClassName and TB.GetClassName(classId, entry and entry.serverClassName, currentBot)
+        or (classId and C.CLASS_NAMES and C.CLASS_NAMES[classId])
+    if className then table.insert(parts, className) end
     if claimed then
         if claimed.gearLocked then
             table.insert(parts, "|cffffd200Gear Locked|r")
