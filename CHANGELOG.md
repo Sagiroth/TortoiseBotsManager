@@ -2,6 +2,17 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.3.1 (2026-11-15)
+
+### Roster & Lifecycle
+
+- Unknown classes from custom server modules now show a question-mark icon instead of an empty slot, and no longer display a raw class ID number (e.g. "12") in place of the class name. [#87](https://github.com/Sagiroth/TortoiseBotsManager/pull/87)
+- Fake specs are gone — an unrecognized class no longer appears as a Warrior with Warrior specs in the Party tab, so custom bots can't be misread as plate-wearing tanks. [#87](https://github.com/Sagiroth/TortoiseBotsManager/pull/87)
+- Class names resolve in a clear fallback order: server-provided name first, then the game client's name when the bot is in your party, and finally a plain "Unknown class" label. [#87](https://github.com/Sagiroth/TortoiseBotsManager/pull/87)
+- Backwards compatible in both directions — works against older servers that don't send class names, and older addon builds keep working with newer servers. [#87](https://github.com/Sagiroth/TortoiseBotsManager/pull/87)
+
+---
+
 ## v2.3.0 (2026-11-14)
 
 ### Guild Orders & Alts
