@@ -17,9 +17,10 @@ local PW = 330
 local PH = 470 -- taller than the main window: paper doll + footer
 local SLOT = 34
 local STEP = 38
-local BAG_COLS, BAG_ROWS = 8, 7
+local BAG_COLS, BAG_ROWS = 8, 5
 local SPELL_ROWS = 12
 local EQUIPPED_BAG = 255 -- INVENTORY_SLOT_BAG_0: equipment and backpack
+local EQUIPPED_BAG_SLOTS = { 19, 20, 21, 22 } -- INVENTORY_SLOT_BAG_START..END-1
 
 local function norm(name) return name and TB.NormalizeName(name) or nil end
 local function color(name) return COL[name] or { 1, 1, 1 } end
@@ -645,6 +646,81 @@ local function chatLink(id)
     return (hex or "|cffffffff") .. "|H" .. link .. "|h[" .. name .. "]|h|r"
 end
 
+local bagSlotsCache = {}
+local function isBagItem(id)
+    if not id or not GetItemInfo then return false end
+    local _, _, _, _, itemType, _, _, equipLoc = GetItemInfo(id)
+    return equipLoc == "INVTYPE_BAG" or itemType == "Container" or itemType == "Quiver"
+end
+
+local function bagSlotCount(id, serverSlots)
+    if serverSlots and serverSlots > 0 then return serverSlots end
+    if not id then return nil end
+    if bagSlotsCache[id] then return bagSlotsCache[id] end
+    if not scanTip then
+        scanTip = CreateFrame("GameTooltip", "TortoiseBotsManagerScanTip", UIParent, "GameTooltipTemplate")
+    end
+    if scanTip and scanTip.SetOwner and scanTip.SetHyperlink then
+        scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+        scanTip:SetHyperlink("item:" .. id .. ":0:0:0")
+        for i = 1, 5 do
+            local fs = getglobal("TortoiseBotsManagerScanTipTextLeft" .. i)
+            local text = fs and fs.GetText and fs:GetText()
+            if text then
+                local _, _, n = string.find(text, "(%d+)%s+[Ss]lot")
+                if n then
+                    bagSlotsCache[id] = tonumber(n)
+                    return bagSlotsCache[id]
+                end
+            end
+        end
+    end
+    return nil
+end
+
+function TB.FindPlayerBags()
+    local list = {}
+    if not (GetContainerNumSlots and GetContainerItemLink and GetItemInfo) then return list end
+    for bag = 0, 4 do
+        local slots = GetContainerNumSlots(bag) or 0
+        for slot = 1, slots do
+            local link = GetContainerItemLink(bag, slot)
+            if link then
+                local _, _, idText = string.find(link, "item:(%d+)")
+                local id = idText and tonumber(idText) or nil
+                if id and isBagItem(id) then
+                    local name, _, quality, _, _, _, _, _, texture = GetItemInfo(id)
+                    local locked = false
+                    if GetContainerItemInfo then
+                        local _, _, isLocked = GetContainerItemInfo(bag, slot)
+                        locked = isLocked and true or false
+                    end
+                    table.insert(list, {
+                        bag = bag, slot = slot, id = id, name = name, quality = quality,
+                        texture = texture, slots = bagSlotCount(id), locked = locked,
+                    })
+                end
+            end
+        end
+    end
+    return list
+end
+
+function TB.FindBotCarriedBags(name)
+    local list = {}
+    local inv = TB.GetInventory and TB.GetInventory(norm(name)) or nil
+    for _, item in ipairs(inv and inv.items or {}) do
+        if isBagItem(item.id) then
+            local nameStr, _, quality, texture = itemInfo(item.id)
+            table.insert(list, {
+                bag = item.bag, slot = item.slot, id = item.id, name = nameStr, quality = quality,
+                texture = texture, equippable = item.equippable, slots = bagSlotCount(item.id),
+            })
+        end
+    end
+    return list
+end
+
 local function formatMoney(copper)
     copper = tonumber(copper) or 0
     local g = math.floor(copper / 10000)
@@ -716,6 +792,7 @@ local profPage = 1
 local profSearch = ""
 local profCollapsed = {} -- [skillId] = true while its "Not learned yet" group stays shut
 local pendingGive = nil       -- { bot, bag, slot } awaiting the trade window
+local pendingPlayerGive = nil -- { bot, bag, slot, id } awaiting TRADE_SHOW
 local behaviorPending = {}    -- [bot .. "|" .. key] = true
 local pendingLink = nil       -- { bot, verb, id, label } awaiting the client item cache
 local retryingLink = false    -- true while the OnUpdate retry sends, so a miss does not requeue
@@ -732,6 +809,111 @@ function TB.SendItemOrder(op, bag, slot)
     if bag and slot then cmd = cmd .. " " .. bag .. " " .. slot end
     if TB.SetStatus then TB.SetStatus((C.ACTION_LABELS["item " .. op] or op) .. " → " .. currentBot .. "…", "pending") end
     return TB.SendBotCommand(cmd)
+end
+
+local function placePlayerItemInTrade(bag, slot)
+    if not (PickupContainerItem and ClickTradeButton) then return false end
+    if CursorHasItem and CursorHasItem() then return false end
+    PickupContainerItem(bag, slot)
+    ClickTradeButton(1)
+    if CursorHasItem and CursorHasItem() then
+        if ClearCursor then ClearCursor() end
+        return false
+    end
+    return true
+end
+
+function TB.GivePlayerBagToBot(name, bag, slot, id)
+    name = norm(name)
+    if not name or not bag or not slot then return false end
+    if TradeFrame and TradeFrame.IsVisible and TradeFrame:IsVisible()
+        and UnitName and norm(UnitName("NPC")) == name then
+        if placePlayerItemInTrade(bag, slot) then
+            if TB.SetStatus then TB.SetStatus("Bag placed in trade — accept to give it to " .. name .. ".", "pending") end
+            return true
+        end
+    end
+    pendingPlayerGive = { bot = name, bag = bag, slot = slot, id = id }
+    if TB.SetStatus then TB.SetStatus("Trade → " .. name .. "…", "pending") end
+    return TB.SendBotCommand("item " .. name .. " trade")
+end
+
+local function bagOptionText(item)
+    local name = item.name or itemLabel(item.id)
+    if item.slots and item.slots > 0 then
+        return name .. " (" .. item.slots .. ")"
+    end
+    return name
+end
+
+function TB.BuildBagSlotMenu(name, slotId, addButton)
+    name = norm(name)
+    if not name then return 0 end
+    local inv = TB.GetInventory and TB.GetInventory(name) or nil
+    local equipped = inv and inv.equipped and inv.equipped[slotId] or nil
+    local title = equipped and equipped.id and itemLabel(equipped.id) or ("Bag " .. tostring(slotId - 18))
+    addButton({ text = title, isTitle = 1, notCheckable = 1 })
+
+    local count = 0
+    addButton({ text = "Give a bag", isTitle = 1, notCheckable = 1 })
+    local playerBags = TB.FindPlayerBags()
+    if table.getn(playerBags) == 0 then
+        addButton({ text = "No bags in your inventory", disabled = 1, notCheckable = 1 })
+    else
+        for _, item in ipairs(playerBags) do
+            local bag, slot, id = item.bag, item.slot, item.id
+            addButton({
+                text = bagOptionText(item),
+                notCheckable = 1,
+                disabled = item.locked and 1 or nil,
+                func = function() TB.GivePlayerBagToBot(name, bag, slot, id) end,
+            })
+            count = count + 1
+        end
+    end
+
+    addButton({ text = "Equip this bag", isTitle = 1, notCheckable = 1 })
+    local carriedBags = TB.FindBotCarriedBags(name)
+    if table.getn(carriedBags) == 0 then
+        addButton({ text = "No bags in bot's inventory", disabled = 1, notCheckable = 1 })
+    else
+        for _, item in ipairs(carriedBags) do
+            local bag, slot = item.bag, item.slot
+            addButton({
+                text = bagOptionText(item),
+                notCheckable = 1,
+                disabled = (not item.equippable) and 1 or nil,
+                func = function() TB.SendItemOrder("equip", bag, slot) end,
+            })
+            count = count + 1
+        end
+    end
+
+    if equipped and equipped.id then
+        addButton({
+            text = "Unequip bag",
+            notCheckable = 1,
+            func = function() TB.SendItemOrder("unequip", EQUIPPED_BAG, slotId) end,
+        })
+        count = count + 1
+    end
+    return count
+end
+
+function TB.OpenBagSlotMenu(owner, name, slotId)
+    name = norm(name)
+    if not name or not slotId then return false end
+    if not UIDropDownMenu_Initialize or not ToggleDropDownMenu then return false end
+    if not TB._bagSlotMenu then
+        TB._bagSlotMenu = CreateFrame("Frame", "TortoiseBotsManagerBagSlotMenu", UIParent, "UIDropDownMenuTemplate")
+    end
+    local menu = TB._bagSlotMenu
+    local bot, sId = name, slotId
+    UIDropDownMenu_Initialize(menu, function()
+        TB.BuildBagSlotMenu(bot, sId, UIDropDownMenu_AddButton)
+    end, "MENU")
+    ToggleDropDownMenu(1, nil, menu, owner or "cursor", 0, 0)
+    return true
 end
 
 -- Link orders (`destroy`, `cast Disenchant`, `sendmail`, `bank`) carry the full
@@ -978,6 +1160,69 @@ local function paintItemButton(b, entry, emptyTexture)
     b:Show()
 end
 
+local function createEquippedBagButton(parent, slotId, index)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetWidth(150); b:SetHeight(28)
+    b:EnableMouse(true)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    TB.ApplySurface(b, "row")
+    b.slotId = slotId
+    b.slotLabel = "Bag " .. index
+    b.border = b:CreateTexture(nil, "BACKGROUND")
+    b.border:SetWidth(24); b.border:SetHeight(24)
+    b.border:SetPoint("TOPLEFT", b, "TOPLEFT", 2, -2)
+    b.border:SetTexture(0.18, 0.18, 0.18, 0.9)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetWidth(20); b.icon:SetHeight(20)
+    b.icon:SetPoint("TOPLEFT", b, "TOPLEFT", 4, -4)
+    b.nameText = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.nameText:SetPoint("TOPLEFT", b, "TOPLEFT", 29, -3)
+    b.nameText:SetWidth(118); b.nameText:SetHeight(12); b.nameText:SetJustifyH("LEFT")
+    b.slotsText = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.slotsText:SetPoint("TOPLEFT", b, "TOPLEFT", 29, -15)
+    b.slotsText:SetWidth(118); b.slotsText:SetHeight(11); b.slotsText:SetJustifyH("LEFT")
+    TB.SetTextColor(b.slotsText, color("muted"))
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(b)
+    hl:SetTexture(1, 1, 1, 0.12)
+    b:SetScript("OnEnter", function()
+        local entry = this.entry
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        if entry and entry.id then
+            if GameTooltip.SetHyperlink then
+                GameTooltip:SetHyperlink("item:" .. entry.id .. ":0:0:0")
+            else
+                GameTooltip:SetText(itemLabel(entry.id))
+            end
+            local sc = bagSlotCount(entry.id, entry.slots)
+            if sc then GameTooltip:AddLine(sc .. " slots", 0.9, 0.9, 0.9) end
+            GameTooltip:AddLine("Click: give a bag or equip from bot's bags", 0.62, 0.60, 0.56)
+            GameTooltip:AddLine("Shift-click: link in chat", 0.62, 0.60, 0.56)
+        else
+            GameTooltip:SetText(this.slotLabel or "Bag slot")
+            GameTooltip:AddLine("Empty or not reported by server", 0.62, 0.60, 0.56)
+            GameTooltip:AddLine("Click: give a bag or equip from bot's bags", 0.62, 0.60, 0.56)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function()
+        local entry = this.entry
+        if entry and entry.id and IsShiftKeyDown and IsShiftKeyDown() then
+            local link = chatLink(entry.id)
+            if link and ChatFrameEditBox and ChatFrameEditBox.IsVisible and ChatFrameEditBox:IsVisible() then
+                ChatFrameEditBox:Insert(link)
+            end
+            return
+        end
+        if currentBot then
+            hideMenu()
+            TB.OpenBagSlotMenu(this, currentBot, this.slotId)
+        end
+    end)
+    return b
+end
+
 local function createMenu(parent)
     local menu = CreateFrame("Frame", "TortoiseBotsManagerItemMenu", parent)
     menu:SetWidth(118); menu:SetHeight(178)
@@ -1207,12 +1452,20 @@ local function createPanel()
         if currentBot then TB.SendBotCommand("command " .. currentBot .. " d equip upgrades") end
     end)
     panel.sweepButton = sweep
+    panel.equippedBagButtons = {}
+    for i, slotId in ipairs(EQUIPPED_BAG_SLOTS) do
+        local b = createEquippedBagButton(bags, slotId, i)
+        local col = math.mod(i - 1, 2)
+        local row = math.floor((i - 1) / 2)
+        b:SetPoint("TOPLEFT", panel, "TOPLEFT", 12 + col * 156, -96 - row * 32)
+        table.insert(panel.equippedBagButtons, b)
+    end
     panel.bagButtons = {}
     local x0 = math.floor((PW - (BAG_COLS * STEP - 4)) / 2)
     for r = 1, BAG_ROWS do
         for c = 1, BAG_COLS do
             local b = createItemButton(bags)
-            b:SetPoint("TOPLEFT", panel, "TOPLEFT", x0 + (c - 1) * STEP, -94 - (r - 1) * STEP)
+            b:SetPoint("TOPLEFT", panel, "TOPLEFT", x0 + (c - 1) * STEP, -162 - (r - 1) * STEP)
             table.insert(panel.bagButtons, b)
         end
     end
@@ -1663,6 +1916,29 @@ local function renderGear(inv)
 end
 
 local function renderBags(inv)
+    local equipped = inv and inv.equipped or {}
+    for i, b in ipairs(panel.equippedBagButtons or {}) do
+        local item = equipped[b.slotId]
+        if item and item.id then
+            b.entry = { id = item.id, bag = EQUIPPED_BAG, slot = b.slotId, equipped = true, slots = item.slots }
+            local name, _, quality, texture = itemInfo(item.id)
+            if not texture then requestItem(item.id) end
+            b.icon:SetTexture(texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+            b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local r, g, bl = qualityColor(quality)
+            b.border:SetTexture(r, g, bl, 0.95)
+            b.nameText:SetText(name or ("item #" .. item.id))
+            local sc = bagSlotCount(item.id, item.slots)
+            b.slotsText:SetText(sc and (sc .. " slots") or "Equipped")
+        else
+            b.entry = nil
+            b.icon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
+            b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            b.border:SetTexture(0.18, 0.18, 0.18, 0.9)
+            b.nameText:SetText("Bag " .. i)
+            b.slotsText:SetText(inv and "Empty / not reported" or "Loading…")
+        end
+    end
     local items = inv and inv.items or {}
     local perPage = BAG_COLS * BAG_ROWS
     local pages = math.max(1, math.ceil(table.getn(items) / perPage))
@@ -2087,8 +2363,16 @@ tradeFrame:SetScript("OnEvent", function()
             pendingGive = nil
             TB.SendBotCommand("item " .. give.bot .. " give " .. give.bag .. " " .. give.slot)
         end
+        local pGive = pendingPlayerGive
+        if pGive and partner == pGive.bot then
+            pendingPlayerGive = nil
+            if placePlayerItemInTrade(pGive.bag, pGive.slot) and TB.SetStatus then
+                TB.SetStatus("Bag placed in trade — accept to give it to " .. partner .. ".", "pending")
+            end
+        end
     elseif event == "TRADE_CLOSED" then
         pendingGive = nil
+        pendingPlayerGive = nil
         -- Traded items change the bags: reload what the panel shows.
         if TB.GetBotPanelBot() then
             TB.inventoryRefreshBot = TB.GetBotPanelBot()

@@ -311,7 +311,7 @@ end
 -- A BOTSTATE line outside BEGIN/END updates that one bot.
 -- Inventory snapshot (reply to ".bot inv", ".bot item equip/unequip"):
 --   TBM:INV_BEGIN|<bot>|<copper>
---   TBM:INV_EQ|<slot>|<itemId>|<durability>|<maxDurability>
+--   TBM:INV_EQ|<slot>|<itemId>|<durability>|<maxDurability>[|<slots>]
 --   TBM:INV_ITEM|<bag>|<slot>|<itemId>|<count>|<flags>
 --   TBM:INV_END|<bot>|<free>|<total>
 -- Service snapshot (reply to ".bot service", mages and warlocks):
@@ -415,6 +415,7 @@ function TB.ParseBotPanelMessage(msg)
         if inventoryReceiving and table.getn(fields) >= 4 and numberFields(fields, 1, 4) then
             inventoryReceiving.equipped[tonumber(fields[1])] = {
                 id = tonumber(fields[2]), durability = tonumber(fields[3]), maxDurability = tonumber(fields[4]),
+                slots = fields[5] and tonumber(fields[5]) or nil,
             }
         end
         return true
