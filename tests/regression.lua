@@ -1674,7 +1674,7 @@ assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
 now = now + 1
 this = menu.third
 menu.third.scripts.OnClick(menu.third)
-assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h", "Use must send the item link")
+assert(lastAddon() == "command Alpha u |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r", "Use must send the item link")
 this = junk
 junk.scripts.OnClick(junk)
 now = now + 1
@@ -1709,10 +1709,10 @@ assert(table.getn(addonSent) == beforeDestroy, "Destroy must not send before the
 assert(lastPopupShown == "TORTOISEBOTSMANAGER_DESTROY_ITEM", "Destroy must ask first")
 assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] ~= nil, "destroy dialog must exist")
 assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].text ==
-    "Destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h on Alpha?\n\nThis cannot be undone.",
+    "Destroy |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r on Alpha?\n\nThis cannot be undone.",
     "the confirm must name the item with a single clean link")
 StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].OnAccept()
-assert(lastAddon() == "command Alpha destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+assert(lastAddon() == "command Alpha destroy |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r",
     "confirming Destroy must send the item link")
 -- P9: Use on an uncached item tells the player and sends once cached.
 itemCache[159] = nil
@@ -1725,7 +1725,7 @@ menu.third.scripts.OnClick(menu.third)
 assert(table.getn(addonSent) == beforeUse, "Use on an uncached item must not send silently")
 itemCache[159] = { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }
 TB.botPanel.scripts.OnUpdate(TB.botPanel)
-assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+assert(lastAddon() == "command Alpha u |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r",
     "Use must send once the item is cached")
 -- P9: Upkeep and Gear up disable while the bot is offline, like Trade.
 TB.OpenBotPanel("Zed", "bags")
@@ -2139,7 +2139,7 @@ assert(not TB.botVault.rows[2].visible, "empty vault rows stay hidden")
 now = now + 1
 this = TB.botVault.rows[1]
 TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
-assert(lastAddon() == "command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h",
+assert(lastAddon() == "command Alpha bank -|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r",
     "clicking a bank row withdraws it by link")
 TB.SetVaultPending("Alpha", false)
 now = now + 1

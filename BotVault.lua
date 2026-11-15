@@ -161,7 +161,7 @@ function TB.SendBankWithdraw(name, id, label)
     id = tonumber(id)
     if not name or not id then return false end
     if TB.SetStatus then TB.SetStatus(name .. " takes " .. (label or ("item " .. id)) .. " from its bank…", "pending") end
-    return TB.SendBotCommand("command " .. name .. " bank -|Hitem:" .. id .. ":0:0:0|h[" .. (label or ("item " .. id)) .. "]|h")
+    return TB.SendBotCommand("command " .. name .. " bank -|cffffffff|Hitem:" .. id .. ":0:0:0|h[" .. (label or ("item " .. id)) .. "]|h|r")
 end
 
 function TB.SendMailTake(name, n)

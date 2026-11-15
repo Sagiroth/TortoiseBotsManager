@@ -1648,7 +1648,7 @@ local cases = {
     },
     {
         id = "botpanel.use",
-        expected = { ".bot command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h" },
+        expected = { ".bot command Alpha u |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r" },
         trigger = function()
             if env.seedItem then env.seedItem(159, { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }) end
             TB.botPanel.tabBags.scripts.OnClick(TB.botPanel.tabBags)
@@ -1767,7 +1767,7 @@ local cases = {
     -- P9: advanced item-menu rows (destroy asks first, rest send on click).
     {
         id = "botpanel.disenchant",
-        expected = { ".bot inv Alpha", ".bot command Alpha cast Disenchant |Hitem:1201:0:0:0|h[Shadowgem]|h" },
+        expected = { ".bot inv Alpha", ".bot command Alpha cast Disenchant |cffffffff|Hitem:1201:0:0:0|h[Shadowgem]|h|r" },
         trigger = function()
             if env.seedItem then env.seedItem(1201, { name = "Shadowgem", quality = 2, texture = "Interface\\Icons\\INV_Misc_Gem_Amethyst_01" }) end
             TB.OpenBotPanel("Alpha", "bags")
@@ -1787,7 +1787,7 @@ local cases = {
     },
     {
         id = "botpanel.sendmail",
-        expected = { ".bot inv Alpha", ".bot command Alpha sendmail |Hitem:1201:0:0:0|h[Shadowgem]|h" },
+        expected = { ".bot inv Alpha", ".bot command Alpha sendmail |cffffffff|Hitem:1201:0:0:0|h[Shadowgem]|h|r" },
         trigger = function()
             TB.OpenBotPanel("Alpha", "bags")
             local gem = nil
@@ -1806,7 +1806,7 @@ local cases = {
     },
     {
         id = "botpanel.bank",
-        expected = { ".bot inv Alpha", ".bot command Alpha bank |Hitem:1201:0:0:0|h[Shadowgem]|h" },
+        expected = { ".bot inv Alpha", ".bot command Alpha bank |cffffffff|Hitem:1201:0:0:0|h[Shadowgem]|h|r" },
         trigger = function()
             TB.OpenBotPanel("Alpha", "bags")
             local gem = nil
@@ -1825,7 +1825,7 @@ local cases = {
     },
     {
         id = "botpanel.destroy",
-        expected = { ".bot inv Alpha", ".bot command Alpha destroy |Hitem:6948:0:0:0|h[Hearthstone]|h", ".bot inv Alpha" },
+        expected = { ".bot inv Alpha", ".bot command Alpha destroy |cffffffff|Hitem:6948:0:0:0|h[Hearthstone]|h|r", ".bot inv Alpha" },
         trigger = function()
             if env.seedItem then env.seedItem(6948, { name = "Hearthstone", quality = 1, texture = "Interface\\Icons\\INV_Misc_Rune_01" }) end
             TB.OpenBotPanel("Alpha", "bags")
@@ -2168,7 +2168,7 @@ local cases = {
     },
     {
         id = "p8.vault.withdraw",
-        expected = { ".bot command Alpha bank", ".bot command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h" },
+        expected = { ".bot command Alpha bank", ".bot command Alpha bank -|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r" },
         trigger = function()
             TB.OpenVault("Alpha")
             TB.OnWhisperMessage("=== Bank ===", "Alpha")

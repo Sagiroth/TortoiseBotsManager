@@ -740,9 +740,11 @@ end
 -- is never silently dropped ("Loading…" shows while the client is fetching).
 local function linkText(id)
     if not id or not GetItemInfo then return nil end
-    local name, link = GetItemInfo(id)
+    local name, link, quality = GetItemInfo(id)
     if not name or not link then return nil end
-    return "|H" .. link .. "|h[" .. name .. "]|h", name
+    -- The client rejects a chat link without its colour wrapper ("Invalid escape code").
+    local _, _, _, hex = qualityColor(quality)
+    return hex .. "|H" .. link .. "|h[" .. name .. "]|h|r", name
 end
 
 local function sendLinkOrder(verb, id)
