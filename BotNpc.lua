@@ -363,7 +363,7 @@ function TB.RefreshNpc()
     local entry = (TB.GetRosterEntry and TB.GetRosterEntry(currentBot))
         or (TB.GetClaimedEntry and TB.GetClaimedEntry(currentBot)) or nil
     local classId = entry and entry.classId
-    local col = (classId and C.CLASS_COLORS and C.CLASS_COLORS[classId]) or color("gold")
+    local col = (TB.GetClassColor and TB.GetClassColor(classId)) or color("gold")
     npc.nameText:SetText(currentBot or "")
     npc.nameText:SetTextColor(col[1], col[2], col[3])
     local e = npcs[currentBot]

@@ -227,13 +227,15 @@ function TB.RefreshBots()
             row.name:ClearAllPoints()
             row.name:SetPoint("TOPLEFT", win, "TOPLEFT", PAD, top - 4)
             row.name:SetText(name)
-            local col = (classId and C.CLASS_COLORS and C.CLASS_COLORS[classId]) or color("gold")
+            local col = TB.GetClassColor and TB.GetClassColor(classId) or color("gold")
             row.name:SetTextColor(col[1], col[2], col[3])
             local role = classId and TB.Roles and TB.Roles.GetBotRole and TB.Roles.GetBotRole(name, classId)
             local roleLabel = (classId and role and TB.Roles.GetRoleLabel
                 and TB.Roles.GetRoleLabel(classId, role, nil)) or nil
-            local className = (classId and C.CLASS_NAMES and C.CLASS_NAMES[classId])
-                or (C.CLASS_NAMES and C.CLASS_NAMES[1]) or ""
+            local entry = (TB.GetRosterEntry and TB.GetRosterEntry(name))
+                or (TB.GetClaimedEntry and TB.GetClaimedEntry(name))
+            local className = TB.GetClassName and TB.GetClassName(classId, entry and entry.serverClassName, name)
+                or (classId and C.CLASS_NAMES and C.CLASS_NAMES[classId]) or ""
             local second = roleLabel or className
             if second and second ~= "" then
                 row.name:SetText(name .. "\n" .. second)

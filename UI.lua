@@ -2690,8 +2690,12 @@ end
                 local className, classFileName = (UnitClass and UnitClass(unit)) or "Unknown", "UNKNOWN"
                 local classId = (classFileName and TB.C.CLASS_NAME_TO_ID and TB.C.CLASS_NAME_TO_ID[classFileName])
                     or (className and TB.C.CLASS_NAME_TO_ID and TB.C.CLASS_NAME_TO_ID[className])
-                    or 1
-                local col = (TB.C.CLASS_COLORS and TB.C.CLASS_COLORS[classId]) or COL.gold
+                if not classId then
+                    local entry = (TB.GetRosterEntry and TB.GetRosterEntry(name))
+                        or (TB.GetClaimedEntry and TB.GetClaimedEntry(name))
+                    classId = entry and entry.classId or nil
+                end
+                local col = (TB.GetClassColor and TB.GetClassColor(classId)) or COL.gold
 
                 row.nameText:SetText(name)
                 row.nameText:SetTextColor(col[1], col[2], col[3])
@@ -2942,7 +2946,7 @@ end
                 if not isSelected then allSelected = false end
                 row.check:SetChecked(isSelected)
 
-                local classColor = C.CLASS_COLORS and C.CLASS_COLORS[entry.classId] or COL.gold
+                local classColor = (TB.GetClassColor and TB.GetClassColor(entry.classId)) or COL.gold
                 row.name:SetText(entry.name)
                 row.name:SetTextColor(classColor[1], classColor[2], classColor[3])
                 row.accent:SetTexture(classColor[1], classColor[2], classColor[3], entry.online and 0.95 or 0.45)
@@ -2956,7 +2960,8 @@ end
                     row:SetBackdropBorderColor(re[1], re[2], re[3], re[4])
                 end
 
-                row.lvlClass:SetText(entry.level .. " " .. (entry.className or ""))
+                local className = TB.GetClassName and TB.GetClassName(entry.classId, entry.serverClassName, entry.name) or entry.className or ""
+                row.lvlClass:SetText(entry.level .. " " .. className)
                 if entry.alt then
                     row.gearBadge:SetText("|cff42a5f5Your alt|r")
                 elseif entry.gearLocked then
@@ -3303,7 +3308,9 @@ RefreshRows = function(rows)
             else
                 TB.SetTextColor(row.name, color("muted"))
             end
-            row.class:SetText(entry.className or tostring(entry.classId or "?"))
+            local className = TB.GetClassName and TB.GetClassName(entry.classId, entry.serverClassName, entry.name)
+                or entry.className or "Unknown class"
+            row.class:SetText(className)
             if classCol then
                 TB.SetTextColor(row.class, classCol)
             end

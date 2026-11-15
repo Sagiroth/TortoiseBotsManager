@@ -458,6 +458,64 @@ TB.OnSystemMessage("TBM:ROSTER_END")
 -- Class colors and status badge
 local warriorColor = TB.GetClassColor(1)
 assert(warriorColor and warriorColor.hex == "ffc79c6e", "Warrior class color must match Tortoise palette")
+local unknownColor = TB.GetClassColor(12)
+assert(unknownColor and unknownColor.hex == "ffebe6d6", "Unknown class color must use neutral fallback")
+
+-- Unknown (custom) class handling: placeholder icon, server name, UnitClass fallback, "Unknown class"
+do
+    local shown, texPath
+    local fakeTex = {
+        SetTexture = function(_, p) texPath = p end,
+        SetTexCoord = function() end,
+        Show = function() shown = true end,
+        Hide = function() shown = false end,
+    }
+    local knownOk = TB.SetClassIcon(fakeTex, 1)
+    assert(knownOk and shown and texPath == TB.C.CLASS_ICON_FILE, "known class must use class icon atlas")
+    local unknownOk = TB.SetClassIcon(fakeTex, 12)
+    assert(not unknownOk and shown and texPath == "Interface\\Icons\\INV_Misc_QuestionMark",
+        "unknown class must show question mark placeholder instead of hiding")
+
+    -- With server-sent class name on ROSTER and CLAIMED
+    TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+    TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3|IgnoreMe")
+    TB.OnSystemMessage("TBM:ROSTER|102|Murlok|12|online|0|map:1,zone:2,area:3|Tidecaller")
+    TB.OnSystemMessage("TBM:ROSTER|103|Wanderer|12|offline|0|-")
+    TB.OnSystemMessage("TBM:ROSTER_END")
+    assert(TB.GetRosterEntry("Alpha").className == "Warrior",
+        "known class must keep addon class name even when server sends a name")
+    assert(TB.GetRosterEntry("Murlok").className == "Tidecaller",
+        "unknown class must use server-sent class name")
+    assert(TB.GetRosterEntry("Wanderer").className == "Unknown class",
+        "unknown class without server name or party unit must fall back to Unknown class")
+
+    -- Without server-sent name, fall back to UnitClass when in party
+    local realParty, realClass = partyMembers, partyClassName
+    partyMembers = { "Wanderer" }
+    partyClassName = "Runemaster"
+    assert(TB.GetClassName(12, nil, "Wanderer") == "Runemaster",
+        "unknown class without server name must fall back to UnitClass when in party")
+    partyMembers, partyClassName = realParty, realClass
+
+    -- Claimed guild row with trailing class name
+    TB.OnSystemMessage("TBM:CLAIMED_BEGIN|2")
+    TB.OnSystemMessage("TBM:CLAIMED|201|Tidefin|12|60|online|0|Ironforge|1|-|0|Tidecaller")
+    TB.OnSystemMessage("TBM:CLAIMED|202|NoName|12|55|offline|0|-|0|-|0")
+    TB.OnSystemMessage("TBM:CLAIMED_END")
+    assert(TB.GetClaimedEntry("Tidefin").className == "Tidecaller",
+        "claimed bot with unknown class must use server-sent class name")
+    assert(TB.GetClaimedEntry("NoName").className == "Unknown class",
+        "claimed bot with unknown class and no server name must fall back to Unknown class")
+
+    -- Restore canonical snapshots
+    TB.OnSystemMessage("TBM:CLAIMED_BEGIN|0")
+    TB.OnSystemMessage("TBM:CLAIMED_END")
+    TB.OnSystemMessage("TBM:ROSTER_BEGIN|3")
+    TB.OnSystemMessage("TBM:ROSTER|101|Alpha|1|online|0|map:1,zone:2,area:3")
+    TB.OnSystemMessage("TBM:ROSTER|102|Bravo|8|offline|0|-")
+    TB.OnSystemMessage("TBM:ROSTER|103|Gamma|11|online|1|map:4,zone:5,area:6")
+    TB.OnSystemMessage("TBM:ROSTER_END")
+end
 local badge = TB.StatusBadge(TB.GetState("Alpha"), false)
 assert(string.find(badge, "Online"), "Status badge for online state must display Online")
 
