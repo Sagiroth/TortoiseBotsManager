@@ -811,6 +811,14 @@ return function()
                     end
                     childrenInside("BotPanel gear", panel, pr, slots, cache, 2)
                 end
+                if panel.equippedBagButtons then
+                    local eqBags = {}
+                    for i, b in ipairs(panel.equippedBagButtons) do
+                        table.insert(eqBags, { "eqBag" .. i, b })
+                    end
+                    childrenInside("BotPanel equipped bags", panel, pr, eqBags, cache, 2)
+                    noOverlaps("BotPanel equipped bags", eqBags, cache)
+                end
                 if panel.bagButtons then
                     local slots = {}
                     for i, b in ipairs(panel.bagButtons) do

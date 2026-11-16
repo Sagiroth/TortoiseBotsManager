@@ -51,6 +51,7 @@ local WOW_GLOBALS = set({
     "FauxScrollFrame_Update", "ChatFrame_AddMessageEventFilter", "ChatFrame_OnEvent",
     "MailFrame", "MailFrameTab_OnClick", "SendMailBodyEditBox", "SendMailNameEditBox",
     "SendMailSubjectEditBox", "ClickSendMailItemButton", "GetSendMailItem",
+    "TradeFrame", "ClickTradeButton",
     -- units, group, guild
     "UnitClass", "UnitExists", "UnitFactionGroup", "UnitIsDead", "UnitIsGhost", "UnitIsPlayer",
     "UnitLevel", "UnitName", "GetNumPartyMembers", "GetNumRaidMembers", "TargetByName",

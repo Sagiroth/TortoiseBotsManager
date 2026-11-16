@@ -212,7 +212,8 @@ local itemCache = {}
 function GetItemInfo(id)
     local item = itemCache[id]
     if not item then return nil end
-    return item.name, "item:" .. id .. ":0:0:0", item.quality or 1, 1, "Armor", "Cloth", 1, "", item.texture
+    return item.name, "item:" .. id .. ":0:0:0", item.quality or 1, 1,
+        item.itemType or "Armor", item.subType or "Cloth", 1, item.equipLoc or "", item.texture
 end
 function UnitLevel(unit) return 60 end
 function UnitClass(unit)
@@ -1674,7 +1675,7 @@ assert(menu.third.visible and menu.third.text == "Use", "bag items offer Use")
 now = now + 1
 this = menu.third
 menu.third.scripts.OnClick(menu.third)
-assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h", "Use must send the item link")
+assert(lastAddon() == "command Alpha u |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r", "Use must send the item link")
 this = junk
 junk.scripts.OnClick(junk)
 now = now + 1
@@ -1709,10 +1710,10 @@ assert(table.getn(addonSent) == beforeDestroy, "Destroy must not send before the
 assert(lastPopupShown == "TORTOISEBOTSMANAGER_DESTROY_ITEM", "Destroy must ask first")
 assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"] ~= nil, "destroy dialog must exist")
 assert(StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].text ==
-    "Destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h on Alpha?\n\nThis cannot be undone.",
+    "Destroy |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r on Alpha?\n\nThis cannot be undone.",
     "the confirm must name the item with a single clean link")
 StaticPopupDialogs["TORTOISEBOTSMANAGER_DESTROY_ITEM"].OnAccept()
-assert(lastAddon() == "command Alpha destroy |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+assert(lastAddon() == "command Alpha destroy |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r",
     "confirming Destroy must send the item link")
 -- P9: Use on an uncached item tells the player and sends once cached.
 itemCache[159] = nil
@@ -1725,7 +1726,7 @@ menu.third.scripts.OnClick(menu.third)
 assert(table.getn(addonSent) == beforeUse, "Use on an uncached item must not send silently")
 itemCache[159] = { name = "Refreshing Spring Water", quality = 1, texture = "Interface\\Icons\\INV_Drink_07" }
 TB.botPanel.scripts.OnUpdate(TB.botPanel)
-assert(lastAddon() == "command Alpha u |Hitem:159:0:0:0|h[Refreshing Spring Water]|h",
+assert(lastAddon() == "command Alpha u |cffffffff|Hitem:159:0:0:0|h[Refreshing Spring Water]|h|r",
     "Use must send once the item is cached")
 -- P9: Upkeep and Gear up disable while the bot is offline, like Trade.
 TB.OpenBotPanel("Zed", "bags")
@@ -2139,7 +2140,7 @@ assert(not TB.botVault.rows[2].visible, "empty vault rows stay hidden")
 now = now + 1
 this = TB.botVault.rows[1]
 TB.botVault.rows[1].scripts.OnClick(TB.botVault.rows[1])
-assert(lastAddon() == "command Alpha bank -|Hitem:1234:0:0:0|h[Linen Cloth]|h",
+assert(lastAddon() == "command Alpha bank -|cffffffff|Hitem:1234:0:0:0|h[Linen Cloth]|h|r",
     "clicking a bank row withdraws it by link")
 TB.SetVaultPending("Alpha", false)
 now = now + 1
@@ -5778,6 +5779,86 @@ do
     StaticPopupDialogs, StaticPopup_Show = TB._t.dialogs, TB._t.show
     TB._t, TB._compatShown, TortoiseBotsDB.compatDismissed = nil, nil, nil
 end
+
+-- ── BotPanel equipped bag slots (#89) ────────────────────────────────────────
+(function()
+    local savedParty = partyMembers
+    partyMembers = { "Alpha" }
+    TB.OnSystemMessage("TBM:TRANSPORT|party")
+    now = now + 5
+    itemCache[14046] = { name = "Runecloth Bag", quality = 1, itemType = "Container", subType = "Bag",
+        equipLoc = "INVTYPE_BAG", texture = "Interface\\Icons\\INV_Misc_Bag_10" }
+    itemCache[18714] = { name = "Ancient Sinew Wrapped Lamina", quality = 4, itemType = "Quiver", subType = "Quiver",
+        equipLoc = "INVTYPE_BAG", texture = "Interface\\Icons\\INV_Misc_Quiver_03" }
+    itemCache[4500] = { name = "Traveler's Backpack", quality = 2, itemType = "Container", subType = "Bag",
+        equipLoc = "INVTYPE_BAG", texture = "Interface\\Icons\\INV_Misc_Bag_08" }
+
+    TB.OpenBotPanel("Alpha", "bags")
+    TB.OnSystemMessage("TBM:INV_BEGIN|Alpha|100")
+    TB.OnSystemMessage("TBM:INV_EQ|19|14046|0|0|14")
+    TB.OnSystemMessage("TBM:INV_EQ|20|18714|0|0|18")
+    TB.OnSystemMessage("TBM:INV_ITEM|255|23|4500|1|e")
+    TB.OnSystemMessage("TBM:INV_END|Alpha|20|40")
+
+    local eq = TB.botPanel.equippedBagButtons
+    assert(eq and table.getn(eq) == 4, "4 equipped bag slots on Bags tab")
+    assert(eq[1].nameText.text == "Runecloth Bag" and eq[1].slotsText.text == "14 slots",
+        "equipped bag 1 shows name and slot count")
+    assert(eq[2].nameText.text == "Ancient Sinew Wrapped Lamina" and eq[2].slotsText.text == "18 slots",
+        "hunter quiver shows in bag slot 2 with slot count")
+    assert(eq[3].nameText.text == "Bag 3" and eq[3].slotsText.text == "Empty / not reported",
+        "unreported or empty bag slot shows placeholder")
+
+    local savedNumSlots, savedLink, savedInfo = GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo
+    local savedPickup, savedClickTrade, savedCursorHas = PickupContainerItem, ClickTradeButton, CursorHasItem
+    GetContainerNumSlots = function(b) return b == 0 and 2 or 0 end
+    GetContainerItemLink = function(b, s)
+        if b == 0 and s == 1 then return "|cffffffff|Hitem:4500:0:0:0|h[Traveler's Backpack]|h|r" end
+        return nil
+    end
+    GetContainerItemInfo = function() return nil, 1, false end
+    local picked, traded = nil, nil
+    PickupContainerItem = function(b, s) picked = { b, s } end
+    ClickTradeButton = function(idx) traded = idx end
+    CursorHasItem = function() return false end
+
+    local rows = {}
+    TB.BuildBagSlotMenu("Alpha", 19, function(info) table.insert(rows, info) end)
+    local giveBtn, equipBtn, unequipBtn
+    for _, r in ipairs(rows) do
+        if r.text and string.find(r.text, "Traveler's Backpack", 1, true) and r.func then
+            if not giveBtn then giveBtn = r else equipBtn = r end
+        elseif r.text == "Unequip bag" then
+            unequipBtn = r
+        end
+    end
+    assert(giveBtn and equipBtn and unequipBtn, "bag slot menu offers Give a bag, Equip this bag, and Unequip bag")
+
+    now = now + 1
+    giveBtn.func()
+    assert(lastAddon() == "item Alpha trade", "Give a bag opens trade with the bot")
+    local tradeWatcher = frames["TortoiseBotsManagerTradeWatcher"]
+    local savedUnitName = UnitName
+    UnitName = function(u) return u == "NPC" and "Alpha" or savedUnitName(u) end
+    event = "TRADE_SHOW"
+    tradeWatcher.scripts.OnEvent(tradeWatcher)
+    UnitName = savedUnitName
+    assert(picked and picked[1] == 0 and picked[2] == 1 and traded == 1,
+        "TRADE_SHOW places the picked player bag into trade slot 1")
+
+    now = now + 1
+    equipBtn.func()
+    assert(lastAddon() == "item Alpha equip 255 23", "Equip this bag sends item equip for carried bag")
+
+    now = now + 1
+    unequipBtn.func()
+    assert(lastAddon() == "item Alpha unequip 255 19", "Unequip bag sends item unequip for slot 19")
+
+    GetContainerNumSlots, GetContainerItemLink, GetContainerItemInfo = savedNumSlots, savedLink, savedInfo
+    PickupContainerItem, ClickTradeButton, CursorHasItem = savedPickup, savedClickTrade, savedCursorHas
+    partyMembers = savedParty
+    TB.CloseBotPanel()
+end)()
 
 dofile(root .. "/tests/phase0_tests.lua")()
 
