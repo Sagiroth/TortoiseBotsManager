@@ -2,6 +2,17 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.3.2 (2026-11-16)
+
+### Tactical & Actions
+- Item orders (destroy, disenchant, mail, use, bank withdraw) now send fully-formed item links, so the server no longer rejects commands with "Invalid escape code in chat message" [#90](https://github.com/Sagiroth/TortoiseBotsManager/pull/90)
+
+### UI & Controls
+- Bags tab now displays the bot's four equipped bags—including hunter quivers and ammo pouches—with icon, name and slot size [#90](https://github.com/Sagiroth/TortoiseBotsManager/pull/90)
+- Click a bag slot to hand the bot a bag from your own inventory, equip one it already carries, or remove a bag outright [#90](https://github.com/Sagiroth/TortoiseBotsManager/pull/90)
+
+---
+
 ## v2.3.1 (2026-11-15)
 
 ### Roster & Lifecycle
