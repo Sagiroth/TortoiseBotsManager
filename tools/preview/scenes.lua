@@ -250,12 +250,17 @@ scene("guild", function()
 end)
 scene("log", function() tab("log", nil); dump("log", { main }, "Log tab") end)
 scene("loot", function()
+    local today = os.date("%Y-%m-%d")
     feed({
-        "TBM:LOOT_BEGIN|4|",
-        "TBM:LOOT|2026-10-27 12:00:01|Thalgrim|StoreLootAction|12640|Lionheart Helm|corpse|General Drakkisath|4",
-        "TBM:LOOT|2026-10-27 12:00:02|Vexmora|LootMoney|812|1550|corpse|Kobold Vermin|",
+        "TBM:LOOT_BEGIN|8|",
+        "TBM:LOOT|" .. today .. " 12:04:15|Thalgrim|LootRoll|need:12640:for equiping as upgrade.|Lionheart Helm|corpse|General Drakkisath|",
+        "TBM:LOOT|" .. today .. " 12:03:40|Vexmora|LootRoll|greed:13340:to sell to a vendor for 2g 45s 10c|Cape of the Black Baron|corpse|Baron Rivendare|",
+        "TBM:LOOT|" .. today .. " 12:02:18|Seraphine|LootRoll|disenchant:11815:ordered by Valguard|Hand of Justice|corpse|General Angerforge|",
+        "TBM:LOOT|" .. today .. " 12:01:55|Bramblewood|LootRoll|pass:2453:already have enough|Bruiseweed|corpse|Defias Herbalist|",
+        "TBM:LOOT|" .. today .. " 12:00:12|Thalgrim|StoreLootAction|19019|Thunderfury, Blessed Blade of the Windseeker|corpse|Prince Thunderaan|5",
+        "TBM:LOOT|" .. today .. " 12:00:02|Vexmora|LootMoney|812|1550|corpse|Kobold Vermin|",
         "TBM:LOOT|2026-10-27 12:00:05|Seraphine|StoreLootAction|13340|Cape of the Black Baron|corpse|Baron Rivendare|3",
-        "TBM:LOOT|2026-10-27 12:01:11|Bramblewood|StoreLootAction|2589|Linen Cloth|corpse|Defias Thug|1",
+        "TBM:LOOT|2026-10-27 11:58:11|Bramblewood|StoreLootAction|2589|Linen Cloth|corpse|Defias Thug|1",
         "TBM:LOOT_END|",
     })
     tab("loot", nil)
