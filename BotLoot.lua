@@ -432,7 +432,7 @@ local function formatTime(ts, today)
         if today and (y .. "-" .. m .. "-" .. d) == today then
             return hh .. ":" .. mm
         end
-        return d .. "." .. m
+        return d .. "." .. m .. " " .. hh .. ":" .. mm
     end
     return timeTail(ts)
 end
@@ -576,14 +576,16 @@ TB.LootRowText = rowText
 
 local LOOT_ROW_H = 18
 local LOOT_ROW_N = 14
+local HEADER_H = 16
+local CONTENT_W = 608
 
 local COLS = {
-    time   = { x = 4,   w = 36,  label = "Time",   justify = "LEFT" },
-    bot    = { x = 42,  w = 66,  label = "Bot",    justify = "LEFT" },
-    item   = { x = 110, w = 128, label = "Item",   justify = "LEFT" },
-    result = { x = 242, w = 48,  label = "Result", justify = "CENTER" },
-    source = { x = 296, w = 90,  label = "Source", justify = "LEFT" },
-    reason = { x = 390, w = 66,  label = "Reason", justify = "LEFT" },
+    time   = { x = 4,   w = 64,  label = "Time",   justify = "LEFT" },
+    bot    = { x = 72,  w = 80,  label = "Bot",    justify = "LEFT" },
+    item   = { x = 156, w = 160, label = "Item",   justify = "LEFT" },
+    result = { x = 320, w = 52,  label = "Result", justify = "CENTER" },
+    source = { x = 378, w = 130, label = "Source", justify = "LEFT" },
+    reason = { x = 514, w = 90,  label = "Reason", justify = "LEFT" },
 }
 
 function TB.CreateLootTab(parent)
@@ -696,10 +698,34 @@ function TB.CreateLootTab(parent)
     end, "Row type: items, rolls, or all")
 
     local rowW = tw - 22
-    local header = CreateFrame("Frame", nil, tab)
-    header:SetWidth(rowW)
-    header:SetHeight(16)
-    header:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -56)
+    local tableH = HEADER_H + 1 + LOOT_ROW_N * LOOT_ROW_H
+
+    local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLootScroll", tab, "FauxScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -73)
+    scroll:SetWidth(rowW)
+    scroll:SetHeight(LOOT_ROW_N * LOOT_ROW_H + 4)
+    scroll:SetScript("OnVerticalScroll", function()
+        FauxScrollFrame_OnVerticalScroll(LOOT_ROW_H, TB.RefreshLootView)
+    end)
+    TB.lootScroll = scroll
+
+    local hscroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLootHScroll", tab)
+    hscroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -56)
+    hscroll:SetWidth(rowW)
+    hscroll:SetHeight(tableH)
+    TB.lootHScroll = hscroll
+
+    local hcontent = CreateFrame("Frame", nil, hscroll)
+    hcontent:SetPoint("TOPLEFT", hscroll, "TOPLEFT", 0, 0)
+    hcontent:SetWidth(CONTENT_W)
+    hcontent:SetHeight(tableH)
+    hscroll:SetScrollChild(hcontent)
+    if hscroll.UpdateScrollChildRect then hscroll:UpdateScrollChildRect() end
+
+    local header = CreateFrame("Frame", nil, hcontent)
+    header:SetWidth(CONTENT_W)
+    header:SetHeight(HEADER_H)
+    header:SetPoint("TOPLEFT", hcontent, "TOPLEFT", 0, 0)
     local hbg = header:CreateTexture(nil, "BACKGROUND")
     hbg:SetAllPoints(header)
     hbg:SetTexture(1, 1, 1, 0.05)
@@ -719,21 +745,12 @@ function TB.CreateLootTab(parent)
     end
     tab.headerRow = header
 
-    local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLootScroll", tab, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -73)
-    scroll:SetWidth(rowW)
-    scroll:SetHeight(LOOT_ROW_N * LOOT_ROW_H + 4)
-    scroll:SetScript("OnVerticalScroll", function()
-        FauxScrollFrame_OnVerticalScroll(LOOT_ROW_H, TB.RefreshLootView)
-    end)
-    TB.lootScroll = scroll
-
     local rows = {}
     for i = 1, LOOT_ROW_N do
-        local row = CreateFrame("Frame", nil, tab)
-        row:SetWidth(rowW)
+        local row = CreateFrame("Frame", nil, hcontent)
+        row:SetWidth(CONTENT_W)
         row:SetHeight(LOOT_ROW_H)
-        row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(i - 1) * LOOT_ROW_H)
+        row:SetPoint("TOPLEFT", hcontent, "TOPLEFT", 0, -(HEADER_H + 1) - (i - 1) * LOOT_ROW_H)
         if TB.UI and TB.UI.StripeRow then TB.UI.StripeRow(row, i) end
 
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -816,6 +833,72 @@ function TB.CreateLootTab(parent)
     end
     TB.lootRows = rows
 
+    local hslider = CreateFrame("Slider", "TortoiseBotsManagerLootHSlider", tab)
+    hslider:SetWidth(rowW)
+    hslider:SetHeight(10)
+    hslider:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -(56 + tableH + 2))
+    hslider:EnableMouse(true)
+    hslider:SetOrientation("HORIZONTAL")
+    local htrack = hslider:CreateTexture(nil, "BACKGROUND")
+    htrack:SetTexture(0.16, 0.16, 0.19, 0.9)
+    htrack:SetPoint("LEFT", hslider, "LEFT", 0, 0)
+    htrack:SetPoint("RIGHT", hslider, "RIGHT", 0, 0)
+    htrack:SetHeight(4)
+    local hthumb = hslider:CreateTexture(nil, "OVERLAY")
+    hthumb:SetTexture(0.78, 0.53, 0.14, 0.85)
+    hthumb:SetWidth(48)
+    hthumb:SetHeight(6)
+    hslider:SetThumbTexture(hthumb)
+    hslider:SetValueStep(1)
+
+    local function hScrollRange()
+        local r = hscroll.GetHorizontalScrollRange and hscroll:GetHorizontalScrollRange() or 0
+        if r <= 0 and CONTENT_W > rowW then r = CONTENT_W - rowW end
+        return r
+    end
+
+    local function setHScroll(x)
+        local r = hScrollRange()
+        if x < 0 then x = 0 end
+        if x > r then x = r end
+        if hscroll.SetHorizontalScroll then hscroll:SetHorizontalScroll(x) end
+        hslider:SetValue(x)
+    end
+
+    local function syncHScroll()
+        local r = hScrollRange()
+        if r > 0 then
+            hslider:SetMinMaxValues(0, r)
+            local cur = (hscroll.GetHorizontalScroll and hscroll:GetHorizontalScroll()) or 0
+            if cur > r then cur = r; if hscroll.SetHorizontalScroll then hscroll:SetHorizontalScroll(cur) end end
+            hslider:SetValue(cur)
+            hslider:Show()
+        else
+            hslider:Hide()
+        end
+    end
+
+    hslider:SetScript("OnValueChanged", function()
+        local v = arg1 or this:GetValue() or 0
+        if hscroll.SetHorizontalScroll then hscroll:SetHorizontalScroll(v) end
+    end)
+    syncHScroll()
+    TB.lootHSlider = hslider
+
+    if hscroll.EnableMouseWheel then hscroll:EnableMouseWheel(true) end
+    hscroll:SetScript("OnMouseWheel", function()
+        local delta = arg1 or 0
+        if IsShiftKeyDown and IsShiftKeyDown() and hScrollRange() > 0 then
+            local cur = (hscroll.GetHorizontalScroll and hscroll:GetHorizontalScroll()) or 0
+            setHScroll(cur - delta * 36)
+        else
+            local sb = getglobal and getglobal("TortoiseBotsManagerLootScrollScrollBar")
+            if sb and sb.GetValue and sb.SetValue then
+                sb:SetValue((sb:GetValue() or 0) - delta * LOOT_ROW_H)
+            end
+        end
+    end)
+
     local empty = tab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     empty:SetPoint("CENTER", scroll, "CENTER", 0, 0)
     empty:SetWidth(tw - 40)
@@ -844,7 +927,7 @@ function TB.RefreshLootView()
             local classId = botClassId(entry.bot)
             local botCol = (classId and C.CLASS_COLORS and C.CLASS_COLORS[classId]) or color("text")
             TB.SetTextColor(row.botText, botCol)
-            row.botText:SetText(truncate(entry.bot or "?", 12))
+            row.botText:SetText(truncate(entry.bot or "?", 14))
 
             if entry.event == "LootMoney" then
                 row.itemIcon:SetTexture(COIN_ICON)
@@ -861,7 +944,7 @@ function TB.RefreshLootView()
                 row.itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 local q = entry.quality or itemQuality
                 local name = entry.item or ("item #" .. tostring(entry.itemId or "?"))
-                row.itemText:SetText(qualityHex(q) .. truncate(name, 18) .. "|r")
+                row.itemText:SetText(qualityHex(q) .. truncate(name, 24) .. "|r")
             end
 
             local badge = rowBadge(entry)
@@ -869,8 +952,8 @@ function TB.RefreshLootView()
             row.resultText:SetText(badge.label)
             TB.SetTextColor(row.resultText, badge.text)
 
-            row.sourceText:SetText(truncate(entry.source or "", 15))
-            row.reasonText:SetText(truncate(rowShortReason(entry), 11))
+            row.sourceText:SetText(truncate(entry.source or "", 22))
+            row.reasonText:SetText(truncate(rowShortReason(entry), 15))
             row:Show()
         else
             row.entry = nil

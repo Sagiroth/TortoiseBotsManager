@@ -175,6 +175,8 @@ function rectOf(o, depth) {
     else if (vc.M !== undefined) { t = vc.M - h / 2; b = t + h; }
     else return null;
   }
+  const p = byId[o.parent];
+  if (p && p.scrollChild === o.id && p.horizontalScroll) { l -= p.horizontalScroll; r -= p.horizontalScroll; }
   return (rects[o.id] = { l, t, r, b });
 }
 
@@ -359,8 +361,9 @@ async function render(scene, cropIds) {
   const roots = (O.roots || []).map(id => byId[id]).filter(o => o && visible(o));
   const rootSet = new Set(roots.map(o => o.id));
   const underRoot = o => { let x = o; while (x) { if (rootSet.has(x.id)) return true; x = byId[x.parent]; } return false; };
+  const scrollClip = o => { let x = byId[o.parent]; while (x) { if (x.kind === 'ScrollFrame' && x.scrollChild) return x; x = byId[x.parent]; } return null; };
   for (const o of O.objects) {
-    if (!visible(o) || !underRoot(o) || o.kind === 'GameTooltip') continue;
+    if (!visible(o) || !underRoot(o) || o.kind === 'GameTooltip' || scrollClip(o)) continue;
     if (o.kind !== 'Frame' && o.kind !== 'Button' && o.kind !== 'CheckButton' && o.kind !== 'EditBox' && !rootSet.has(o.id) && !(o.backdrop)) continue;
     const r = rectOf(o); if (!r || r.r - r.l <= 0 || r.b - r.t <= 0) continue;
     if (!box) box = { ...r }; else { box.l = Math.min(box.l, r.l); box.t = Math.min(box.t, r.t); box.r = Math.max(box.r, r.r); box.b = Math.max(box.b, r.b); }
@@ -381,6 +384,11 @@ async function render(scene, cropIds) {
   frames.sort((a, b) => (STRATA.indexOf(strataOf(a)) - STRATA.indexOf(strataOf(b))) || (levelOf(a) - levelOf(b)) || (a.id - b.id));
   for (const fr of frames) {
     const R = rectOf(fr); if (!R) continue;
+    const sf = scrollClip(fr);
+    if (sf) {
+      const sr = rectOf(sf);
+      if (sr) { ctx.save(); ctx.beginPath(); ctx.rect(sr.l, sr.t, sr.r - sr.l, sr.b - sr.t); ctx.clip(); }
+    }
     const alpha = alphaOf(fr);
     await drawBackdrop(fr, R, alpha);
     const isBtn = fr.kind === 'Button' || fr.kind === 'CheckButton';
@@ -396,7 +404,16 @@ async function render(scene, cropIds) {
         if (rg.stateKey === 'checkedTex' && !fr.checked) continue;
         if (rg.stateKey === 'disabledCheckedTex') continue;
       }
-      const RR = rectOf(rg); if (!RR) continue;
+      let RR = rectOf(rg);
+      if (!RR && fr.kind === 'Slider' && fr.thumbTex === rg.id) {
+        const tw = rg.width || 16, th = rg.height || (R.b - R.t);
+        const min = fr.min || 0, max = fr.max || 1, val = fr.value || 0;
+        const frac = max > min ? Math.max(0, Math.min(1, (val - min) / (max - min))) : 0;
+        const x = R.l + frac * Math.max(0, (R.r - R.l) - tw);
+        const y = R.t + ((R.b - R.t) - th) / 2;
+        RR = { l: x, t: y, r: x + tw, b: y + th };
+      }
+      if (!RR) continue;
       const ra = alpha * (rg.alpha === undefined ? 1 : rg.alpha);
       if (rg.kind === 'Texture') await drawTexture(rg, RR, ra);
       else {
@@ -416,6 +433,7 @@ async function render(scene, cropIds) {
       ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.font = '11px FRIZ'; ctx.textAlign = 'center';
       ctx.fillText('3D model', (R.l + R.r) / 2, (R.t + R.b) / 2); ctx.restore();
     }
+    if (sf) ctx.restore();
   }
   return { w: box.r - box.l, h: box.b - box.t };
 }

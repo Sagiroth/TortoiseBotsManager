@@ -285,6 +285,14 @@ function W:Insert(t) self.text = (self.text or "") .. t end
 
 -- scroll / model / tooltip / misc ---------------------------------------
 function W:SetScrollChild(c) self.scrollChild = c end
+function W:SetHorizontalScroll(v) self.horizontalScroll = v end
+function W:GetHorizontalScroll() return self.horizontalScroll or 0 end
+function W:GetHorizontalScrollRange()
+    if self.scrollChild and self.scrollChild.width and self.width then
+        return math.max(0, self.scrollChild.width - self.width)
+    end
+    return 0
+end
 function W:SetVerticalScroll() end
 function W:GetVerticalScroll() return 0 end
 function W:UpdateScrollChildRect() end
@@ -302,7 +310,7 @@ function W:SetStatusBarTexture(f) self.barFile = f end
 function W:SetStatusBarColor(r, g, b, a) self.barColor = { r, g, b, a or 1 } end
 function W:SetOrientation() end
 function W:SetValueStep() end
-function W:SetThumbTexture(f) self.thumbFile = f end
+function W:SetThumbTexture(f) if type(f) == "table" then self.thumbTex = f else self.thumbFile = f end end
 function W:SetOwner(o) self.owner = o end
 function W:IsOwned(o) return self.owner == o end
 function W:AddLine() end
