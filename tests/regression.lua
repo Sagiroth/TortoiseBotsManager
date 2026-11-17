@@ -124,17 +124,6 @@ local function object(kind, parent)
     function methods:SetValue(value) self.value = value end
     function methods:GetValue() return self.value or 0 end
     function methods:SetThumbTexture(...) end
-    function methods:SetScrollChild(child) self.scrollChild = child end
-    function methods:SetHorizontalScroll(v) self.horizontalScroll = v end
-    function methods:GetHorizontalScroll() return self.horizontalScroll or 0 end
-    function methods:GetHorizontalScrollRange()
-        if self.scrollChild and self.scrollChild.width and self.width then
-            return math.max(0, self.scrollChild.width - self.width)
-        end
-        return 0
-    end
-    function methods:UpdateScrollChildRect() end
-    function methods:EnableMouseWheel(...) end
 
     methods.__index = methods
     -- Child list for pane walks: every widget records itself on its parent,
@@ -3022,28 +3011,12 @@ assert(table.getn(history) == 3 and history[1].ts == "2026-10-27 12:00:03"
 assert(string.find(TB.lootRows[1].itemText.text, "Gamemaster's Robe", 1, true)
     and TB.lootRows[1].resultText.text == "NEED"
     and TB.lootRows[1].botText.text == "Alpha"
-    and TB.lootRows[1].timeText.text == "27.10 12:00", "the newest row renders in columns with its badge")
+    and TB.lootRows[1].timeText.text == "27.10", "the newest row renders in columns with its badge")
 assert(string.find(TB.lootRows[2].itemText.text, "15s", 1, true)
     and TB.lootRows[2].resultText.text == "MONEY", "money rows render as coins with MONEY badge")
 assert(TB.lootRows[3].resultText.text == "LOOTED", "pickup rows render with LOOTED badge")
 assert(TB.FormatLootTime(os.date("%Y-%m-%d") .. " 09:05:12") == "09:05", "today timestamps show HH:MM")
-assert(TB.FormatLootTime("2026-10-27 09:05:12", "2026-11-17") == "27.10 09:05", "older timestamps show DD.MM HH:MM")
-assert(TB.lootHScroll and TB.lootHScroll:GetHorizontalScrollRange() > 0, "loot table has horizontal scroll range")
-assert(TB.lootHSlider and TB.lootHSlider:IsVisible(), "horizontal slider is shown when content overflows")
-do
-    this, arg1 = TB.lootHSlider, 42
-    TB.lootHSlider.scripts.OnValueChanged(TB.lootHSlider)
-    assert(TB.lootHScroll:GetHorizontalScroll() == 42, "horizontal slider updates scroll offset")
-    local oldShift = IsShiftKeyDown
-    IsShiftKeyDown = function() return true end
-    this, arg1 = TB.lootHScroll, -1
-    TB.lootHScroll.scripts.OnMouseWheel(TB.lootHScroll)
-    IsShiftKeyDown = oldShift
-    assert(TB.lootHScroll:GetHorizontalScroll() == 78 and TB.lootHSlider:GetValue() == 78,
-        "Shift+wheel scrolls horizontally and syncs slider")
-    this, arg1 = TB.lootHSlider, 0
-    TB.lootHSlider.scripts.OnValueChanged(TB.lootHSlider)
-end
+assert(TB.FormatLootTime("2026-10-27 09:05:12", "2026-11-17") == "27.10", "older timestamps show DD.MM")
 assert(TB.LootRowShortReason({ event = "LootRoll", reason = "to sell to a vendor for 20s 11c." }) == "Vendor", "vendor reason tag")
 assert(TB.LootRowShortReason({ event = "LootRoll", reason = "to use it for my profession." }) == "Profession", "profession reason tag")
 assert(TB.LootRowShortReason({ event = "LootRoll", reason = "ordered by Pocket" }) == "Ordered", "ordered reason tag")

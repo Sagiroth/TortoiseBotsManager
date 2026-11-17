@@ -148,8 +148,7 @@ local FIELDS = { "kind", "name", "template", "width", "height", "shown", "strata
     "backdrop", "bdColor", "bdBorder", "layer", "file", "color", "texCoord", "vertex", "blend", "font",
     "text", "textColor", "justifyH", "justifyV", "enabled", "checked", "disabledTextColor",
     "highlightTextColor", "isButtonText", "stateKey", "isInput", "isScrollBar", "scale", "fontSize",
-    "lockHighlight", "isActive", "flatKind", "barColor", "value", "min", "max", "disabledFont",
-    "horizontalScroll" }
+    "lockHighlight", "isActive", "flatKind", "barColor", "value", "min", "max", "disabledFont" }
 
 local function dump(name, roots, note)
     local parts = {}
@@ -166,8 +165,6 @@ local function dump(name, roots, note)
         if o.highlightTex then table.insert(rec, '"highlightTex":' .. o.highlightTex.id) end
         if o.checkedTex then table.insert(rec, '"checkedTex":' .. o.checkedTex.id) end
         if o.fontString then table.insert(rec, '"fontString":' .. o.fontString.id) end
-        if o.scrollChild then table.insert(rec, '"scrollChild":' .. o.scrollChild.id) end
-        if o.thumbTex then table.insert(rec, '"thumbTex":' .. o.thumbTex.id) end
         local pts = {}
         for _, p in ipairs(o.points or {}) do
             table.insert(pts, string.format('{"point":"%s","rel":%s,"relPoint":"%s","x":%s,"y":%s}',
