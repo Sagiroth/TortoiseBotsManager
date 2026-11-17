@@ -777,22 +777,28 @@ local NOTE_SPEC_ROLES = {
     [11] = { Bal = "boomkin", Resto = "heal" },
 }
 
+-- One roster pass serves every row of a refresh; the guild view redraws often.
+local noteSpecs, noteSpecsAt = {}, nil
+
 local function roleFromGuildNote(botName, classId)
     if type(classId) == "string" and TB.C and TB.C.CLASS_NAME_TO_ID then
         classId = TB.C.CLASS_NAME_TO_ID[classId] or classId
     end
     local specRoles = NOTE_SPEC_ROLES[classId]
     if not (specRoles and GetNumGuildMembers and GetGuildRosterInfo) then return nil end
-    local want = TB.NormalizeName(botName)
-    for i = 1, GetNumGuildMembers(true) or 0 do
-        local member, _, _, _, _, _, note = GetGuildRosterInfo(i)
-        if member and TB.NormalizeName(member) == want then
+    local t = (GetTime and GetTime()) or 0
+    if not noteSpecsAt or t - noteSpecsAt > 2 then
+        noteSpecs, noteSpecsAt = {}, t
+        for i = 1, GetNumGuildMembers(true) or 0 do
+            local member, _, _, _, _, _, note = GetGuildRosterInfo(i)
+            local key = member and TB.NormalizeName(member)
             local _, spec
-            if note then _, _, spec = string.find(note, "^(%a+) %d+/%d+/%d+") end
-            return spec and specRoles[spec] or nil
+            if key and note then _, _, spec = string.find(note, "^(%a+) %d+/%d+/%d+") end
+            if spec then noteSpecs[key] = spec end
         end
     end
-    return nil
+    local spec = noteSpecs[TB.NormalizeName(botName)]
+    return spec and specRoles[spec] or nil
 end
 
 -- Live specs (party bots) first, then the player's pick, then the talent
