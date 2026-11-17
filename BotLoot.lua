@@ -584,8 +584,8 @@ local COLS = {
     bot    = { x = 72,  w = 80,  label = "Bot",    justify = "LEFT" },
     item   = { x = 156, w = 160, label = "Item",   justify = "LEFT" },
     result = { x = 320, w = 52,  label = "Result", justify = "CENTER" },
-    reason = { x = 378, w = 90,  label = "Reason", justify = "LEFT" },
-    source = { x = 474, w = 130, label = "Source", justify = "LEFT" },
+    source = { x = 378, w = 130, label = "Source", justify = "LEFT" },
+    reason = { x = 514, w = 90,  label = "Reason", justify = "LEFT" },
 }
 
 function TB.CreateLootTab(parent)
@@ -734,7 +734,7 @@ function TB.CreateLootTab(parent)
     hline:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
     hline:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
     hline:SetTexture(1, 1, 1, 0.08)
-    for _, key in ipairs({ "time", "bot", "item", "result", "reason", "source" }) do
+    for _, key in ipairs({ "time", "bot", "item", "result", "source", "reason" }) do
         local col = COLS[key]
         local hfs = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         hfs:SetPoint("LEFT", header, "LEFT", col.x, 0)
