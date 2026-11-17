@@ -773,11 +773,71 @@ function TB.ServiceWanted(name)
     return classId == 8 or classId == 9
 end
 
+local DUAL_WIELD_CLASSES = {
+    [1] = true, -- Warrior
+    [3] = true, -- Hunter
+    [4] = true, -- Rogue
+    [7] = true, -- Shaman
+}
+
+local function canDualWield(name)
+    local classId = botClassId(name)
+    if not classId then return true end
+    return DUAL_WIELD_CLASSES[classId] == true
+end
+
+local function equipOptionsForItem(id, botName)
+    local equipLoc = nil
+    if id and GetItemInfo then
+        local _, _, _, _, _, _, _, loc = GetItemInfo(id)
+        equipLoc = loc
+    end
+    if equipLoc == "INVTYPE_WEAPON" then
+        local second = canDualWield(botName) and {
+            text = "Equip off hand",
+            slot = "offhand",
+            tip = "The bot equips this weapon in its off hand.",
+        } or nil
+        return {
+            text = "Equip main hand",
+            slot = "mainhand",
+            tip = "The bot equips this weapon in its main hand.",
+        }, second
+    end
+    if equipLoc == "INVTYPE_FINGER" then
+        return {
+            text = "Equip ring 1",
+            slot = "finger1",
+            tip = "The bot equips this ring in ring slot 1.",
+        }, {
+            text = "Equip ring 2",
+            slot = "finger2",
+            tip = "The bot equips this ring in ring slot 2.",
+        }
+    end
+    if equipLoc == "INVTYPE_TRINKET" then
+        return {
+            text = "Equip trinket 1",
+            slot = "trinket1",
+            tip = "The bot equips this trinket in trinket slot 1.",
+        }, {
+            text = "Equip trinket 2",
+            slot = "trinket2",
+            tip = "The bot equips this trinket in trinket slot 2.",
+        }
+    end
+    return {
+        text = "Equip",
+        slot = nil,
+        tip = "The bot equips this item.",
+    }, nil
+end
+
 local function setTooltip(button, title, lines)
     button:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-        GameTooltip:SetText(title)
-        for _, line in ipairs(lines or {}) do GameTooltip:AddLine(line, 0.9, 0.9, 0.9, 1) end
+        GameTooltip:SetText(this._tipTitle or title)
+        for _, line in ipairs(this._tipLines or lines or {}) do GameTooltip:AddLine(line, 0.9, 0.9, 0.9, 1) end
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -802,11 +862,14 @@ function TB.GetBotPanelBot()
 end
 
 -- ── item orders ─────────────────────────────────────────────────────────────
-function TB.SendItemOrder(op, bag, slot)
+function TB.SendItemOrder(op, bag, slot, targetSlot)
     if not currentBot then return false end
     if op == "give" then pendingGive = { bot = currentBot, bag = bag, slot = slot } end
     local cmd = "item " .. currentBot .. " " .. op
-    if bag and slot then cmd = cmd .. " " .. bag .. " " .. slot end
+    if bag and slot then
+        cmd = cmd .. " " .. bag .. " " .. slot
+        if targetSlot and targetSlot ~= "" then cmd = cmd .. " " .. targetSlot end
+    end
     if TB.SetStatus then TB.SetStatus((C.ACTION_LABELS["item " .. op] or op) .. " → " .. currentBot .. "…", "pending") end
     return TB.SendBotCommand(cmd)
 end
@@ -1225,19 +1288,21 @@ end
 
 local function createMenu(parent)
     local menu = CreateFrame("Frame", "TortoiseBotsManagerItemMenu", parent)
-    menu:SetWidth(118); menu:SetHeight(178)
+    menu:SetWidth(128); menu:SetHeight(178)
     menu:SetFrameStrata("TOOLTIP")
     menu:EnableMouse(true)
     TB.ApplyBackdrop(menu, 0.98, 1.0)
     local function button(label, y, tip)
         local btn = TB.StyleButton(CreateFrame("Button", nil, menu, "UIPanelButtonTemplate"))
-        btn:SetWidth(106); btn:SetHeight(22)
+        btn:SetWidth(116); btn:SetHeight(22)
         btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, y)
         btn:SetText(label)
         setTooltip(btn, label, { tip })
         return btn
     end
     menu.first = button("Equip", -6, "The bot equips this item.")
+    menu.firstB = button("Equip off hand", -30, "The bot equips this weapon in its off hand.")
+    menu.firstB:Hide()
     menu.second = button("Give to me", -30, "Opens a trade with the bot and puts this item in. Accept the trade to take it.")
     menu.third = button("Use", -54, "The bot uses this item (food, drink, potion).")
     menu.fourth = button("Disenchant", -78, "The bot disenchants this item into dust or shards.")
@@ -1251,6 +1316,10 @@ local function createMenu(parent)
     menu.catcher:SetAllPoints(parent)
     menu.catcher:EnableMouse(true)
     menu.catcher:SetScript("OnClick", function() hideMenu() end)
+    local function setButtonPos(btn, y)
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, y)
+    end
     function menu:Open(owner, entry)
         self.owner = owner
         self.entry = entry
@@ -1275,6 +1344,10 @@ local function createMenu(parent)
             self.first:SetText("Unequip")
             self.first:Enable()
             self.first.op = "unequip"
+            self.first.targetSlot = nil
+            self.first._tipTitle = "Unequip"
+            self.first._tipLines = { "The bot removes this item into its bags." }
+            self.firstB:Hide()
             self.second:Hide()
             self.third:Hide()
             self.fourth:Hide()
@@ -1283,9 +1356,36 @@ local function createMenu(parent)
             self.seventh:Hide()
             self:SetHeight(34)
         else
-            self.first:SetText("Equip")
+            local opt1, opt2 = equipOptionsForItem(entry.id, currentBot)
+            self.first:SetText(opt1.text)
             self.first.op = "equip"
+            self.first.targetSlot = opt1.slot
+            self.first._tipTitle = opt1.text
+            self.first._tipLines = { opt1.tip }
             if entry.equippable then self.first:Enable() else self.first:Disable() end
+
+            local shift = 0
+            if opt2 then
+                self.firstB:SetText(opt2.text)
+                self.firstB.op = "equip"
+                self.firstB.targetSlot = opt2.slot
+                self.firstB._tipTitle = opt2.text
+                self.firstB._tipLines = { opt2.tip }
+                if entry.equippable then self.firstB:Enable() else self.firstB:Disable() end
+                setButtonPos(self.firstB, -30)
+                self.firstB:Show()
+                shift = 24
+            else
+                self.firstB:Hide()
+            end
+
+            setButtonPos(self.second, -30 - shift)
+            setButtonPos(self.third, -54 - shift)
+            setButtonPos(self.fourth, -78 - shift)
+            setButtonPos(self.fifth, -102 - shift)
+            setButtonPos(self.sixth, -126 - shift)
+            setButtonPos(self.seventh, -150 - shift)
+
             self.second:Show()
             if entry.noTrade then self.second:Disable() else self.second:Enable() end
             self.third:Show()
@@ -1299,7 +1399,7 @@ local function createMenu(parent)
             self.sixth:Show()
             self.sixth:Enable()
             self.seventh:Show()
-            self:SetHeight(178)
+            self:SetHeight(178 + shift)
         end
         self.catcher:Show()
         self:Show()
@@ -1307,7 +1407,12 @@ local function createMenu(parent)
     menu.first:SetScript("OnClick", function()
         local entry = menu.entry
         hideMenu()
-        if entry then TB.SendItemOrder(menu.first.op, entry.bag, entry.slot) end
+        if entry then TB.SendItemOrder(menu.first.op, entry.bag, entry.slot, menu.first.targetSlot) end
+    end)
+    menu.firstB:SetScript("OnClick", function()
+        local entry = menu.entry
+        hideMenu()
+        if entry then TB.SendItemOrder(menu.firstB.op, entry.bag, entry.slot, menu.firstB.targetSlot) end
     end)
     menu.second:SetScript("OnClick", function()
         local entry = menu.entry

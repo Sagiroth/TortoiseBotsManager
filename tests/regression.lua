@@ -5887,6 +5887,80 @@ end
     PickupContainerItem, ClickTradeButton, CursorHasItem = savedPickup, savedClickTrade, savedCursorHas
     partyMembers = savedParty
     TB.CloseBotPanel()
+end)();
+
+-- ── BotPanel bag item equip slot choices ─────────────────────────────────────
+(function()
+    local savedParty = partyMembers
+    local savedUnitClass = UnitClass
+    itemCache[19019] = { name = "Thunderfury", quality = 5, itemLevel = 80, itemType = "Weapon",
+        subType = "Sword", equipLoc = "INVTYPE_WEAPON", texture = "Interface\\Icons\\INV_Sword_39" }
+    itemCache[19384] = { name = "Master Dragonslayer's Ring", quality = 4, itemLevel = 83, itemType = "Armor",
+        subType = "Miscellaneous", equipLoc = "INVTYPE_FINGER", texture = "Interface\\Icons\\INV_Jewelry_Ring_41" }
+    itemCache[19406] = { name = "Drake Fang Talisman", quality = 4, itemLevel = 75, itemType = "Armor",
+        subType = "Miscellaneous", equipLoc = "INVTYPE_TRINKET", texture = "Interface\\Icons\\INV_Jewelry_Talisman_05" }
+    itemCache[16841] = { name = "Lawbringer Chestguard", quality = 4, itemLevel = 66, itemType = "Armor",
+        subType = "Plate", equipLoc = "INVTYPE_CHEST", texture = "Interface\\Icons\\INV_Chest_Plate03" }
+
+    partyMembers = { "Alpha" }
+    local botClassFile = "ROGUE"
+    UnitClass = function(u)
+        if u == "party1" then return botClassFile, botClassFile end
+        return savedUnitClass(u)
+    end
+
+    TB.OpenBotPanel("Alpha")
+    local menu = frames["TortoiseBotsManagerItemMenu"]
+    assert(menu, "item menu frame exists")
+    local fakeOwner = CreateFrame("Button", nil, UIParent)
+
+    -- Dual-wield class + 1H weapon -> Equip main hand + Equip off hand
+    menu:Open(fakeOwner, { id = 19019, bag = 255, slot = 23, equippable = true })
+    assert(menu.first:GetText() == "Equip main hand", "1H weapon shows Equip main hand")
+    assert(menu.firstB:IsVisible() and menu.firstB:GetText() == "Equip off hand",
+        "dual-wield class 1H weapon shows Equip off hand")
+    now = now + 1
+    menu.first.scripts.OnClick(menu.first)
+    assert(lastAddon() == "item Alpha equip 255 23 mainhand", "Equip main hand sends mainhand")
+
+    menu:Open(fakeOwner, { id = 19019, bag = 255, slot = 23, equippable = true })
+    now = now + 1
+    menu.firstB.scripts.OnClick(menu.firstB)
+    assert(lastAddon() == "item Alpha equip 255 23 offhand", "Equip off hand sends offhand")
+
+    -- Non-dual-wield class + 1H weapon -> Equip main hand only
+    botClassFile = "PALADIN"
+    menu:Open(fakeOwner, { id = 19019, bag = 255, slot = 23, equippable = true })
+    assert(menu.first:GetText() == "Equip main hand", "non-DW class 1H weapon shows Equip main hand")
+    assert(not menu.firstB:IsVisible(), "non-DW class 1H weapon hides Equip off hand")
+
+    -- Ring -> Equip ring 1 + Equip ring 2
+    menu:Open(fakeOwner, { id = 19384, bag = 255, slot = 24, equippable = true })
+    assert(menu.first:GetText() == "Equip ring 1", "ring shows Equip ring 1")
+    assert(menu.firstB:IsVisible() and menu.firstB:GetText() == "Equip ring 2", "ring shows Equip ring 2")
+    now = now + 1
+    menu.firstB.scripts.OnClick(menu.firstB)
+    assert(lastAddon() == "item Alpha equip 255 24 finger2", "Equip ring 2 sends finger2")
+
+    -- Trinket -> Equip trinket 1 + Equip trinket 2
+    menu:Open(fakeOwner, { id = 19406, bag = 255, slot = 25, equippable = true })
+    assert(menu.first:GetText() == "Equip trinket 1", "trinket shows Equip trinket 1")
+    assert(menu.firstB:IsVisible() and menu.firstB:GetText() == "Equip trinket 2", "trinket shows Equip trinket 2")
+    now = now + 1
+    menu.first.scripts.OnClick(menu.first)
+    assert(lastAddon() == "item Alpha equip 255 25 trinket1", "Equip trinket 1 sends trinket1")
+
+    -- Other item -> single Equip
+    menu:Open(fakeOwner, { id = 16841, bag = 255, slot = 26, equippable = true })
+    assert(menu.first:GetText() == "Equip", "chest shows single Equip")
+    assert(not menu.firstB:IsVisible(), "chest hides second equip button")
+    now = now + 1
+    menu.first.scripts.OnClick(menu.first)
+    assert(lastAddon() == "item Alpha equip 255 26", "single Equip sends no target slot")
+
+    UnitClass = savedUnitClass
+    partyMembers = savedParty
+    TB.CloseBotPanel()
 end)()
 
 dofile(root .. "/tests/phase0_tests.lua")()
