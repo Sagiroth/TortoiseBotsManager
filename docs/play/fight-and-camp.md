@@ -49,8 +49,9 @@ The timers are `-`/`+` controls under the pull buttons (shift-click steps by 5) 
 | Come | Run to you and hold there. | `.bot action come` |
 | Guard | Plant where they stand and fight anything close. | `.bot action guard` |
 | Free | Leave guard posts and move freely. | `.bot action free` |
+| Use | Stand next to a lever, door or chest: the bot walks over and uses it (shown when the server advertises `use-object`). | `.bot action use` |
 
-Follow, Stay, Guard and Free stay lit while that mode is active, read from the server's live bot state. Module: [follow](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-follow), [stay](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-stay), [come](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-come), [guard](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-guard), [free](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-free).
+Follow, Stay, Guard and Free stay lit while that mode is active, read from the server's live bot state. Module: [follow](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-follow), [stay](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-stay), [come](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-come), [guard](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-guard), [free](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-free), [use](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-use).
 
 **Combat stance** pills (`.bot action stance <name>`, [stance](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/commands/party-actions.md#bot-action-stance)):
 
