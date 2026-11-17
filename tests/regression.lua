@@ -160,6 +160,7 @@ GameTooltip = {
     SetOwner = function(self, owner) self.owner = owner end,
     IsOwned = function(self, owner) return self.owner == owner end,
     SetText = function() end,
+    SetHyperlink = function() end,
     AddLine = function() end,
     Show = function() end,
     Hide = function(self) self.owner = nil end,
@@ -3010,6 +3011,17 @@ assert(table.getn(history) == 3 and history[1].ts == "2026-10-27 12:00:03"
 assert(string.find(TB.lootRows[1].line.text, "Gamemaster's Robe", 1, true)
     and string.find(TB.lootRows[1].line.text, "Need", 1, true), "the newest row renders with its vote")
 assert(string.find(TB.lootRows[2].line.text, "15s", 1, true), "money rows render as coins")
+do
+    local tipLines = {}
+    local realAddLine = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, text) table.insert(tipLines, text) end
+    TB.lootRows[1].scripts.OnEnter(TB.lootRows[1])
+    GameTooltip.AddLine = realAddLine
+    assert(tipLines[1] == "for equiping as upgrade.", "roll row tooltip shows its reason")
+end
+TB.OnSystemMessage("TBM:LOOT|2026-10-27 12:00:05|Randombot|LootRoll|greed:2586:ordered by Tester|Gamemaster's Robe|||")
+assert(TB.GetLootHistory()[1].bot == "Randombot" and TB.GetLootHistory()[1].vote == "greed"
+    and TB.GetLootHistory()[1].reason == "ordered by Tester", "live LootRoll rows merge outside catch-up")
 now = now + 1
 TB.OnSystemMessage("TBM:ACTION_ERR|lootlog|expired|Cursor piece was pruned.")
 assert(TB.GetLootCursor() == "", "an expired cursor is dropped")

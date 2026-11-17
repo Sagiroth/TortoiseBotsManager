@@ -11,7 +11,7 @@ relates_to:
 
 # Loot History
 
-The **Loot** tab shows what your own party bots (owned alts and hired companions) looted or rolled: items in their quality colour, money as coins, and roll votes with the reason. Each row names the time, the bot and the source (corpse, chest, gathering node or object). Only bots that were in your party at the time appear.
+The **Loot** tab shows what every bot in your group (owned alts, hired companions, and dungeon finder / random bots) looted or rolled: items in their quality colour, money as coins, and roll votes with the reason. Each row names the time, the bot and the source (corpse, chest, gathering node or object). Only bots that were in your group at the time appear.
 
 ## When it shows up
 

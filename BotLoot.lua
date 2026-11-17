@@ -1,12 +1,12 @@
 -- TortoiseBotsManager/BotLoot.lua
--- Loot history tab: what the player's own party bots (owned alts and hired
--- companions) looted or rolled in this session.
+-- Loot history tab: what every bot in the player's group (owned alts, hired
+-- companions, and dungeon finder / random bots) looted or rolled in this session.
 --
 -- History is per character, kept in SavedVariables (newest first, at most
 -- 2000 rows), and survives relogs. On login the addon asks the server for
 -- the last 24 hours of rows, starting from the last synced cursor, with no
 -- duplicates. The server only ever reports bots that were in the player's
--- party at the time of the event.
+-- group at the time of the event.
 --
 -- The server advertises "loot-log" in TBM:CAPS. No capability: no tab, no
 -- sends. Every CAPS line replaces the set, so the gate is re-checked on each
@@ -590,9 +590,12 @@ function TB.CreateLootTab(parent)
         row:EnableMouse(true)
         row:SetScript("OnEnter", function()
             local entry = row.entry
-            if not entry or entry.event ~= "StoreLootAction" or not tonumber(entry.itemId) then return end
+            if not entry or (entry.event ~= "StoreLootAction" and entry.event ~= "LootRoll") or not tonumber(entry.itemId) then return end
             GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink("item:" .. tostring(math.floor(tonumber(entry.itemId))) .. ":0:0:0")
+            if entry.event == "LootRoll" and entry.reason then
+                GameTooltip:AddLine(entry.reason, 1, 1, 1, true)
+            end
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
