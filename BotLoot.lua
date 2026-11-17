@@ -432,7 +432,7 @@ local function formatTime(ts, today)
         if today and (y .. "-" .. m .. "-" .. d) == today then
             return hh .. ":" .. mm
         end
-        return d .. "." .. m .. " " .. hh .. ":" .. mm
+        return d .. "." .. m
     end
     return timeTail(ts)
 end
@@ -482,6 +482,41 @@ local function rowSourceReason(row)
     return ""
 end
 TB.LootRowSourceReason = rowSourceReason
+
+-- Column label for a roll reason; the tooltip keeps the full sentence.
+local REASON_TAGS = {
+    { "ordered by", "Ordered" },
+    { "stepped down", "Gave way" },
+    { "future upgrade", "Future" },
+    { "upgrade", "Upgrade" },
+    { "replacement", "Upgrade" },
+    { "until i can find", "Upgrade" },
+    { "profession", "Profession" },
+    { "vendor", "Vendor" },
+    { "repost on ah", "AH" },
+    { "quest", "Quest" },
+    { "ammo", "Ammo" },
+    { "when i need it", "Consumable" },
+    { "disenchant", "Disenchant" },
+    { "enough", "Enough" },
+    { "loot is off", "Loot off" },
+    { "can not be looted", "No right" },
+    { "takes no rolls", "No rolls" },
+    { "told to get", "Requested" },
+    { "can use it", "Usable" },
+}
+
+local function rowShortReason(row)
+    if row.event ~= "LootRoll" or not row.reason or row.reason == "" then
+        return ""
+    end
+    local lower = string.lower(row.reason)
+    for _, tag in ipairs(REASON_TAGS) do
+        if string.find(lower, tag[1], 1, true) then return tag[2] end
+    end
+    return row.reason
+end
+TB.LootRowShortReason = rowShortReason
 
 local function truncate(text, maxLen)
     text = text or ""
@@ -543,11 +578,12 @@ local LOOT_ROW_H = 18
 local LOOT_ROW_N = 14
 
 local COLS = {
-    time   = { x = 4,   w = 60,  label = "Time",            justify = "LEFT" },
-    bot    = { x = 68,  w = 72,  label = "Bot",             justify = "LEFT" },
-    item   = { x = 144, w = 138, label = "Item",            justify = "LEFT" },
-    result = { x = 286, w = 52,  label = "Result",          justify = "CENTER" },
-    source = { x = 344, w = 110, label = "Source / Reason", justify = "LEFT" },
+    time   = { x = 4,   w = 36,  label = "Time",   justify = "LEFT" },
+    bot    = { x = 42,  w = 66,  label = "Bot",    justify = "LEFT" },
+    item   = { x = 110, w = 128, label = "Item",   justify = "LEFT" },
+    result = { x = 242, w = 48,  label = "Result", justify = "CENTER" },
+    source = { x = 296, w = 90,  label = "Source", justify = "LEFT" },
+    reason = { x = 390, w = 66,  label = "Reason", justify = "LEFT" },
 }
 
 function TB.CreateLootTab(parent)
@@ -557,7 +593,7 @@ function TB.CreateLootTab(parent)
     tab:SetWidth(tw); tab:SetHeight(325)
 
     if TB.UI and TB.UI.CreateHeading then
-        TB.UI.CreateHeading(tab, "Loot history", "What your party bots looted or rolled")
+        TB.UI.CreateHeading(tab, "Loot history", "What the bots in your group looted or rolled")
     end
 
     local clearBtn = TB.StyleButton(CreateFrame("Button", nil, tab, "UIPanelButtonTemplate"), "mode")
@@ -672,7 +708,7 @@ function TB.CreateLootTab(parent)
     hline:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
     hline:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
     hline:SetTexture(1, 1, 1, 0.08)
-    for _, key in ipairs({ "time", "bot", "item", "result", "source" }) do
+    for _, key in ipairs({ "time", "bot", "item", "result", "source", "reason" }) do
         local col = COLS[key]
         local hfs = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         hfs:SetPoint("LEFT", header, "LEFT", col.x, 0)
@@ -746,6 +782,7 @@ function TB.CreateLootTab(parent)
 
         row.sourceText = colText(COLS.source, "GameFontHighlightSmall")
         TB.SetTextColor(row.sourceText, color("muted"))
+        row.reasonText = colText(COLS.reason, "GameFontHighlightSmall")
 
         row:EnableMouse(true)
         row:SetScript("OnEnter", function()
@@ -783,7 +820,7 @@ function TB.CreateLootTab(parent)
     empty:SetPoint("CENTER", scroll, "CENTER", 0, 0)
     empty:SetWidth(tw - 40)
     empty:SetJustifyH("CENTER")
-    empty:SetText("|cff888888No loot yet. Your party bots' loot and rolls land here.|r")
+    empty:SetText("|cff888888No loot yet. Your group bots' loot and rolls land here.|r")
     TB.SetTextColor(empty, color("muted"))
     tab.emptyMsg = empty
 
@@ -824,7 +861,7 @@ function TB.RefreshLootView()
                 row.itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 local q = entry.quality or itemQuality
                 local name = entry.item or ("item #" .. tostring(entry.itemId or "?"))
-                row.itemText:SetText(qualityHex(q) .. truncate(name, 20) .. "|r")
+                row.itemText:SetText(qualityHex(q) .. truncate(name, 18) .. "|r")
             end
 
             local badge = rowBadge(entry)
@@ -832,7 +869,8 @@ function TB.RefreshLootView()
             row.resultText:SetText(badge.label)
             TB.SetTextColor(row.resultText, badge.text)
 
-            row.sourceText:SetText(truncate(rowSourceReason(entry), 19))
+            row.sourceText:SetText(truncate(entry.source or "", 15))
+            row.reasonText:SetText(truncate(rowShortReason(entry), 11))
             row:Show()
         else
             row.entry = nil
@@ -845,7 +883,7 @@ function TB.RefreshLootView()
             if rawCount > 0 then
                 tab.emptyMsg:SetText("|cff888888No loot matches your filters.|r")
             else
-                tab.emptyMsg:SetText("|cff888888No loot yet. Your party bots' loot and rolls land here.|r")
+                tab.emptyMsg:SetText("|cff888888No loot yet. Your group bots' loot and rolls land here.|r")
             end
             tab.emptyMsg:Show()
         else
