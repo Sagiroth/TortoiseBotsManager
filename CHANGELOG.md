@@ -2,6 +2,15 @@
 
 All notable changes to TortoiseBotsManager are documented here.
 
+## v2.4.1 (2026-11-17)
+
+### UI & Controls
+- Guild tab role buttons now display the bot's actual combat role instead of defaulting to the first role in its class list (e.g., a Ret paladin no longer shows as Prot). [#95](https://github.com/Sagiroth/TortoiseBotsManager/pull/95)
+- Role resolution on the guild tab now matches the party tab: live spec when grouped, then your manual pick, then talent spec — no more mismatches between the button, guild note, and chat. [#95](https://github.com/Sagiroth/TortoiseBotsManager/pull/95)
+- Clicking a guild tab role button now cycles from the correct starting role, so you no longer have to step past a wrong default to set the role you want. [#95](https://github.com/Sagiroth/TortoiseBotsManager/pull/95)
+
+---
+
 ## v2.4.0 (2026-11-17)
 
 ### Tactical & Actions
