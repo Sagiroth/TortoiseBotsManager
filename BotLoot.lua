@@ -392,8 +392,12 @@ local tab
 
 local function qualityHex(quality)
     if quality and GetItemQualityColor then
-        local _, _, _, hex = GetItemQualityColor(quality)
+        local r, g, b, hex = GetItemQualityColor(quality)
         if hex then return hex end
+        if r and g and b then
+            return string.format("|cff%02x%02x%02x",
+                math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+        end
     end
     return "|cffffffff"
 end
@@ -411,6 +415,29 @@ local function timeTail(ts)
 end
 TB.LootTimeTail = timeTail
 
+local function currentYmd()
+    if date then
+        local s = date("%Y-%m-%d")
+        if s and string.find(s, "^%d%d%d%d%-%d%d%-%d%d$") then return s end
+    end
+    if os and os.date then return os.date("%Y-%m-%d") end
+    return nil
+end
+
+local function formatTime(ts, today)
+    ts = trim(ts)
+    local _, _, y, m, d, hh, mm = string.find(ts, "^(%d%d%d%d)%-(%d%d)%-(%d%d)%s+(%d%d):(%d%d)")
+    if y then
+        today = today or currentYmd()
+        if today and (y .. "-" .. m .. "-" .. d) == today then
+            return hh .. ":" .. mm
+        end
+        return d .. "." .. m .. " " .. hh .. ":" .. mm
+    end
+    return timeTail(ts)
+end
+TB.FormatLootTime = formatTime
+
 local function formatCopper(copper)
     copper = tonumber(copper) or 0
     local g = math.floor(copper / 10000)
@@ -423,14 +450,77 @@ local function formatCopper(copper)
 end
 TB.FormatLootMoney = formatCopper
 
+local UNKNOWN_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+local COIN_ICON = "Interface\\Icons\\INV_Misc_Coin_02"
+
+local RESULT_BADGE = {
+    need       = { label = "NEED",   text = { 0.30, 0.95, 0.45 }, bg = { 0.18, 0.72, 0.28, 0.22 } },
+    greed      = { label = "GREED",  text = { 1.00, 0.82, 0.18 }, bg = { 0.85, 0.62, 0.10, 0.22 } },
+    disenchant = { label = "DE",     text = { 0.78, 0.42, 1.00 }, bg = { 0.64, 0.22, 0.92, 0.22 } },
+    pass       = { label = "PASS",   text = { 0.62, 0.62, 0.62 }, bg = { 0.45, 0.45, 0.45, 0.16 } },
+    looted     = { label = "LOOTED", text = { 0.55, 0.82, 1.00 }, bg = { 0.28, 0.58, 0.92, 0.18 } },
+    money      = { label = "MONEY",  text = { 0.95, 0.76, 0.32 }, bg = { 0.78, 0.56, 0.14, 0.18 } },
+}
+
+local function rowBadge(row)
+    if row.event == "LootMoney" then return RESULT_BADGE.money end
+    if row.event == "LootRoll" then return RESULT_BADGE[row.vote] or RESULT_BADGE.pass end
+    return RESULT_BADGE.looted
+end
+TB.LootRowBadge = rowBadge
+
+local function rowSourceReason(row)
+    if row.event == "LootRoll" and row.reason and row.reason ~= "" then
+        return row.reason
+    end
+    local source = row.source or ""
+    if source ~= "" then
+        return (row.sourceType or "other") .. ": " .. source
+    elseif row.sourceType and row.sourceType ~= "other" then
+        return row.sourceType
+    end
+    return ""
+end
+TB.LootRowSourceReason = rowSourceReason
+
+local function truncate(text, maxLen)
+    text = text or ""
+    if string.len(text) <= maxLen then return text end
+    return string.sub(text, 1, maxLen - 1) .. "…"
+end
+
+local function botClassId(name)
+    if not name or name == "" then return nil end
+    local entry = (TB.GetRosterEntry and TB.GetRosterEntry(name))
+        or (TB.GetClaimedEntry and TB.GetClaimedEntry(name))
+    if entry and entry.classId and entry.classId > 0 then return entry.classId end
+    local st = TB.GetBotState and TB.GetBotState(name)
+    if st then
+        if st.classId and st.classId > 0 then return st.classId end
+        local cls = st.class or st.className
+        if cls and C.CLASS_NAME_TO_ID and C.CLASS_NAME_TO_ID[cls] then
+            return C.CLASS_NAME_TO_ID[cls]
+        end
+    end
+    if TB.FindGroupUnit and UnitClass then
+        local unit = TB.FindGroupUnit(name)
+        if unit then
+            local className, classFileName = UnitClass(unit)
+            local ids = C.CLASS_NAME_TO_ID or {}
+            local id = (classFileName and ids[classFileName]) or (className and ids[className])
+            if id then return id end
+        end
+    end
+    return nil
+end
+
 local VOTE_LABEL = { need = "Need", greed = "Greed", disenchant = "Disenchant", pass = "Pass" }
 local VOTE_COLOR = { need = "|cff00ff00", greed = "|cffffd200", disenchant = "|cffa335ee", pass = "|cff9d9d9d" }
 
--- One row of text: time, bot, item in its quality colour (or the money), the
--- roll vote with its reason, and the source. Money rows have no item or vote.
+-- Plain summary string (kept for tests/diagnostics).
 local function rowText(row)
     local parts = {}
-    table.insert(parts, timeTail(row.ts))
+    table.insert(parts, formatTime(row.ts))
     table.insert(parts, row.bot or "?")
     if row.event == "LootMoney" then
         table.insert(parts, formatCopper(row.copper))
@@ -443,18 +533,22 @@ local function rowText(row)
             table.insert(parts, voteText)
         end
     end
-    local source = row.source or ""
-    if source ~= "" then
-        table.insert(parts, (row.sourceType or "other") .. ": " .. source)
-    elseif row.sourceType and row.sourceType ~= "other" then
-        table.insert(parts, row.sourceType)
-    end
+    local src = rowSourceReason(row)
+    if src ~= "" then table.insert(parts, src) end
     return table.concat(parts, " · ")
 end
 TB.LootRowText = rowText
 
 local LOOT_ROW_H = 18
-local LOOT_ROW_N = 15
+local LOOT_ROW_N = 14
+
+local COLS = {
+    time   = { x = 4,   w = 60,  label = "Time",            justify = "LEFT" },
+    bot    = { x = 68,  w = 72,  label = "Bot",             justify = "LEFT" },
+    item   = { x = 144, w = 138, label = "Item",            justify = "LEFT" },
+    result = { x = 286, w = 52,  label = "Result",          justify = "CENTER" },
+    source = { x = 344, w = 110, label = "Source / Reason", justify = "LEFT" },
+}
 
 function TB.CreateLootTab(parent)
     tab = CreateFrame("Frame", nil, parent)
@@ -565,9 +659,33 @@ function TB.CreateLootTab(parent)
         if TB.SetLootFilter then TB.SetLootFilter("rowType", ROW_TYPES[idx]) end
     end, "Row type: items, rolls, or all")
 
+    local rowW = tw - 22
+    local header = CreateFrame("Frame", nil, tab)
+    header:SetWidth(rowW)
+    header:SetHeight(16)
+    header:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -56)
+    local hbg = header:CreateTexture(nil, "BACKGROUND")
+    hbg:SetAllPoints(header)
+    hbg:SetTexture(1, 1, 1, 0.05)
+    local hline = header:CreateTexture(nil, "BORDER")
+    hline:SetHeight(1)
+    hline:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
+    hline:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
+    hline:SetTexture(1, 1, 1, 0.08)
+    for _, key in ipairs({ "time", "bot", "item", "result", "source" }) do
+        local col = COLS[key]
+        local hfs = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        hfs:SetPoint("LEFT", header, "LEFT", col.x, 0)
+        hfs:SetWidth(col.w)
+        hfs:SetJustifyH(col.justify)
+        hfs:SetText(col.label)
+        TB.SetTextColor(hfs, color("muted"))
+    end
+    tab.headerRow = header
+
     local scroll = CreateFrame("ScrollFrame", "TortoiseBotsManagerLootScroll", tab, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -55)
-    scroll:SetWidth(tw - 22)
+    scroll:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -73)
+    scroll:SetWidth(rowW)
     scroll:SetHeight(LOOT_ROW_N * LOOT_ROW_H + 4)
     scroll:SetScript("OnVerticalScroll", function()
         FauxScrollFrame_OnVerticalScroll(LOOT_ROW_H, TB.RefreshLootView)
@@ -577,25 +695,83 @@ function TB.CreateLootTab(parent)
     local rows = {}
     for i = 1, LOOT_ROW_N do
         local row = CreateFrame("Frame", nil, tab)
-        row:SetWidth(tw - 22)
+        row:SetWidth(rowW)
         row:SetHeight(LOOT_ROW_H)
         row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(i - 1) * LOOT_ROW_H)
         if TB.UI and TB.UI.StripeRow then TB.UI.StripeRow(row, i) end
-        local line = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        line:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -3)
-        line:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        line:SetJustifyH("LEFT")
-        line:SetHeight(14)
-        row.line = line
+
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints(row)
+        hl:SetTexture(1, 1, 1, 0.06)
+
+        local function colText(col, font)
+            local fs = row:CreateFontString(nil, "OVERLAY", font or "GameFontHighlightSmall")
+            fs:SetPoint("LEFT", row, "LEFT", col.x, 0)
+            fs:SetWidth(col.w)
+            fs:SetHeight(14)
+            fs:SetJustifyH(col.justify)
+            return fs
+        end
+
+        row.timeText = colText(COLS.time, "GameFontHighlightSmall")
+        TB.SetTextColor(row.timeText, color("muted"))
+
+        row.botText = colText(COLS.bot, "GameFontHighlightSmall")
+
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetWidth(14)
+        icon:SetHeight(14)
+        icon:SetPoint("LEFT", row, "LEFT", COLS.item.x, 0)
+        row.itemIcon = icon
+
+        local itemText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        itemText:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+        itemText:SetWidth(COLS.item.w - 18)
+        itemText:SetHeight(14)
+        itemText:SetJustifyH("LEFT")
+        row.itemText = itemText
+
+        local badge = CreateFrame("Frame", nil, row)
+        badge:SetWidth(COLS.result.w)
+        badge:SetHeight(14)
+        badge:SetPoint("LEFT", row, "LEFT", COLS.result.x, 0)
+        local badgeBg = badge:CreateTexture(nil, "BACKGROUND")
+        badgeBg:SetAllPoints(badge)
+        local resultText = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        resultText:SetAllPoints(badge)
+        resultText:SetJustifyH("CENTER")
+        row.badge = badge
+        row.badgeBg = badgeBg
+        row.resultText = resultText
+
+        row.sourceText = colText(COLS.source, "GameFontHighlightSmall")
+        TB.SetTextColor(row.sourceText, color("muted"))
+
         row:EnableMouse(true)
         row:SetScript("OnEnter", function()
             local entry = row.entry
-            if not entry or (entry.event ~= "StoreLootAction" and entry.event ~= "LootRoll") or not tonumber(entry.itemId) then return end
+            if not entry then return end
+            local src = rowSourceReason(entry)
+            if entry.event == "LootMoney" then
+                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                GameTooltip:SetText(formatCopper(entry.copper))
+                if src ~= "" then GameTooltip:AddLine(src, 0.85, 0.85, 0.85, true) end
+                if entry.ts and entry.ts ~= "" then GameTooltip:AddLine(entry.ts, 0.62, 0.60, 0.56) end
+                GameTooltip:Show()
+                return
+            end
+            if (entry.event ~= "StoreLootAction" and entry.event ~= "LootRoll") or not tonumber(entry.itemId) then return end
             GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink("item:" .. tostring(math.floor(tonumber(entry.itemId))) .. ":0:0:0")
             if entry.event == "LootRoll" and entry.reason then
                 GameTooltip:AddLine(entry.reason, 1, 1, 1, true)
+                if entry.source and entry.source ~= "" then
+                    GameTooltip:AddLine((entry.sourceType or "other") .. ": " .. entry.source, 0.70, 0.70, 0.70, true)
+                end
+            elseif src ~= "" then
+                GameTooltip:AddLine(src, 0.85, 0.85, 0.85, true)
             end
+            if entry.ts and entry.ts ~= "" then GameTooltip:AddLine(entry.ts, 0.62, 0.60, 0.56) end
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -626,9 +802,40 @@ function TB.RefreshLootView()
         local entry = list[offset + i]
         if entry then
             row.entry = entry
-            row.line:SetText(rowText(entry))
+            row.timeText:SetText(formatTime(entry.ts))
+
+            local classId = botClassId(entry.bot)
+            local botCol = (classId and C.CLASS_COLORS and C.CLASS_COLORS[classId]) or color("text")
+            TB.SetTextColor(row.botText, botCol)
+            row.botText:SetText(truncate(entry.bot or "?", 12))
+
+            if entry.event == "LootMoney" then
+                row.itemIcon:SetTexture(COIN_ICON)
+                row.itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                row.itemText:SetText(formatCopper(entry.copper))
+            else
+                local id = tonumber(entry.itemId)
+                local itemQuality, texture
+                if id and GetItemInfo then
+                    local _, _, q, _, _, _, _, _, tex = GetItemInfo(id)
+                    itemQuality, texture = q, tex
+                end
+                row.itemIcon:SetTexture(texture or UNKNOWN_ICON)
+                row.itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                local q = entry.quality or itemQuality
+                local name = entry.item or ("item #" .. tostring(entry.itemId or "?"))
+                row.itemText:SetText(qualityHex(q) .. truncate(name, 20) .. "|r")
+            end
+
+            local badge = rowBadge(entry)
+            row.badgeBg:SetTexture(badge.bg[1], badge.bg[2], badge.bg[3], badge.bg[4])
+            row.resultText:SetText(badge.label)
+            TB.SetTextColor(row.resultText, badge.text)
+
+            row.sourceText:SetText(truncate(rowSourceReason(entry), 19))
             row:Show()
         else
+            row.entry = nil
             row:Hide()
         end
     end
