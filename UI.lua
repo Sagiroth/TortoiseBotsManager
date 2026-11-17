@@ -2365,9 +2365,8 @@ end
             roleBtn:SetScript("OnEnter", function()
                 local entry = this:GetParent().entry
                 if not entry then return end
-                local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
-                local currentId = dbRoles[entry.name]
-                local curLabel = TB.Roles.GetRoleLabel(entry.classId, currentId, "Default")
+                local _, current = TB.Roles.GetBotRole(entry.name, entry.classId)
+                local curLabel = current and current.label or "Default"
                 GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Combat Role: " .. curLabel)
                 GameTooltip:AddLine("Click to cycle to the next combat role.", 0.9, 0.9, 0.9, 1)
@@ -2933,7 +2932,6 @@ end
 
         FauxScrollFrame_Update(frame.scroll, total, 7, 36)
         local offset = (FauxScrollFrame_GetOffset and FauxScrollFrame_GetOffset(frame.scroll)) or 0
-        local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
 
         local allSelected = total > 0
         for i = 1, 7 do
@@ -3037,11 +3035,8 @@ end
                 end
 
                 -- Role button label
-                local currentRoleId = dbRoles[entry.name]
-                local roleLabel = TB.Roles.GetRoleLabel(entry.classId, currentRoleId, "Role")
-                if roleLabel == "Role" and table.getn(TB.Roles.GetClassRoles(entry.classId)) > 0 then
-                    roleLabel = TB.Roles.GetClassRoles(entry.classId)[1].label
-                end
+                local _, currentRole = TB.Roles.GetBotRole(entry.name, entry.classId)
+                local roleLabel = currentRole and currentRole.label or "Role"
                 row.roleBtn:SetText(TB.Roles.ShortLabel and TB.Roles.ShortLabel(roleLabel) or roleLabel)
 
                 row:Show()

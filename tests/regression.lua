@@ -1422,6 +1422,32 @@ assert(TB.Roles.GetBotRole("Shamtank", 7) == "tank", "the shaman tank kit must s
 assert(TB.Roles.GetBotRole("Furybot", 1) == "fury", "fury specs must show Fury")
 assert(TB.Roles.GetBotRole("Catbot", 11) == "cat", "a spec with a space must parse")
 
+-- Guild bots outside the party: no pick shows the talent spec from the note.
+do
+    local guildNotes = {
+        { "Gunhild", "Ret 4/0/40 Eg201 Mi204" },
+        { "Ferabot", "Feral 0/30/21" },
+        { "Notebot", "my favourite paladin" },
+    }
+    GetNumGuildMembers = function() return table.getn(guildNotes) end
+    GetGuildRosterInfo = function(i) return guildNotes[i][1], "", 0, 60, "", "", guildNotes[i][2] end
+    TortoiseBotsDB.botRoles = TortoiseBotsDB.botRoles or {}
+    TortoiseBotsDB.botRoles["Gunhild"] = nil
+    assert(TB.Roles.GetBotRole("Gunhild", 2) == "dps", "a Ret note with no pick must show Retribution")
+    assert(TB.Roles.GetBotRole("Ferabot", 11) == "tank", "a Feral note cannot tell Bear from Cat")
+    assert(TB.Roles.GetBotRole("Notebot", 2) == "tank", "a hand-written note falls back to the first role")
+    TortoiseBotsDB.botRoles["Gunhild"] = "tank"
+    assert(TB.Roles.GetBotRole("Gunhild", 2) == "tank", "a picked role beats the talent spec in the note")
+    TortoiseBotsDB.botRoles["Gunhild"] = nil
+    local realSend = TB.SendBotCommand
+    TB.SendBotCommand = function() end
+    local nextRole = TB.Roles.CycleBotRole("Gunhild", 2)
+    TB.SendBotCommand = realSend
+    assert(nextRole and nextRole.id == "tank", "cycling a Ret paladin moves on from Retribution")
+    TortoiseBotsDB.botRoles["Gunhild"] = nil
+    GetNumGuildMembers, GetGuildRosterInfo = nil, nil
+end
+
 -- Move modes: the shared mode lights up, an ACK moves it, Come waits for the poll.
 partyMembers = { "Alpha", "Gamma" }
 TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|2")

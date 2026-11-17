@@ -762,6 +762,47 @@ local function roleFromSpecs(roles, specs)
     return nil
 end
 
+-- The server writes each bot's talent spec at the start of its guild public
+-- note ("Ret 4/0/40 Eg201"). With no role picked, a bot fights as that spec.
+-- Druid "Feral" stays nil: the note cannot tell Bear from Cat.
+local NOTE_SPEC_ROLES = {
+    [1] = { Arms = "dps", Fury = "fury", Prot = "tank" },
+    [2] = { Holy = "heal", Prot = "tank", Ret = "dps" },
+    [3] = { BM = "bm", MM = "mm", Surv = "survival" },
+    [4] = { Assn = "assa", Combat = "combat", Sub = "subtlety" },
+    [5] = { Disc = "disc", Holy = "heal", Shadow = "dps" },
+    [7] = { Elem = "ele", Enh = "enh", Resto = "heal" },
+    [8] = { Arc = "arcane", Fire = "fire", Frost = "frost" },
+    [9] = { Affl = "affliction", Demo = "demonology", Destro = "destruction" },
+    [11] = { Bal = "boomkin", Resto = "heal" },
+}
+
+-- One roster pass serves every row of a refresh; the guild view redraws often.
+local noteSpecs, noteSpecsAt = {}, nil
+
+local function roleFromGuildNote(botName, classId)
+    if type(classId) == "string" and TB.C and TB.C.CLASS_NAME_TO_ID then
+        classId = TB.C.CLASS_NAME_TO_ID[classId] or classId
+    end
+    local specRoles = NOTE_SPEC_ROLES[classId]
+    if not (specRoles and GetNumGuildMembers and GetGuildRosterInfo) then return nil end
+    local t = (GetTime and GetTime()) or 0
+    if not noteSpecsAt or t - noteSpecsAt > 2 then
+        noteSpecs, noteSpecsAt = {}, t
+        for i = 1, GetNumGuildMembers(true) or 0 do
+            local member, _, _, _, _, _, note = GetGuildRosterInfo(i)
+            local key = member and TB.NormalizeName(member)
+            local _, spec
+            if key and note then _, _, spec = string.find(note, "^(%a+) %d+/%d+/%d+") end
+            if spec then noteSpecs[key] = spec end
+        end
+    end
+    local spec = noteSpecs[TB.NormalizeName(botName)]
+    return spec and specRoles[spec] or nil
+end
+
+-- Live specs (party bots) first, then the player's pick, then the talent
+-- spec from the guild note.
 function TB.Roles.GetBotRole(botName, classId)
     local roles = TB.Roles.GetClassRoles(classId)
     local state = TB.GetBotState and TB.GetBotState(botName)
@@ -769,6 +810,9 @@ function TB.Roles.GetBotRole(botName, classId)
     if not currentId then
         local dbRoles = (TortoiseBotsDB and TortoiseBotsDB.botRoles) or {}
         currentId = dbRoles[botName]
+    end
+    if not currentId then
+        currentId = roleFromGuildNote(botName, classId)
     end
     if not currentId and roles[1] then
         currentId = roles[1].id
@@ -866,7 +910,7 @@ function TB.Roles.CycleBotRole(botName, classId)
     local roles = TB.Roles.GetClassRoles(classId)
     local roleCount = table.getn(roles)
     if roleCount == 0 then return nil end
-    local currentId = (TortoiseBotsDB and TortoiseBotsDB.botRoles and TortoiseBotsDB.botRoles[botName])
+    local currentId = TB.Roles.GetBotRole(botName, classId)
     local nextIndex = 1
     for idx, r in ipairs(roles) do
         if r.id == currentId then
