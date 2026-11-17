@@ -40,7 +40,10 @@ local function defsOf(category)
     local out = {}
     for _, section in ipairs(category.sections) do
         for _, def in ipairs((C and C.ACTION_DEFINITIONS) or {}) do
-            if def.section == section and def.intent then table.insert(out, def) end
+            if def.section == section and def.intent
+                and (not def.cap or not TB.HasServerCapability or TB.HasServerCapability(def.cap)) then
+                table.insert(out, def)
+            end
         end
     end
     return out

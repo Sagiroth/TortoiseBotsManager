@@ -35,7 +35,7 @@ Everything shown comes from the server; each click sends one request and the ser
 
 | Option | What it does | Sends |
 | :--- | :--- | :--- |
-| Equip | The bot equips it. | `.bot item <bot> equip <bag> <slot>` |
+| Equip | The bot equips it (one-hand weapons offer main/off hand, rings offer 1/2, trinkets offer 1/2). | `.bot item <bot> equip <bag> <slot> [mainhand\|offhand\|finger1\|finger2\|trinket1\|trinket2]` |
 | Give to me | Opens a trade with the item already in. Accept to take it. | `.bot item <bot> give <bag> <slot>` |
 | Use | The bot uses food, drink or a potion. | `.bot command <bot> u <item>` |
 | Disenchant | The bot disenchants it. | `.bot command <bot> <verb> <item>` |
