@@ -42,6 +42,7 @@ The module owns the protocol; this page lists what the addon uses. The full gram
 | `blessing` | Blessings button on the Party tab and the blessing assignment board (`.bot blessing`) |
 | `blessing-player` | Per-player blessing exceptions in the Blessings board (`.bot blessing ... player`) |
 | `professions` | Professions tab in the bot panel, skill line in the guild row tooltip and the `.bot professions` send |
+| `use-object` | Use button in the Move card and Mini bar flyout (`.bot action use`) |
 
 `behavior` is also advertised; the addon does not gate on it.
 

@@ -1367,17 +1367,18 @@ local function BuildPullCard(parent, buttons)
 end
 
 local function BuildMoveCard(parent, buttons)
-    -- Move: five orders plus stance pills inline on one row.
+    -- Move: six orders plus stance pills inline on one row.
     local card = TB.UI.CreateCard(parent, "MOVE", W - (C.PAD or 10) * 2, TB.UI.Grid.CARD_MOVE_H or 76, { y = -172, line = true })
     local btnY = -24
-    buttons.follow   = makeActionButton(card, "follow", 89, 8, btnY)
-    buttons.stay     = makeActionButton(card, "stay", 89, 101, btnY)
-    buttons.come     = makeActionButton(card, "come", 89, 194, btnY)
+    buttons.follow   = makeActionButton(card, "follow", 74, 8, btnY)
+    buttons.stay     = makeActionButton(card, "stay", 74, 85, btnY)
+    buttons.come     = makeActionButton(card, "come", 74, 162, btnY)
     buttons.hold     = buttons.come
-    buttons.guard    = makeActionButton(card, "guard", 89, 287, btnY)
-    buttons.free     = makeActionButton(card, "free", 89, 380, btnY)
+    buttons.guard    = makeActionButton(card, "guard", 74, 239, btnY)
+    buttons.free     = makeActionButton(card, "free", 74, 316, btnY)
+    buttons.use      = makeActionButton(card, "use", 74, 393, btnY)
     buttons.follow:SetHeight(20); buttons.stay:SetHeight(20); buttons.come:SetHeight(20)
-    buttons.guard:SetHeight(20); buttons.free:SetHeight(20)
+    buttons.guard:SetHeight(20); buttons.free:SetHeight(20); buttons.use:SetHeight(20)
     TB.stancePills = {}
     local stanceIds = { "near", "tank", "turnback", "behind" }
     local stanceLabels = { near = "Near", tank = "Tank", turnback = "Turnback", behind = "Behind" }
@@ -3417,6 +3418,9 @@ function TB.RefreshActionControls()
     end
     if TB.actionButtons.downtime then
         if serverHasCap("downtime") then TB.actionButtons.downtime:Enable() else TB.actionButtons.downtime:Disable() end
+    end
+    if TB.actionButtons.use then
+        if serverHasCap("use-object") then TB.actionButtons.use:Show() else TB.actionButtons.use:Hide() end
     end
     if TB.UpdateFormationPills then TB.UpdateFormationPills() end
     if TB.UpdateStancePills then TB.UpdateStancePills() end

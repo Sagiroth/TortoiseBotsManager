@@ -1384,6 +1384,26 @@ TB.Refresh()
 assert(not TB.actionButtons.downtime.enabled, "Downtime must be disabled on servers without the capability")
 TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime")
 
+-- Use: capability-gated nearby object interaction.
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime")
+TB.Refresh()
+assert(TB.actionButtons.use and not TB.actionButtons.use.visible, "Use button must be hidden without use-object capability")
+TB.OnSystemMessage("TBM:CAPS|pull-seconds,flee,inventory,behavior,downtime,use-object")
+TB.Refresh()
+assert(TB.actionButtons.use and TB.actionButtons.use.visible, "Use button must show when use-object is advertised")
+now = now + 1
+this = TB.actionButtons.use
+TB.actionButtons.use.scripts.OnClick(TB.actionButtons.use)
+assert(lastAddon() == "action use", "Use button must send action use")
+TB.OnSystemMessage("TBM:ACTION_ACK|use|party|1|Pulling Door Lever")
+assert(TB.lastActionAck and TB.lastActionAck.intent == "use"
+    and TB.lastActionAck.executor == "Pulling Door Lever",
+    "use ACK must carry readable object action")
+TB.OnSystemMessage("TBM:ACTION_ERR|use|no-object|Nothing usable near you")
+assert(TB.lastActionError and TB.lastActionError.intent == "use"
+    and TB.lastActionError.code == "no-object",
+    "use ERR must parse like other actions")
+
 -- Live specs pick the shown role (a hire has no saved role); values may hold spaces.
 TB.OnSystemMessage("TBM:BOTSTATE_BEGIN|7")
 TB.OnSystemMessage("TBM:BOTSTATE|Rista|move=follow,specs=retribution")

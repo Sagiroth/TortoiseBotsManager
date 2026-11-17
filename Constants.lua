@@ -232,6 +232,15 @@ TB.C.ACTION_DEFINITIONS = {
         icon = "Interface\\Icons\\Spell_Nature_Swiftness",
         tip = "Bots leave their guard posts and move freely again.",
     },
+    {
+        id = "use",
+        intent = "use",
+        label = "Use",
+        section = "move",
+        cap = "use-object",
+        icon = "Interface\\Icons\\INV_Misc_Gear_01",
+        tip = "Stand next to a lever, door or chest: the bot walks over and uses it.",
+    },
 
     -- Combat stances (Fight MOVE card pills)
     {
