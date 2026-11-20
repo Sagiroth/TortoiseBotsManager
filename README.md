@@ -4,7 +4,7 @@
 [![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/sagiroth)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/FT2rZcXm3)
 
-The in-game control panel (`/tbm`) for [TortoiseBots](https://github.com/Sagiroth/TortoiseBots), the PlayerBots module for **Tortoise WoW 1.18.1**. A Vanilla 1.12 (11200) addon: log your alts in as bots, group them, and command them with buttons instead of typing `.bot` commands. This is an unofficial, community-driven project, not affiliated with Turtle WoW or Blizzard Entertainment.
+The in-game control panel (`/tbm`) for [TortoiseBots](https://github.com/Sagiroth/TortoiseBots), the PlayerBots module for **Tortoise WoW 1.18.1**. A Vanilla 1.12 (11200) addon: log your alts in as bots, group them, and command them with buttons instead of typing `.bot` commands. This is an unofficial, community-driven project made for educational purposes, not affiliated with Turtle WoW or Blizzard Entertainment.
 
 > [!IMPORTANT]
 > The addon only works on a server running the [TortoiseBots](https://github.com/Sagiroth/TortoiseBots) module. New to TortoiseBots? Start with its [Getting Started](https://github.com/Sagiroth/TortoiseBots/blob/main/docs/play/getting-started.md) guide.
